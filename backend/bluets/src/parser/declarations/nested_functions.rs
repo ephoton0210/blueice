@@ -9,9 +9,9 @@
 //! an operand. The parameter list and result annotation are parsed with the same
 //! routines as a named function, so their annotations are erased through the
 //! same edits, and the body becomes a structured function body the checker can
-//! walk. Shapes outside this subset (destructured parameters, `async`, generic
-//! arrows) are left as tokens and refused by the erasure audit when they carry
-//! an annotation.
+//! walk. Generic heads retain their lexical binders while their annotations
+//! are erased. Shapes outside the structured subset are refused by the
+//! erasure audit when they carry an annotation.
 
 use super::*;
 
@@ -166,7 +166,7 @@ impl Parser {
             && self
                 .tokens
                 .get(index + 2)
-                .is_some_and(|token| token.is("("));
+                .is_some_and(|token| token.is("(") || token.is("<"));
         let computed_method = self.tokens[index].is("[");
         let literal_method = matches!(
             self.tokens[index].kind,
@@ -183,16 +183,16 @@ impl Parser {
             && self
                 .tokens
                 .get(index + 2)
-                .is_some_and(|token| token.is("("));
+                .is_some_and(|token| token.is("(") || token.is("<"));
         let next = self.tokens.get(index + 1)?;
         let mut computed_key = Vec::new();
-        let (kind, name, open) = if computed_method {
+        let (kind, name, head) = if computed_method {
             let close = matching_closing_delimiter(&self.tokens, index, end, "[", "]")?;
             computed_key = self.tokens[index + 1..close].to_vec();
             (NestedFunctionKind::Method, None, close + 1)
         } else if generator_method || async_method {
             (NestedFunctionKind::Method, None, index + 2)
-        } else if next.is("(") {
+        } else if next.is("(") || next.is("<") {
             (NestedFunctionKind::Method, None, index + 1)
         } else if (self.tokens[index].is("get") || self.tokens[index].is("set"))
             && is_name(next)
@@ -209,6 +209,12 @@ impl Parser {
             (kind, None, index + 2)
         } else {
             return None;
+        };
+        let generic = self.tokens.get(head)?.is("<");
+        let open = if generic {
+            matching_angle_bracket(&self.tokens, head, end)? + 1
+        } else {
+            head
         };
         if !self.tokens.get(open)?.is("(") {
             return None;
@@ -236,9 +242,23 @@ impl Parser {
             return None;
         }
         if computed_method {
-            self.collect_expression_type_edits(index + 1, open - 1);
+            self.collect_expression_type_edits(index + 1, head - 1);
         }
         let saved_index = self.index;
+        let type_parameters = if generic {
+            self.index = head;
+            let start = self.current().start;
+            let parsed = self.parse_type_parameters_in_context(true);
+            self.edits.push(TextEdit {
+                start,
+                end: self.current().start,
+                replacement: String::new(),
+            });
+            self.index = saved_index;
+            parsed
+        } else {
+            Vec::new()
+        };
         let ParsedFunctionTail {
             parameters,
             return_type,
@@ -283,7 +303,7 @@ impl Parser {
                 async_function: async_method,
                 generator: generator_method,
                 name,
-                type_parameters: Vec::new(),
+                type_parameters,
                 parameters,
                 return_type,
                 body,

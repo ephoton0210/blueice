@@ -412,6 +412,12 @@ impl<'a> ModuleChecker<'a> {
                 {
                     return annotation.clone();
                 }
+                let actual = self.infer_expression(value, scope);
+                return if self.assertion_preserves_runtime_qualifiers(&actual) {
+                    actual
+                } else {
+                    annotation.clone()
+                };
             }
             // Both forms disappear from emitted JavaScript. Keep the known
             // runtime receiver type, including readonly host qualifiers,

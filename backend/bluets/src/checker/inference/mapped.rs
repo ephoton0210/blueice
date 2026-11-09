@@ -57,6 +57,7 @@ pub(super) fn infer(
             aliases,
             budget,
             active: HashSet::new(),
+            dependencies: BTreeMap::new(),
             evidence: 0,
         };
         collector.collect(&template, &field.value, false);

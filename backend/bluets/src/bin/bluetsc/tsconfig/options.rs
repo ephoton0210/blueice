@@ -32,6 +32,7 @@ const BOOLEAN: &[&str] = &[
     "inlineSourceMap",
     "declaration",
     "composite",
+    "incremental",
     "declarationMap",
     "emitDeclarationOnly",
     "isolatedDeclarations",
@@ -78,8 +79,10 @@ pub(super) fn validate(
         .ok_or_else(|| "compilerOptions must be an object".to_string())?;
     let mut result = Map::new();
     for (name, value) in object {
-        if matches!(name.as_str(), "composite" | "tsBuildInfoFile")
-            && !reader.allows_build_options()
+        if matches!(
+            name.as_str(),
+            "composite" | "incremental" | "tsBuildInfoFile"
+        ) && !reader.allows_build_options()
         {
             return Err("unknown or unsupported compiler option `composite`".into());
         }

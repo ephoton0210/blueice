@@ -100,12 +100,20 @@ pub(super) fn diagnostic_type(
     budget: &mut TypeExpansionBudget,
 ) -> Type {
     let original = value.clone();
+    if super::inference::symbolic_indexed_access(value, aliases) {
+        return original;
+    }
     let mut value = value.clone();
     let mut visited = HashSet::new();
     let mut operator = false;
     let mut indexed = false;
     loop {
         if let Type::KeyOf(operand) = &value {
+            let canonical = super::canonical_parameter_references(operand, aliases);
+            if matches!(&canonical, Type::Named { name, .. } if aliases.get(name).is_some_and(|definition| definition.kind == TypeDefinitionKind::Parameter))
+            {
+                return value;
+            }
             if matches!(operand.as_ref(),Type::Named{name,..} if aliases.get(name).is_some_and(|definition| matches!(definition.kind, TypeDefinitionKind::Interface | TypeDefinitionKind::Class)))
             {
                 return value;

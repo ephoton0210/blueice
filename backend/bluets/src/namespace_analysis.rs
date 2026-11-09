@@ -745,6 +745,7 @@ fn rewrite_item(
         FunctionBodyItem::Function(function) => {
             FunctionBodyItem::Function(Box::new(rewrite_function(function, rewrite)?))
         }
+        FunctionBodyItem::TypeAlias(alias) => FunctionBodyItem::TypeAlias(alias.clone()),
         FunctionBodyItem::Opaque(span) => FunctionBodyItem::Opaque(span.clone()),
     })
 }

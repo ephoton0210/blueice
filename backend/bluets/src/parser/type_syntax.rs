@@ -99,6 +99,13 @@ impl Parser {
     }
 
     pub(super) fn parse_type_parameters(&mut self) -> Vec<TypeParameter> {
+        self.parse_type_parameters_in_context(false)
+    }
+
+    pub(super) fn parse_type_parameters_in_context(
+        &mut self,
+        object_method: bool,
+    ) -> Vec<TypeParameter> {
         if !self.consume("<") {
             return Vec::new();
         }
@@ -118,9 +125,23 @@ impl Parser {
                 None
             };
             let name = self.require_identifier("expected a type parameter name");
-            let constraint = self
-                .consume("extends")
-                .then(|| self.parse_type_until(&["=", ",", ">"]));
+            let constraint = self.consume("extends").then(|| {
+                if object_method && self.peek(">") {
+                    // In a method head the native grammar reports the absent
+                    // constraint as an expression error at the closing angle.
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode::ParseError,
+                            self.current().span(&self.id),
+                            "expected a constraint after `extends`",
+                        )
+                        .with_typescript(1109, Vec::new()),
+                    );
+                    Type::Unknown
+                } else {
+                    self.parse_type_until(&["=", ",", ">"])
+                }
+            });
             let default = self
                 .consume("=")
                 .then(|| self.parse_type_until(&[",", ">"]));
@@ -249,6 +270,7 @@ impl Parser {
     }
 
     pub(super) fn parse_union(&mut self, stop: &[&str]) -> Type {
+        self.consume("|");
         let mut values = vec![self.parse_intersection(stop)];
         while self.consume("|") {
             values.push(self.parse_intersection(stop));
@@ -261,6 +283,7 @@ impl Parser {
     }
 
     pub(super) fn parse_intersection(&mut self, stop: &[&str]) -> Type {
+        self.consume("&");
         let mut values = vec![self.parse_type_primary(stop)];
         while self.consume("&") {
             values.push(self.parse_type_primary(stop));

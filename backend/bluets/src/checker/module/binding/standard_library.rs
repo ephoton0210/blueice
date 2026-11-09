@@ -80,6 +80,20 @@ impl ModuleChecker<'_> {
                                 },
                             );
                         }
+                        if interface.name == "Map" {
+                            // The pinned mutable Map exposes writes as methods;
+                            // native method bivariance leaves K and V covariant.
+                            // Retain that variance instead of repeatedly walking
+                            // the recursive iterator and callback surfaces.
+                            for parameter in &mut self
+                                .types
+                                .get_mut("Map")
+                                .expect("bound library Map")
+                                .parameters
+                            {
+                                parameter.variance = Some(crate::parser::Variance::Out);
+                            }
+                        }
                     }
                     Declaration::TypeAlias(alias) if !protected_types.contains(&alias.name) => {
                         self.types.insert(

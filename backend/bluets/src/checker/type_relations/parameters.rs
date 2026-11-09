@@ -33,10 +33,171 @@ pub(super) fn generic_constraints_compatible(
         let Some(constraint) = &source.constraint else {
             return true;
         };
-        let source = substitute_type(constraint, &binders);
-        let target = target.constraint.as_ref().unwrap_or(&Type::StrictUnknown);
-        is_assignable(target, &source, aliases, &mut visited.clone(), budget)
+        let source =
+            canonical_parameter_references(&substitute_type(constraint, &binders), aliases);
+        let target = canonical_parameter_references(
+            target.constraint.as_ref().unwrap_or(&Type::StrictUnknown),
+            aliases,
+        );
+        is_assignable(&target, &source, aliases, &mut visited.clone(), budget)
     })
+}
+
+/// Alpha-renamed signatures retain the target binder's constraints. The
+/// temporary identities belong to that declaration, so nested generic
+/// signatures cannot capture a shared textual placeholder.
+pub(super) fn generic_functions_assignable(
+    actual: &Type,
+    expected: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+) -> Option<bool> {
+    let function =
+        |value: &Type| matches!(value, Type::Function { .. } | Type::GenericFunction { .. });
+    if !function(actual)
+        || !function(expected)
+        || !matches!(actual, Type::GenericFunction { .. })
+            && !matches!(expected, Type::GenericFunction { .. })
+    {
+        return None;
+    }
+    if let (
+        Type::GenericFunction {
+            type_parameters,
+            parameters,
+            result,
+            ..
+        },
+        Type::Function {
+            parameters: target,
+            result: target_result,
+        },
+    ) = (actual, expected)
+    {
+        if let Some(actuals) = target
+            .iter()
+            .map(|parameter| parameter.annotation.clone())
+            .collect::<Option<Vec<_>>>()
+        {
+            let signature = FunctionSignature {
+                type_parameters: type_parameters.clone(),
+                parameters: parameters.clone(),
+                return_type: (**result).clone(),
+            };
+            let inferred = crate::checker::inference::infer_contextual_result(
+                &signature,
+                &actuals,
+                aliases,
+                budget,
+                (**target_result != Type::Void).then_some(&**target_result),
+            );
+            if inferred.rejected_constraint.is_some() || budget.exhausted {
+                return Some(false);
+            }
+            let source = substitute_type(
+                &Type::Function {
+                    parameters: parameters.clone(),
+                    result: result.clone(),
+                },
+                &inferred.substitutions,
+            );
+            return Some(is_assignable(&source, expected, aliases, visited, budget));
+        }
+    }
+    let paired = if let (
+        Type::GenericFunction {
+            type_parameters: source,
+            span: source_span,
+            ..
+        },
+        Type::GenericFunction {
+            type_parameters: target,
+            span: target_span,
+            ..
+        },
+    ) = (actual, expected)
+    {
+        let same_declaration = source_span == target_span
+            && !source_span.module.is_empty()
+            && source_span.start < source_span.end;
+        if !same_declaration
+            && !generic_constraints_compatible(source, target, aliases, visited, budget)
+        {
+            return Some(false);
+        }
+        Some(target.as_slice())
+    } else {
+        None
+    };
+    let substitutions = |parameters: &[TypeParameter]| {
+        parameters
+            .iter()
+            .enumerate()
+            .flat_map(|(index, parameter)| {
+                let name = paired
+                    .and_then(|target| target.get(index))
+                    .map(crate::parser::type_parameter_identity)
+                    .unwrap_or_else(|| format!("<generic:{index}>"));
+                let value = Type::Named {
+                    name,
+                    arguments: Vec::new(),
+                };
+                [
+                    (parameter.name.clone(), value.clone()),
+                    (crate::parser::type_parameter_identity(parameter), value),
+                ]
+            })
+            .collect::<BTreeMap<_, _>>()
+    };
+    let normalize = |value: &Type| match value {
+        Type::GenericFunction {
+            type_parameters,
+            parameters,
+            result,
+            ..
+        } => substitute_type(
+            &Type::Function {
+                parameters: parameters.clone(),
+                result: result.clone(),
+            },
+            &substitutions(type_parameters),
+        ),
+        value => value.clone(),
+    };
+    let mut scoped = None;
+    if let Some(parameters) = paired {
+        let mut definitions = aliases.clone();
+        let substitutions = substitutions(parameters);
+        for parameter in parameters {
+            if !budget.consume() {
+                return Some(false);
+            }
+            let value = parameter
+                .constraint
+                .as_ref()
+                .map(|value| {
+                    canonical_parameter_references(&substitute_type(value, &substitutions), aliases)
+                })
+                .unwrap_or(Type::StrictUnknown);
+            definitions.insert(
+                crate::parser::type_parameter_identity(parameter),
+                TypeDefinition {
+                    kind: TypeDefinitionKind::Parameter,
+                    parameters: Vec::new(),
+                    value,
+                },
+            );
+        }
+        scoped = Some(definitions);
+    }
+    Some(is_assignable(
+        &normalize(actual),
+        &normalize(expected),
+        scoped.as_ref().unwrap_or(aliases),
+        visited,
+        budget,
+    ))
 }
 
 pub(super) fn compatible(

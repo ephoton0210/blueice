@@ -10,6 +10,9 @@ pub(super) fn finish(
     aliases: &BTreeMap<String, TypeDefinition>,
     budget: &mut TypeExpansionBudget,
 ) -> Type {
+    if super::symbolic_indexed_access(&value, aliases) {
+        return value;
+    }
     match value {
         value @ (Type::Mapped(_)
         | Type::Conditional(_)

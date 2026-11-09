@@ -33,6 +33,27 @@ impl<'a> ModuleChecker<'a> {
         }
         let previous_spreads = self.allowed_tuple_spread_parameters.clone();
         self.bind_lexical_type_parameters(&function.type_parameters);
+        for item in &function.body {
+            if let FunctionBodyItem::TypeAlias(alias) = item {
+                let mut enclosing_types = self.types.clone();
+                for parameter in &alias.type_parameters {
+                    enclosing_types.remove(&parameter.name);
+                }
+                self.types.insert(
+                    alias.name.clone(),
+                    TypeDefinition {
+                        kind: TypeDefinitionKind::Alias,
+                        parameters: alias.type_parameters.clone(),
+                        value: canonical_parameter_references(&alias.value, &enclosing_types),
+                    },
+                );
+            }
+        }
+        for item in &function.body {
+            if let FunctionBodyItem::TypeAlias(alias) = item {
+                self.check_type_with_parameters(&alias.value, &alias.span, &alias.type_parameters);
+            }
+        }
         self.check_function_flags(function, &scope);
         for (index, parameter) in function.parameters.iter().enumerate() {
             if parameter.rest && index + 1 != function.parameters.len() {
@@ -442,6 +463,7 @@ impl<'a> ModuleChecker<'a> {
                 },
                 FunctionBodyItem::Variable(_)
                 | FunctionBodyItem::Expression { .. }
+                | FunctionBodyItem::TypeAlias(_)
                 | FunctionBodyItem::Function(_)
                 | FunctionBodyItem::While(_) => {}
             }
@@ -555,7 +577,9 @@ impl<'a> ModuleChecker<'a> {
                 }
                 FunctionBodyItem::Variable(_) => {}
                 // A nested function's returns belong to that function.
-                FunctionBodyItem::Throw { .. } | FunctionBodyItem::Function(_) => {}
+                FunctionBodyItem::Throw { .. }
+                | FunctionBodyItem::TypeAlias(_)
+                | FunctionBodyItem::Function(_) => {}
             }
         }
     }

@@ -11,21 +11,21 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 **Current BlueTS / BlueTSC compatibility status (2026-11-09).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 39,426 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 39,512 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 38,599/38,605 (99.9845%); 3 open, 3 refused observations |
-| Separate controls | 633 native-reference + 188 BlueTS owner = 821; excluded from direct agreement |
-| Case labels | 39,420 scoped closed (including controls), 3 open, 3 refused |
-| Suite inventory | 179 suites / 382 ignored Rust functions; not a case denominator |
-| Suite labels | 175 scoped closed, 1 open, 3 refused |
+| Direct agreement | 38,670/38,676 (99.9845%); 3 open, 3 refused observations |
+| Separate controls | 633 native-reference + 203 BlueTS owner = 836; excluded from direct agreement |
+| Case labels | 39,506 scoped closed (including controls), 3 open, 3 refused |
+| Suite inventory | 181 suites / 386 ignored Rust functions; not a case denominator |
+| Suite labels | 177 scoped closed, 1 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 227 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 39,426 recorded case expectations pass; expected differences/refusals are not
+All 39,512 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,8 +33,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:ad7f2dc43c2b7f2eefcaadf97312ee7d8da68fb3`.
-Input graph SHA-256: `37d691679d5db38a16cad174f52e03fae4259fcd936ee536a314308fde90a54e`.
+Compiler/oracle source: `backend-tree:3567e7e2748a08e22f3422a47709fb1cd7211ec0`.
+Input graph SHA-256: `13244e77c85baedb8041c0c933ba35643010e6ec61abad64b90b73d0a4c7745d`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -43,7 +43,7 @@ Older dated measurements below retain their original scope; they are not this cu
 
 <!-- BEGIN GM3 CURRENT PLATFORM EVIDENCE -->
 
-**Current platform regression (2026-11-09):** source `backend-tree:ad7f2dc43c2b7f2eefcaadf97312ee7d8da68fb3` passes Windows x86_64 symlink 25/25 and core oracle 82/82 plus the complete local gates after the module split. All 14,605 files in the recorded source-archive-plus-patches manifest match their expected hashes. [Current modularization acceptance](MODULARIZATION_MEASUREMENT.json) retains fresh commands and raw evidence; the [original G-M3 acceptance](GM3_CURRENT_INTEGRATION_MEASUREMENT.json) keeps its prior recorded source. Broader platform/toolchain combinations remain open.
+**Earlier modularization platform regression (2026-11-09):** source `backend-tree:ad7f2dc43c2b7f2eefcaadf97312ee7d8da68fb3` passes Windows x86_64 symlink 25/25 and core oracle 82/82 plus the complete local gates after the module split. All 14,605 files in the recorded source-archive-plus-patches manifest match their expected hashes. [Current modularization acceptance](MODULARIZATION_MEASUREMENT.json) retains fresh commands and raw evidence; the [original G-M3 acceptance](GM3_CURRENT_INTEGRATION_MEASUREMENT.json) keeps its prior recorded source. Broader platform/toolchain combinations remain open.
 
 <!-- END GM3 CURRENT PLATFORM EVIDENCE -->
 
@@ -60,9 +60,12 @@ broader G-C1 inventory row remains open for unmeasured CLI/recovery coverage;
 the finite checklist does not claim full parity. See the
 [acceptance record](PLAN.md#phase-l--g-c1-implementation).
 
-**Next work:** repair the reproduced G-T2/G-C1 object-method boundary, then
-G-M2 explicit incremental configuration. The completed real-project audit is
-[blocked, not a compatibility pass](REAL_PROJECT_AUDIT.md).
+**Current follow-up:** follow the requested G-T1 → G-C1 → G-M2 order.
+G-T1's two frozen stages were revalidated before implementation. The real-project
+flow, generic-method/diagnostic and explicit incremental repairs pass the fresh
+complete gates. [Current acceptance](PROJECT_FOLLOWUP_ACCEPTANCE.md) records
+the immutable source, measurements and remaining scope limits. The original
+[blocked audit](REAL_PROJECT_AUDIT.md) remains historical evidence.
 
 ## Maintenance and real-project follow-up — 2026-11-09
 
@@ -90,16 +93,20 @@ User-authorized follow-up to the completed finite Phase L packages:
 
   [Measured audit and repair gates](REAL_PROJECT_AUDIT.md),
   [exact results](REAL_PROJECT_MEASUREMENT.json) and
-  [raw evidence](REAL_PROJECT_ARTIFACTS.json). Investigation complete;
-  **mitt remains incompatible with BlueTSC**: two independent blockers are
-  reproduced below. Native passes all eight runtime scenarios, declaration
-  consumers and warm/edit/clean builds. BlueTSC's dependent project checks are
-  explicitly blocked; the constrained-method diagnostic cascade is not a third
-  independent missing feature. The global case denominator is unchanged.
+  [raw evidence](REAL_PROJECT_ARTIFACTS.json). The original investigation
+  recorded **two independent blockers** and blocked downstream BlueTSC results.
+  Both are repaired in the current follow-up below; the historical results and
+  frozen project/reproduction bytes remain unchanged.
 
-### Next implementation — existing G-T2/G-C1 and G-M2
+### Current implementation — G-T1 → G-C1 → G-M2
 
-- [ ] **Object-literal generic methods — G-T2 / G-C1 follow-up.**
+G-T1's existing first and byte-exact second stages remain the finite baseline.
+The unchanged project exposed follow-up flow issues: erased annotation commas,
+optional collection assignments and postfix non-null calls. Their repairs retain
+owner readonly data through record, array and Map aliases. Object-method parsing
+and generic inference are G-T2 dependencies of the requested G-C1 repair.
+
+- [x] **Object-literal generic methods — G-T2 / G-C1 follow-up.**
   - Reproduce the frozen unconstrained and `extends string` object methods;
     preserve the accepted generic-class and ordinary-object controls.
   - Preserve method type parameters/constraints through parse, check and emit.
@@ -109,17 +116,30 @@ User-authorized follow-up to the completed finite Phase L packages:
   - Pass the unchanged full mitt cold build, byte-exact declarations and their
     consumers, and all eight runtime scenarios. Preserve subsequent blockers
     explicitly; the incremental flag is separately tracked below.
-- [ ] **Explicit incremental configuration — G-M2 / G-C1 follow-up.**
+  - Frozen additions: 53 Native programs plus three separately classified
+    readonly/mutable owner controls. Local generic aliases, dependent keys,
+    string/symbol mapped domains and complete related diagnostics are included.
+- [x] **Explicit incremental configuration — G-M2 / G-C1 follow-up.**
   - The frozen scalar project builds in both compilers; enabling
-    `incremental: true` alone currently causes BlueTSC's unsupported-option error.
+    `incremental: true` alone reproduced BlueTSC's former unsupported-option error.
   - Implement valid option/state semantics and invalid-option diagnostics;
     verify configured state paths, cold/warm/edit/clean output and execution,
     and corrupt/unverifiable-state recovery within existing owner boundaries.
   - Pass the scalar control and original project's full incremental acceptance.
     Preserve the intentional owner-current rebuild differences.
+  - Both `--build` and direct TypeScript `build --config` use the same state
+    implementation; `--showConfig` is read-only. Eighteen frozen configurations
+    cover valid/invalid options, default/custom paths and declaration/map forms.
+    Twelve owner control families cover recovery, artifact hashes, collisions and
+    confinement. Native `-p` reconstructs its library graph from source-only
+    exported metadata and may re-emit; no Native warm no-op agreement is claimed.
 
-Both repairs include the existing complete Native, local-workspace and Windows
-82-oracle gates. Freeze additional negative controls before implementation.
+Both repairs pass the fresh complete gates on `backend-tree:3567e7e2748a08e22f3422a47709fb1cd7211ec0`:
+**181 Native suites / 1,040 tests**, **7,838 local workspace
+passes**, both complete **8,407 × two** map checks, Windows **25 path checks +
+82 core oracles + the two new cohorts and project-configuration tests**, formatting and warnings-denied Clippy.
+Native expectations were frozen before their corresponding implementations;
+all old case identities remain. [Acceptance and retained evidence](PROJECT_FOLLOWUP_ACCEPTANCE.md).
 
 ## Completed baseline (condensed)
 

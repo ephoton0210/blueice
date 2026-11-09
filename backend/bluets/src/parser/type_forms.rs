@@ -28,6 +28,10 @@ pub struct IndexSignature {
     pub name: String,
     pub key: Type,
     pub value: Type,
+    /// Mapped keys retain their original domain (and aliases) for `keyof`.
+    /// An explicit string index also admits numeric keys; a mapped string
+    /// domain does not acquire that additional constituent.
+    pub mapped_domain: Option<Type>,
     pub readonly: bool,
     pub span: SourceSpan,
     pub key_span: SourceSpan,
@@ -91,7 +95,11 @@ impl Type {
         Some(match self {
             Self::Readonly(value) => vec![value],
             Self::IndexedRecord { object, indices } => std::iter::once(object.as_ref())
-                .chain(indices.iter().flat_map(|index| [&index.key, &index.value]))
+                .chain(indices.iter().flat_map(|index| {
+                    [&index.key, &index.value]
+                        .into_iter()
+                        .chain(index.mapped_domain.iter())
+                }))
                 .collect(),
             Self::Conditional(value) => vec![
                 &value.check,
@@ -176,6 +184,7 @@ impl Type {
                     .map(|index| IndexSignature {
                         key: map(&index.key, &[]),
                         value: map(&index.value, &[]),
+                        mapped_domain: index.mapped_domain.as_ref().map(|value| map(value, &[])),
                         ..index.clone()
                     })
                     .collect(),

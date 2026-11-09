@@ -395,6 +395,63 @@ pub(super) fn resolve_config_invocation(path: PathBuf) -> Result<Invocation, Str
     resolve_config_with_diagnostic(path, &mut None)
 }
 
+/// Select the project build entry before validating build-only options.
+/// Owner configurations retain their own policy/loader path.
+pub(super) fn direct_typescript_config(path: &Path) -> Result<bool, String> {
+    let path = absolute_existing_path(path).map_err(|error| error.to_string())?;
+    let text = fs::read_to_string(&path).map_err(|error| error.to_string())?;
+    if text.len() > 1024 * 1024 {
+        return Err("configuration resource limit exceeded".into());
+    }
+    let value = tsconfig::parse_jsonc(&text)?;
+    if !typescript_shape(&path, &value)
+        || value.get("entries").is_some()
+        || value.get("tsconfig").is_some()
+        || path
+            .parent()
+            .is_some_and(|directory| directory.join("bluetsc.json").is_file())
+    {
+        return Ok(false);
+    }
+    let build_options = |options: &serde_json::Map<String, serde_json::Value>| {
+        ["incremental", "composite", "tsBuildInfoFile"]
+            .iter()
+            .any(|name| options.contains_key(*name))
+    };
+    if value
+        .get("compilerOptions")
+        .and_then(serde_json::Value::as_object)
+        .is_some_and(build_options)
+        || value.get("references").is_some_and(|references| {
+            references
+                .as_array()
+                .is_none_or(|references| !references.is_empty())
+        })
+    {
+        return Ok(true);
+    }
+    if value.get("extends").is_none() {
+        return Ok(false);
+    }
+    // Preserve ordinary publication, while inherited build-only options select
+    // the same stateful runner. That runner reports invalid inherited options.
+    match resolve_config_with_sources(path, &mut None, &mut BTreeMap::new(), true) {
+        Ok(invocation) => Ok(invocation
+            .project_config
+            .is_some_and(|project| build_options(&project.options))),
+        Err(_) => Ok(true),
+    }
+}
+
+fn typescript_shape(path: &Path, value: &serde_json::Value) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with("tsconfig"))
+        || ["compilerOptions", "files", "include", "exclude", "extends"]
+            .iter()
+            .any(|key| value.get(*key).is_some())
+}
+
 pub(super) fn resolve_config_with_diagnostic(
     path: PathBuf,
     report: &mut Option<blueice_bluets::Diagnostic>,
@@ -437,13 +494,7 @@ pub(super) fn resolve_config_with_sources(
     let config_directory = config_path
         .parent()
         .ok_or_else(|| "config has no parent directory".to_string())?;
-    let ts_shape = config_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.starts_with("tsconfig"))
-        || ["compilerOptions", "files", "include", "exclude", "extends"]
-            .iter()
-            .any(|key| value.get(*key).is_some());
+    let ts_shape = typescript_shape(&config_path, &value);
     let owner = !ts_shape || value.get("entries").is_some() || value.get("tsconfig").is_some();
     if !owner {
         let owner_path = config_directory.join("bluetsc.json");

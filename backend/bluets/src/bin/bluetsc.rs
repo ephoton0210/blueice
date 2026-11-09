@@ -79,6 +79,20 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    if args.command == Command::Build {
+        if let Input::Config(path) = &args.input {
+            if config::direct_typescript_config(path) == Ok(true) {
+                if args.show_config {
+                    return native_cli::show_build_config(path, args.diagnostics_json);
+                }
+                let mut arguments = vec!["--build".into(), path.to_string_lossy().into_owned()];
+                if args.diagnostics_json {
+                    arguments.push("--diagnostics-json".into());
+                }
+                return build_graph::run(arguments);
+            }
+        }
+    }
     let mut invocation = match resolve_invocation(args.input) {
         Ok(invocation) => invocation,
         Err(message) => {

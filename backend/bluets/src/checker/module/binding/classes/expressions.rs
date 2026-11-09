@@ -58,7 +58,7 @@ impl ModuleChecker<'_> {
         }
         let inferred = self.class_with_inferred_returns(original);
         let class = &inferred;
-        self.with_class_type_scope(&class.instance_parameters(), |checker| {
+        self.with_lexical_type_scope(&class.instance_parameters(), |checker| {
             checker.validate_computed_class_this(class);
             checker.validate_computed_class_fields(class);
             checker.validate_class_heritage_name(class);

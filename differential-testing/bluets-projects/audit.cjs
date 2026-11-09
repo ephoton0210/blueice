@@ -30,6 +30,12 @@ function compatible(native, bluets, declaration) {
     result.runtime?.passed === 8 && result.positiveConsumer?.exit === 0 &&
     result.negativeConsumer?.expectedRejection === true && result.incremental?.passed === true);
 }
+function incrementalArtifacts(cold, initial, warm, edited, clean) {
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  return {warmUnchanged: same(initial, warm), editedChanged: !same(initial, edited),
+    matchesClean: same(edited, clean), coldToIncrementalChanged: !same(cold, initial),
+    initialArtifacts: initial, warmArtifacts: warm, editedArtifacts: edited, cleanArtifacts: clean};
+}
 function unpackFixture(destination, manifest) {
   const archive = path.join(__dirname, manifest.archive);
   assert.equal(hash(fs.readFileSync(archive)), manifest.archiveSha256, 'upstream archive hash mismatch');
@@ -125,8 +131,9 @@ function audit({compiler, typescript, output, sourceTree}) {
       result.incremental = {passed: false, initialExit: incremental.exit, scope: 'The explicit incremental configuration is refused; no warm/edit/clean agreement is credited.'};
       return result;
     }
+    const initial = artifacts(directory);
     const warm = run(name + '-warm', program, buildArgs, directory);
-    const warmUnchanged = JSON.stringify(cold) === JSON.stringify(artifacts(directory));
+    const warmArtifacts = artifacts(directory);
     fs.appendFileSync(path.join(directory, 'src/index.ts'), '\n// BlueIce incremental edit probe.\n');
     const edited = run(name + '-edited', program, buildArgs, directory), changed = artifacts(directory);
     const clean = path.join(output, name + '-clean'); fs.mkdirSync(clean); unpackFixture(clean, manifest);
@@ -135,8 +142,7 @@ function audit({compiler, typescript, output, sourceTree}) {
     const rebuilt = run(name + '-clean-rebuild', program, buildArgs, clean);
     const editedSmoke = run(name + '-edited-runtime', process.execPath, [path.join(__dirname, 'smoke.cjs'), path.join(directory, 'dist/index.js')], directory);
     result.incremental = {warmExit: warm.exit, editedExit: edited.exit, cleanExit: rebuilt.exit, editedRuntimeExit: editedSmoke.exit,
-      warmUnchanged, editedChanged: JSON.stringify(cold) !== JSON.stringify(changed),
-      matchesClean: JSON.stringify(changed) === JSON.stringify(artifacts(clean))};
+      ...incrementalArtifacts(cold, initial, warmArtifacts, changed, artifacts(clean))};
     result.incremental.passed = [warm, edited, rebuilt, editedSmoke].every(r => r.exit === 0) &&
       result.incremental.warmUnchanged && result.incremental.editedChanged && result.incremental.matchesClean;
     return result;
@@ -198,4 +204,4 @@ if (require.main === module) {
     process.exitCode = report.compatible ? 0 : 2;
   } catch (error) { console.error(error); process.exitCode = 1; }
 }
-module.exports = {declarations, compatible, unpackFixture, audit};
+module.exports = {declarations, compatible, unpackFixture, audit, incrementalArtifacts};

@@ -30,6 +30,8 @@ pub(super) struct Index<'a> {
     classes: Vec<&'a ClassDeclaration>,
     functions: Vec<&'a crate::FunctionDeclaration>,
     fields: Vec<Field>,
+    local_aliases: Vec<(&'a crate::parser::TypeAliasDeclaration, SourceSpan)>,
+    local_variables: Vec<&'a crate::VariableDeclaration>,
 }
 impl<'a> Index<'a> {
     pub(super) fn new(project: &'a Project) -> Self {
@@ -48,9 +50,16 @@ impl<'a> Index<'a> {
             classes: Vec::new(),
             functions: Vec::new(),
             fields: Vec::new(),
+            local_aliases: Vec::new(),
+            local_variables: Vec::new(),
         };
         for module in project.modules.values() {
             index.declarations(&module.declarations);
+            for function in module.nested_functions.values() {
+                if let crate::parser::NestedFunctionBody::Block { items, .. } = &function.body {
+                    index.local_items(items, &function.span);
+                }
+            }
             for annotation in module.type_assertions.values() {
                 index.type_fields("", annotation);
             }
@@ -103,6 +112,7 @@ impl<'a> Index<'a> {
                 }
                 Declaration::Function(function) => {
                     self.functions.push(function);
+                    self.local_items(&function.body, &function.span);
                     for parameter in &function.type_parameters {
                         if let Some(constraint) = &parameter.constraint {
                             self.type_fields("", constraint);
@@ -134,6 +144,116 @@ impl<'a> Index<'a> {
                 _ => {}
             }
         }
+    }
+
+    fn local_items(&mut self, items: &'a [crate::parser::FunctionBodyItem], scope: &SourceSpan) {
+        use crate::parser::{FunctionBodyItem as Item, FunctionElseBranch as Else};
+        fn item_span(item: &Item) -> &SourceSpan {
+            match item {
+                Item::Variable(item) => &item.span,
+                Item::TypeAlias(item) => &item.span,
+                Item::Function(item) => &item.span,
+                Item::If(item) => &item.span,
+                Item::While(item) => &item.span,
+                Item::Try(item) => &item.span,
+                Item::Expression { span, .. }
+                | Item::Throw { span, .. }
+                | Item::Return { span, .. }
+                | Item::Opaque(span) => span,
+            }
+        }
+        let scope = match (items.first(), items.last()) {
+            (Some(first), Some(last)) => {
+                SourceSpan::new(&scope.module, item_span(first).start, item_span(last).end)
+            }
+            _ => return,
+        };
+        for item in items {
+            match item {
+                Item::TypeAlias(alias) => self.local_aliases.push((alias, scope.clone())),
+                Item::Variable(variable) => self.local_variables.push(variable),
+                Item::Function(function) => self.local_items(&function.body, &function.span),
+                Item::If(statement) => {
+                    self.local_items(&statement.consequent, &statement.span);
+                    if let Some(Else::Braced(body)) = &statement.alternate {
+                        self.local_items(body, &statement.span);
+                    }
+                    if let Some(Else::ElseIf(next)) = &statement.alternate {
+                        self.local_if(next);
+                    }
+                }
+                Item::While(statement) => self.local_items(&statement.body, &statement.span),
+                Item::Try(statement) => {
+                    self.local_items(&statement.block, &statement.span);
+                    if let Some(handler) = &statement.handler {
+                        self.local_items(&handler.body, &handler.span);
+                    }
+                    if let Some(body) = &statement.finalizer {
+                        self.local_items(body, &statement.span);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn local_if(&mut self, statement: &'a crate::parser::FunctionIfStatement) {
+        self.local_items(&statement.consequent, &statement.span);
+        match &statement.alternate {
+            Some(crate::parser::FunctionElseBranch::Braced(body)) => {
+                self.local_items(body, &statement.span)
+            }
+            Some(crate::parser::FunctionElseBranch::ElseIf(next)) => self.local_if(next),
+            None => {}
+        }
+    }
+
+    /// Local aliases stay outside the module-wide field index so equal names
+    /// in sibling functions cannot affect one another's diagnostic origins.
+    pub(super) fn local_assignment_field(
+        &self,
+        name: &str,
+        span: &SourceSpan,
+    ) -> Option<(Type, SourceSpan)> {
+        let variable = self
+            .local_variables
+            .iter()
+            .filter(|variable| {
+                variable.span.module == span.module
+                    && variable.span.start <= span.start
+                    && span.end <= variable.span.end
+            })
+            .min_by_key(|variable| variable.span.end - variable.span.start)?;
+        let Type::Named {
+            name: owner,
+            arguments,
+        } = variable.annotation.as_ref()?
+        else {
+            return None;
+        };
+        let (alias, _) = self
+            .local_aliases
+            .iter()
+            .filter(|(alias, scope)| {
+                alias.name == *owner
+                    && scope.module == span.module
+                    && scope.start <= variable.span.start
+                    && variable.span.end <= scope.end
+            })
+            .min_by_key(|(alias, scope)| (scope.end - scope.start, alias.span.start))?;
+        let fields = match &alias.value {
+            Type::Record(fields) | Type::CallableRecord { fields, .. } => fields,
+            _ => return None,
+        };
+        let field = fields.iter().find(|field| field.name == name)?;
+        let arguments = crate::checker::complete_type_arguments(&alias.type_parameters, arguments)?;
+        Some((
+            Type::Named {
+                name: owner.clone(),
+                arguments,
+            },
+            self.name_in(name, &field.span),
+        ))
     }
     fn type_fields(&mut self, owner: &str, ty: &Type) {
         if let Some(children) = ty.operator_children() {

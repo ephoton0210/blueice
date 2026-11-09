@@ -820,6 +820,8 @@ pub struct Parameter {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FunctionBodyItem {
     Variable(VariableDeclaration),
+    /// An erased type declaration with the lexical scope of its body.
+    TypeAlias(Box<TypeAliasDeclaration>),
     /// A semicolon-terminated runtime expression statement. Its original
     /// tokens preserve BlueTSC emission while allowing the BlueTS-to-BlueJS
     /// bridge to lower the expression without parsing emitted JavaScript.

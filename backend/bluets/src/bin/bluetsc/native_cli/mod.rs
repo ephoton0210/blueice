@@ -20,6 +20,18 @@ pub(super) fn run(arguments: Vec<String>) -> ExitCode {
     run_with_mode(arguments, false, None, None, None, &BTreeMap::new(), None)
 }
 
+pub(super) fn show_build_config(project: &Path, diagnostics_json: bool) -> ExitCode {
+    let mut arguments = vec![
+        "--project".into(),
+        project.to_string_lossy().into_owned(),
+        "--showConfig".into(),
+    ];
+    if diagnostics_json {
+        arguments.push("--diagnostics-json".into());
+    }
+    run_with_mode(arguments, true, None, None, None, &BTreeMap::new(), None)
+}
+
 pub(super) fn run_build_project(
     arguments: Vec<String>,
     emitted: &mut Vec<PathBuf>,

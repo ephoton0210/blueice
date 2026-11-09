@@ -83,6 +83,7 @@ impl Parser {
                     self.expect(":");
                     let value = self.parse_type_until(&[";", ",", "}"]);
                     indices.push(IndexSignature {
+                        mapped_domain: None,
                         name,
                         key,
                         value,

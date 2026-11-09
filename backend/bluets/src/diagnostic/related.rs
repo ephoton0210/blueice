@@ -223,7 +223,9 @@ pub(crate) fn attach(project: &Project, diagnostics: &mut [Diagnostic]) {
                         })
                     })
                     .unwrap_or_default();
-                if let Some(field) = index
+                if let Some((owner, origin)) = index.local_assignment_field(name, span).filter(|_| nested_record) {
+                    push(project, &mut related, 6500, vec![name.into(), super::type_text::render_in(&owner, project)], origin);
+                } else if let Some(field) = index
                     .field(name, &props, &span.module)
                     .filter(|field| (child_type || attribute_type || nested_record)
                         && (!attribute_type || !props.is_empty())

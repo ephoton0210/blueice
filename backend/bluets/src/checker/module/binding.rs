@@ -653,10 +653,7 @@ impl<'a> ModuleChecker<'a> {
         span: &SourceSpan,
         parameters: &[TypeParameter],
     ) {
-        let previous_parameters = self.type_parameters.clone();
-        self.check_type_parameters(parameters);
-        self.check_type(value, span);
-        self.type_parameters = previous_parameters;
+        self.with_lexical_type_scope(parameters, |checker| checker.check_type(value, span));
     }
 
     pub(super) fn check_interface_heritage(

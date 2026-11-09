@@ -7,7 +7,26 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {test} = require('node:test');
-const {declarations, compatible, unpackFixture} = require('./audit.cjs');
+const {declarations, compatible, unpackFixture, incrementalArtifacts} = require('./audit.cjs');
+
+test('warm output is compared to the initial build of the same incremental configuration', () => {
+  const cold = {'index.js':'cold', 'bluetsc.manifest.json':'old-config-fingerprint'};
+  const initial = {'index.js':'incremental'};
+  const edited = {'index.js':'edited'};
+  const result = incrementalArtifacts(cold, initial, {...initial}, edited, {...edited});
+  assert.equal(result.coldToIncrementalChanged, true);
+  assert.equal(result.warmUnchanged, true);
+  assert.equal(result.editedChanged, true);
+  assert.equal(result.matchesClean, true);
+});
+
+test('incremental comparisons retain every artifact and byte identity', () => {
+  const initial = {'index.js':'same', 'index.d.ts':'exact'};
+  const edited = {'index.js':'edited', 'index.d.ts':'exact'};
+  assert.equal(incrementalArtifacts(initial, initial, {...initial, extra:'unexpected'}, edited, edited).warmUnchanged, false);
+  assert.equal(incrementalArtifacts(initial, initial, initial, edited, {...edited, 'bluetsc.manifest.json':'stale'}).matchesClean, false);
+  assert.equal(incrementalArtifacts(initial, initial, initial, edited, {...edited, 'index.d.ts':'different'}).matchesClean, false);
+});
 
 test('a refused build cannot become compatible through missing downstream results', () => {
   assert.equal(compatible({cold: {exit: 0}}, {cold: {exit: 1}}, {equal: true}), false);

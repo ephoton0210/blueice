@@ -172,8 +172,19 @@ pub(in crate::checker) fn close(tokens: &[Token], start: usize) -> Option<usize>
 }
 
 pub(super) fn top_level(tokens: &[Token], separator: &str) -> Option<usize> {
+    top_level_ignoring(tokens, separator, |_| false)
+}
+
+pub(super) fn top_level_ignoring(
+    tokens: &[Token],
+    separator: &str,
+    ignored: impl Fn(&Token) -> bool,
+) -> Option<usize> {
     let mut depth = 0usize;
     for (index, token) in tokens.iter().enumerate() {
+        if ignored(token) {
+            continue;
+        }
         if depth == 0 && token.is(separator) {
             return Some(index);
         }

@@ -57,7 +57,8 @@ pub(super) fn path(project: &Path, inputs: &Inputs) -> PathBuf {
 }
 pub(super) fn eligible(inputs: &Inputs) -> bool {
     let options = &inputs.options;
-    options.get("composite") == Some(&Value::Bool(true))
+    (options.get("composite") == Some(&Value::Bool(true))
+        || options.get("incremental") == Some(&Value::Bool(true)))
         && options.get("declaration") == Some(&Value::Bool(true))
         && options.get("strict") == Some(&Value::Bool(true))
         && options.get("target").and_then(Value::as_str) == Some("es2022")
@@ -66,7 +67,9 @@ pub(super) fn eligible(inputs: &Inputs) -> bool {
             Some("commonjs" | "esnext")
         )
         && options.get("lib") == Some(&serde_json::json!(["es2022"]))
-        && options.get("types") == Some(&serde_json::json!([]))
+        && options
+            .get("types")
+            .is_none_or(|types| types == &serde_json::json!([]))
         && options
             .get("moduleResolution")
             .is_none_or(|v| v == "node10")
@@ -74,6 +77,9 @@ pub(super) fn eligible(inputs: &Inputs) -> bool {
             matches!(
                 name.as_str(),
                 "composite"
+                    | "incremental"
+                    | "sourceMap"
+                    | "newLine"
                     | "declaration"
                     | "strict"
                     | "target"
@@ -103,12 +109,19 @@ pub(super) fn options(project: &Path, inputs: &Inputs) -> Value {
         "strict",
         "noEmitOnError",
         "emitDeclarationOnly",
+        "sourceMap",
     ] {
         if let Some(value) = inputs.options.get(name) {
             result.insert(name.into(), value.clone());
         }
     }
     result.insert("target".into(), serde_json::json!(9));
+    if let Some(value) = inputs.options.get("newLine").and_then(Value::as_str) {
+        result.insert(
+            "newLine".into(),
+            serde_json::json!(if value == "lf" { 1 } else { 0 }),
+        );
+    }
     result.insert(
         "module".into(),
         serde_json::json!(if inputs.options["module"] == "commonjs" {
@@ -154,6 +167,7 @@ pub(super) fn library(name: &str, version: &str) -> Option<String> {
 }
 pub(super) fn preflight(graph: &Graph, project: &Path) -> io::Result<PathBuf> {
     let path = path(project, &graph.inputs[project]);
+    super::explicit_incremental::check_path(graph, project, &path)?;
     graph
         .reader
         .authorize_future(&path, "native build state", false)

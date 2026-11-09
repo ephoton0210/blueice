@@ -48,6 +48,7 @@ pub(super) fn broad_indices(
     for field in fields {
         if key(&field.name, aliases) == Some(&Type::Symbol) {
             indices.push(crate::parser::IndexSignature {
+                mapped_domain: None,
                 name: "x".into(),
                 key: Type::Symbol,
                 value: field.value.clone(),

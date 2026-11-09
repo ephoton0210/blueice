@@ -129,6 +129,17 @@ fn should_stop(stop: &Receiver<()>) -> bool {
 }
 
 fn snapshot(root: &Path) -> Result<String, String> {
+    snapshot_with(root, |_, _| {})
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ScanPoint {
+    Directory,
+    Metadata,
+    Read,
+}
+
+fn snapshot_with(root: &Path, mut before: impl FnMut(ScanPoint, &Path)) -> Result<String, String> {
     let mut records = BTreeMap::new();
     let mut pending = vec![(root.to_path_buf(), 0usize)];
     let mut bytes = 0u64;
@@ -136,14 +147,22 @@ fn snapshot(root: &Path) -> Result<String, String> {
         if depth > MAX_DEPTH {
             return Err("project directory depth exceeds watch limit".into());
         }
-        for entry in fs::read_dir(&directory)
-            .map_err(|error| format!("cannot inspect {}: {error}", directory.display()))?
-        {
-            let entry = entry.map_err(|error| format!("cannot inspect watch entry: {error}"))?;
+        before(ScanPoint::Directory, &directory);
+        let entries = match fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == io::ErrorKind::NotFound && directory != root => continue,
+            Err(error) => return Err(format!("cannot inspect {}: {error}", directory.display())),
+        };
+        for entry in entries {
+            let Some(entry) = present("inspect watch entry", &directory, entry)? else {
+                continue;
+            };
             let path = entry.path();
             let name = entry.file_name();
-            let metadata = fs::symlink_metadata(&path)
-                .map_err(|error| format!("cannot inspect {}: {error}", path.display()))?;
+            before(ScanPoint::Metadata, &path);
+            let Some(metadata) = present("inspect", &path, fs::symlink_metadata(&path))? else {
+                continue;
+            };
             if metadata.is_dir() {
                 if name != ".git" && name != "target" {
                     pending.push((path, depth + 1));
@@ -162,17 +181,20 @@ fn snapshot(root: &Path) -> Result<String, String> {
                 .to_string_lossy()
                 .replace('\\', "/");
             if metadata.file_type().is_symlink() {
-                let target = fs::read_link(&path).map_err(|error| {
-                    format!("cannot inspect symlink {}: {error}", path.display())
-                })?;
+                before(ScanPoint::Read, &path);
+                let Some(target) = present("inspect symlink", &path, fs::read_link(&path))? else {
+                    continue;
+                };
                 records.insert(relative, format!("link:{}", target.display()));
             } else if metadata.is_file() {
                 bytes = bytes.saturating_add(metadata.len());
                 if bytes > MAX_BYTES {
                     return Err("project bytes exceed watch limit".into());
                 }
-                let contents = fs::read(&path)
-                    .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+                before(ScanPoint::Read, &path);
+                let Some(contents) = present("read", &path, fs::read(&path))? else {
+                    continue;
+                };
                 records.insert(relative, sha256_label(&contents));
             }
         }
@@ -182,4 +204,76 @@ fn snapshot(root: &Path) -> Result<String, String> {
             .expect("bounded watch snapshot is serializable")
             .as_slice(),
     ))
+}
+
+fn present<T>(operation: &str, path: &Path, result: io::Result<T>) -> Result<Option<T>, String> {
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!("cannot {operation} {}: {error}", path.display())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn non_deletion_io_errors_and_missing_owner_roots_remain_errors() {
+        let missing = std::env::temp_dir().join(format!(
+            "bluets-watch-missing-root-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        for kind in [
+            io::ErrorKind::PermissionDenied,
+            io::ErrorKind::InvalidData,
+            io::ErrorKind::Other,
+        ] {
+            assert!(present::<()>("read", &missing, Err(io::Error::from(kind))).is_err());
+        }
+        assert!(snapshot(&missing).is_err());
+    }
+
+    #[test]
+    fn deleted_watch_entries_are_absent_at_each_scan_boundary() {
+        let root = std::env::temp_dir().join(format!(
+            "bluets-watch-scan-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&root).unwrap();
+        let expected = snapshot(&root).unwrap();
+        for point in [ScanPoint::Directory, ScanPoint::Metadata, ScanPoint::Read] {
+            let directory = root.join("nested");
+            let file = directory.join("entry.ts");
+            fs::create_dir_all(&directory).unwrap();
+            fs::write(&file, "export const value = 42;").unwrap();
+            let mut removed = false;
+            let actual = snapshot_with(&root, |step, path| {
+                let selected = if point == ScanPoint::Directory {
+                    &directory
+                } else {
+                    &file
+                };
+                if !removed && step == point && path == selected {
+                    if point == ScanPoint::Directory {
+                        fs::remove_dir_all(path).unwrap();
+                    } else {
+                        fs::remove_file(path).unwrap();
+                    }
+                    removed = true;
+                }
+            });
+            assert!(removed);
+            assert_eq!(actual.unwrap(), expected);
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
 }

@@ -11,12 +11,32 @@ pub(super) struct Collector<'a> {
     pub(super) aliases: &'a BTreeMap<String, TypeDefinition>,
     pub(super) budget: &'a mut TypeExpansionBudget,
     pub(super) active: HashSet<(String, String, bool)>,
+    pub(super) dependencies: BTreeMap<String, bool>,
     pub(super) evidence: usize,
 }
 
 impl Collector<'_> {
     pub(super) fn collect(&mut self, template: &Type, actual: &Type, contra: bool) {
         if !self.budget.consume() {
+            return;
+        }
+        let identity = type_identity(template);
+        let dependent = if let Some(dependent) = self.dependencies.get(&identity) {
+            *dependent
+        } else {
+            let dependent = super::dependencies::contains(
+                template,
+                self.parameters,
+                self.aliases,
+                &mut HashSet::new(),
+                self.budget,
+            );
+            if !self.budget.exhausted {
+                self.dependencies.insert(identity, dependent);
+            }
+            dependent
+        };
+        if !dependent || self.budget.exhausted {
             return;
         }
         let pair = (type_identity(template), type_identity(actual), contra);
@@ -229,6 +249,7 @@ impl Collector<'_> {
                     aliases: self.aliases,
                     budget: self.budget,
                     active: std::mem::take(&mut self.active),
+                    dependencies: BTreeMap::new(),
                     evidence: self.evidence,
                 };
                 nested.collect_parameters(template_parameters, actual_parameters, contra);

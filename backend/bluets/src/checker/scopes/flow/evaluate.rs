@@ -213,7 +213,9 @@ fn expression(
     }
     // Comma operands have their own call effects even within an initializer
     // or argument; parentheses around a call preserve its separate eligibility.
-    if let Some(index) = super::super::targets::top_level(tokens, ",") {
+    if let Some(index) =
+        super::super::targets::top_level_ignoring(tokens, ",", |token| scopes.erased(token))
+    {
         let left = expression(
             scopes,
             model,
@@ -237,7 +239,9 @@ fn expression(
             remaining,
         );
     }
-    if let Some(equal) = super::super::targets::top_level(tokens, "=") {
+    if let Some(equal) =
+        super::super::targets::top_level_ignoring(tokens, "=", |token| scopes.erased(token))
+    {
         let target = if tokens
             .first()
             .is_some_and(|token| matches!(token.text.as_str(), "const" | "let" | "var"))
@@ -317,6 +321,12 @@ fn expression(
                     actual = declared;
                 }
                 if actual != Type::Unknown || reset_unknown {
+                    actual = assignments::named_union_assignment(
+                        scopes,
+                        actual,
+                        &scopes.flow_declared(&id),
+                        tokens,
+                    );
                     let mut next = after;
                     next.invalidate(&id);
                     if actual == scopes.flow_declared(&id) {

@@ -7,12 +7,24 @@
 use super::*;
 mod candidates;
 mod collect;
+mod dependencies;
 mod indexed;
 mod mapped;
 mod results;
 mod surfaces;
 
-pub(crate) const VERSION: &str = "bluets-generic-inference/4";
+pub(crate) const VERSION: &str = "bluets-generic-inference/5";
+
+pub(super) fn symbolic_indexed_access(
+    value: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+) -> bool {
+    let Type::IndexedAccess { object, .. } = value else {
+        return false;
+    };
+    let object = canonical_parameter_references(object, aliases);
+    matches!(&object, Type::Named { name, .. } if aliases.get(name).is_some_and(|definition| definition.kind == TypeDefinitionKind::Parameter))
+}
 
 pub(super) fn result_type(
     value: &Type,
@@ -21,6 +33,9 @@ pub(super) fn result_type(
     budget: &mut TypeExpansionBudget,
 ) -> Type {
     let value = substitute_type(value, substitutions).runtime_result();
+    if symbolic_indexed_access(&value, aliases) {
+        return value;
+    }
     if matches!(
         value,
         Type::KeyOf(_)
@@ -85,6 +100,7 @@ pub(super) fn infer_contextual_result(
         aliases,
         budget,
         active: HashSet::new(),
+        dependencies: BTreeMap::new(),
         evidence: 0,
     };
     for (index, actual) in actuals.iter().enumerate() {
@@ -173,6 +189,7 @@ pub(super) fn infer_contextual_result(
             aliases,
             budget,
             active: HashSet::new(),
+            dependencies: BTreeMap::new(),
             evidence: 0,
         };
         collector.collect(&signature.return_type, context, false);

@@ -183,6 +183,53 @@ impl ModuleChecker<'_> {
         actual: &Type,
         expected: &Type,
     ) -> Option<String> {
+        if let Some(detail) = self.indexed_assignment_detail(actual, expected) {
+            return Some(detail);
+        }
+        if let Some(detail) = self.keyof_constraint_detail(actual, expected) {
+            return Some(detail);
+        }
+        if let (
+            Type::GenericFunction {
+                type_parameters,
+                parameters,
+                result,
+                ..
+            },
+            Type::Function { .. },
+        ) = (actual, expected)
+        {
+            let substitutions = type_parameters
+                .iter()
+                .filter_map(|parameter| {
+                    parameter
+                        .constraint
+                        .as_ref()
+                        .map(|constraint| (parameter, constraint))
+                })
+                .flat_map(|(parameter, constraint)| {
+                    [
+                        (parameter.name.clone(), constraint.clone()),
+                        (
+                            crate::parser::type_parameter_identity(parameter),
+                            constraint.clone(),
+                        ),
+                    ]
+                })
+                .collect();
+            let source = substitute_type(
+                &Type::Function {
+                    parameters: parameters.clone(),
+                    result: result.clone(),
+                },
+                &substitutions,
+            );
+            return Some(crate::diagnostic::type_text::detail(
+                &source,
+                expected,
+                self.project,
+            ));
+        }
         if let Type::Named { name, .. } = expected {
             if let Some(parameter) = self.bound_parameters.get(name) {
                 let name = crate::parser::source_type_name(name);

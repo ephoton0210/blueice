@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:3567e7e2748a08e22f3422a47709fb1cd7211ec0",
+  "artifacts": [
+    {
+      "path": "PROJECT_FOLLOWUP_COMPILER_EVIDENCE.tar.gz",
+      "sha256": "d21d1512b8d7d48384f8cee364b6db54968f08d0e2da22f4ec276a5bff210e12",
+      "bytes": 57881264,
+      "scope": "Actual immutable Native/workspace compiler bytes and earlier preflight/rejected-recipe bytes; their source/process bindings remain in the local evidence"
+    },
+    {
+      "path": "PROJECT_FOLLOWUP_LOCAL_EVIDENCE.tar.gz",
+      "sha256": "9a6de56a9769701065e86ef34d915244c3acbf9ebff414e22996882d2ab29cd8",
+      "bytes": 54067462,
+      "scope": "Complete local gates, original-project audit, raw reports and compiler/source bindings; executable bytes are in the compiler evidence archive"
+    },
+    {
+      "path": "PROJECT_FOLLOWUP_WINDOWS_EVIDENCE.tar.gz",
+      "sha256": "cb01e40f0b0a863e94c40570e0aac436fe942f4f1a1ab8999922b6704796b1e4",
+      "bytes": 7809275,
+      "scope": "Windows source proof, 25 path tests, 82 selected core oracles, new regression cohorts and actual compiler bytes"
+    },
+    {
+      "path": "PROJECT_FOLLOWUP_PRIOR_ATTEMPTS.tar.gz",
+      "sha256": "1314581d4cb7e5b25d404a9b0259f03d8fd9c922bc002272865d15e54ff1888a",
+      "bytes": 96883203,
+      "scope": "Historical failed, superseded and earlier-source results; no whole-gate acceptance is credited from these attempts"
+    },
+    {
+      "path": "PROJECT_FOLLOWUP_SUPERSEDED_GATE.tar.gz",
+      "sha256": "7e2628c04bb8651cdd63db5ce1717748d5ba06f0d4750c10cd41b119829dcc4d",
+      "bytes": 80151278,
+      "scope": "Earlier source72db: project configuration regression failed; the pending safe-home comparison was cancelled after that failure. No complete acceptance is credited."
+    },
+    {
+      "path": "PROJECT_FOLLOWUP_SUPERSEDED_PUBLICATION.tar.gz",
+      "sha256": "262c63e380880f61702cf9ba7f91ed0db2c20adb177158b41f837846efec36fa",
+      "bytes": 30049663,
+      "scope": "Source295c: ordinary tests passed, project audit exposed a wrong warm baseline and stale manifest; the extra Windows config matrix exposed the exporter omission of its Unicode fixture. Prior results remain unmodified."
+    }
+  ]
+}

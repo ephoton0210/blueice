@@ -1,0 +1,329 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "options": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "CommonJS",
+    "lib": [
+      "ES2022"
+    ],
+    "declaration": true,
+    "sourceMap": true,
+    "newLine": "lf",
+    "types": []
+  },
+  "cases": [
+    {
+      "id": "unconstrained",
+      "source": "// UTF-16 control: 😀\nexport const object = { identity<T>(value: T): T { return value; } }; export const value = object.identity(7);\n",
+      "accepts": true,
+      "invoke": "console.log(exports.value);"
+    },
+    {
+      "id": "constrained",
+      "source": "// UTF-16 control: 😀\nexport const object = { identity<T extends string>(value: T): T { return value; } }; export const value = object.identity('ok');\n",
+      "accepts": true,
+      "invoke": "console.log(exports.value);"
+    },
+    {
+      "id": "dependent-key",
+      "source": "// UTF-16 control: 😀\ntype Events = { count: number; name: string }; const object = { read<Key extends keyof Events>(key: Key, value: Events[Key]): Events[Key] { return value; } }; export const value = object.read(\"count\", 7);\n",
+      "accepts": true,
+      "invoke": "console.log(exports.value);"
+    },
+    {
+      "id": "explicit-type-argument",
+      "source": "// UTF-16 control: 😀\nexport const object = { identity<T>(value: T): T { return value; } }; export const value = object.identity<number>(7);\n",
+      "accepts": true,
+      "invoke": "console.log(exports.value);"
+    },
+    {
+      "id": "sibling-scope",
+      "source": "// UTF-16 control: 😀\nexport const object = { text<T extends string>(value: T): T { return value; }, number<T extends number>(value: T): T { return value; } }; export const value = object.number(7);\n",
+      "accepts": true,
+      "invoke": "console.log(exports.object.text(\"ok\"), exports.value);"
+    },
+    {
+      "id": "keyword-method-names",
+      "source": "// UTF-16 control: 😀\nexport const object = { get<T>(value: T): T { return value; }, set<T>(value: T): T { return value; }, async<T>(value: T): T { return value; } }; export const value = object.get(7);\n",
+      "accepts": true,
+      "invoke": "console.log(exports.value, exports.object.set(8), exports.object.async(9));"
+    },
+    {
+      "id": "nested-method-scope",
+      "source": "// UTF-16 control: 😀\nfunction run<T>(outer: T): number { const object = { identity<T extends number>(value: T): T { return value; } }; return object.identity(7); } export const value = run('outer');\n",
+      "accepts": true,
+      "invoke": "console.log(exports.value);"
+    },
+    {
+      "id": "generic-class-control",
+      "source": "// UTF-16 control: 😀\nexport class Identity { identity<T>(value: T): T { return value; } } export const value = new Identity().identity(7);\n",
+      "accepts": true,
+      "invoke": "console.log(exports.value);"
+    },
+    {
+      "id": "ordinary-method-control",
+      "source": "// UTF-16 control: 😀\nexport const object = { identity(value: number): number { return value; } }; export const value = object.identity(7);\n",
+      "accepts": true,
+      "invoke": "console.log(exports.value);"
+    },
+    {
+      "id": "inferred-method-result",
+      "source": "// UTF-16 control: 😀\nexport const object = { identity<T>(value: T) { return value; } }; export const value = object.identity(7);\n",
+      "accepts": true,
+      "invoke": "console.log(exports.value);"
+    },
+    {
+      "id": "wrong-constraint",
+      "source": "// UTF-16 control: 😀\nconst object = { identity<T extends string>(value: T): T { return value; } }; object.identity(7);\n",
+      "accepts": false
+    },
+    {
+      "id": "wrong-key",
+      "source": "// UTF-16 control: 😀\ntype Events = { count: number; name: string }; const object = { read<Key extends keyof Events>(key: Key, value: Events[Key]): Events[Key] { return value; } }; object.read(\"missing\", 7);\n",
+      "accepts": false
+    },
+    {
+      "id": "wrong-payload",
+      "source": "// UTF-16 control: 😀\ntype Events = { count: number; name: string }; const object = { read<Key extends keyof Events>(key: Key, value: Events[Key]): Events[Key] { return value; } }; object.read(\"count\", \"wrong\");\n",
+      "accepts": false
+    },
+    {
+      "id": "wrong-generic-return",
+      "source": "// UTF-16 control: 😀\nconst object = { identity<T>(value: T): T { return \"wrong\"; } };\n",
+      "accepts": false
+    },
+    {
+      "id": "malformed-constraint",
+      "source": "// UTF-16 control: 😀\nconst object = { identity<T extends>(value: T): T { return value; } };\n",
+      "accepts": false
+    },
+    {
+      "id": "malformed-parameter",
+      "source": "// UTF-16 control: 😀\nconst object = { identity<T>(value:): T { return value; } };\n",
+      "accepts": false
+    },
+    {
+      "id": "interface-constraint-scope",
+      "source": "// UTF-16 control: 😀\ntype Shape<T extends Record<string | symbol, unknown>> = { value: T }; export interface Carrier<T extends Record<string | symbol, unknown>> { value: Shape<T>; }\n",
+      "accepts": true
+    },
+    {
+      "id": "interface-invalid-constraint",
+      "source": "// UTF-16 control: 😀\ntype Shape<T extends Record<string | symbol, unknown>> = { value: T }; export interface Carrier<T> { value: Shape<T>; }\n",
+      "accepts": false
+    },
+    {
+      "id": "asserted-array-alias-call",
+      "source": "// UTF-16 control: 😀\ntype Handler<T> = (value: T) => void; type List<T> = Array<Handler<T>>; export function run<T>(handlers: List<T>, value: T): number { return (handlers as List<T>).slice().map(handler => { handler(value); }).length; }\n",
+      "accepts": true,
+      "invoke": "console.log(exports.run([value => { if (value !== 7) throw Error(\"payload\"); }], 7));"
+    },
+    {
+      "id": "asserted-array-alias-wrong-argument",
+      "source": "// UTF-16 control: 😀\ntype Handler<T> = (value: T) => void; type List<T> = Array<Handler<T>>; export function run<T>(handlers: List<T>): void { (handlers as List<T>).slice(\"wrong\"); }\n",
+      "accepts": false
+    },
+    {
+      "id": "asserted-array-union",
+      "source": "// UTF-16 control: 😀\ntype Handler<T> = (value: T) => void; type List<T> = Array<Handler<T>>; export function run(handlers: List<number> | Array<(key: string, value: number) => void>, value: number): number { return (handlers as List<number>).slice().map(handler => { handler(value); }).length; }\n",
+      "accepts": true,
+      "invoke": "console.log(exports.run([value => { if (value !== 7) throw Error(\"payload\"); }], 7));"
+    },
+    {
+      "id": "asserted-array-union-wrong-argument",
+      "source": "// UTF-16 control: 😀\ntype Handler<T> = (value: T) => void; type List<T> = Array<Handler<T>>; export function run(handlers: List<number> | Array<(key: string, value: number) => void>, value: number): void { (handlers as List<number>).slice(\"wrong\"); }\n",
+      "accepts": false
+    },
+    {
+      "id": "local-alias-in-generic-method",
+      "source": "// UTF-16 control: 😀\nexport function run<T>(value: T): T { type Local = T; const object = { read<U>(item: Local): Local { return item; } }; return object.read(value); }\n",
+      "accepts": true,
+      "invoke": "console.log(exports.run(7));"
+    },
+    {
+      "id": "sibling-local-alias-shadowing",
+      "source": "// UTF-16 control: 😀\ntype Local = boolean; export function text(): string { type Local = string; const value: Local = \"ok\"; return value; } export function number(): number { type Local = number; const value: Local = 7; return value; }\n",
+      "accepts": true,
+      "invoke": "console.log(exports.text(), exports.number());"
+    },
+    {
+      "id": "local-alias-not-visible-outside",
+      "source": "// UTF-16 control: 😀\nfunction run(): void { type Local = number; } export const value: Local = 7;\n",
+      "accepts": false
+    },
+    {
+      "id": "local-alias-wrong-value",
+      "source": "// UTF-16 control: 😀\nexport function run(): void { type Local = number; const value: Local = \"wrong\"; }\n",
+      "accepts": false
+    },
+    {
+      "id": "assigned-optional-map",
+      "source": "// UTF-16 control: 😀\nexport function run(all?: Map<string, number>): Map<string, number> { all = all || new Map(); return { all }.all; }\n",
+      "accepts": true,
+      "invoke": "console.log(exports.run().size);"
+    },
+    {
+      "id": "assigned-optional-array",
+      "source": "// UTF-16 control: 😀\nexport function run(handlers?: Array<(value: number) => void>): number { handlers = handlers || []; if (handlers) { handlers.push(value => {}); return handlers.length; } return 0; }\n",
+      "accepts": true,
+      "invoke": "console.log(exports.run());"
+    },
+    {
+      "id": "map-constructor-control",
+      "source": "// UTF-16 control: 😀\nexport const value: Map<string, number> = new Map();\n",
+      "accepts": true,
+      "invoke": "console.log(exports.value.size);"
+    },
+    {
+      "id": "map-wrong-value-type",
+      "source": "// UTF-16 control: 😀\nexport const value: Map<string, number> = new Map<string, string>();\n",
+      "accepts": false
+    },
+    {
+      "id": "map-covariant-arguments",
+      "source": "// UTF-16 control: 😀\nexport const value: Map<string | number, number | string> = new Map<string, number>();\n",
+      "accepts": true,
+      "invoke": "console.log(exports.value.size);"
+    },
+    {
+      "id": "map-narrow-key-refused",
+      "source": "// UTF-16 control: 😀\nexport const value: Map<string, number> = new Map<string | number, number>();\n",
+      "accepts": false
+    },
+    {
+      "id": "map-any-to-never-refused",
+      "source": "// UTF-16 control: 😀\nexport const value: Map<never, number> = new Map();\n",
+      "accepts": false
+    },
+    {
+      "id": "local-leading-union",
+      "source": "// UTF-16 control: 😀\nexport function run(value: string | number): string | number { type Local = | string | number; const result: Local = value; return result; }\n",
+      "accepts": true,
+      "invoke": "console.log(exports.run(7));"
+    },
+    {
+      "id": "local-leading-intersection",
+      "source": "// UTF-16 control: 😀\nexport function run(value: { a: number } & { b: string }): number { type Local = & { a: number } & { b: string }; const result: Local = value; return result.a; }\n",
+      "accepts": true,
+      "invoke": "console.log(exports.run({a: 7, b: \"ok\"}));"
+    },
+    {
+      "id": "malformed-leading-union",
+      "source": "// UTF-16 control: 😀\nexport function run(): void { type Local = |; }\n",
+      "accepts": false
+    },
+    {
+      "id": "assigned-optional-map-method",
+      "source": "// UTF-16 control: 😀\nexport function run(all?: Map<string, number>): number | undefined { all = all || new Map(); return all.get(\"count\"); }\n",
+      "accepts": true,
+      "invoke": "console.log(exports.run(new Map([[\"count\", 7]])));"
+    },
+    {
+      "id": "optional-map-without-assignment",
+      "source": "// UTF-16 control: 😀\nexport function run(all?: Map<string, number>): number | undefined { return all.get(\"count\"); }\n",
+      "accepts": false
+    },
+    {
+      "id": "dependent-index-subset",
+      "source": "// UTF-16 control: 😀\nexport function run<Events extends Record<string, unknown>, Key extends keyof Events>(value: Events[Key]): Events[keyof Events] { return value; }\n",
+      "accepts": true
+    },
+    {
+      "id": "dependent-index-reverse-refused",
+      "source": "// UTF-16 control: 😀\nexport function run<Events extends Record<string, unknown>, Key extends keyof Events>(value: Events[keyof Events]): Events[Key] { return value; }\n",
+      "accepts": false
+    },
+    {
+      "id": "dependent-handler-call",
+      "source": "// UTF-16 control: 😀\ntype Handler<T> = (value: T) => void; export function run<Events extends Record<string, unknown>, Key extends keyof Events>(handler: Handler<Events[keyof Events]>, value: Events[Key]): void { handler(value); }\n",
+      "accepts": true
+    },
+    {
+      "id": "local-array-alias-union",
+      "source": "// UTF-16 control: 😀\ntype Handler<T> = (value: T) => void; type Wildcard<T> = (key: keyof T, value: T[keyof T]) => void; export function run<Events extends Record<string, unknown>>(list: Array<Handler<Events[keyof Events]>> | Array<Wildcard<Events>>, item: Handler<Events[keyof Events]>): number { type Generic = Handler<Events[keyof Events]> | Wildcard<Events>; const handlers: Array<Generic> | undefined = list; if (handlers) { handlers.push(item); return handlers.length; } return 0; }\n",
+      "accepts": true,
+      "invoke": "console.log(exports.run([], () => {}));"
+    },
+    {
+      "id": "non-null-call-alias-guard",
+      "source": "// UTF-16 control: 😀\nexport function run(all?: Map<string, number[]>): number { all = all || new Map(); const handlers: number[] | undefined = all!.get(\"count\"); if (handlers) { handlers.push(7); return handlers.length; } return 0; }\n",
+      "accepts": true,
+      "invoke": "console.log(exports.run(new Map([[\"count\", []]])));"
+    },
+    {
+      "id": "prefix-negation-alias-control",
+      "source": "// UTF-16 control: 😀\nexport function run(handlers?: number[]): number { const missing = !handlers; if (!missing) { handlers.push(7); return handlers.length; } return 0; }\n",
+      "accepts": true,
+      "invoke": "console.log(exports.run([]));"
+    },
+    {
+      "id": "nested-dependent-handler-call",
+      "source": "// UTF-16 control: 😀\ntype Handler<T> = (value: T) => void; export function run<Events extends Record<string | symbol, unknown>>(handler: Handler<Events[keyof Events]>): { emit<Key extends keyof Events>(value: Events[Key]): void } { return { emit<Key extends keyof Events>(value: Events[Key]): void { handler(value); } }; }\n",
+      "accepts": true,
+      "invoke": "const object = exports.run(value => { if (value !== 7) throw Error(\"payload\"); }); object.emit(7); console.log(\"ok\");"
+    },
+    {
+      "id": "generic-method-overload-implementation",
+      "source": "// UTF-16 control: 😀\ntype Handler<T> = (value: T) => void; type Wildcard<T> = (key: keyof T, value: T[keyof T]) => void; interface Emitter<T extends Record<string, unknown>> { on<Key extends keyof T>(type: Key, handler: Handler<T[Key]>): void; on(type: \"*\", handler: Wildcard<T>): void; } export function run<T extends Record<string, unknown>>(): Emitter<T> { type Generic = Handler<T[keyof T]> | Wildcard<T>; return { on<Key extends keyof T>(type: Key, handler: Generic): void {} }; }\n",
+      "accepts": true,
+      "invoke": "console.log(Object.keys(exports.run()).join(\",\"));"
+    },
+    {
+      "id": "generic-function-constraint-assignment-refused",
+      "source": "// UTF-16 control: 😀\nconst source = <T extends number>(value: T): T => value; export const value: (value: string) => string = source;\n",
+      "accepts": false
+    },
+    {
+      "id": "aliased-broad-key-domain",
+      "source": "// UTF-16 control: 😀\ntype Domain = string | symbol; export function run<T extends Record<Domain, unknown>>(): keyof T { return \"*\"; }\n",
+      "accepts": true,
+      "invoke": "console.log(exports.run());"
+    },
+    {
+      "id": "aliased-key-domain-boolean-refused",
+      "source": "// UTF-16 control: 😀\ntype Domain = string | symbol; export function run<T extends Record<Domain, unknown>>(): keyof T { return true; }\n",
+      "accepts": false
+    },
+    {
+      "id": "mapped-string-domain-number-refused",
+      "source": "// UTF-16 control: 😀\nexport const value: keyof Record<string, unknown> = 42;\n",
+      "accepts": false
+    },
+    {
+      "id": "aliased-key-domain-number-refused",
+      "source": "// UTF-16 control: 😀\ntype Domain = string | symbol; export function run<T extends Record<Domain, unknown>>(): keyof T { return 42; }\n",
+      "accepts": false
+    },
+    {
+      "id": "local-generic-alias-shadows-outer",
+      "source": "// UTF-16 😀\nexport function run<T>(value: T): number { type Box<T> = { value: T }; const box: Box<number> = { value: 42 }; return box.value; }\n",
+      "accepts": true,
+      "invoke": "console.log(exports.run(\"outer\"));"
+    },
+    {
+      "id": "local-generic-alias-shadow-wrong-value",
+      "source": "// UTF-16 😀\nexport function run<T>(value: T): number { type Box<T> = { value: T }; const box: Box<number> = { value: \"wrong\" }; return box.value; }\n",
+      "accepts": false,
+      "invoke": null
+    }
+  ],
+  "ownerControls": [
+    {
+      "id": "readonly-record-alias",
+      "source": "type Source = { readonly count: number }; type Target = { count: number }; declare const source: Source; let value: Target | undefined = source; if (value) { value.count = 2; }",
+      "mutable": "type Source = { count: number }; type Target = { count: number }; declare const source: Source; let value: Target | undefined = source; if (value) { value.count = 2; }"
+    },
+    {
+      "id": "readonly-array-element-alias",
+      "source": "type Source = { readonly count: number }; type Target = { count: number }; declare const source: Array<Source>; let value: Array<Target> | undefined = source; if (value) { value[0].count = 2; }",
+      "mutable": "type Source = { count: number }; type Target = { count: number }; declare const source: Array<Source>; let value: Array<Target> | undefined = source; if (value) { value[0].count = 2; }"
+    },
+    {
+      "id": "readonly-map-value-alias",
+      "source": "type Source = { readonly count: number }; type Target = { count: number }; declare const source: Map<string, Source>; let value: Map<string, Target> | undefined = source; if (value) { value.get(\"count\")!.count = 2; }",
+      "mutable": "type Source = { count: number }; type Target = { count: number }; declare const source: Map<string, Source>; let value: Map<string, Target> | undefined = source; if (value) { value.get(\"count\")!.count = 2; }"
+    }
+  ]
+}

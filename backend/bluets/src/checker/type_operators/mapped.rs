@@ -99,27 +99,46 @@ pub(super) fn resolve(
         }
     }
     let keys = expanded(constraint, aliases, &mut visited.clone(), budget);
-    if matches!(keys, Type::String | Type::Number | Type::Symbol) && value.name_type.is_none() {
-        let substitutions = BTreeMap::from([(value.parameter.name.clone(), keys.clone())]);
-        let mut property = expanded(
-            &substitute_type(&value.value, &substitutions),
-            aliases,
-            &mut visited.clone(),
-            budget,
-        );
-        if value.optional == MappedModifier::Add {
-            property = union([property, Type::Undefined]);
+    let broad = match &keys {
+        Type::String | Type::Number | Type::Symbol => Some(vec![keys.clone()]),
+        Type::Union(parts)
+            if parts
+                .iter()
+                .all(|part| matches!(part, Type::String | Type::Number | Type::Symbol)) =>
+        {
+            Some(parts.clone())
         }
-        return Some(Type::IndexedRecord {
-            object: Box::new(Type::Record(vec![])),
-            indices: vec![crate::parser::IndexSignature {
+        _ => None,
+    };
+    if let Some(keys) = broad.filter(|_| value.name_type.is_none()) {
+        let mut indices = Vec::new();
+        for key in keys {
+            if !budget.consume() {
+                return None;
+            }
+            let substitutions = BTreeMap::from([(value.parameter.name.clone(), key.clone())]);
+            let mut property = expanded(
+                &substitute_type(&value.value, &substitutions),
+                aliases,
+                &mut visited.clone(),
+                budget,
+            );
+            if value.optional == MappedModifier::Add {
+                property = union([property, Type::Undefined]);
+            }
+            indices.push(crate::parser::IndexSignature {
                 name: value.parameter.name.clone(),
-                key: keys,
+                key,
                 value: property,
+                mapped_domain: Some(constraint.clone()),
                 readonly: modifier(value.readonly, false),
                 span: value.span.clone(),
                 key_span: value.parameter.span.clone(),
-            }],
+            });
+        }
+        return Some(Type::IndexedRecord {
+            object: Box::new(Type::Record(vec![])),
+            indices,
         });
     }
     let keys = match keys {
@@ -167,6 +186,10 @@ pub(super) fn resolve(
             if let Some(field) = fields.iter_mut().find(|field| field.name == name) {
                 field.value = union([field.value.clone(), property.clone()]);
             } else {
+                let span = inherited
+                    .filter(|field| value.name_type.is_none() || field.name == name)
+                    .map(|field| field.span.clone())
+                    .unwrap_or_else(|| value.span.clone());
                 fields.push(TypeField {
                     accessor_write_type: None,
                     method: false,
@@ -180,10 +203,7 @@ pub(super) fn resolve(
                         value.optional,
                         inherited.is_some_and(|field| field.optional),
                     ),
-                    span: inherited
-                        .filter(|_| value.name_type.is_none())
-                        .map(|field| field.span.clone())
-                        .unwrap_or_else(|| value.span.clone()),
+                    span,
                 });
             }
         }

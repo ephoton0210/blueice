@@ -413,6 +413,8 @@ fn json_record(stem: &str) -> Option<&'static str> {
         "explicit_this_context" => "explicit-this-context-reference.json",
         "guards_checker_matrix" => "typescript_oracle/guards-reference.json",
         "gt1_flow" => "gt1_flow/reference.json",
+        "gc1_object_generic_methods" => "gc1_object_generic_methods/reference.json",
+        "gm2_incremental_options" => "gm2_incremental_options/reference.json",
         "gt2_inference" => "gt2_inference/reference.json",
         "gt5_compositions" => "gt5_compositions/reference.json",
         "gt6_structural" => "gt6_structural/reference.json",

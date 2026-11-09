@@ -65,6 +65,33 @@ impl<'a> ModuleChecker<'a> {
                     .last()
                     .is_some_and(|token| token.end == function.span.end)
             });
+        if !whole_function {
+            if tokens
+                .iter()
+                .filter(|token| {
+                    INFERRED_LOGICAL_EXPRESSION_OPERATORS.contains(&token.text.as_str())
+                })
+                .count()
+                > MAX_LOGICAL_EXPRESSION_INFERENCE_OPERATORS
+            {
+                return self.infer_expression(tokens, scope);
+            }
+            for operator in ["||", "&&", "??"] {
+                if let Some((left, _, right)) =
+                    top_level_binary_parts(tokens, &[operator], |start| {
+                        self.module.generic_call_type_arguments.contains_key(&start)
+                    })
+                {
+                    let left = self.infer_in_context(left, scope, expected);
+                    let right = self.infer_in_context(right, scope, expected);
+                    return if operator == "??" {
+                        infer_nullish_coalescing_expression(left, right)
+                    } else {
+                        infer_logical_expression(left, right, operator == "||")
+                    };
+                }
+            }
+        }
         if let Some((_, left, right)) = (!whole_function)
             .then(|| conditional_expression_parts(tokens))
             .flatten()
@@ -241,7 +268,8 @@ impl<'a> ModuleChecker<'a> {
 
     /// A bracketed literal against an array context: each element is read
     /// against the element type, so `[[1, "a"]]` is an array of tuples where the
-    /// context says so. `None` for an empty literal, a spread, or anything that
+    /// context says so. Empty literals retain the contextual element type.
+    /// `None` for a spread or anything that
     /// is not a plain literal.
     fn infer_contextual_array_literal(
         &self,
@@ -250,10 +278,12 @@ impl<'a> ModuleChecker<'a> {
         item: &Type,
     ) -> Option<Type> {
         let pieces = Self::literal_elements(tokens)?;
-        if pieces.is_empty()
-            || pieces
-                .iter()
-                .any(|piece| piece.is_empty() || piece.first().is_some_and(|token| token.is("...")))
+        if pieces.is_empty() {
+            return Some(Type::Array(Box::new(item.clone())));
+        }
+        if pieces
+            .iter()
+            .any(|piece| piece.is_empty() || piece.first().is_some_and(|token| token.is("...")))
         {
             return None;
         }

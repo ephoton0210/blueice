@@ -42,7 +42,9 @@ pub(super) fn statements<'a>(
                 }
             }
             // A nested function has its own `super` context.
-            FunctionBodyItem::Function(_) | FunctionBodyItem::Opaque(_) => {}
+            FunctionBodyItem::TypeAlias(_)
+            | FunctionBodyItem::Function(_)
+            | FunctionBodyItem::Opaque(_) => {}
         }
     }
 }

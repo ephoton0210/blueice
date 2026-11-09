@@ -19,7 +19,7 @@ pub(in super::super) fn run(
     let mut touched = BTreeSet::new();
     let mut successful_output = false;
     for project in &graph.order {
-        if interop_model::eligible(&graph.inputs[project]) {
+        if explicit_incremental::has_public_state(&graph.inputs[project]) {
             if let Err(error) = interop_model::preflight(graph, project) {
                 eprintln!("bluetsc: {error}");
                 return ExitCode::FAILURE;
@@ -86,7 +86,7 @@ pub(in super::super) fn run(
                 return ExitCode::FAILURE;
             }
         };
-        let native_hash = if interop_model::eligible(inputs) {
+        let native_hash = if explicit_incremental::has_public_state(inputs) {
             match interop::current_hash(graph, project) {
                 Ok(hash) => hash,
                 Err(error) => {
@@ -97,9 +97,11 @@ pub(in super::super) fn run(
         } else {
             None
         };
-        let native_matches = state
-            .as_ref()
-            .is_some_and(|s| s.status.native_hash == native_hash);
+        let public_state_exists = !explicit_incremental::enabled(inputs) || native_hash.is_some();
+        let native_matches = public_state_exists
+            && state
+                .as_ref()
+                .is_some_and(|s| s.status.native_hash == native_hash);
         if state.is_none() || !native_matches {
             match interop::import(graph, project, &fingerprint) {
                 Ok(Some(imported)) => state = Some(imported),
@@ -110,12 +112,13 @@ pub(in super::super) fn run(
                 }
             }
         }
-        let native_matches = state
-            .as_ref()
-            .is_some_and(|s| s.status.native_hash == native_hash);
-        let outputs_exist = state
-            .as_ref()
-            .is_some_and(|state| state.outputs_exist(project));
+        let native_matches = public_state_exists
+            && state
+                .as_ref()
+                .is_some_and(|s| s.status.native_hash == native_hash);
+        let outputs_exist = state.as_ref().is_some_and(|state| {
+            state.outputs_exist(project, explicit_incremental::enabled(inputs))
+        });
         let inputs_match = state.as_ref().is_some_and(|state| {
             resolution_inputs::fingerprint(graph, &fingerprint, &state.resolution_inputs)
                 .is_ok_and(|fingerprint| state.fingerprint == fingerprint)
@@ -130,9 +133,13 @@ pub(in super::super) fn run(
                 graph.display_path(project)
             );
         }
-        let state_declarations = state
-            .as_ref()
-            .and_then(|state| state.declaration_paths(project, inputs.files()));
+        let state_declarations = state.as_ref().and_then(|state| {
+            state.declaration_paths(
+                project,
+                inputs.files(),
+                inputs.options.get("declaration") == Some(&Value::Bool(true)),
+            )
+        });
         let dependency_changed = graph.references.get(project).is_some_and(|references| {
             references
                 .iter()
@@ -156,7 +163,25 @@ pub(in super::super) fn run(
         let incomplete = state
             .as_ref()
             .is_some_and(|s| s.status.failed || s.status.pending_dependencies);
+        // An ordinary publisher record must not survive a cache-only return.
+        // A manifest tracked by this state's strict publisher remains valid.
+        let unexpected_metadata = inputs
+            .options
+            .get("outDir")
+            .and_then(Value::as_str)
+            .map(|out| Path::new(out).join("bluetsc.manifest.json"))
+            .filter(|path| fs::symlink_metadata(path).is_ok())
+            .is_some_and(|path| {
+                !state.as_ref().is_some_and(|state| {
+                    state.outputs.iter().any(|record| {
+                        safe_output(project, record).is_some_and(|recorded| {
+                            fs::canonicalize(recorded).ok() == fs::canonicalize(&path).ok()
+                        })
+                    })
+                })
+            });
         let up_to_date = native_matches
+            && !unexpected_metadata
             && !incomplete
             && !dependency_failed
             && state
@@ -186,7 +211,7 @@ pub(in super::super) fn run(
                     .filter_map(|p| safe_output(project, p))
                     .collect::<Vec<_>>();
                 paths.push(state_path(project));
-                if interop_model::eligible(inputs) {
+                if explicit_incremental::has_public_state(inputs) {
                     paths.push(interop_model::path(project, inputs));
                 }
                 for path in paths {
@@ -323,7 +348,11 @@ pub(in super::super) fn run(
                 return ExitCode::FAILURE;
             }
         };
-        let paths = if let Some(paths) = state.declaration_paths(project, inputs.files()) {
+        let paths = if let Some(paths) = state.declaration_paths(
+            project,
+            inputs.files(),
+            inputs.options.get("declaration") == Some(&Value::Bool(true)),
+        ) {
             paths
         } else if result != ExitCode::SUCCESS {
             match expected_paths(graph, project) {

@@ -12,6 +12,15 @@ impl Parser {
         start: usize,
         exported: bool,
     ) {
+        let alias = self.parse_type_alias_declaration(start, exported);
+        self.declarations.push(Declaration::TypeAlias(alias));
+    }
+
+    pub(in crate::parser::implementation) fn parse_type_alias_declaration(
+        &mut self,
+        start: usize,
+        exported: bool,
+    ) -> TypeAliasDeclaration {
         let name = if self.peek("asserts") || self.peek("is") {
             let name = self.current().text.clone();
             self.bump();
@@ -29,14 +38,13 @@ impl Parser {
             end,
             replacement: String::new(),
         });
-        self.declarations
-            .push(Declaration::TypeAlias(TypeAliasDeclaration {
-                name,
-                type_parameters,
-                value,
-                exported,
-                span: SourceSpan::new(&self.id, start, end),
-            }));
+        TypeAliasDeclaration {
+            name,
+            type_parameters,
+            value,
+            exported,
+            span: SourceSpan::new(&self.id, start, end),
+        }
     }
 
     pub(in crate::parser::implementation) fn parse_interface(
@@ -225,7 +233,13 @@ impl Parser {
         // `function* name`: a generator.
         let generator_span = self.current().span(&self.id);
         let generator = self.consume("*");
-        let name = self.require_identifier("expected a function name");
+        let name = if self.current().is("number") {
+            let name = self.current().text.clone();
+            self.bump();
+            name
+        } else {
+            self.require_identifier("expected a function name")
+        };
         let type_parameter_start = self.current().start;
         let type_parameters = self.parse_type_parameters();
         if !type_parameters.is_empty() {

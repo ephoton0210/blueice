@@ -1,0 +1,197 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "scope": "Explicit incremental config under the owner build entry; Native -p public artifacts/state paths, with private owner-current rebuild controls separately classified.",
+  "cases": [
+    {
+      "id": "default",
+      "files": {
+        "tsconfig.json": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"module\": \"CommonJS\",\n    \"strict\": true,\n    \"declaration\": true,\n    \"lib\": [\n      \"ES2022\"\n    ],\n    \"types\": [],\n    \"newLine\": \"lf\",\n    \"outDir\": \"dist\",\n    \"incremental\": true\n  },\n  \"files\": [\n    \"src/entry.ts\"\n  ]\n}\n",
+        "src/entry.ts": "// UTF-16 😀\nexport function value(): number { return 42; }\n"
+      },
+      "accepts": true
+    },
+    {
+      "id": "custom",
+      "files": {
+        "tsconfig.json": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"module\": \"CommonJS\",\n    \"strict\": true,\n    \"declaration\": true,\n    \"lib\": [\n      \"ES2022\"\n    ],\n    \"types\": [],\n    \"newLine\": \"lf\",\n    \"outDir\": \"dist\",\n    \"incremental\": true,\n    \"tsBuildInfoFile\": \"cache/custom.tsbuildinfo\"\n  },\n  \"files\": [\n    \"src/entry.ts\"\n  ]\n}\n",
+        "src/entry.ts": "// UTF-16 😀\nexport function value(): number { return 42; }\n"
+      },
+      "accepts": true
+    },
+    {
+      "id": "rooted",
+      "files": {
+        "tsconfig.json": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"module\": \"CommonJS\",\n    \"strict\": true,\n    \"declaration\": true,\n    \"lib\": [\n      \"ES2022\"\n    ],\n    \"types\": [],\n    \"newLine\": \"lf\",\n    \"outDir\": \"dist\",\n    \"incremental\": true,\n    \"rootDir\": \"src\"\n  },\n  \"files\": [\n    \"src/entry.ts\"\n  ]\n}\n",
+        "src/entry.ts": "// UTF-16 😀\nexport function value(): number { return 42; }\n"
+      },
+      "accepts": true
+    },
+    {
+      "id": "rooted-custom",
+      "files": {
+        "tsconfig.json": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"module\": \"CommonJS\",\n    \"strict\": true,\n    \"declaration\": true,\n    \"lib\": [\n      \"ES2022\"\n    ],\n    \"types\": [],\n    \"newLine\": \"lf\",\n    \"outDir\": \"dist\",\n    \"incremental\": true,\n    \"rootDir\": \"src\",\n    \"tsBuildInfoFile\": \"dist/state.tsbuildinfo\"\n  },\n  \"files\": [\n    \"src/entry.ts\"\n  ]\n}\n",
+        "src/entry.ts": "// UTF-16 😀\nexport function value(): number { return 42; }\n"
+      },
+      "accepts": true
+    },
+    {
+      "id": "maps",
+      "files": {
+        "tsconfig.json": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"module\": \"CommonJS\",\n    \"strict\": true,\n    \"declaration\": true,\n    \"lib\": [\n      \"ES2022\"\n    ],\n    \"types\": [],\n    \"newLine\": \"lf\",\n    \"outDir\": \"dist\",\n    \"incremental\": true,\n    \"sourceMap\": true\n  },\n  \"files\": [\n    \"src/entry.ts\"\n  ]\n}\n",
+        "src/entry.ts": "// UTF-16 😀\nexport function value(): number { return 42; }\n"
+      },
+      "accepts": true
+    },
+    {
+      "id": "without-declarations",
+      "files": {
+        "tsconfig.json": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"module\": \"CommonJS\",\n    \"strict\": true,\n    \"declaration\": false,\n    \"lib\": [\n      \"ES2022\"\n    ],\n    \"types\": [],\n    \"newLine\": \"lf\",\n    \"outDir\": \"dist\",\n    \"incremental\": true\n  },\n  \"files\": [\n    \"src/entry.ts\"\n  ]\n}\n",
+        "src/entry.ts": "// UTF-16 😀\nexport function value(): number { return 42; }\n"
+      },
+      "accepts": true
+    },
+    {
+      "id": "composite",
+      "files": {
+        "tsconfig.json": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"module\": \"CommonJS\",\n    \"strict\": true,\n    \"declaration\": true,\n    \"lib\": [\n      \"ES2022\"\n    ],\n    \"types\": [],\n    \"newLine\": \"lf\",\n    \"outDir\": \"dist\",\n    \"incremental\": true,\n    \"composite\": true\n  },\n  \"files\": [\n    \"src/entry.ts\"\n  ]\n}\n",
+        "src/entry.ts": "// UTF-16 😀\nexport function value(): number { return 42; }\n"
+      },
+      "accepts": true
+    },
+    {
+      "id": "disabled",
+      "files": {
+        "tsconfig.json": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"module\": \"CommonJS\",\n    \"strict\": true,\n    \"declaration\": true,\n    \"lib\": [\n      \"ES2022\"\n    ],\n    \"types\": [],\n    \"newLine\": \"lf\",\n    \"outDir\": \"dist\",\n    \"incremental\": false\n  },\n  \"files\": [\n    \"src/entry.ts\"\n  ]\n}\n",
+        "src/entry.ts": "// UTF-16 😀\nexport function value(): number { return 42; }\n"
+      },
+      "accepts": true
+    },
+    {
+      "id": "disabled-custom",
+      "files": {
+        "tsconfig.json": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"module\": \"CommonJS\",\n    \"strict\": true,\n    \"declaration\": true,\n    \"lib\": [\n      \"ES2022\"\n    ],\n    \"types\": [],\n    \"newLine\": \"lf\",\n    \"outDir\": \"dist\",\n    \"incremental\": false,\n    \"tsBuildInfoFile\": \"cache/custom.tsbuildinfo\"\n  },\n  \"files\": [\n    \"src/entry.ts\"\n  ]\n}\n",
+        "src/entry.ts": "// UTF-16 😀\nexport function value(): number { return 42; }\n"
+      },
+      "accepts": true
+    },
+    {
+      "id": "null",
+      "files": {
+        "tsconfig.json": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"module\": \"CommonJS\",\n    \"strict\": true,\n    \"declaration\": true,\n    \"lib\": [\n      \"ES2022\"\n    ],\n    \"types\": [],\n    \"newLine\": \"lf\",\n    \"outDir\": \"dist\",\n    \"incremental\": null\n  },\n  \"files\": [\n    \"src/entry.ts\"\n  ]\n}\n",
+        "src/entry.ts": "// UTF-16 😀\nexport function value(): number { return 42; }\n"
+      },
+      "accepts": true
+    },
+    {
+      "id": "custom-alone",
+      "files": {
+        "tsconfig.json": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"module\": \"CommonJS\",\n    \"strict\": true,\n    \"declaration\": true,\n    \"lib\": [\n      \"ES2022\"\n    ],\n    \"types\": [],\n    \"newLine\": \"lf\",\n    \"outDir\": \"dist\",\n    \"tsBuildInfoFile\": \"cache/custom.tsbuildinfo\"\n  },\n  \"files\": [\n    \"src/entry.ts\"\n  ]\n}\n",
+        "src/entry.ts": "// UTF-16 😀\nexport function value(): number { return 42; }\n"
+      },
+      "accepts": true
+    },
+    {
+      "id": "invalid-string",
+      "files": {
+        "tsconfig.json": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"module\": \"CommonJS\",\n    \"strict\": true,\n    \"declaration\": true,\n    \"lib\": [\n      \"ES2022\"\n    ],\n    \"types\": [],\n    \"newLine\": \"lf\",\n    \"outDir\": \"dist\",\n    \"incremental\": \"yes\"\n  },\n  \"files\": [\n    \"src/entry.ts\"\n  ]\n}\n",
+        "src/entry.ts": "// UTF-16 😀\nexport function value(): number { return 42; }\n"
+      },
+      "accepts": false
+    },
+    {
+      "id": "invalid-number",
+      "files": {
+        "tsconfig.json": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"module\": \"CommonJS\",\n    \"strict\": true,\n    \"declaration\": true,\n    \"lib\": [\n      \"ES2022\"\n    ],\n    \"types\": [],\n    \"newLine\": \"lf\",\n    \"outDir\": \"dist\",\n    \"incremental\": 1\n  },\n  \"files\": [\n    \"src/entry.ts\"\n  ]\n}\n",
+        "src/entry.ts": "// UTF-16 😀\nexport function value(): number { return 42; }\n"
+      },
+      "accepts": false
+    },
+    {
+      "id": "invalid-array",
+      "files": {
+        "tsconfig.json": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"module\": \"CommonJS\",\n    \"strict\": true,\n    \"declaration\": true,\n    \"lib\": [\n      \"ES2022\"\n    ],\n    \"types\": [],\n    \"newLine\": \"lf\",\n    \"outDir\": \"dist\",\n    \"incremental\": []\n  },\n  \"files\": [\n    \"src/entry.ts\"\n  ]\n}\n",
+        "src/entry.ts": "// UTF-16 😀\nexport function value(): number { return 42; }\n"
+      },
+      "accepts": false
+    },
+    {
+      "id": "invalid-composite-disable",
+      "files": {
+        "tsconfig.json": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"module\": \"CommonJS\",\n    \"strict\": true,\n    \"declaration\": true,\n    \"lib\": [\n      \"ES2022\"\n    ],\n    \"types\": [],\n    \"newLine\": \"lf\",\n    \"outDir\": \"dist\",\n    \"composite\": true,\n    \"incremental\": false\n  },\n  \"files\": [\n    \"src/entry.ts\"\n  ]\n}\n",
+        "src/entry.ts": "// UTF-16 😀\nexport function value(): number { return 42; }\n"
+      },
+      "accepts": false
+    },
+    {
+      "id": "source-map-marker",
+      "files": {
+        "tsconfig.json": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"module\": \"CommonJS\",\n    \"strict\": true,\n    \"declaration\": true,\n    \"lib\": [\n      \"ES2022\"\n    ],\n    \"types\": [],\n    \"newLine\": \"lf\",\n    \"outDir\": \"dist\",\n    \"incremental\": true\n  },\n  \"files\": [\n    \"src/entry.ts\"\n  ]\n}\n",
+        "src/entry.ts": "// UTF-16 😀\nexport function value(): number { return 42; }\n\nexport const marker = \"sourceMappingURL\";\n"
+      },
+      "accepts": true
+    },
+    {
+      "id": "transitive-source-root",
+      "files": {
+        "tsconfig.json": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"module\": \"CommonJS\",\n    \"strict\": true,\n    \"declaration\": true,\n    \"lib\": [\n      \"ES2022\"\n    ],\n    \"types\": [],\n    \"newLine\": \"lf\",\n    \"outDir\": \"dist\",\n    \"incremental\": true\n  },\n  \"files\": [\n    \"src/entry.ts\"\n  ]\n}\n",
+        "src/entry.ts": "import { answer } from '../lib/value';\nexport function value(): number { return answer; }\n",
+        "lib/value.ts": "export const answer: number = 42;\n"
+      },
+      "accepts": true,
+      "runtimePath": "dist/src/entry.js",
+      "declarationPath": "dist/src/entry.d.ts",
+      "editPath": "lib/value.ts"
+    },
+    {
+      "id": "inherited-incremental",
+      "files": {
+        "tsconfig.json": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"module\": \"CommonJS\",\n    \"strict\": true,\n    \"declaration\": true,\n    \"lib\": [\n      \"ES2022\"\n    ],\n    \"types\": [],\n    \"newLine\": \"lf\",\n    \"outDir\": \"dist\"\n  },\n  \"files\": [\n    \"src/entry.ts\"\n  ],\n  \"extends\": \"./base.json\"\n}\n",
+        "src/entry.ts": "// UTF-16 😀\nexport function value(): number { return 42; }\n",
+        "base.json": "{\"compilerOptions\":{\"incremental\":true}}\n"
+      },
+      "accepts": true
+    }
+  ],
+  "ownerControls": [
+    {
+      "id": "corrupt-configured-state"
+    },
+    {
+      "id": "foreign-configured-state"
+    },
+    {
+      "id": "missing-configured-state"
+    },
+    {
+      "id": "changed-output-rebuild"
+    },
+    {
+      "id": "state-path-escape"
+    },
+    {
+      "id": "state-symlink"
+    },
+    {
+      "id": "state-parent-symlink"
+    },
+    {
+      "id": "state-input-collision"
+    },
+    {
+      "id": "state-output-collision"
+    },
+    {
+      "id": "native-p-reconstructs-library-graph",
+      "scope": "BlueTSC publishes verified source-only Native metadata; Native -p reconstructs its own library graph and may re-emit. This is not a Native warm no-op claim."
+    },
+    {
+      "id": "transitive-native-state-rebuild",
+      "scope": "A Native state containing transitive imported sources is outside the finite single-source interchange profile and triggers an owner-current rebuild with exact resulting declarations and execution."
+    },
+    {
+      "id": "incremental-retires-legacy-metadata",
+      "scope": "Changing a plain direct build to explicit incremental retires a recognized legacy publication manifest, keeps warm and clean output inventories equal, and refuses input or symlink metadata retirement."
+    }
+  ]
+}

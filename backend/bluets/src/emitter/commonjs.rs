@@ -389,6 +389,13 @@ pub(super) fn lower_commonjs(
                 }
                 let mut depth = 0usize;
                 for token in &variable.initializer {
+                    if module.edits.iter().any(|edit| {
+                        edit.replacement.is_empty()
+                            && edit.start <= token.start
+                            && token.end <= edit.end
+                    }) {
+                        continue;
+                    }
                     match token.text.as_str() {
                         "(" | "[" | "{" => depth += 1,
                         ")" | "]" | "}" => depth = depth.saturating_sub(1),

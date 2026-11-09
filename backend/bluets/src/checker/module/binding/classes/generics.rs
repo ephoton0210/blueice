@@ -7,7 +7,7 @@
 use super::*;
 
 impl ModuleChecker<'_> {
-    pub(in crate::checker::module::binding) fn with_class_type_scope(
+    pub(in crate::checker::module::binding) fn with_lexical_type_scope(
         &mut self,
         parameters: &[TypeParameter],
         check: impl FnOnce(&mut Self),
@@ -50,7 +50,12 @@ impl ModuleChecker<'_> {
                     value: parameter
                         .constraint
                         .as_ref()
-                        .map(|value| substitute_type(value, &substitutions))
+                        .map(|value| {
+                            canonical_parameter_references(
+                                &substitute_type(value, &substitutions),
+                                &self.types,
+                            )
+                        })
                         .unwrap_or(Type::StrictUnknown),
                 },
             );

@@ -416,7 +416,9 @@ impl ModuleChecker<'_> {
                 _ => actual.clone(),
             };
             if !self.is_assignable_bounded(&actual_bound, &expected, span) {
-                self.type_error(
+                let expected_text =
+                    crate::diagnostic::type_text::render_in(&expected, self.project);
+                self.typescript_type_error(
                     span,
                     format!(
                         "type argument `{}` does not satisfy constraint `{}` for `{}`",
@@ -425,8 +427,34 @@ impl ModuleChecker<'_> {
                         parameter.name,
                     ),
                     DiagnosticCode::TypeMismatch,
+                    2344,
+                    vec![
+                        crate::diagnostic::type_text::render_in(actual, self.project),
+                        expected_text.clone(),
+                    ],
                 );
                 self.point_last_type_argument(span, Some(index));
+                if let Type::Named { name, arguments } = actual {
+                    if let Some(parameter) = self
+                        .bound_parameters
+                        .get(name)
+                        .filter(|parameter| parameter.constraint.is_none() && arguments.is_empty())
+                    {
+                        let related = crate::TypeScriptRelatedInformation {
+                            code: 2208,
+                            message: format!("This type parameter might need an `extends {expected_text}` constraint."),
+                            span: SourceSpan::new(&parameter.span.module, parameter.span.start, parameter.span.start + parameter.name.len()),
+                            position: None,
+                        };
+                        if let Some(counterpart) = self
+                            .diagnostics
+                            .last_mut()
+                            .and_then(|diagnostic| diagnostic.typescript.as_mut())
+                        {
+                            counterpart.related_information.push(related);
+                        }
+                    }
+                }
             }
         }
     }

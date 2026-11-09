@@ -3,6 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+mod substitution;
+pub(super) use substitution::type_identity;
+pub(crate) use substitution::{complete_type_arguments, substitute_type, type_label};
 mod compatibility;
 mod more_types;
 mod parameters;
@@ -167,6 +170,68 @@ fn assignable_inner(
     if *expected == Type::Never {
         return *actual == Type::Never;
     }
+    if actual == expected {
+        return true;
+    }
+    if let Type::Conditional(value) = actual {
+        if (matches!(value.when_true, Type::Never) || matches!(value.when_false, Type::Never))
+            && matches!(expected, Type::Named { name, arguments } if arguments.is_empty()
+                && aliases.get(name).is_some_and(|definition| definition.kind == TypeDefinitionKind::Parameter))
+            && budget.consume()
+            && is_assignable(
+                &value.when_true,
+                expected,
+                aliases,
+                &mut visited.clone(),
+                budget,
+            )
+            && is_assignable(
+                &value.when_false,
+                expected,
+                aliases,
+                &mut visited.clone(),
+                budget,
+            )
+        {
+            return true;
+        }
+    }
+    if let (
+        Type::IndexedAccess {
+            object: actual_object,
+            index: actual_index,
+            ..
+        },
+        Type::IndexedAccess {
+            object: expected_object,
+            index: expected_index,
+            ..
+        },
+    ) = (actual, expected)
+    {
+        // Index spans locate diagnostics; they do not distinguish types.
+        // For one object, a narrower set of keys selects a subtype of the
+        // values selected by its wider set, even before T is instantiated.
+        if type_identity(actual_object) == type_identity(expected_object) {
+            if is_assignable(
+                actual_index,
+                expected_index,
+                aliases,
+                &mut visited.clone(),
+                budget,
+            ) {
+                return true;
+            }
+            let object = canonical_parameter_references(actual_object, aliases);
+            let index = canonical_parameter_references(expected_index, aliases);
+            if [&object, &index].iter().all(|value| matches!(value, Type::Named { name, .. } if aliases.get(name).is_some_and(|definition| definition.kind == TypeDefinitionKind::Parameter))) {
+                // A rigid key parameter can choose a narrower value type
+                // than the enclosing object's constraint. Expanding that
+                // constraint here loses the very distinction being checked.
+                return false;
+            }
+        }
+    }
     // Every symbolic keyof result is a property key, even before its operand
     // can be instantiated. Concrete, narrower comparisons still use expansion.
     if matches!(actual, Type::KeyOf(_))
@@ -183,77 +248,10 @@ fn assignable_inner(
     if let Some(result) = variance::assignable(actual, expected, aliases, visited, budget) {
         return result;
     }
-    let function_type =
-        |value: &Type| matches!(value, Type::Function { .. } | Type::GenericFunction { .. });
-    if function_type(actual)
-        && function_type(expected)
-        && (matches!(actual, Type::GenericFunction { .. })
-            || matches!(expected, Type::GenericFunction { .. }))
+    if let Some(result) =
+        parameters::generic_functions_assignable(actual, expected, aliases, visited, budget)
     {
-        if let (
-            Type::GenericFunction {
-                type_parameters: actual,
-                span: actual_span,
-                ..
-            },
-            Type::GenericFunction {
-                type_parameters: expected,
-                span: expected_span,
-                ..
-            },
-        ) = (actual, expected)
-        {
-            // Instantiations of one original generic signature share their
-            // binders even when an enclosing type argument changes a bound.
-            // Distinct declarations still require compatible constraints.
-            let same_declaration = actual_span == expected_span
-                && !actual_span.module.is_empty()
-                && actual_span.start < actual_span.end;
-            if !same_declaration
-                && !parameters::generic_constraints_compatible(
-                    actual, expected, aliases, visited, budget,
-                )
-            {
-                return false;
-            }
-        }
-        let normalize = |value: &Type| match value {
-            Type::GenericFunction {
-                type_parameters,
-                parameters,
-                result,
-                ..
-            } => {
-                let substitutions = type_parameters
-                    .iter()
-                    .enumerate()
-                    .map(|(index, p)| {
-                        (
-                            p.name.clone(),
-                            Type::Named {
-                                name: format!("<generic:{index}>"),
-                                arguments: Vec::new(),
-                            },
-                        )
-                    })
-                    .collect();
-                substitute_type(
-                    &Type::Function {
-                        parameters: parameters.clone(),
-                        result: result.clone(),
-                    },
-                    &substitutions,
-                )
-            }
-            value => value.clone(),
-        };
-        return is_assignable(
-            &normalize(actual),
-            &normalize(expected),
-            aliases,
-            visited,
-            budget,
-        );
+        return result;
     }
     if let Type::Tuple(elements) = actual {
         if elements.iter().any(|element| {
@@ -367,6 +365,41 @@ fn assignable_inner(
     {
         return is_assignable(&element, expected, aliases, visited, budget);
     }
+    // Parsed intrinsic arrays already declare their yielded elements. Compare
+    // that evidence directly instead of expanding the recursive iterator
+    // protocol for each tuple position. Owner replacements remain structural.
+    if let Some(element) = library_arguments(expected, &["Iterable"]) {
+        let trusted = |name: &str| {
+            aliases
+                .get(name)
+                .is_some_and(|definition| definition.kind == TypeDefinitionKind::LibraryInterface)
+        };
+        let (sequence, trusted) = match actual {
+            Type::Readonly(sequence) => (sequence.as_ref(), trusted("ReadonlyArray")),
+            sequence => (sequence, trusted("Array")),
+        };
+        if trusted {
+            match sequence {
+                Type::Array(actual) => {
+                    return budget.consume()
+                        && is_assignable(actual, &element, aliases, visited, budget)
+                }
+                Type::Tuple(actual) => {
+                    return budget.consume()
+                        && actual.iter().all(|part| {
+                            is_assignable(
+                                &part.indexed_type(),
+                                &element,
+                                aliases,
+                                &mut visited.clone(),
+                                budget,
+                            )
+                        })
+                }
+                _ => {}
+            }
+        }
+    }
     if let (Some(actual), Some(expected)) = (
         library_arguments(actual, &["Iterable"]),
         library_arguments(expected, &["Iterable"]),
@@ -378,6 +411,44 @@ fn assignable_inner(
     }
     if let Some(result) = enum_assignability(actual, expected, aliases) {
         return result;
+    }
+    // An alias can hide an entire union, so expose its top-level shape before
+    // distributing constituents. Keep library and nominal declaration names
+    // intact for their directed argument comparisons.
+    for (value, actual_side) in [(actual, true), (expected, false)] {
+        if matches!(value, Type::Named { name, .. } if aliases.get(name).is_some_and(|definition| definition.kind == TypeDefinitionKind::Alias))
+        {
+            let mut path = visited.clone();
+            if let Some(expanded) = instantiate_named(
+                value,
+                aliases,
+                &mut path,
+                budget,
+                if actual_side {
+                    "actual alias"
+                } else {
+                    "expected alias"
+                },
+            ) {
+                return if actual_side {
+                    is_assignable(&expanded, expected, aliases, &mut path, budget)
+                } else {
+                    is_assignable(actual, &expanded, aliases, &mut path, budget)
+                };
+            }
+        }
+    }
+    // Compare named union constituents before erasing their generic identity
+    // into structural members. This retains variance and recursion guards.
+    if let Type::Union(options) = actual {
+        return options
+            .iter()
+            .all(|option| is_assignable(option, expected, aliases, &mut visited.clone(), budget));
+    }
+    if let Type::Union(options) = expected {
+        return options
+            .iter()
+            .any(|option| is_assignable(actual, option, aliases, &mut visited.clone(), budget));
     }
     if let Some(expanded) = instantiate_named(actual, aliases, visited, budget, "actual") {
         return is_assignable(&expanded, expected, aliases, visited, budget);
@@ -402,16 +473,6 @@ fn assignable_inner(
         && !matches!(expected, Type::Never)
     {
         return true;
-    }
-    if let Type::Union(options) = actual {
-        return options
-            .iter()
-            .all(|option| is_assignable(option, expected, aliases, &mut visited.clone(), budget));
-    }
-    if let Type::Union(options) = expected {
-        return options
-            .iter()
-            .any(|option| is_assignable(actual, option, aliases, &mut visited.clone(), budget));
     }
     if let Type::Intersection(parts) = expected {
         return parts
@@ -880,331 +941,4 @@ pub(super) fn instantiate_named(
         .collect();
     crate::performance::instantiated();
     Some(substitute_type(&definition.value, &substitutions))
-}
-
-/// Resolves omitted trailing generic arguments through their declaration-site
-/// defaults. The parser/checker reports invalid argument counts and constraint
-/// violations separately; this helper is also used by structural expansion,
-/// where `None` simply means the named type cannot be expanded safely.
-pub(crate) fn complete_type_arguments(
-    parameters: &[TypeParameter],
-    supplied: &[Type],
-) -> Option<Vec<Type>> {
-    if supplied.len() > parameters.len() {
-        return None;
-    }
-    let mut substitutions = BTreeMap::new();
-    let mut arguments = Vec::with_capacity(parameters.len());
-    for (index, parameter) in parameters.iter().enumerate() {
-        let value = supplied.get(index).cloned().or_else(|| {
-            parameter
-                .default
-                .as_ref()
-                .map(|value| substitute_type(value, &substitutions))
-        })?;
-        substitutions.insert(parameter.name.clone(), value.clone());
-        substitutions.insert(
-            crate::parser::type_parameter_identity(parameter),
-            value.clone(),
-        );
-        arguments.push(value);
-    }
-    Some(arguments)
-}
-
-pub(crate) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Type>) -> Type {
-    if let Type::Conditional(conditional) = value {
-        if let Type::Named { name, arguments } = &conditional.check {
-            if arguments.is_empty() {
-                match substitutions.get(name) {
-                    Some(Type::Never) => return Type::Never,
-                    Some(Type::Union(options)) => {
-                        return Type::Union(
-                            options
-                                .iter()
-                                .map(|option| {
-                                    let mut substitutions = substitutions.clone();
-                                    substitutions.insert(name.clone(), option.clone());
-                                    substitute_type(value, &substitutions)
-                                })
-                                .collect(),
-                        );
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-    if let Some(mapped) = value.map_operator(|value, bound| {
-        let mut substitutions = substitutions.clone();
-        for name in bound {
-            substitutions.remove(name);
-        }
-        substitute_type(value, &substitutions)
-    }) {
-        return mapped;
-    }
-
-    match value {
-        Type::KeyOf(value) => Type::KeyOf(Box::new(substitute_type(value, substitutions))),
-        Type::IndexedAccess {
-            object,
-            index,
-            index_span,
-        } => Type::IndexedAccess {
-            object: Box::new(substitute_type(object, substitutions)),
-            index: Box::new(substitute_type(index, substitutions)),
-            index_span: index_span.clone(),
-        },
-        Type::Predicate(predicate) => {
-            let mut predicate = predicate.clone();
-            predicate.target = predicate
-                .target
-                .as_ref()
-                .map(|target| Box::new(substitute_type(target, substitutions)));
-            Type::Predicate(predicate)
-        }
-        Type::Named { name, arguments } if arguments.is_empty() => substitutions
-            .get(name)
-            .cloned()
-            .unwrap_or_else(|| value.clone()),
-        Type::Named { name, arguments } => Type::Named {
-            name: match substitutions.get(name) {
-                Some(Type::Named { name, arguments }) if arguments.is_empty() => name.clone(),
-                _ => name.clone(),
-            },
-            arguments: arguments
-                .iter()
-                .map(|argument| substitute_type(argument, substitutions))
-                .collect(),
-        },
-        Type::Array(value) => Type::Array(Box::new(substitute_type(value, substitutions))),
-        Type::Tuple(values) => Type::Tuple(
-            values
-                .iter()
-                .map(|value| crate::parser::TupleTypeElement {
-                    annotation: substitute_type(&value.annotation, substitutions),
-                    optional: value.optional,
-                    label: value.label.clone(),
-                    rest: value.rest,
-                })
-                .collect(),
-        ),
-        Type::CallableRecord { fields, signatures } => {
-            let Type::Record(fields) =
-                substitute_type(&Type::Record(fields.clone()), substitutions)
-            else {
-                unreachable!()
-            };
-            Type::CallableRecord {
-                fields,
-                signatures: signatures
-                    .iter()
-                    .map(|signature| {
-                        signature.map_types(|value| substitute_type(value, substitutions))
-                    })
-                    .collect(),
-            }
-        }
-        Type::Record(fields) => Type::Record(
-            fields
-                .iter()
-                .map(|field| TypeField {
-                    accessor_write_type: field
-                        .accessor_write_type
-                        .as_ref()
-                        .map(|value| Box::new(substitute_type(value, substitutions))),
-                    method: field.method,
-                    name: field.name.clone(),
-                    readonly: field.readonly,
-                    optional: field.optional,
-                    value: substitute_type(&field.value, substitutions),
-                    span: field.span.clone(),
-                })
-                .collect(),
-        ),
-        Type::GenericFunction {
-            type_parameters,
-            parameters,
-            result,
-            span,
-        } => {
-            let mut substitutions = substitutions.clone();
-            for parameter in type_parameters {
-                substitutions.remove(&parameter.name);
-            }
-            let Type::Function { parameters, result } = substitute_type(
-                &Type::Function {
-                    parameters: parameters.clone(),
-                    result: result.clone(),
-                },
-                &substitutions,
-            ) else {
-                unreachable!()
-            };
-            Type::GenericFunction {
-                type_parameters: type_parameters
-                    .iter()
-                    .map(|parameter| TypeParameter {
-                        constraint: parameter
-                            .constraint
-                            .as_ref()
-                            .map(|value| substitute_type(value, &substitutions)),
-                        default: parameter
-                            .default
-                            .as_ref()
-                            .map(|value| substitute_type(value, &substitutions)),
-                        ..parameter.clone()
-                    })
-                    .collect(),
-                parameters,
-                result,
-                span: span.clone(),
-            }
-        }
-        Type::Function { parameters, result } => Type::Function {
-            parameters: parameters
-                .iter()
-                .map(|parameter| Parameter {
-                    annotation: parameter
-                        .annotation
-                        .as_ref()
-                        .map(|value| substitute_type(value, substitutions)),
-                    ..parameter.clone()
-                })
-                .collect(),
-            result: Box::new(substitute_type(result, substitutions)),
-        },
-        Type::Union(values) => Type::Union(
-            values
-                .iter()
-                .map(|value| substitute_type(value, substitutions))
-                .collect(),
-        ),
-        Type::Intersection(values) => Type::Intersection(
-            values
-                .iter()
-                .map(|value| substitute_type(value, substitutions))
-                .collect(),
-        ),
-        _ => value.clone(),
-    }
-}
-
-pub(super) fn type_identity(value: &Type) -> String {
-    match value {
-        Type::UniqueSymbol(origin) => format!(
-            "unique symbol {}:{}:{}",
-            origin.module, origin.start, origin.end
-        ),
-        Type::Conditional(_)
-        | Type::Infer(_)
-        | Type::Mapped(_)
-        | Type::TemplateLiteral(_)
-        | Type::Readonly(_)
-        | Type::IndexedRecord { .. } => value.operator_text(type_identity).expect("operator type"),
-        Type::KeyOf(value) => format!("keyof {}", type_identity(value)),
-        Type::IndexedAccess { object, index, .. } => {
-            format!("{}[{}]", type_identity(object), type_identity(index))
-        }
-        Type::Predicate(predicate) => predicate.text(type_identity),
-        Type::Named { name, arguments } => format!(
-            "{name}<{}>",
-            arguments
-                .iter()
-                .map(type_identity)
-                .collect::<Vec<_>>()
-                .join(",")
-        ),
-        Type::Array(value) => value.array_element_text(type_identity),
-        Type::Tuple(values) => format!(
-            "[{}]",
-            values
-                .iter()
-                .map(|value| {
-                    format!(
-                        "{}{}{}",
-                        if value.rest { "..." } else { "" },
-                        type_identity(&value.annotation),
-                        if value.optional { "?" } else { "" }
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join(",")
-        ),
-        Type::Record(_)
-        | Type::CallableRecord { .. }
-        | Type::Function { .. }
-        | Type::GenericFunction { .. } => crate::diagnostic::type_text::render(value),
-        Type::Union(values) => values
-            .iter()
-            .map(type_identity)
-            .collect::<Vec<_>>()
-            .join("|"),
-        Type::Intersection(values) => values
-            .iter()
-            .map(type_identity)
-            .collect::<Vec<_>>()
-            .join("&"),
-        _ => type_label(value),
-    }
-}
-
-pub(crate) fn type_label(value: &Type) -> String {
-    match value {
-        Type::Conditional(_)
-        | Type::Infer(_)
-        | Type::Mapped(_)
-        | Type::TemplateLiteral(_)
-        | Type::Readonly(_)
-        | Type::IndexedRecord { .. } => value.operator_text(type_label).expect("operator type"),
-        Type::KeyOf(value) => format!("keyof {}", type_label(value)),
-        Type::IndexedAccess { object, index, .. } => {
-            format!("{}[{}]", type_label(object), type_label(index))
-        }
-        Type::Predicate(predicate) => predicate.text(type_label),
-        Type::Any => "any".to_string(),
-        Type::Unknown | Type::StrictUnknown => "unknown".to_string(),
-        Type::BigInt => "bigint".to_string(),
-        Type::Symbol => "symbol".to_string(),
-        Type::UniqueSymbol(_) => "unique symbol".to_string(),
-        Type::ConstAssertion => "const".to_string(),
-        Type::Never => "never".to_string(),
-        Type::Void => "void".to_string(),
-        Type::Null => "null".to_string(),
-        Type::Undefined => "undefined".to_string(),
-        Type::Boolean => "boolean".to_string(),
-        Type::Number => "number".to_string(),
-        Type::String => "string".to_string(),
-        Type::Literal(value) => value.clone(),
-        Type::Named { name, .. } => crate::parser::source_type_name(name).to_string(),
-        Type::Array(value) => value.array_element_text(type_label),
-        Type::Tuple(values) => format!(
-            "[{}]",
-            values
-                .iter()
-                .map(|value| {
-                    format!(
-                        "{}{}{}",
-                        if value.rest { "..." } else { "" },
-                        type_label(&value.annotation),
-                        if value.optional { "?" } else { "" }
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-        Type::Record(_) | Type::CallableRecord { .. } => "record".to_string(),
-        Type::Function { .. } | Type::GenericFunction { .. } => "function".to_string(),
-        Type::Union(values) => values
-            .iter()
-            .map(type_label)
-            .collect::<Vec<_>>()
-            .join(" | "),
-        Type::Intersection(values) => values
-            .iter()
-            .map(type_label)
-            .collect::<Vec<_>>()
-            .join(" & "),
-    }
 }

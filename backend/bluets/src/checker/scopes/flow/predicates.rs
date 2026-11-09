@@ -143,12 +143,14 @@ fn narrow_at(
     if let [literal] = tokens {
         if let Some(id) = scopes.flow_binding(&literal.text, literal.start) {
             if let Some(alias) = scopes.flow_alias(&id) {
-                if alias.iter().any(|token| {
-                    matches!(
-                        token.text.as_str(),
-                        "typeof" | "===" | "!==" | "==" | "!=" | "&&" | "||" | "!"
-                    )
-                }) {
+                let condition = super::super::targets::strip(&alias);
+                if condition.first().is_some_and(|token| token.is("!"))
+                    || ["===", "!==", "==", "!=", "&&", "||"]
+                        .iter()
+                        .any(|operator| {
+                            super::super::targets::top_level(condition, operator).is_some()
+                        })
+                {
                     let mutated = alias.iter().any(|token| {
                         scopes
                             .flow_binding(&token.text, token.start)

@@ -98,6 +98,11 @@ impl<'a> ModuleChecker<'a> {
             return;
         }
         let base = self.infer_expression(call.receiver, scope);
+        if let [receiver] = call.receiver {
+            if self.flow_nullish_error(receiver, &base) {
+                return;
+            }
+        }
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
         let member_type = property_type(
             &base,

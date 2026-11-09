@@ -7,6 +7,7 @@
 use super::*;
 mod compatibility;
 mod constructors;
+mod indexed;
 mod inference_candidates;
 mod more_types;
 mod operators;

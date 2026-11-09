@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "typescript": "5.9.3",
-  "source_revision": "backend-tree:ad7f2dc43c2b7f2eefcaadf97312ee7d8da68fb3",
-  "source_graph_sha256": "37d691679d5db38a16cad174f52e03fae4259fcd936ee536a314308fde90a54e",
+  "source_revision": "backend-tree:3567e7e2748a08e22f3422a47709fb1cd7211ec0",
+  "source_graph_sha256": "13244e77c85baedb8041c0c933ba35643010e6ec61abad64b90b73d0a4c7745d",
   "fixture_directories": 3392,
   "diagnostic_programs": 3182,
   "diagnostic_templates": 221,
@@ -482,6 +482,18 @@
         "backend/bluets/tests/fixtures/gc1_explain/cases.json": "e9a7d7d5fb6950923ad342936e53f96180603678",
         "backend/bluets/tests/fixtures/gc1_explain/reference.json": "2ab37bcc4b292cf88f738a2298f9bb9e57e6c364",
         "backend/bluets/tests/gc1_explain_files.rs": "754bb03fa113bb4911ce4256732ae871b29a7b06"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/gc1_object_generic_methods.rs",
+      "ignored_tests": [
+        "gc1_object_generic_methods_exact_declarations_have_native_consumers_syntax_and_execution",
+        "gc1_object_generic_methods_native_observations_are_reproducible"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/gc1_object_generic_methods/cases.json": "e7f7b724e98a81aeaa8dedbb278aaba3aaf7e096",
+        "backend/bluets/tests/fixtures/gc1_object_generic_methods/reference.json": "36322fc3fa2eb8a1d7629ee41bb929a50c7cdcbb",
+        "backend/bluets/tests/gc1_object_generic_methods.rs": "6d01c27ddd950e2d48707234448d64f9b39d3890"
       }
     },
     {
@@ -1433,6 +1445,17 @@
         "backend/bluets/tests/oracle_support/gm2_watch.rs": "e86a2a1321b83d5582c17130a09adb4fcf27176e",
         "backend/bluets/tests/oracle_support/gm2_workflows.rs": "1898248ba731ce130eb5b055b89b27750f6eb302",
         "backend/bluets/tests/oracle_support/project_paths.rs": "581e64bffa2b922d157545b59980ceffefb05aff"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/gm2_incremental_options.rs",
+      "ignored_tests": [
+        "configured_incremental_state_cross_use_preserves_maps_and_edits",
+        "frozen_native_configuration_observations_are_reproducible"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/gm2_incremental_options/reference.json": "79d745ee7bd213324cb57cdc1bdea73ab96f4c03",
+        "backend/bluets/tests/gm2_incremental_options.rs": "ff738e2e3f79afa5b367f76efdb9e1bd15d2e626"
       }
     },
     {

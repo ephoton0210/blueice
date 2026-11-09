@@ -7,6 +7,8 @@
 use super::*;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
+#[path = "freshness/explicit_incremental.rs"]
+mod explicit_incremental;
 #[path = "freshness/interop.rs"]
 mod interop;
 #[path = "freshness/interop_model.rs"]
@@ -18,7 +20,7 @@ mod runner;
 pub(super) use runner::run;
 
 // G-M2 adds failure state and native interchange provenance.
-const STATE_VERSION: u8 = 71;
+const STATE_VERSION: u8 = 73;
 const STATE_PRODUCER: &str = "bluetsc";
 const MAX_STATE_BYTES: u64 = 8 * 1024 * 1024;
 
@@ -235,12 +237,16 @@ impl State {
         })
     }
 
-    fn outputs_exist(&self, project: &Path) -> bool {
+    fn outputs_exist(&self, project: &Path, verify_hashes: bool) -> bool {
         !self.outputs.is_empty()
-            && self
-                .outputs
-                .iter()
-                .all(|output| safe_output(project, output).is_some())
+            && self.outputs.iter().all(|output| {
+                safe_output(project, output).is_some_and(|path| {
+                    !verify_hashes
+                        || fs::read(path).is_ok_and(|bytes| {
+                            self.output_hashes.get(output) == Some(&sha256_label(&bytes))
+                        })
+                })
+            })
     }
 
     fn remove_stale_outputs(
@@ -275,11 +281,19 @@ impl State {
         &self,
         project: &Path,
         selected_files: &[PathBuf],
+        require_declarations: bool,
     ) -> Option<BTreeMap<PathBuf, file_loader::ReferencedOutput>> {
         let mut paths = BTreeMap::new();
         for (source, declaration) in &self.declarations {
             let source_path = safe_output(project, source)?;
-            if !selected_files.contains(&source_path)
+            // Entries can discover imported sources. Their canonical identities
+            // are recorded and rehashed before cached declarations are reused.
+            let observed_source = selected_files.contains(&source_path)
+                || self
+                    .resolution_inputs
+                    .iter()
+                    .any(|input| Path::new(input) == source_path);
+            if !observed_source
                 || !self.outputs.contains(declaration)
                 || ![".d.ts", ".d.mts", ".d.cts"]
                     .iter()
@@ -307,12 +321,14 @@ impl State {
                 },
             );
         }
-        if selected_files.iter().any(|source| {
-            ![".d.ts", ".d.mts", ".d.cts"]
-                .iter()
-                .any(|extension| source.to_string_lossy().ends_with(extension))
-                && !paths.contains_key(source)
-        }) {
+        if require_declarations
+            && selected_files.iter().any(|source| {
+                ![".d.ts", ".d.mts", ".d.cts"]
+                    .iter()
+                    .any(|extension| source.to_string_lossy().ends_with(extension))
+                    && !paths.contains_key(source)
+            })
+        {
             return None;
         }
         Some(paths)

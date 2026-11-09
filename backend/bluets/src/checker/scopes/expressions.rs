@@ -47,6 +47,16 @@ impl ScopeModel<'_> {
                     .max(index + 1);
             }
         }
+        if let Some(alias) = self.local_type_aliases.get(&token.start).cloned() {
+            self.type_declarations
+                .insert((scope, alias.name.clone()), (alias.span.clone(), false));
+            self.scopes[scope].types.insert(alias.name.clone());
+            let inner = self.generic_scope(scope, &alias.span, &alias.type_parameters);
+            self.type_scopes(&alias.value, &alias.span, inner);
+            return tokens
+                .partition_point(|token| token.start < alias.span.end)
+                .max(index + 1);
+        }
         if let Some(function) = self.local_functions.get(&token.start).cloned() {
             self.value(
                 scope,

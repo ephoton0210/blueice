@@ -33,6 +33,24 @@ pub fn additional(snapshot: &Snapshot, suite: &Suite) -> Result<Vec<Case>> {
     let facts = rust_facts::parse(snapshot.source(source)?)?;
     let named_array = |scope: &str| array_cases(source, array(&facts, scope, "for@0")?);
     let mut cases = match stem {
+        "gc1_object_generic_methods" | "gm2_incremental_options" => {
+            let path = format!("backend/bluets/tests/fixtures/{stem}/reference.json");
+            let mut controls = super::case_sources::json_cases(
+                &path,
+                snapshot.source(&path)?,
+                "/ownerControls",
+                "owner-boundary-control",
+            )?;
+            for case in &mut controls {
+                case.comparison = Comparison::BoundaryControl;
+                case.reason = Some(if stem == "gc1_object_generic_methods" {
+                    "Readonly record/array/Map data remains protected through optional named assignments in strict and legacy modes; Native mutable cast acceptance does not define owner authority."
+                } else {
+                    "Configured-state corruption, foreign paths, missing or changed outputs, state/input/output collisions, symlink/owner escapes and Native -p library-graph re-emission are owner-current rebuild and confinement controls, not Native warm no-op or state-format agreements."
+                }.into());
+            }
+            controls
+        }
         "ge4_declaration_options" => {
             let path = "backend/bluets/tests/fixtures/ge4_declaration_options/reference.json";
             let root: serde_json::Value = serde_json::from_str(snapshot.source(path)?)?;

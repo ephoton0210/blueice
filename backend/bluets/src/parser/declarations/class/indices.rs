@@ -67,6 +67,7 @@ impl Parser {
         member.index = Some((
             modifiers.is_static,
             IndexSignature {
+                mapped_domain: None,
                 name,
                 key,
                 value,

@@ -79,6 +79,7 @@ pub(super) fn root(
 
 fn item_span(item: &FunctionBodyItem) -> &SourceSpan {
     match item {
+        FunctionBodyItem::TypeAlias(alias) => &alias.span,
         FunctionBodyItem::Variable(variable) => &variable.span,
         FunctionBodyItem::Expression { span, .. }
         | FunctionBodyItem::Return { span, .. }

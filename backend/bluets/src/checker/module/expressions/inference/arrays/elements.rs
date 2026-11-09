@@ -134,16 +134,41 @@ impl ModuleChecker<'_> {
         if let Some(fresh) = self.fresh_call_chain(tokens, scope, seen, depth) {
             return fresh;
         }
-        let Some(call) = direct_call_parts(tokens).filter(|call| !call.generic) else {
-            return false;
+        let (arguments, signatures) = if let Some(call) = member_call_parts(tokens, |start| {
+            self.module.generic_call_type_arguments.contains_key(&start)
+        }) {
+            if call.generic {
+                return false;
+            }
+            let base = self.infer_expression(call.receiver, scope);
+            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+            budget.checking = self.checking;
+            let PropertyType::Found { value, .. } = property_type(
+                &base,
+                &call.member.text,
+                &self.types,
+                &mut HashSet::new(),
+                &mut budget,
+            ) else {
+                return false;
+            };
+            let Some(signatures) = signatures::callable_signatures(&value, false) else {
+                return false;
+            };
+            (call.arguments, signatures)
+        } else {
+            let Some(call) = direct_call_parts(tokens).filter(|call| !call.generic) else {
+                return false;
+            };
+            let Some(signatures) = self
+                .function_value_signatures(&call.callee.text, scope, false)
+                .or_else(|| self.functions.get(&call.callee.text).cloned())
+            else {
+                return false;
+            };
+            (call.arguments, signatures)
         };
-        let Some(arguments) = split_call_arguments(call.arguments) else {
-            return false;
-        };
-        let Some(signatures) = self
-            .function_value_signatures(&call.callee.text, scope, false)
-            .or_else(|| self.functions.get(&call.callee.text).cloned())
-        else {
+        let Some(arguments) = split_call_arguments(arguments) else {
             return false;
         };
         let Ok(actuals) = self.expanded_call_argument_types_for(&arguments, scope, &signatures)

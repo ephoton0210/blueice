@@ -2,8 +2,66 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Never assertions cannot erase the existing runtime readonly/opaque policy.
+//! Static assertions cannot erase the existing runtime readonly/opaque policy.
 use super::*;
+
+/// Matching mutable standard containers share their readonly API metadata;
+/// their data arguments can still carry authority that an annotation must not
+/// erase. Other projections retain the full receiver qualifier check.
+pub(in crate::checker) fn projection_qualifiers(
+    value: &Type,
+    target: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    budget: &mut TypeExpansionBudget,
+) -> bool {
+    fn container(
+        value: &Type,
+        aliases: &BTreeMap<String, TypeDefinition>,
+        budget: &mut TypeExpansionBudget,
+    ) -> Option<(String, Vec<Type>)> {
+        let mut value = value.clone();
+        let mut visited = HashSet::new();
+        loop {
+            match &value {
+                Type::Array(element) => return Some(("Array".into(), vec![(**element).clone()])),
+                Type::Named { name, arguments }
+                    if matches!(name.as_str(), "Array" | "Map")
+                        && aliases.get(name).is_some_and(|definition| {
+                            definition.kind == TypeDefinitionKind::LibraryInterface
+                        }) =>
+                {
+                    return Some((name.clone(), arguments.clone()));
+                }
+                Type::Named { name, .. }
+                    if aliases
+                        .get(name)
+                        .is_some_and(|definition| definition.kind == TypeDefinitionKind::Alias) =>
+                {
+                    value = instantiate_named(
+                        &value,
+                        aliases,
+                        &mut visited,
+                        budget,
+                        "flow container qualifier",
+                    )?;
+                }
+                _ => return None,
+            }
+        }
+    }
+    if let (Some((source, arguments)), Some((destination, _))) = (
+        container(value, aliases, budget),
+        container(target, aliases, budget),
+    ) {
+        if source == destination {
+            let result = arguments
+                .iter()
+                .any(|value| qualified(value, aliases, &mut HashSet::new(), budget, 0));
+            return result;
+        }
+    }
+    qualified(value, aliases, &mut HashSet::new(), budget, 0)
+}
 
 impl ModuleChecker<'_> {
     pub(super) fn assertion_preserves_runtime_qualifiers(&self, value: &Type) -> bool {
@@ -80,6 +138,17 @@ fn qualified(
         Type::Union(parts) | Type::Intersection(parts) => parts
             .iter()
             .any(|part| qualified(part, aliases, &mut visited.clone(), budget, depth + 1)),
+        Type::Named { name, arguments }
+            if name == "Array"
+                && arguments.len() == 1
+                && aliases.get(name).is_some_and(|definition| {
+                    definition.kind == TypeDefinitionKind::LibraryInterface
+                }) =>
+        {
+            // The standard mutable container's library members include
+            // readonly metadata. Its element can still carry runtime authority.
+            qualified(&arguments[0], aliases, visited, budget, depth + 1)
+        }
         Type::Named { .. }
         | Type::Conditional(_)
         | Type::Mapped(_)

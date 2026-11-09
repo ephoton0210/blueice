@@ -7,6 +7,7 @@
 use super::*;
 
 mod assertion_qualifiers;
+pub(in crate::checker) use assertion_qualifiers::projection_qualifiers;
 mod call_chains;
 mod call_presentation;
 mod composition_diagnostics;
@@ -357,8 +358,39 @@ impl<'a> ModuleChecker<'a> {
             }
 
             if !self.is_assignable_bounded(actual, &expected, span) {
-                let mut displayed_expected =
-                    crate::diagnostic::type_text::default_parameter(&expected, parameter);
+                let mut presentation_budget = TypeExpansionBudget::new(self.max_type_expansions);
+                presentation_budget.checking = self.checking;
+                let presentation_expected = if matches!(expected, Type::IndexedAccess { .. }) {
+                    crate::checker::inference::result_type(
+                        &expected,
+                        &BTreeMap::new(),
+                        &self.types,
+                        &mut presentation_budget,
+                    )
+                } else {
+                    expected.clone()
+                };
+                let mut displayed_expected = crate::diagnostic::type_text::default_parameter(
+                    &presentation_expected,
+                    parameter,
+                );
+                if let Some((name, _, _)) = &rejected_constraint {
+                    if matches!(&parameter.annotation, Some(Type::Named { name: parameter, arguments }) if parameter == name && arguments.is_empty())
+                    {
+                        if let Some(constraint @ Type::KeyOf(_)) = signature
+                            .type_parameters
+                            .iter()
+                            .find(|parameter| parameter.name == *name)
+                            .and_then(|parameter| parameter.constraint.as_ref())
+                        {
+                            let constraint = substitute_type(constraint, &substitutions);
+                            if matches!(&constraint, Type::KeyOf(inner) if matches!(&**inner, Type::Named { .. }))
+                            {
+                                displayed_expected = constraint;
+                            }
+                        }
+                    }
+                }
                 if matches!(actual, Type::Function { .. } | Type::GenericFunction { .. }) {
                     if let Type::Union(values) = displayed_expected {
                         let flattened = crate::checker::type_operators::union(values);

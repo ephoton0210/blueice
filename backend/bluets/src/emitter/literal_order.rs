@@ -314,6 +314,7 @@ fn item_start(item: &FunctionBodyItem) -> usize {
     match item {
         FunctionBodyItem::Variable(value) => value.span.start,
         FunctionBodyItem::Function(value) => value.span.start,
+        FunctionBodyItem::TypeAlias(value) => value.span.start,
         FunctionBodyItem::If(value) => value.span.start,
         FunctionBodyItem::While(value) => value.span.start,
         FunctionBodyItem::Try(value) => value.span.start,

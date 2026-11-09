@@ -65,7 +65,7 @@ function renderReport(tests) {
   return [
     '### Windows symlink test report',
     '',
-    'Default Windows builds omit these cases. The test-only `windows-symlink-tests` feature compiles them after an owner checks existing symlink capability.',
+    'Default Windows builds omit these cases. Feature-gated rows require the test-only `windows-symlink-tests` feature after an owner checks existing symlink capability. Rows using Unix-only APIs remain unavailable on Windows.',
     'This source inventory is not a pass result. Actual selected names, results and permission profiles are recorded separately by G-M3.',
     '',
     '| Test or oracle row | Status | Printed reason |',

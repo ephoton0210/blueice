@@ -558,6 +558,7 @@ fn lower_function_body(
             FunctionBodyItem::Try(statement) => {
                 body.push(lower_function_try(module, statement)?);
             }
+            FunctionBodyItem::TypeAlias(_) => {}
             FunctionBodyItem::Function(function) => {
                 return Err(unsupported(
                     function.span.clone(),
@@ -670,6 +671,7 @@ fn ensure_supported_try_body(items: &[FunctionBodyItem]) -> Result<(), BridgeErr
                 ));
             }
             FunctionBodyItem::If(statement) => ensure_supported_try_if(statement)?,
+            FunctionBodyItem::TypeAlias(_) => {}
             FunctionBodyItem::Function(function) => {
                 return Err(unsupported(
                     function.span.clone(),
@@ -723,6 +725,7 @@ fn ensure_supported_while_body(items: &[FunctionBodyItem]) -> Result<(), BridgeE
             FunctionBodyItem::If(statement) => {
                 ensure_supported_while_if(statement)?;
             }
+            FunctionBodyItem::TypeAlias(_) => {}
             FunctionBodyItem::Function(function) => {
                 return Err(unsupported(
                     function.span.clone(),

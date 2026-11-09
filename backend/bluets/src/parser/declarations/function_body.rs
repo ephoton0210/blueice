@@ -21,6 +21,21 @@ impl Parser {
             && depth > 0
             && self.emitted_body_end.is_none_or(|end| self.index < end)
         {
+            if parentheses == 0
+                && brackets == 0
+                && self.peek("type")
+                && self
+                    .tokens
+                    .get(self.index + 1)
+                    .is_some_and(|token| token.kind == TokenKind::Identifier)
+            {
+                let start = self.current().start;
+                self.bump();
+                body.push(FunctionBodyItem::TypeAlias(Box::new(
+                    self.parse_type_alias_declaration(start, false),
+                )));
+                continue;
+            }
             if parentheses == 0 && brackets == 0 && self.peek("class") {
                 if let Some(variable) = self.parse_body_class_declaration() {
                     locals.push(variable.clone());

@@ -83,7 +83,9 @@ fn statements(body: &[FunctionBodyItem], name: &str, flow: &mut Flow, reads: &mu
                 }
                 *flow = block;
             }
-            FunctionBodyItem::Function(_) | FunctionBodyItem::Opaque(_) => {}
+            FunctionBodyItem::TypeAlias(_)
+            | FunctionBodyItem::Function(_)
+            | FunctionBodyItem::Opaque(_) => {}
         }
     }
 }

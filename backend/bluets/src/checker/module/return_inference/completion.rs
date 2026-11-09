@@ -83,7 +83,7 @@ impl ModuleChecker<'_> {
                     }
                 }
                 FunctionBodyItem::Opaque(_) => return true,
-                FunctionBodyItem::Function(_) => {}
+                FunctionBodyItem::TypeAlias(_) | FunctionBodyItem::Function(_) => {}
             }
         }
         true

@@ -141,6 +141,18 @@ impl Graph {
             .expect("TypeScript configuration has a project");
         let composite = project.options.get("composite").and_then(Value::as_bool) == Some(true);
         self.composite.insert(path.to_path_buf(), composite);
+        if composite && project.options.get("incremental").and_then(Value::as_bool) == Some(false) {
+            // Pinned 5.9.3 locates TS6379 at the declaration option as well.
+            let offset = property_offset(&config_source, "declaration").unwrap_or(0);
+            return Err(self.diagnostic(
+                6379,
+                Some(path),
+                Some(&config_source),
+                offset,
+                "\"incremental\"".len(),
+                Vec::new(),
+            ));
+        }
         if composite && project.options.get("declaration").and_then(Value::as_bool) == Some(false) {
             let offset = property_offset(&config_source, "declaration").unwrap_or(0);
             return Err(self.diagnostic(

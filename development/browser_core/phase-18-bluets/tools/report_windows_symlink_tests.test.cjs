@@ -46,7 +46,7 @@ test('discovers the explicit Windows symlink feature without treating it as a pa
 
 test('the Windows report names every currently Unix-gated symlink case and why it is skipped', () => {
   const cases = skippedSymlinkCases();
-  assert.equal(cases.length, 25);
+  assert.equal(cases.length, 26);
   assert.equal(new Set(cases.map(({ name }) => name)).size, cases.length);
   assert(cases.some(({ name }) => name ===
     'project_build_invalidation::repointed-symlink pinned oracle row'));
@@ -56,6 +56,21 @@ test('the Windows report names every currently Unix-gated symlink case and why i
   for (const { name, source, reason } of cases) {
     assert(report.includes(`\`${name}\` | SKIPPED | ${reason} Source: \`${source}\``));
   }
+});
+
+test('keeps the frozen Windows matrix separate from the added Unix-only incremental boundary', () => {
+  const frozen = JSON.parse(fs.readFileSync(path.join(__dirname, '../GM3_FROZEN_MATRIX.json'), 'utf8'));
+  const cases = skippedSymlinkCases();
+  const frozenNames = new Set(frozen.cases.map(({ name }) => name));
+  assert.equal(frozenNames.size, 25);
+  assert.deepEqual(new Set(cases.filter(({ name }) => frozenNames.has(name)).map(({ name }) => name)), frozenNames);
+  const added = cases.filter(({ name }) => !frozenNames.has(name));
+  assert.equal(added.length, 1);
+  assert.equal(added[0].name, 'gm2_incremental_options::state_and_parent_symlinks_cannot_publish_outside_owner');
+  assert.equal(added[0].source, 'backend/bluets/tests/gm2_incremental_options.rs');
+  assert(added[0].reason.includes('Unix-only symlink APIs'));
+  assert(!added[0].reason.includes('windows-symlink-tests'));
+  assert(renderReport(cases).includes('Rows using Unix-only APIs remain unavailable on Windows.'));
 });
 
 test('prints reasons and appends the same report to the CI job summary', () => {

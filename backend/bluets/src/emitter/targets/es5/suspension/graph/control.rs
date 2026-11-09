@@ -282,5 +282,6 @@ fn item_start(item: &FunctionBodyItem) -> usize {
         FunctionBodyItem::While(value) => value.span.start,
         FunctionBodyItem::Try(value) => value.span.start,
         FunctionBodyItem::Function(value) => value.span.start,
+        FunctionBodyItem::TypeAlias(value) => value.span.start,
     }
 }

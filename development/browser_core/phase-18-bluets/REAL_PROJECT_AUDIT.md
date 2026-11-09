@@ -1,5 +1,10 @@
 # Fixed real-project audit — mitt 3.0.1
 
+**Current follow-up:** the original project and all frozen repair gates now pass
+on `backend-tree:3567e7e2748a08e22f3422a47709fb1cd7211ec0`. See [completed repair acceptance](PROJECT_FOLLOWUP_ACCEPTANCE.md)
+and [source-bound measurement](PROJECT_FOLLOWUP_MEASUREMENT.json). The audit
+below retains the earlier blocked source and its original evidence.
+
 The user-authorized follow-up uses the complete, unchanged upstream source at
 [`b240473b5707857ba2c6a8e6d707c28d1e39da49`](https://github.com/developit/mitt/tree/b240473b5707857ba2c6a8e6d707c28d1e39da49).
 Source, license, configuration and reproduction hashes are frozen in the

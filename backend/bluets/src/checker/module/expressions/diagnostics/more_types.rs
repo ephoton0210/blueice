@@ -47,6 +47,7 @@ impl ModuleChecker<'_> {
         if source == Type::StrictUnknown
             && *actual != Type::StrictUnknown
             && self.bound_parameter_identity(actual).is_none()
+            && !crate::checker::inference::symbolic_indexed_access(actual, &self.types)
         {
             self.typescript_type_error(
                 span,

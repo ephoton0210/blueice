@@ -229,10 +229,11 @@ impl<'a> ModuleChecker<'a> {
                 tokens[index + usize::from(nested.async_function || nested.generator)]
                     .text
                     .clone(),
-                Type::Function {
-                    parameters: self.return_parameters(&nested.parameters, &local),
-                    result: Box::new(result()),
-                },
+                crate::checker::module::binding::declared_function_type(
+                    &self.return_parameters(&nested.parameters, &local),
+                    result(),
+                    &nested.type_parameters,
+                ),
                 false,
             ),
             NestedFunctionKind::Getter => (tokens.get(index + 1)?.text.clone(), result(), false),

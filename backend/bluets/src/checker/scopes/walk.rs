@@ -379,7 +379,16 @@ impl ScopeModel<'_> {
                 self.parameters
                     .insert((scope, parameter.name.clone()), parameter.span.clone());
             }
-            let value = parameter.annotation.clone().unwrap_or(Type::Unknown);
+            let value = parameter
+                .annotation
+                .as_ref()
+                .map_or(Type::Unknown, |annotation| {
+                    if parameter.optional && parameter.default.is_none() {
+                        Type::Union(vec![annotation.clone(), Type::Undefined])
+                    } else {
+                        annotation.clone()
+                    }
+                });
             if let Some(annotation) = &parameter.annotation {
                 self.type_scopes(annotation, &parameter.span, scope);
             }
@@ -469,6 +478,10 @@ impl ScopeModel<'_> {
                 FunctionBodyItem::Function(function) => {
                     self.local_functions
                         .insert(function.span.start, (**function).clone());
+                }
+                FunctionBodyItem::TypeAlias(alias) => {
+                    self.local_type_aliases
+                        .insert(alias.span.start, (**alias).clone());
                 }
                 FunctionBodyItem::If(statement) => {
                     self.register_body(&statement.consequent);
@@ -786,6 +799,7 @@ fn body_item_span(item: &FunctionBodyItem) -> &SourceSpan {
     match item {
         FunctionBodyItem::Variable(item) => &item.span,
         FunctionBodyItem::Function(item) => &item.span,
+        FunctionBodyItem::TypeAlias(item) => &item.span,
         FunctionBodyItem::If(item) => &item.span,
         FunctionBodyItem::While(item) => &item.span,
         FunctionBodyItem::Try(item) => &item.span,

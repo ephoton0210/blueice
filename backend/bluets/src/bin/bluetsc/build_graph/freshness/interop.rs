@@ -255,6 +255,17 @@ pub(super) fn import(
                 let Some(runtime) = safe_output(project, relative) else {
                     return Ok(None);
                 };
+                if inputs.options.get("sourceMap") == Some(&Value::Bool(true)) {
+                    let map = runtime.with_extension("js.map");
+                    let Some(relative) = map.strip_prefix(directory).ok().and_then(Path::to_str)
+                    else {
+                        return Ok(None);
+                    };
+                    let Some(map) = safe_output(project, relative) else {
+                        return Ok(None);
+                    };
+                    outputs.insert(map);
+                }
                 outputs.insert(runtime.clone());
                 runtimes.insert(source, runtime);
             }
@@ -318,7 +329,7 @@ pub(super) fn publish(
 ) -> io::Result<Option<String>> {
     let inputs = &graph.inputs[project];
     if !model::eligible(inputs) {
-        return Ok(None);
+        return super::explicit_incremental::publish(graph, project, fingerprint, status);
     }
     let path = model::preflight(graph, project)?;
     let directory = path.parent().unwrap();
@@ -342,7 +353,7 @@ pub(super) fn publish(
             .windows(b"sourceMappingURL".len())
             .any(|w| w == b"sourceMappingURL")
         {
-            return Ok(None);
+            return super::explicit_incremental::publish(graph, project, fingerprint, status);
         }
         names.push(model::relative(directory, &source));
         if inputs.files.contains(&source) {

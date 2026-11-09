@@ -677,7 +677,8 @@ impl ModuleChecker<'_> {
                 FunctionBodyItem::Expression { tokens, .. } => {
                     self.infer_yields(tokens, scope, fresh, found)
                 }
-                FunctionBodyItem::Function(_)
+                FunctionBodyItem::TypeAlias(_)
+                | FunctionBodyItem::Function(_)
                 | FunctionBodyItem::Throw { .. }
                 | FunctionBodyItem::Opaque(_) => {}
             }

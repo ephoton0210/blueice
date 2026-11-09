@@ -68,8 +68,13 @@ pub(super) fn keyof(
         Type::IndexedRecord { object, indices } => {
             let mut keys = vec![keyof(&object, aliases, visited, budget)?];
             for index in indices {
-                keys.push(index.key.clone());
-                if index.key == Type::String {
+                keys.push(
+                    index
+                        .mapped_domain
+                        .clone()
+                        .unwrap_or_else(|| index.key.clone()),
+                );
+                if index.mapped_domain.is_none() && index.key == Type::String {
                     keys.push(Type::Number);
                 }
             }

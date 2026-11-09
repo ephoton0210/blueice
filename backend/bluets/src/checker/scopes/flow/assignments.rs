@@ -6,6 +6,55 @@
 
 use super::*;
 
+/// The checker validates every write against its annotation. When that union
+/// has one named non-nullish constituent, flow retains that declared API and
+/// records whether a nullish input survives. Literal/structural candidates
+/// keep their more precise representation; distinct named alternatives stay
+/// separate.
+pub(super) fn named_union_assignment(
+    scopes: &ScopeModel<'_>,
+    actual: Type,
+    declared: &Type,
+    tokens: &[Token],
+) -> Type {
+    let Type::Union(candidates) = declared else {
+        return actual;
+    };
+    let named = candidates
+        .iter()
+        .filter(|value| !matches!(value, Type::Null | Type::Undefined))
+        .collect::<Vec<_>>();
+    let [candidate @ Type::Named { .. }] = named.as_slice() else {
+        return actual;
+    };
+    let parts = match actual {
+        Type::Union(parts) => parts,
+        value => vec![value],
+    };
+    let mut budget = TypeExpansionBudget::new(scopes.max_type_expansions);
+    let result = union(parts.into_iter().map(|part| {
+        if matches!(part, Type::Named { .. })
+            && !crate::checker::module::projection_qualifiers(
+                &part,
+                candidate,
+                &scopes.type_definitions,
+                &mut budget,
+            )
+        {
+            (*candidate).clone()
+        } else {
+            part
+        }
+    }));
+    if budget.exhausted {
+        scopes.flow_limit(
+            tokens,
+            "assignment qualifiers exceed their generic-expansion limit",
+        );
+    }
+    result
+}
+
 pub(super) fn compound(
     scopes: &ScopeModel<'_>,
     tokens: &[Token],

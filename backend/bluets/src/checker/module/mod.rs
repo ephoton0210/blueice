@@ -7,6 +7,8 @@
 use super::*;
 use std::cell::Cell;
 
+pub(in crate::checker) use expressions::projection_qualifiers;
+
 #[derive(Clone, Copy)]
 enum RecordSpreadFailure {
     ResourceLimit,

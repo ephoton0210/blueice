@@ -88,7 +88,7 @@ impl ModuleChecker<'_> {
             .filter_map(|member| member.method.as_ref())
             .chain(accessor_methods.iter())
         {
-            self.with_class_type_scope(&method.type_parameters, |checker| {
+            self.with_lexical_type_scope(&method.type_parameters, |checker| {
             let accessor = class
                 .members
                 .iter()
@@ -360,7 +360,7 @@ impl ModuleChecker<'_> {
                 FunctionBodyItem::Function(function) => {
                     self.check_function_in_scope(function, scope.clone());
                 }
-                FunctionBodyItem::Opaque(_) => {}
+                FunctionBodyItem::TypeAlias(_) | FunctionBodyItem::Opaque(_) => {}
             }
         }
     }

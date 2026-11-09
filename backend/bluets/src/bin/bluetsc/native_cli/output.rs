@@ -183,6 +183,9 @@ pub(super) fn publish(
         }
     }
     let paths = writes.keys().cloned().collect();
+    if !writes.is_empty() {
+        retire_legacy_manifest(invocation, source_files, &metadata)?;
+    }
     for (path, contents) in writes {
         atomic_write(&path, &contents, &invocation.root)?;
     }
@@ -191,6 +194,67 @@ pub(super) fn publish(
         declarations,
         runtimes,
     })
+}
+
+fn retire_legacy_manifest(
+    invocation: &Invocation,
+    source_files: &[PathBuf],
+    metadata: &BuildMetadata,
+) -> io::Result<()> {
+    let Some(out) = &invocation.out_dir else {
+        return Ok(());
+    };
+    let path = out.join("bluetsc.manifest.json");
+    let information = match fs::symlink_metadata(&path) {
+        Ok(information) => information,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    if information.file_type().is_symlink() {
+        return Err(io::Error::other(
+            "cannot retire symlinked publication metadata",
+        ));
+    }
+    if !information.is_file() || information.len() > 8 * 1024 * 1024 {
+        return Ok(());
+    }
+    authorize(&path, &invocation.root)?;
+    let contents = match fs::read(&path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&contents) else {
+        return Ok(());
+    };
+    let owned = value["languageVersion"] == metadata.language_version
+        && value["classHelperVersion"] == metadata.class_helper_version
+        && value["entries"].is_array()
+        && value["fingerprint"].as_str().is_some_and(|fingerprint| {
+            fingerprint
+                .strip_prefix("bts-project-")
+                .is_some_and(|hash| {
+                    hash.len() == 16 && hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+                })
+        });
+    if !owned {
+        return Ok(());
+    }
+    let project = invocation.project_config.as_ref().expect("native project");
+    let canonical = fs::canonicalize(&path)?;
+    if source_files
+        .iter()
+        .chain(project.config_inputs.iter())
+        .chain(project.files.iter())
+        .any(|input| input == &path || input == &canonical)
+    {
+        return Err(io::Error::other("publication metadata is a project input"));
+    }
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
 }
 fn insert(
     writes: &mut BTreeMap<PathBuf, Vec<u8>>,
