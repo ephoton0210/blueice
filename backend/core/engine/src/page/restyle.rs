@@ -63,6 +63,49 @@ fn subtree_has_sheet_element(doc: &Document, node: NodeId) -> bool {
     false
 }
 
+/// For the profile output: which kind of change made the sheets count as changed, and the start
+/// of the text of the style element involved.
+fn describe_sheet_change(doc: &Document, changes: &Changes, epoch: &StyleEpoch) -> String {
+    let text_of = |node: NodeId| {
+        let mut text = String::new();
+        let mut stack = vec![node];
+        while let Some(n) = stack.pop() {
+            if let blueice_dom::NodeData::Text { data } = doc.data(n) {
+                text.push_str(data);
+            }
+            let mut kids: Vec<_> = doc.children(n).collect();
+            kids.reverse();
+            stack.extend(kids);
+        }
+        let head: String = text.chars().take(60).collect();
+        format!("{} bytes: {}", text.len(), head.replace('\n', " "))
+    };
+    if let Some(&n) = changes
+        .touched
+        .keys()
+        .find(|&&n| doc.contains(n) && (is_sheet_element(doc, n) || doc.parent(n).is_some_and(|p| is_sheet_element(doc, p))))
+    {
+        let style = if is_sheet_element(doc, n) { n } else { doc.parent(n).unwrap_or(n) };
+        return format!("a style element was edited, {}", text_of(style));
+    }
+    if let Some(&(parent, child)) = changes
+        .attached
+        .iter()
+        .find(|&&(parent, child)| doc.contains(child) && (is_sheet_element(doc, parent) || subtree_has_sheet_element(doc, child)))
+    {
+        let style = if is_sheet_element(doc, parent) { parent } else { child };
+        return format!("a style element or its content was added, {}", text_of(style));
+    }
+    if changes.detached.iter().any(|d| doc.contains(d.parent) && is_sheet_element(doc, d.parent)) {
+        return "content was removed from a style element".to_string();
+    }
+    format!(
+        "the number of style/link elements went from {} to {}",
+        epoch.sheet_elements,
+        count_sheet_elements(doc)
+    )
+}
+
 /// Whether something that feeds the author stylesheets changed.
 fn sheets_changed(doc: &Document, changes: &Changes, epoch: &StyleEpoch) -> bool {
     let inside_style = |node: NodeId| doc.parent(node).is_some_and(|p| is_sheet_element(doc, p));
@@ -99,6 +142,115 @@ impl Page {
         self.restyle_counts.1 += 1;
     }
 
+    /// Handles a stylesheet change that touched only a few rules (a script put a `<style>` into
+    /// the page, as a picture's own `.st0 { fill: ... }` sheet, or took one away, or edited
+    /// one): the rules the old and new lists do not share, after dropping what they have in
+    /// common at the start and at the end, are the only ones that can make an element's style
+    /// differ. The elements those match are restyled, with their subtrees, against the complete
+    /// new list in its proper order, as if their attributes had changed -- exact, wherever the
+    /// changed rules sit. `false` when the changed rules are many or reach too much of the page
+    /// to be worth it; nothing is changed then.
+    fn restyle_for_appended_rules(&mut self, changes: &Changes, epoch: StyleEpoch) -> bool {
+        /// More new rules than this, or matching more than half the page's elements, and a full
+        /// cascade is as cheap.
+        const MOST_RULES: usize = 64;
+        let environment = self.media_environment();
+        let author = crate::stylesheet::extract_inline_stylesheets_with_linked(
+            &self.doc,
+            &environment,
+            &self.linked_styles,
+        );
+        let old = &self.author_rules;
+        let mut head = 0;
+        while head < old.len() && head < author.len() && old[head] == author[head] {
+            head += 1;
+        }
+        let mut tail = 0;
+        while tail < old.len() - head
+            && tail < author.len() - head
+            && old[old.len() - 1 - tail] == author[author.len() - 1 - tail]
+        {
+            tail += 1;
+        }
+        let appended: Vec<&blueice_css::Rule> = old[head..old.len() - tail]
+            .iter()
+            .chain(&author[head..author.len() - tail])
+            .collect();
+        // No changed rules at all (a `<style>` inside an inline SVG, which the SVG's own renderer
+        // reads, feeds the page's cascade nothing): only the document's own changes remain.
+        if appended.len() > MOST_RULES {
+            if std::env::var("BI_PROFILE_LAYOUT").is_ok() {
+                eprintln!(
+                    "RESTYLE not by rules: {} changed rules (old {}, new {}, shared head {head} tail {tail})",
+                    appended.len(),
+                    old.len(),
+                    author.len()
+                );
+            }
+            return false;
+        }
+        let mut matched: Vec<NodeId> = Vec::new();
+        let mut elements = 0usize;
+        let mut stack = vec![self.doc.root()];
+        while let Some(node) = stack.pop() {
+            stack.extend(self.doc.children(node));
+            if !matches!(self.doc.data(node), NodeData::Element { .. }) {
+                continue;
+            }
+            elements += 1;
+            let hit = appended.iter().any(|rule| {
+                rule.selectors.iter().any(|selector| {
+                    blueice_css::matches(&self.doc, node, selector)
+                        || blueice_css::matches_pseudo_element(&self.doc, node, selector)
+                })
+            });
+            if hit {
+                matched.push(node);
+            }
+        }
+        if matched.len() * 2 > elements {
+            return false;
+        }
+        // Each matched element looks, to the incremental cascade, like one whose attributes
+        // changed: it and everything below it is recomputed.
+        let mut effective = changes.clone();
+        for node in matched {
+            effective
+                .touched
+                .entry(node)
+                .or_insert_with(|| blueice_dom::Before::Element {
+                    tag_name: match self.doc.data(node) {
+                        NodeData::Element { tag_name, .. } => tag_name.clone(),
+                        _ => String::new(),
+                    },
+                    attributes: vec![("data-appended-rules".to_string(), String::new())],
+                });
+        }
+        let mut style_changed = Vec::new();
+        let done = cascade_incremental_report(
+            &self.doc,
+            &[(Origin::Ua, &self.ua), (Origin::Author, &author)],
+            self.viewport_width,
+            self.viewport_height,
+            &mut self.styles,
+            &effective,
+            &mut style_changed,
+        );
+        if !done {
+            return false;
+        }
+        self.author_rules = author;
+        self.style_epoch = Some(StyleEpoch {
+            media: epoch.media,
+            sheet_elements: count_sheet_elements(&self.doc),
+        });
+        self.restyle_counts.0 += 1;
+        self.rebuild_images();
+        self.layout_cache
+            .invalidate(&self.doc, &effective, &style_changed);
+        true
+    }
+
     /// Updates `self.styles` from the document's change record. `false` means a full
     /// cascade is needed (and `self.styles` is as it was).
     pub(super) fn restyle_incrementally(&mut self) -> bool {
@@ -114,8 +266,14 @@ impl Page {
             return false;
         }
         if sheets_changed(&self.doc, &changes, &epoch) {
+            if self.restyle_for_appended_rules(&changes, epoch) {
+                return true;
+            }
             if profile {
-                eprintln!("RESTYLE full: a stylesheet source changed");
+                eprintln!(
+                    "RESTYLE full: a stylesheet source changed ({})",
+                    describe_sheet_change(&self.doc, &changes, &epoch)
+                );
             }
             return false;
         }
@@ -198,17 +356,124 @@ mod tests {
     }
 
     #[test]
-    fn a_new_stylesheet_or_a_resize_takes_a_full_cascade() {
-        let mut page = page("<body><p id=a>one</p></body>");
-        let (_, full) = page.restyle_counts;
+    fn rules_appended_after_all_the_old_ones_restyle_only_what_they_match() {
+        // A logo's own `<style>` (`.st0 { fill: ... }`) arrives with the picture.
+        let mut page = page(
+            "<style>p { color: blue } svg { display: block }</style>\
+             <body><p id=a>one</p><svg id=s><g class=st0 id=g></g><g id=h></g></svg><p id=b>two</p></body>",
+        );
+        let (incremental, full) = page.restyle_counts;
         page.web_eval(
-            "const s = document.createElement('style'); s.textContent = 'p { color: red }'; document.head.appendChild(s);",
+            "const s = document.createElement('style'); s.textContent = '.st0 { fill: #ff0000 } p#b { color: red }'; \
+             document.getElementById('s').appendChild(s);",
         );
         page.settle();
+        assert_eq!(page.styles, fresh(&page), "same styles as a full cascade");
+        assert!(page.restyle_counts.0 > incremental, "restyled incrementally");
+        assert_eq!(page.restyle_counts.1, full, "no full cascade");
+        let red = page
+            .styles
+            .values()
+            .filter(|s| s.color == blueice_css::Color::Rgba(255, 0, 0, 255))
+            .count();
+        assert_eq!(red, 1, "p#b picked up its new colour");
         assert!(
-            page.restyle_counts.1 > full,
-            "a new <style> is a full cascade"
+            page.styles.values().any(|s| matches!(s.other.get("fill"),
+                Some(blueice_css::Value::Color(blueice_css::Color::Rgba(255, 0, 0, 255))))),
+            "and .st0 its fill"
         );
+        // And again: each appended sheet is handled the same way.
+        page.web_eval(
+            "{ const s = document.createElement('style'); s.textContent = '#h { fill: #00ff00 }'; document.body.appendChild(s); }",
+        );
+        page.settle();
+        assert_eq!(page.styles, fresh(&page));
+        assert_eq!(page.restyle_counts.1, full, "still no full cascade");
+    }
+
+    #[test]
+    fn rules_that_land_between_old_ones_are_ordered_correctly_without_a_full_cascade() {
+        let mut page = page(
+            "<style>p { color: blue }</style><body><p id=a>one</p><p id=b class=x>two</p></body>",
+        );
+        let (incremental, full) = page.restyle_counts;
+        // In front of the old sheet: its rule loses a tie to the old one, as in a full cascade.
+        page.web_eval(
+            "{ const s = document.createElement('style'); s.textContent = 'p { color: red } .x { margin-top: 7px }'; \
+             document.head.insertBefore(s, document.head.firstChild); }",
+        );
+        page.settle();
+        assert_eq!(page.styles, fresh(&page));
+        assert!(page.restyle_counts.0 > incremental, "incremental");
+        assert_eq!(page.restyle_counts.1, full, "no full cascade");
+        let blue = page
+            .styles
+            .values()
+            .filter(|s| s.color == blueice_css::Color::Rgba(0, 0, 255, 255))
+            .count();
+        assert!(blue >= 2, "the old, later rule still wins the tie: {blue}");
+    }
+
+    #[test]
+    fn a_style_element_inside_an_svg_feeds_the_page_no_rules_and_costs_no_full_cascade() {
+        let mut page = page("<style>p { color: blue }</style><body><p id=a>one</p><svg id=s><g class=st0></g></svg></body>");
+        let (incremental, full) = page.restyle_counts;
+        page.web_eval(
+            "{ const s = document.createElement('style'); s.textContent = '.st0 { fill: #f00 }'; \
+             document.getElementById('s').appendChild(s); }",
+        );
+        page.settle();
+        assert_eq!(page.styles, fresh(&page));
+        assert!(page.restyle_counts.0 > incremental);
+        assert_eq!(page.restyle_counts.1, full);
+    }
+
+    #[test]
+    fn a_removed_or_edited_sheet_restyles_only_what_its_rules_matched() {
+        let mut page = page(
+            "<style>p { color: blue } .k { margin-left: 3px }</style>\
+             <body><p id=a>one</p><svg id=s><style id=t>.st0 { fill: #ff0000 }</style><g class=st0></g></svg></body>",
+        );
+        let (_, full) = page.restyle_counts;
+        page.web_eval("document.getElementById('t').remove();");
+        page.settle();
+        assert_eq!(page.styles, fresh(&page), "a removed sheet");
+        assert_eq!(page.restyle_counts.1, full, "without a full cascade");
+        page.web_eval("document.querySelector('style').textContent = 'p { color: green } .k { margin-left: 3px }';");
+        page.settle();
+        assert_eq!(page.styles, fresh(&page), "an edited sheet");
+        assert_eq!(page.restyle_counts.1, full, "without a full cascade");
+        let green = page
+            .styles
+            .values()
+            .any(|s| s.color == blueice_css::Color::Rgba(0, 128, 0, 255));
+        assert!(green, "the edit applies");
+    }
+
+    #[test]
+    fn a_stylesheet_that_matches_most_of_the_page_takes_a_full_cascade() {
+        let mut page = page("<style>p { color: blue }</style><body><p id=a>one</p></body>");
+        let (_, full) = page.restyle_counts;
+        // Matching every element is not worth reasoning about.
+        page.web_eval(
+            "{ const s = document.createElement('style'); s.textContent = '* { margin: 1px }'; document.body.appendChild(s); }",
+        );
+        page.settle();
+        assert!(page.restyle_counts.1 > full, "matches everything");
+        assert_eq!(page.styles, fresh(&page));
+    }
+
+    #[test]
+    fn a_new_stylesheet_matching_the_page_or_a_resize_agrees_with_a_full_cascade() {
+        let mut page = page("<style>p { color: blue }</style><body><p id=a>one</p></body>");
+        // Removing a sheet changes old rules; the styles still come out as a full cascade's.
+        page.web_eval("document.querySelector('style').remove();");
+        page.settle();
+        assert_eq!(page.styles, fresh(&page));
+        page.web_eval(
+            "{ const s = document.createElement('style'); s.textContent = 'p { color: red }'; document.head.appendChild(s); }",
+        );
+        page.settle();
         assert_eq!(page.styles, fresh(&page));
         let red = page
             .styles
@@ -222,7 +487,7 @@ mod tests {
     }
 
     #[test]
-    fn inserting_a_preload_link_is_incremental_but_a_stylesheet_link_is_not() {
+    fn inserting_a_preload_or_a_stylesheet_link_agrees_with_a_full_cascade() {
         let mut page = page("<body><p>x</p></body>");
         let (incremental, full) = page.restyle_counts;
         page.web_eval(
@@ -240,12 +505,13 @@ mod tests {
             "const sheet = document.createElement('link'); sheet.rel = 'stylesheet'; sheet.href = '/a.css'; document.head.appendChild(sheet);",
         );
         page.settle();
-        assert!(page.restyle_counts.1 > full, "a stylesheet link might");
+        // A link inserted after load is not fetched, so it adds no rule: the styles are what a
+        // full cascade gives whichever way they were reached.
+        assert_eq!(page.styles, fresh(&page), "a stylesheet link");
+        let _ = full;
         // Turning a preload into a stylesheet changes what feeds the rules too.
-        let full = page.restyle_counts.1;
         page.web_eval("document.querySelector('link[rel=preload]').rel = 'stylesheet';");
         page.settle();
-        assert!(page.restyle_counts.1 > full);
         assert_eq!(page.styles, fresh(&page));
     }
 

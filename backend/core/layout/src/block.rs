@@ -225,7 +225,11 @@ fn layout_flow(
     incoming: &[FloatRect],
 ) -> Flow {
     let mut items = Vec::new();
-    flow_items(ctx, node, &mut items);
+    // A picture (an SVG, a canvas, a video...) is drawn as one thing: what is inside it, such as
+    // an SVG's `<desc>` or a canvas's fallback content, is not page content.
+    if !ctx.tag(node).is_some_and(is_replaced_tag) {
+        flow_items(ctx, node, &mut items);
+    }
 
     let mut flow = Flow {
         children: Vec::new(),

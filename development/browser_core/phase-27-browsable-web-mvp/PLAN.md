@@ -804,6 +804,18 @@ and fixed the three things that dominated, in the order they did:
   (only the cascade, repeated, for a sampling profiler), `BI_SCROLL_TO`/`BI_SCROLL_SECS`.
   Profile with macOS `sample <pid> 10 -file out.txt` on the test binary (not `cargo`'s pid).
 
+### A changed stylesheet restyles only what its changed rules match (2026-11-08)
+
+A script that inserts, removes or edits a `<style>` used to cost a full cascade (about 0.35 s on
+Cloudflare's page; its customer-logo carousel did it eleven times). `Page::restyle_for_appended_rules`
+now compares the old and new author rule lists, drops what they share at the start and the end, and
+restyles only the elements the remaining rules match (with their subtrees, against the complete new list
+in its proper order, so the result is exact wherever the rules sit); more than 64 changed rules, or
+matches over half the page's elements, still take a full cascade. A `<style>` inside an inline `<svg>`
+feeds the page's cascade no rules (the SVG renderer reads it), so it changes nothing there. Measured on
+that page after scrolling to the logos: restyle passes 104 -> 59, their total 11.4 s -> 4.5 s, passes over
+200 ms 13 -> 4. `BI_PROFILE_LAYOUT` says which style element forced a full cascade.
+
 ## Page scripts off the session thread (2026-11-03)
 
 **Problem, measured.** In the macOS app on tw.yahoo.com, a wheel scroll's frame took a

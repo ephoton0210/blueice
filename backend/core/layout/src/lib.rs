@@ -200,6 +200,33 @@ mod tests {
         f.children.iter().find_map(|c| find_by_id(doc, c, id))
     }
 
+    #[test]
+    fn the_children_of_a_block_level_picture_are_not_laid_out() {
+        // An SVG's `<desc>`/`<title>` text, a canvas's fallback content: the element is drawn as
+        // one picture, and what is inside it is not page content.
+        for tag in ["svg", "canvas"] {
+            let html = format!(
+                "<body style='margin:0'><{tag} id=b style='display:block;width:50px;height:20px'>\
+                 <desc>Created with Sketch.</desc><p>fallback</p></{tag}></body>"
+            );
+            let doc = blueice_html::parse(&html);
+            let ua = ua_stylesheet();
+            let styles = cascade(&doc, &[(Origin::Ua, &ua)]);
+            let fragment = layout(
+                &doc,
+                doc.root(),
+                &styles,
+                Constraints {
+                    available_width: 400.0,
+                    viewport_height: 300.0,
+                },
+            );
+            let picture = find_by_id(&doc, &fragment, "b").expect("the picture is laid out");
+            assert_eq!((picture.width, picture.height), (50.0, 20.0), "{tag}");
+            assert!(picture.children.is_empty(), "{tag}: {:?}", picture.children.len());
+        }
+    }
+
     /// The height of the box with `id` in `html`, laid out in a 1280 px window.
     fn height_of(html: &str, id: &str) -> f64 {
         let doc = blueice_html::parse(html);
