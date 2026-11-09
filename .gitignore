@@ -56,3 +56,4 @@ Thumbs.db
 /frontend/macos/.build/
 *.xcresult/
 **/xcuserdata/
+.worktrees/

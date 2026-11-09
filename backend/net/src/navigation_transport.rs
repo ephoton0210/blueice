@@ -26,6 +26,7 @@ impl ResponseCancellation {
 
 pub(crate) fn agent(cancellation: ResponseCancellation) -> ureq::Agent {
     let config = ureq::config::Config::builder()
+        .user_agent(crate::USER_AGENT)
         .max_redirects(0)
         .http_status_as_error(false)
         .timeout_connect(Some(Duration::from_secs(10)))

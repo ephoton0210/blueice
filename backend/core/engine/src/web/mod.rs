@@ -635,6 +635,22 @@ mod tests {
     }
 
     #[test]
+    fn the_user_agent_scripts_read_is_the_one_requests_send() {
+        // `bootstrap.js` is plain text the realm runs; the string in it and the one
+        // `blueice_net` puts in every request must not drift apart.
+        let script = include_str!("bootstrap.js");
+        assert!(
+            script.contains(&format!("userAgent: '{}'", blueice_net::USER_AGENT)),
+            "bootstrap.js's navigator.userAgent differs from blueice_net::USER_AGENT"
+        );
+        let mut h = host("<p></p>");
+        assert_eq!(
+            log(&mut h, "console.log(navigator.userAgent)"),
+            format!("[log] {}", blueice_net::USER_AGENT)
+        );
+    }
+
+    #[test]
     fn timers_run_through_the_host_tick() {
         let mut h = host("<p id=p>0</p>");
         h.run("t", "let n = 0; setTimeout(() => { document.getElementById('p').textContent = 'done'; }, 0); requestAnimationFrame(() => console.log('frame'));").unwrap();

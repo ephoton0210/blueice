@@ -207,6 +207,22 @@ pub fn canonical_http_origin(url: &str) -> Result<String, FetchError> {
     Ok(format!("{scheme}://{}{port}", host.to_ascii_lowercase()))
 }
 
+/// What BlueIce calls itself to a server: a browser-style string that names BlueIce. The same
+/// string is what a page's scripts read as `navigator.userAgent` (a test holds the two
+/// together), so a page is told one thing about who is asking, not one by its requests and
+/// another by its scripts. It does not claim to be any other browser.
+pub const USER_AGENT: &str =
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) BlueIce/1.0 Safari/537.36";
+
+/// An HTTP agent that sends [`USER_AGENT`] and otherwise behaves as `ureq`'s default.
+fn default_agent() -> ureq::Agent {
+    ureq::Agent::new_with_config(
+        ureq::config::Config::builder()
+            .user_agent(USER_AGENT)
+            .build(),
+    )
+}
+
 /// Fetches `url` with a plain GET, following redirects, and returns the
 /// response body as text. `http://`/`https://` only -- `file://` and
 /// anything else is rejected as an unsupported scheme for this
@@ -215,7 +231,8 @@ pub fn canonical_http_origin(url: &str) -> Result<String, FetchError> {
 pub fn fetch(url: &str) -> Result<FetchedPage, FetchError> {
     validate_url_scheme(url)?;
 
-    let mut response = ureq::get(url)
+    let mut response = default_agent()
+        .get(url)
         .call()
         .map_err(|e| FetchError::Request(e.to_string()))?;
     // MVP simplification: report the requested URL, not the post-
