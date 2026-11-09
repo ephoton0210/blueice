@@ -853,8 +853,19 @@ declared last first, then the next web family, up to a system or generic family 
 measured and drawn by the first member whose range covers it and that has a glyph for it, else the bundled
 fonts; line metrics come from the member covering Latin. Not built: variable-font axes (a variable
 face draws at its default instance), synthetic bold/italic for a missing weight, `local()` sources,
-`@font-face` inside `@media`, the `FontFace` and `document.fonts.load` APIs actually loading anything,
-canvas `ctx.font`, and font fallback for native form controls (they keep the bundled fonts).
+`@font-face` inside `@media`, canvas `ctx.font`, and font fallback for native form controls (they keep
+the bundled fonts).
+
+`FontFace` and `document.fonts` really load (2026-11-09): `new FontFace(family, "url(..) [format(..)], url(..)" |
+ArrayBuffer | view, descriptors)` has `status`/`loaded`/`load()`; a URL is fetched as a CORS font request
+(`netSend` kind `font`), the bytes are checked by the page's decoder (`fontCheck`; failure rejects with
+`SyntaxError` or `NetworkError`), and a loaded face that is in `document.fonts` is handed to the page
+(`fontAdd` -> `State.loaded_fonts` -> `ChildDone.loaded_fonts` over the script-process wire -> `Page`). The page
+decodes it into its own registry (a `WebFontId` is per process, so bytes cross, not ids), adds it to
+`linked_fonts` (at most 64 per page) and takes a full recascade, so every element chooses its face again.
+`document.fonts.add` of an unloaded face loads it; `load(font)`/`check(font)` work on the faces added to the
+set (family taken from the `font` shorthand). Not built: faces the stylesheets declare are not listed in
+`document.fonts`, `loadingdone`/`loadingerror` events, `ready` stays resolved, `local()` sources.
 
 ## Page scripts off the session thread (2026-11-03)
 

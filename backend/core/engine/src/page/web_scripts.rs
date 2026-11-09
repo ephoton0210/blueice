@@ -354,8 +354,9 @@ impl Page {
     /// `lent` is whether the page's own document went out with the turn (so its
     /// styles come back too); a turn run on a copy leaves the page's styles.
     fn finish_turn(&mut self, done: Done, lent: bool) -> (Vec<(NodeId, String)>, bool) {
-        let r = done.returned;
+        let mut r = done.returned;
         let scroll_to = r.scroll_to;
+        let fonts = std::mem::take(&mut r.loaded_fonts);
         let (dirty, navigations, requests, url, jobs, canvases, loaded) = (
             r.dirty,
             r.navigations,
@@ -407,6 +408,14 @@ impl Page {
         if let Some(y) = scroll_to {
             self.scroll_from_script(y);
         }
+        let added = fonts
+            .iter()
+            .filter(|font| self.linked_fonts.add_script_font(font))
+            .count();
+        if added > 0 {
+            self.web_fonts_changed = true;
+            self.web_relayout_pending = true;
+        }
         if !loaded.is_empty() {
             for (src, image) in loaded {
                 self.linked_images.insert(src, image);
@@ -449,7 +458,12 @@ impl Page {
             return false;
         }
         let started = std::time::Instant::now();
-        self.restyle_and_relayout();
+        if std::mem::take(&mut self.web_fonts_changed) {
+            self.recascade();
+            self.relayout_keeping_cache();
+        } else {
+            self.restyle_and_relayout();
+        }
         if std::env::var("BI_DIAG").is_ok() {
             eprintln!(
                 "DIAG restyle+relayout {:?} (incremental {}, full {})",

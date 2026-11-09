@@ -64,6 +64,7 @@ pub(crate) struct Returned {
     pub net_jobs: Vec<super::net::NetJob>,
     pub canvases: Vec<(NodeId, Arc<blueice_image::RasterImage>)>,
     pub loaded_images: Vec<(String, Arc<crate::images::LoadedImage>)>,
+    pub loaded_fonts: Vec<crate::fonts::ScriptFont>,
 }
 
 /// A finished turn.
@@ -208,6 +209,7 @@ impl ScriptWorker {
                         net_jobs: std::mem::take(&mut s.net_jobs),
                         canvases: s.take_canvas_pictures(),
                         loaded_images: std::mem::take(&mut s.loaded_images),
+                        loaded_fonts: std::mem::take(&mut s.loaded_fonts),
                     });
                     let (console, total) = host.console_since(console_sent);
                     console_sent = total;
@@ -583,6 +585,7 @@ impl ScriptWorker {
                     (src, Arc::new(crate::images::LoadedImage { image, natural, sprite: None }))
                 })
                 .collect(),
+            loaded_fonts: done.loaded_fonts,
         };
         self.record(Done {
             returned,

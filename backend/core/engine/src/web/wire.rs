@@ -478,6 +478,7 @@ pub(crate) struct ChildDone {
     pub net_jobs: Vec<NetJob>,
     pub canvases: Vec<(u64, Arc<RasterImage>)>,
     pub loaded_images: Vec<(String, Arc<RasterImage>)>,
+    pub loaded_fonts: Vec<crate::fonts::ScriptFont>,
     /// Where a script asked the window to scroll to (document pixels from the top).
     pub scroll_to: Option<f64>,
     pub next_timer_due: Option<u64>,
@@ -554,6 +555,19 @@ impl FromChild {
                 for (src, image) in &done.loaded_images {
                     e.str(src);
                     e.image(image);
+                }
+                e.u64(done.loaded_fonts.len() as u64);
+                for font in &done.loaded_fonts {
+                    e.str(&font.family);
+                    e.u32(u32::from(font.weight_min));
+                    e.u32(u32::from(font.weight_max));
+                    e.bool(font.italic);
+                    e.u64(font.ranges.len() as u64);
+                    for (a, b) in &font.ranges {
+                        e.u32(*a);
+                        e.u32(*b);
+                    }
+                    e.bytes(&font.bytes);
                 }
                 e.bool(done.scroll_to.is_some());
                 e.f64(done.scroll_to.unwrap_or(0.0));
@@ -637,6 +651,27 @@ impl FromChild {
                 for _ in 0..n {
                     loaded_images.push((d.str()?, Arc::new(d.image()?)));
                 }
+                let n = d.count()?;
+                let mut loaded_fonts = Vec::with_capacity(n);
+                for _ in 0..n {
+                    let family = d.str()?;
+                    let weight_min = d.u32()? as u16;
+                    let weight_max = d.u32()? as u16;
+                    let italic = d.bool()?;
+                    let m = d.count()?;
+                    let mut ranges = Vec::with_capacity(m);
+                    for _ in 0..m {
+                        ranges.push((d.u32()?, d.u32()?));
+                    }
+                    loaded_fonts.push(crate::fonts::ScriptFont {
+                        family,
+                        weight_min,
+                        weight_max,
+                        italic,
+                        ranges,
+                        bytes: d.bytes()?,
+                    });
+                }
                 FromChild::Done(Box::new(ChildDone {
                     dirty,
                     navigations,
@@ -645,6 +680,7 @@ impl FromChild {
                     net_jobs,
                     canvases,
                     loaded_images,
+                    loaded_fonts,
                     scroll_to: {
                         let asked = d.bool()?;
                         let y = d.f64()?;
@@ -818,6 +854,14 @@ mod tests {
             }],
             canvases: vec![(5, picture(4, 4, 1))],
             loaded_images: vec![("img.png".into(), picture(2, 3, 5))],
+            loaded_fonts: vec![crate::fonts::ScriptFont {
+                family: "Dyn".into(),
+                weight_min: 300,
+                weight_max: 700,
+                italic: true,
+                ranges: vec![(0x41, 0x5a), (0x61, 0x61)],
+                bytes: vec![1, 2, 3, 4, 5],
+            }],
             scroll_to: Some(1234.5),
             next_timer_due: Some(1234),
             clock_ms: 99,
@@ -844,6 +888,9 @@ mod tests {
         assert_eq!(back.canvases[0].0, 5);
         assert!(same_picture(&back.canvases[0].1, &done.canvases[0].1));
         assert_eq!(back.loaded_images[0].0, "img.png");
+        let font = &back.loaded_fonts[0];
+        assert_eq!((font.family.as_str(), font.weight_min, font.weight_max, font.italic), ("Dyn", 300, 700, true));
+        assert_eq!((font.ranges.clone(), font.bytes.clone()), (vec![(0x41, 0x5a), (0x61, 0x61)], vec![1, 2, 3, 4, 5]));
         assert!(same_picture(&back.loaded_images[0].1, &done.loaded_images[0].1));
 
         for message in [

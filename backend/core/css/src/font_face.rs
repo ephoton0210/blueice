@@ -267,6 +267,26 @@ fn parse_sources(value: &str) -> Vec<FontSource> {
         .collect()
 }
 
+/// The matching descriptors of a face a script made (`new FontFace(family, source, descriptors)`),
+/// given as the text of each; an empty text is the descriptor's initial value.
+pub struct FaceDescriptors {
+    pub weight_min: u16,
+    pub weight_max: u16,
+    pub italic: bool,
+    pub unicode_ranges: Vec<(u32, u32)>,
+}
+
+pub fn face_descriptors(weight: &str, style: &str, unicode_range: &str) -> FaceDescriptors {
+    let (weight_min, weight_max) = parse_weight(weight);
+    let style = style.trim().to_ascii_lowercase();
+    FaceDescriptors {
+        weight_min,
+        weight_max,
+        italic: style.starts_with("italic") || style.starts_with("oblique"),
+        unicode_ranges: parse_ranges(unicode_range),
+    }
+}
+
 fn parse_weight(value: &str) -> (u16, u16) {
     let numbers: Vec<u16> = value
         .split_whitespace()

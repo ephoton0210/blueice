@@ -121,6 +121,8 @@ pub(crate) struct DomState {
     pub(crate) script_images: HashMap<NodeId, std::sync::Arc<blueice_image::RasterImage>>,
     /// Newly decoded script images by address, for the page to paint `<img>` from.
     pub(crate) loaded_images: Vec<(String, std::sync::Arc<crate::images::LoadedImage>)>,
+    /// Faces scripts added to the document, for the page to draw with.
+    pub(crate) loaded_fonts: Vec<crate::fonts::ScriptFont>,
     /// Decoded pictures by node (images and canvases), lent by the page.
     pub images: HashMap<NodeId, std::sync::Arc<blueice_image::RasterImage>>,
 }
@@ -147,6 +149,7 @@ impl DomState {
             c2d: HashMap::new(),
             script_images: HashMap::new(),
             loaded_images: Vec::new(),
+            loaded_fonts: Vec::new(),
             images: HashMap::new(),
         }
     }
@@ -175,6 +178,16 @@ impl DomState {
             ));
         }
         out
+    }
+
+    /// The bytes of a font a script gave: base64 text, or (when that is empty) a `data:` URL.
+    fn font_bytes(&self, body: &str, url: &str) -> Option<Vec<u8>> {
+        let bytes = if body.is_empty() {
+            crate::images::data_url_bytes(url)
+        } else {
+            crate::web::net::base64_decode(body)
+        };
+        bytes.filter(|b| b.len() <= blueice_font::web::MAX_FONT_BYTES)
     }
 
     fn node(&self, value: Option<&Reply>) -> Result<NodeId, String> {
@@ -293,6 +306,37 @@ impl DomState {
                 let size = format!("{}x{}", loaded.natural.0, loaded.natural.1);
                 self.loaded_images.push((url, loaded));
                 Reply::Text(size)
+            }
+            // A face a script made: (base64 body, or empty for a `data:` URL, url) checked for
+            // decoding. Replies "ok" or null.
+            "fontCheck" => {
+                match self
+                    .font_bytes(&text(0), &text(1))
+                    .filter(|b| blueice_font::web::register(b).is_some())
+                {
+                    Some(_) => Reply::Text("ok".into()),
+                    None => Reply::Null,
+                }
+            }
+            // A loaded face joined the document's set: (family, weight, style, unicode-range,
+            // body as base64 or empty, url).
+            "fontAdd" => {
+                let Some(bytes) = self.font_bytes(&text(4), &text(5)) else {
+                    return Ok(Reply::Null);
+                };
+                if self.loaded_fonts.len() >= crate::fonts::MAX_SCRIPT_FONTS {
+                    return Ok(Reply::Null);
+                }
+                let d = blueice_css::face_descriptors(&text(1), &text(2), &text(3));
+                self.loaded_fonts.push(crate::fonts::ScriptFont {
+                    family: text(0),
+                    weight_min: d.weight_min,
+                    weight_max: d.weight_max,
+                    italic: d.italic,
+                    ranges: d.unicode_ranges,
+                    bytes,
+                });
+                Reply::Text("ok".into())
             }
             // ---- 2D canvas ----
             "c2dCreate" => {

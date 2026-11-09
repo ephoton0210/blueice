@@ -136,3 +136,16 @@ fn escaped_characters_in_selectors_do_not_hide_the_faces_that_follow() {
     assert_eq!(faces.len(), 1, "{faces:?}");
     assert_eq!(faces[0].family, "late");
 }
+
+#[test]
+fn descriptors_given_as_text_parse_like_those_of_a_rule() {
+    use blueice_css::face_descriptors;
+    let d = face_descriptors("300 700", "italic", "U+0041-005A, U+61");
+    assert_eq!((d.weight_min, d.weight_max, d.italic), (300, 700, true));
+    assert_eq!(d.unicode_ranges, vec![(0x41, 0x5A), (0x61, 0x61)]);
+    let d = face_descriptors("bold", "normal", "");
+    assert_eq!((d.weight_min, d.weight_max, d.italic), (700, 700, false));
+    assert!(d.unicode_ranges.is_empty());
+    let d = face_descriptors("", "", "");
+    assert_eq!((d.weight_min, d.weight_max), (400, 400));
+}

@@ -201,6 +201,7 @@ fn serve(stream: UnixStream) -> io::Result<()> {
                             (src, Arc::new(image))
                         })
                         .collect(),
+                    loaded_fonts: std::mem::take(&mut s.loaded_fonts),
                     next_timer_due: None,
                     clock_ms: 0,
                     console,

@@ -43,7 +43,24 @@ struct CatalogFace {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct FontCatalog {
     families: HashMap<String, Vec<CatalogFace>>,
+    script_faces: usize,
 }
+
+/// A face a script made and added to the document (`new FontFace`, `document.fonts.add`): the
+/// bytes it was given, which the page decodes into its own registry, and the descriptors that
+/// say what part of a family it is.
+#[derive(Debug, Clone)]
+pub(crate) struct ScriptFont {
+    pub family: String,
+    pub weight_min: u16,
+    pub weight_max: u16,
+    pub italic: bool,
+    pub ranges: Vec<(u32, u32)>,
+    pub bytes: Vec<u8>,
+}
+
+/// Faces scripts may add to one page.
+pub(crate) const MAX_SCRIPT_FONTS: usize = 64;
 
 /// Generic family names and the families of the system's own fonts: a list that reaches one of
 /// these before any of the page's families is satisfied by the system font, not by a face that
@@ -87,6 +104,30 @@ impl FontCatalog {
             }
         }
         blueice_font::web::register_set(&members)
+    }
+
+    /// Adds a face a script supplied. False when it does not decode, or the page already has as
+    /// many script faces as it may.
+    pub(crate) fn add_script_font(&mut self, font: &ScriptFont) -> bool {
+        let family = font.family.trim().trim_matches(|c| c == '"' || c == '\'').trim().to_ascii_lowercase();
+        if family.is_empty() || self.script_faces >= MAX_SCRIPT_FONTS {
+            return false;
+        }
+        let Some(id) = blueice_font::web::register(&font.bytes) else {
+            return false;
+        };
+        self.script_faces += 1;
+        self.add(
+            &family,
+            CatalogFace {
+                weight_min: font.weight_min,
+                weight_max: font.weight_max,
+                italic: font.italic,
+                ranges: font.ranges.clone(),
+                id,
+            },
+        );
+        true
     }
 
     fn add(&mut self, family: &str, face: CatalogFace) {
@@ -627,5 +668,105 @@ mod tests {
         assert_eq!(runs(&page)[0].1, Some(id_of(REGULAR).as_u32()), "restyled to the page's face");
         let plain = crate::Page::new(400.0, 300.0);
         assert!(plain.linked_fonts.is_empty());
+    }
+
+    fn script_page(html: &str) -> crate::Page {
+        let mut page = crate::Page::new(400.0, 300.0);
+        page.set_web_scripts(true);
+        page.load_html_str(html, Some("https://example.com/p".to_string()));
+        page.settle();
+        page
+    }
+
+    fn run_scripts(page: &mut crate::Page) {
+        for _ in 0..80 {
+            page.tick_web();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn a_font_face_a_script_loads_and_adds_to_the_document_is_used_by_the_page() {
+        let html = format!(
+            "<style>body {{ margin: 0 }} p {{ margin: 0; font-family: Dyn, sans-serif }}</style>\
+             <body><p>Hello</p><script>\
+             const f = new FontFace('Dyn', 'url({})', {{ weight: '400' }});\
+             console.log('STATUS0 ' + f.status);\
+             f.load().then((g) => {{\
+               document.fonts.add(g);\
+               console.log('STATUS1 ' + f.status + ' ' + (g === f) + ' ' + document.fonts.has(f) + ' ' + document.fonts.check('16px Dyn'));\
+             }});\
+             </script></body>",
+            data_url(REGULAR, "font/woff2")
+        );
+        let mut page = script_page(&html);
+        assert_eq!(runs(&page)[0].1, None, "before the font loads: the bundled one");
+        run_scripts(&mut page);
+        let log = page.web_console().join("\n");
+        assert!(log.contains("STATUS0 unloaded"), "{log}");
+        assert!(log.contains("STATUS1 loaded true true true"), "{log}");
+        let face = runs(&page)[0].1;
+        assert!(face.is_some(), "the text is drawn in the loaded face: {log}");
+        assert_eq!(face, page.linked_fonts.face_for("dyn", 400, false).map(WebFontId::as_u32));
+    }
+
+    #[test]
+    fn a_face_from_bytes_waits_for_the_document_and_a_bad_one_rejects() {
+        let html = format!(
+            "<style>body {{ margin: 0 }} p {{ margin: 0; font-family: Raw }}</style>\
+             <body><p>Hi</p><script>\
+             const bin = atob('{}'); const bytes = new Uint8Array(bin.length);\
+             for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);\
+             const f = new FontFace('Raw', bytes.buffer);\
+             console.log('LOADED_EARLY ' + f.status);\
+             f.loaded.then(() => console.log('LOADED ' + f.status));\
+             document.fonts.add(f);\
+             new FontFace('Bad', new Uint8Array([1, 2, 3, 4]).buffer).load()\
+               .then(() => console.log('BAD ok'), (e) => console.log('BAD rejected ' + e.name));\
+             </script></body>",
+            base64(REGULAR)
+        );
+        let mut page = script_page(&html);
+        run_scripts(&mut page);
+        let log = page.web_console().join("\n");
+        assert!(log.contains("LOADED_EARLY loaded"), "binary data is available at once: {log}");
+        assert!(log.contains("LOADED loaded"), "{log}");
+        assert!(log.contains("BAD rejected SyntaxError"), "{log}");
+        assert!(runs(&page)[0].1.is_some(), "{log}");
+    }
+
+    #[test]
+    fn a_face_that_is_not_added_to_the_document_does_not_style_the_page() {
+        let html = format!(
+            "<style>body {{ margin: 0 }} p {{ margin: 0; font-family: Lone }}</style>\
+             <body><p>Hi</p><script>\
+             new FontFace('Lone', 'url({})').load().then(() => console.log('DONE'));\
+             </script></body>",
+            data_url(REGULAR, "font/woff2")
+        );
+        let mut page = script_page(&html);
+        run_scripts(&mut page);
+        assert!(page.web_console().join("\n").contains("DONE"));
+        assert_eq!(runs(&page)[0].1, None);
+    }
+
+    #[test]
+    fn document_fonts_load_loads_the_added_faces_of_a_family_and_check_says_when_they_are_ready() {
+        let html = format!(
+            "<style>body {{ margin: 0 }} p {{ margin: 0; font-family: 'Lazy Face' }}</style>\
+             <body><p>Hi</p><script>\
+             document.fonts.add(new FontFace('Lazy Face', 'url({})'));\
+             console.log('CHECK0 ' + document.fonts.check('italic 16px \"Lazy Face\", serif') + ' ' + document.fonts.check('16px Other'));\
+             document.fonts.load('16px \"Lazy Face\"').then((faces) =>\
+               console.log('CHECK1 ' + faces.length + ' ' + document.fonts.check('16px \"Lazy Face\"') + ' ' + document.fonts.status));\
+             </script></body>",
+            data_url(REGULAR, "font/woff2")
+        );
+        let mut page = script_page(&html);
+        run_scripts(&mut page);
+        let log = page.web_console().join("\n");
+        assert!(log.contains("CHECK0 false true"), "{log}");
+        assert!(log.contains("CHECK1 1 true loaded"), "{log}");
+        assert!(runs(&page)[0].1.is_some(), "{log}");
     }
 }

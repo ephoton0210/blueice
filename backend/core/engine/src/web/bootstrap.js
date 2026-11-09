@@ -813,27 +813,152 @@
     }
   };
 
-  // `document.fonts`: no web fonts are loaded or tracked, so the set is always empty and
-  // loaded; `ready` resolves to the set itself, as it does once fonts have loaded.
+  // ------------------------------------------------------------ web fonts
+  // `FontFace` and `document.fonts`. A face made from a URL or from bytes is loaded by `load()`
+  // (a URL is fetched like any other font request, with CORS), checked by the page's own font
+  // decoder, and handed to the page when it is in the document's set, which is what makes
+  // elements with that family draw and measure in it. Faces the stylesheets declare are loaded
+  // before the page is shown and are not listed here.
+  const fontSetFaces = new Set();
+  let fontLoads = 0;
+  const fontUrls = (source) => {
+    const urls = [];
+    const re = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]*))\s*\)/g;
+    let m;
+    while ((m = re.exec(source)) !== null) urls.push(m[1] !== undefined ? m[1] : m[2] !== undefined ? m[2] : m[3]);
+    return urls;
+  };
+  class FontFace {
+    constructor(family, source, descriptors) {
+      const d = descriptors || {};
+      this.family = String(family);
+      this.style = d.style !== undefined ? String(d.style) : 'normal';
+      this.weight = d.weight !== undefined ? String(d.weight) : 'normal';
+      this.stretch = d.stretch !== undefined ? String(d.stretch) : 'normal';
+      this.unicodeRange = d.unicodeRange !== undefined ? String(d.unicodeRange) : 'U+0-10FFFF';
+      this.variant = d.variant !== undefined ? String(d.variant) : 'normal';
+      this.featureSettings = d.featureSettings !== undefined ? String(d.featureSettings) : 'normal';
+      this.variationSettings = d.variationSettings !== undefined ? String(d.variationSettings) : 'normal';
+      this.display = d.display !== undefined ? String(d.display) : 'auto';
+      this.ascentOverride = this.descentOverride = this.lineGapOverride = 'normal';
+      this._status = 'unloaded';
+      this._body = '';
+      this._urls = [];
+      this._url = '';
+      this._joined = false;
+      this._loading = null;
+      this.loaded = new Promise((resolve, reject) => {
+        this._resolve = resolve;
+        this._reject = reject;
+      });
+      this.loaded.catch(() => {});
+      if (typeof source === 'string') {
+        this._urls = fontUrls(source).map(resolveUrl);
+        if (this._urls.length === 0) this._fail('SyntaxError');
+      } else if (source instanceof ArrayBuffer || ArrayBuffer.isView(source)) {
+        const view = source instanceof ArrayBuffer
+          ? new Uint8Array(source)
+          : new Uint8Array(source.buffer, source.byteOffset, source.byteLength);
+        this._body = view.length ? bytesToBase64(view) : '';
+        if (!this._body || !bi('fontCheck', this._body, '')) this._fail('SyntaxError');
+        else this._finish();
+      } else {
+        throw new TypeError('FontFace: the source must be a string or binary data');
+      }
+    }
+    get status() {
+      return this._status;
+    }
+    _finish() {
+      this._status = 'loaded';
+      this._resolve(this);
+      if (this._joined) this._announce();
+    }
+    _fail(name) {
+      this._status = 'error';
+      this._reject(new DOMException('The font face could not be loaded.', name));
+    }
+    // Hands the loaded face to the page once it is in the document's set.
+    _announce() {
+      if (this._status === 'loaded' && !this._announced) {
+        this._announced = true;
+        bi('fontAdd', this.family, this.weight, this.style, this.unicodeRange === 'U+0-10FFFF' ? '' : this.unicodeRange, this._body, this._url);
+      }
+    }
+    load() {
+      if (this._status !== 'unloaded' || this._loading) return this.loaded;
+      this._status = 'loading';
+      this._loading = true;
+      fontLoads++;
+      const done = () => {
+        fontLoads--;
+      };
+      const tryNext = (i) => {
+        if (i >= this._urls.length) {
+          done();
+          return this._fail('NetworkError');
+        }
+        const url = this._urls[i];
+        const accept = (body) => {
+          if (!bi('fontCheck', body, body ? '' : url)) return tryNext(i + 1);
+          this._body = body;
+          this._url = body ? '' : url;
+          done();
+          this._finish();
+        };
+        if (url.startsWith('data:')) {
+          setTimeout(() => accept(''), 0);
+        } else {
+          netSend('GET', url, {}, null, (r) => {
+            if (r.status >= 200 && r.status < 300) accept(bytesToBase64(r.bytes));
+            else tryNext(i + 1);
+          }, () => tryNext(i + 1), 'font');
+        }
+      };
+      tryNext(0);
+      return this.loaded;
+    }
+  }
+  // The family names in a CSS `font` shorthand or a family list, lowercased.
+  const fontFamiliesOf = (font) => {
+    let text = String(font).trim();
+    const size = /(?:^|\s)(?:\d+(?:\.\d+)?|\.\d+)(?:px|pt|em|rem|%|ex|ch|vw|vh|cm|mm|in|pc)(?:\/[^\s]+)?\s+/.exec(text);
+    if (size) text = text.slice(size.index + size[0].length);
+    return text.split(',').map((f) => f.trim().replace(/^["']|["']$/g, '').toLowerCase()).filter(Boolean);
+  };
+  const facesFor = (font) => {
+    const wanted = fontFamiliesOf(font);
+    return [...fontSetFaces].filter((f) => wanted.includes(f.family.replace(/^["']|["']$/g, '').toLowerCase()));
+  };
   const fontFaceSet = (() => {
-    const faces = new Set();
     const set = {
-      get status() { return 'loaded'; },
-      get size() { return faces.size; },
+      get status() { return fontLoads > 0 ? 'loading' : 'loaded'; },
+      get size() { return fontSetFaces.size; },
       onloading: null,
       onloadingdone: null,
       onloadingerror: null,
-      add(face) { faces.add(face); return set; },
-      delete(face) { return faces.delete(face); },
-      has(face) { return faces.has(face); },
-      clear() { faces.clear(); },
-      load: () => Promise.resolve([]),
-      check: () => true,
-      forEach(callback, thisArg) { faces.forEach((f) => callback.call(thisArg, f, f, set)); },
-      entries: () => faces.entries(),
-      keys: () => faces.keys(),
-      values: () => faces.values(),
-      [Symbol.iterator]: () => faces.values(),
+      add(face) {
+        if (!(face instanceof FontFace)) throw new TypeError('document.fonts.add: not a FontFace');
+        fontSetFaces.add(face);
+        face._joined = true;
+        face._announce();
+        return set;
+      },
+      delete(face) { return fontSetFaces.delete(face); },
+      has(face) { return fontSetFaces.has(face); },
+      clear() { fontSetFaces.clear(); },
+      load(font) {
+        const faces = facesFor(font);
+        return Promise.all(faces.map((f) => f.load())).then(() => faces);
+      },
+      check(font) {
+        return facesFor(font).every((f) => f.status === 'loaded');
+      },
+      forEach(callback, thisArg) { fontSetFaces.forEach((f) => callback.call(thisArg, f, f, set)); },
+      entries: () => fontSetFaces.entries(),
+      keys: () => fontSetFaces.keys(),
+      values: () => fontSetFaces.values(),
+      [Symbol.iterator]: () => fontSetFaces.values(),
       addEventListener() {},
       removeEventListener() {},
       dispatchEvent: () => true,
@@ -4596,7 +4721,7 @@
     HTMLAreaElement, HTMLMapElement, HTMLDataElement, HTMLTimeElement, HTMLModElement, HTMLParamElement,
     HTMLTrackElement, HTMLOptGroupElement, HTMLDataListElement, HTMLMeterElement, HTMLTableColElement,
     DOMParser, XMLSerializer, IntersectionObserver, ResizeObserver, PerformanceObserver, MessageChannel, BroadcastChannel,
-    URL, URLSearchParams, TextEncoder, TextDecoder,
+    URL, URLSearchParams, TextEncoder, TextDecoder, FontFace,
     // values
     document, customElements, navigator: navigatorApi, screen: screenApi, location: locationApi, history: historyApi,
     performance, crypto, localStorage: makeStorage(), sessionStorage: makeStorage(),

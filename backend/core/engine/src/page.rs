@@ -109,6 +109,8 @@ pub struct Page {
     /// A script changed the DOM but its restyle and layout were put off to
     /// keep a busy page from relaying out many times a second.
     web_relayout_pending: bool,
+    /// A script added a font face: the next restyle is a full one, so every element's face is chosen again.
+    web_fonts_changed: bool,
     web_last_relayout: Option<std::time::Instant>,
     web_force_relayout: bool,
     web_review: Option<web_scripts::NetworkReview>,
@@ -231,6 +233,7 @@ impl Page {
             web_scroll_seen: 0.0,
             web_net: None,
             web_relayout_pending: false,
+            web_fonts_changed: false,
             web_last_relayout: None,
             web_force_relayout: false,
             web_review: None,
