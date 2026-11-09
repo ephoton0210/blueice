@@ -1,0 +1,63 @@
+{
+  "project": "mitt",
+  "version": "3.0.1",
+  "repository": "https://github.com/developit/mitt",
+  "revision": "b240473b5707857ba2c6a8e6d707c28d1e39da49",
+  "files": {
+    "src/index.ts": "1536a2dd71d64785d811076beee6d970583ca555dd34ce839face641a200054b",
+    "package.json": "99966ad2891dfe56614f039f5d03ada4bda6dba810952272ae57359abb527b91",
+    "LICENSE": "1cab22f196264195a4caec8ca5630170fdde76ee8f43346e47021d087332d3b0"
+  },
+  "archive": "fixtures/mitt-3.0.1.tar.gz",
+  "archiveSha256": "c2cece4e06eaed81e67dd0a1144fef407070389d118a55827fe9f8f5d45f063d",
+  "profile": {
+    "compilerOptions": {
+      "target": "ES2022",
+      "module": "CommonJS",
+      "strict": true,
+      "lib": [
+        "ES2022"
+      ],
+      "declaration": true,
+      "sourceMap": true,
+      "rootDir": "src",
+      "outDir": "dist"
+    },
+    "files": [
+      "src/index.ts"
+    ]
+  },
+  "acceptance": [
+    "Unchanged complete upstream src/index.ts compiles with pinned TypeScript 5.9.3 and BlueTSC.",
+    "The complete emitted declaration inventory and every .d.ts byte agree.",
+    "Both actual outputs pass all eight named event-runtime scenarios.",
+    "Both emitted declarations accept the positive consumer and reject the wrong payload consumer.",
+    "Warm and edited builds preserve runtime results; edited source matches a clean rebuild."
+  ],
+  "reproductions": {
+    "reproductions/class-generic-control.ts": {
+      "sha256": "1c3d53236812ac4c9062d5d84183fc498ce7582d63ff0f3c58f2d6f6192b09d7",
+      "nativeExpectedAccept": true
+    },
+    "reproductions/incremental-config-control.ts": {
+      "sha256": "1f5a62f95ca358968bbd3c36da09821bcdc691c19ce2510d40b0045fc9695c43",
+      "nativeExpectedAccept": true
+    },
+    "reproductions/object-generic-constrained.ts": {
+      "sha256": "a92d05e57c1062120776df12816a1a3e294dcea33b01e6f6dd23250a05317a9a",
+      "nativeExpectedAccept": true
+    },
+    "reproductions/object-generic.ts": {
+      "sha256": "435a79eadf699dacf856bcc010dd0ec422c15ad8b8b3e3d9b87e8e4848b4daad",
+      "nativeExpectedAccept": true
+    },
+    "reproductions/object-method-control.ts": {
+      "sha256": "8063a4a229eb0b37b573391b0a0793e5e034cf4b17b98b69b0ba658cee650d8e",
+      "nativeExpectedAccept": true
+    }
+  },
+  "incrementalOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": "dist/project.tsbuildinfo"
+  }
+}

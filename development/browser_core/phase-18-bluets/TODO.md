@@ -60,6 +60,10 @@ broader G-C1 inventory row remains open for unmeasured CLI/recovery coverage;
 the finite checklist does not claim full parity. See the
 [acceptance record](PLAN.md#phase-l--g-c1-implementation).
 
+**Next work:** repair the reproduced G-T2/G-C1 object-method boundary, then
+G-M2 explicit incremental configuration. The completed real-project audit is
+[blocked, not a compatibility pass](REAL_PROJECT_AUDIT.md).
+
 ## Maintenance and real-project follow-up — 2026-11-09
 
 User-authorized follow-up to the completed finite Phase L packages:
@@ -74,15 +78,48 @@ User-authorized follow-up to the completed finite Phase L packages:
   six test modules at most 408 lines. Native: 179 suites / 1,027 functions;
   workspace: 7,827 passed; Windows: 25 symlink cases + 82 core oracles.
   All final gates pass. [Measurement](MODULARIZATION_MEASUREMENT.json).
-- [ ] Establish a fixed real-project audit using unchanged mitt 3.0.1 source at
+- [x] Establish a fixed real-project audit using unchanged mitt 3.0.1 source at
   `b240473b5707857ba2c6a8e6d707c28d1e39da49`. Freeze CommonJS/ES2022/strict,
   byte-exact declarations, eight named runtime scenarios, declaration consumers,
   and warm/edit/clean rebuild checks before recording. Audit completion means
   a reproducible measured result with explicit blockers; project compatibility
   requires every acceptance property to pass and is reported separately.
-- [ ] Map each reproduced project blocker to the existing G-ID, with its minimal
+- [x] Map each reproduced project blocker to the existing G-ID, with its minimal
   source, pinned Native result, BlueTSC diagnostic and a concrete repair gate.
   This analysis does not assert that a newly discovered language gap is fixed.
+
+  [Measured audit and repair gates](REAL_PROJECT_AUDIT.md),
+  [exact results](REAL_PROJECT_MEASUREMENT.json) and
+  [raw evidence](REAL_PROJECT_ARTIFACTS.json). Investigation complete;
+  **mitt remains incompatible with BlueTSC**: two independent blockers are
+  reproduced below. Native passes all eight runtime scenarios, declaration
+  consumers and warm/edit/clean builds. BlueTSC's dependent project checks are
+  explicitly blocked; the constrained-method diagnostic cascade is not a third
+  independent missing feature. The global case denominator is unchanged.
+
+### Next implementation — existing G-T2/G-C1 and G-M2
+
+- [ ] **Object-literal generic methods — G-T2 / G-C1 follow-up.**
+  - Reproduce the frozen unconstrained and `extends string` object methods;
+    preserve the accepted generic-class and ordinary-object controls.
+  - Preserve method type parameters/constraints through parse, check and emit.
+    Valid programs must not receive nested-function refusals or spurious
+    `?`/type/`:` errors. Add wrong-key/payload and malformed-syntax controls
+    against pinned 5.9.3 complete diagnostics and UTF-16 positions.
+  - Pass the unchanged full mitt cold build, byte-exact declarations and their
+    consumers, and all eight runtime scenarios. Preserve subsequent blockers
+    explicitly; the incremental flag is separately tracked below.
+- [ ] **Explicit incremental configuration — G-M2 / G-C1 follow-up.**
+  - The frozen scalar project builds in both compilers; enabling
+    `incremental: true` alone currently causes BlueTSC's unsupported-option error.
+  - Implement valid option/state semantics and invalid-option diagnostics;
+    verify configured state paths, cold/warm/edit/clean output and execution,
+    and corrupt/unverifiable-state recovery within existing owner boundaries.
+  - Pass the scalar control and original project's full incremental acceptance.
+    Preserve the intentional owner-current rebuild differences.
+
+Both repairs include the existing complete Native, local-workspace and Windows
+82-oracle gates. Freeze additional negative controls before implementation.
 
 ## Completed baseline (condensed)
 

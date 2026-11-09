@@ -18788,3 +18788,42 @@ The split adds no language coverage claim or new G-ID; broader feature rows
 remain open and full TypeScript parity stays OFF. The [measurement](MODULARIZATION_MEASUREMENT.json)
 and [raw evidence index](MODULARIZATION_ARTIFACTS.json) bind source, compiler,
 test selections, original source, module sizes, commands, logs and tools.
+
+
+## Real-project audit — mitt 3.0.1 — 2026-11-09
+
+The user-authorized project audit and blocker triage are complete, with
+**project compatibility blocked**. The unchanged upstream source is pinned at
+`b240473b5707857ba2c6a8e6d707c28d1e39da49`, with original MIT license and
+source/package hashes preserved in its fixture archive. The CommonJS/ES2022/
+strict cold profile and explicit incremental profile are separate measurements.
+TypeScript 5.9.3 compiles the complete source, passes all eight authored event
+runtime scenarios, accepts the positive declaration consumer, rejects the wrong
+payload with TS2345, and agrees across warm, edited and clean rebuilds.
+
+BlueTSC rejects the complete source. Five frozen minimal programs independently
+locate the boundary: both compilers accept generic class methods, ordinary
+object methods and a scalar control; only Native accepts the two generic
+object-literal methods. The constrained form produces spurious parse errors,
+while the unconstrained form receives a nested-function annotation refusal.
+Separately, enabling `incremental: true` on the otherwise accepted scalar
+project reproduces BlueTSC's unsupported-option rejection. These are two
+independent blockers; the diagnostic cascade is a symptom of the method gap.
+
+The investigation adds a reusable Node-only audit, three meaningful tool tests,
+complete raw commands/diagnostics/outputs, exact declaration comparison,
+consumer/runtime/rebuild checks, and archive/file hashes. Native success never
+supplies missing BlueTSC output. Original option-first and diagnostic attempts
+remain separate raw history. BlueTSC project-level compiler/MCP publication and
+debugger execution remain blocked by compilation. No gap is declared repaired,
+no new G-ID is created and these observations do not inflate the 39,426-case
+compatibility denominator or change full-parity-OFF policy.
+
+[Measured result and concrete repair gates](REAL_PROJECT_AUDIT.md),
+[exact measurement](REAL_PROJECT_MEASUREMENT.json),
+[raw evidence index](REAL_PROJECT_ARTIFACTS.json) and
+[reproduction commands](../../../differential-testing/bluets-projects/README.md)
+bind the accepted modularization source and actual Native-build CLI hash.
+The next implementation is existing G-T2/G-C1 generic object methods, followed
+by G-M2 explicit incremental configuration, with frozen negative controls and
+the existing complete acceptance gates.
