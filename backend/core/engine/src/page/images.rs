@@ -176,6 +176,29 @@ mod tests {
     }
 
     #[test]
+    fn an_svg_with_a_height_and_auto_width_keeps_its_view_box_ratio() {
+        // The header wordmark: only a `viewBox`, `height: 12px; width: auto`, inside a column
+        // flex box that aligns its items to the start, itself inside an inline-flex link.
+        for wrapper in [
+            "<div>{}</div>",
+            "<div style='display:flex;flex-direction:column;align-items:flex-start'>{}</div>",
+            "<a style='display:flex;align-items:center'><div style='display:none;flex-direction:column;align-items:flex-start;margin-left:12px'>{}</div></a>",
+            "<a style='display:flex;align-items:center'><div style='display:flex;flex-direction:column;align-items:flex-start;margin-left:12px'>{}</div></a>",
+        ] {
+            let svg = "<svg viewBox='0 0 720 60' style='height:12px;width:auto' fill='none'><path d='M0 0h720v60H0z' fill='#000'/></svg>";
+            let html = format!("<body style='margin:0'>{}</body>", wrapper.replace("{}", svg));
+            let mut page = Page::new(400.0, 300.0);
+            page.load_html_str(&html, None);
+            let sizes: Vec<_> = image_commands(&page).iter().map(|r| (r.2, r.3)).collect();
+            if wrapper.contains("display:none") {
+                assert!(sizes.is_empty(), "{wrapper}: {sizes:?}");
+            } else {
+                assert_eq!(sizes, vec![(144.0, 12.0)], "{wrapper}");
+            }
+        }
+    }
+
+    #[test]
     fn an_svg_without_width_or_height_takes_its_view_box_size() {
         let mut page = Page::new(400.0, 300.0);
         page.load_html_str(

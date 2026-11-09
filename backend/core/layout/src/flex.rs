@@ -694,9 +694,14 @@ pub(crate) fn layout_flex(ctx: &Ctx<'_>, container: NodeId, input: &FlexInput) -
                     s.px(prop, container_cross.unwrap_or(f64::NAN))
                         .map(|v| border_box(&s, v, pb))
                 })
-            } else if !row && items[i].align != Align::Stretch {
+            } else if !row
+                && items[i].align != Align::Stretch
+                && !matches!(&items[i].source, Source::Element(n)
+                    if ctx.tag(*n).is_some_and(crate::block::is_replaced_tag))
+            {
                 // Across a column, an item that is not stretched is as wide as its content
-                // (up to the space there is), not as wide as the container.
+                // (up to the space there is), not as wide as the container. A replaced element
+                // (a picture) sizes itself.
                 let margins = items[i].margin[1].unwrap_or(0.0) + items[i].margin[3].unwrap_or(0.0);
                 let (min_c, max_c) = helper.content_widths(&items[i]);
                 Some(max_c.min((content_width - margins).max(min_c)))

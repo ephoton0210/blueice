@@ -687,6 +687,21 @@ fn layout_block_level_uncached(
     let border = style.border(cbw);
     let pb_h = padding.horizontal() + border.horizontal();
     let pb_v = padding.vertical() + border.vertical();
+    // A picture laid out as a block (`img { display: block }` is every CSS reset's rule) is as
+    // big as the picture says, not as wide as its container: the size it would have as an
+    // inline box becomes the size forced on this one.
+    if forced.width.is_none()
+        && ctx.tag(node).is_some_and(is_replaced_tag)
+        && !blueice_css::is_pseudo_node(node)
+    {
+        if let Some((w, h)) = crate::inline::replaced_size(ctx, node, &style, cbw) {
+            let sized = Forced {
+                width: Some(w + pb_h),
+                height: forced.height.or(Some(h + pb_v)),
+            };
+            return layout_block_level_uncached(ctx, node, c, sized, incoming);
+        }
+    }
     let border_box = style.is_border_box();
     let to_content_w = |v: f64| {
         if border_box {
