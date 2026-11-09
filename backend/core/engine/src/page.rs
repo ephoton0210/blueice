@@ -95,6 +95,8 @@ pub struct Page {
     /// Counts layouts, so a process is sent the boxes once per layout.
     layout_generation: u64,
     web_rects_sent: u64,
+    /// The generation of `linked_fonts` the scripts were last told of.
+    web_fonts_sent: u64,
     /// Reports on layout still to be run in the background after the page changed.
     web_after_layout: u8,
     web_in_flight_after_layout: bool,
@@ -224,6 +226,7 @@ impl Page {
             web_rects: None,
             layout_generation: 1,
             web_rects_sent: 0,
+            web_fonts_sent: 0,
             web_after_layout: 0,
             web_in_flight_after_layout: false,
             web_scripts_lost: false,

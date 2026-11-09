@@ -46,6 +46,8 @@ pub(crate) struct Handoff {
     pub images: Pictures,
     pub viewport: (f64, f64),
     pub url: Option<String>,
+    /// The faces the page has, when they changed since the worker was last told.
+    pub fonts: Option<Vec<crate::fonts::ScriptFont>>,
 }
 
 /// What a turn leaves behind for the page to take over.
@@ -194,6 +196,9 @@ impl ScriptWorker {
                         s.viewport = handoff.viewport;
                         if let Some(url) = handoff.url {
                             s.url = url;
+                        }
+                        if let Some(fonts) = &handoff.fonts {
+                            s.script_fonts = crate::fonts::FontCatalog::from_script_view(fonts);
                         }
                         s.dirty = false;
                     });
@@ -358,6 +363,11 @@ impl ScriptWorker {
                 let _ = jobs.send(Job { handoff, turn });
             }
             Backend::Process(link) => {
+                if let Some(fonts) = handoff.fonts {
+                    if wire::write_frame(&mut link.stream, &ToChild::Fonts(fonts).encode()).is_err() {
+                        link.failed = true;
+                    }
+                }
                 link.turn_started = Some(Instant::now());
                 let rects = handoff.rects_changed.then(|| {
                     handoff

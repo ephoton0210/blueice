@@ -37,6 +37,8 @@ struct CatalogFace {
     italic: bool,
     ranges: Vec<(u32, u32)>,
     id: WebFontId,
+    /// The font file, kept so the scripts' process can decode its own copy.
+    bytes: std::sync::Arc<Vec<u8>>,
 }
 
 /// A page's faces by lowercased family name.
@@ -44,12 +46,13 @@ struct CatalogFace {
 pub(crate) struct FontCatalog {
     families: HashMap<String, Vec<CatalogFace>>,
     script_faces: usize,
+    generation: u64,
 }
 
 /// A face a script made and added to the document (`new FontFace`, `document.fonts.add`): the
 /// bytes it was given, which the page decodes into its own registry, and the descriptors that
 /// say what part of a family it is.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ScriptFont {
     pub family: String,
     pub weight_min: u16,
@@ -110,13 +113,14 @@ impl FontCatalog {
     /// many script faces as it may.
     pub(crate) fn add_script_font(&mut self, font: &ScriptFont) -> bool {
         let family = font.family.trim().trim_matches(|c| c == '"' || c == '\'').trim().to_ascii_lowercase();
-        if family.is_empty() || self.script_faces >= MAX_SCRIPT_FONTS {
+        if family.is_empty() || self.script_faces >= 2 * MAX_SCRIPT_FONTS {
             return false;
         }
         let Some(id) = blueice_font::web::register(&font.bytes) else {
             return false;
         };
         self.script_faces += 1;
+        let bytes = std::sync::Arc::new(font.bytes.clone());
         self.add(
             &family,
             CatalogFace {
@@ -125,12 +129,46 @@ impl FontCatalog {
                 italic: font.italic,
                 ranges: font.ranges.clone(),
                 id,
+                bytes,
             },
         );
         true
     }
 
+    /// Bumped by every face added: a holder of a copy knows when it is out of date.
+    pub(crate) fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// Every face, as the scripts' process is told of them.
+    pub(crate) fn script_view(&self) -> Vec<ScriptFont> {
+        let mut out = Vec::new();
+        for (family, faces) in &self.families {
+            for f in faces {
+                out.push(ScriptFont {
+                    family: family.clone(),
+                    weight_min: f.weight_min,
+                    weight_max: f.weight_max,
+                    italic: f.italic,
+                    ranges: f.ranges.clone(),
+                    bytes: f.bytes.as_ref().clone(),
+                });
+            }
+        }
+        out
+    }
+
+    /// The catalog a [`script_view`](Self::script_view) describes.
+    pub(crate) fn from_script_view(view: &[ScriptFont]) -> FontCatalog {
+        let mut catalog = FontCatalog::default();
+        for font in view {
+            catalog.add_script_font(font);
+        }
+        catalog
+    }
+
     fn add(&mut self, family: &str, face: CatalogFace) {
+        self.generation += 1;
         self.families.entry(family.to_string()).or_default().push(face);
     }
 }
@@ -241,7 +279,7 @@ fn load(
     base: &Url,
     review: &(dyn Fn(&str) -> bool + Sync),
     redirects: usize,
-) -> Option<WebFontId> {
+) -> Option<(WebFontId, std::sync::Arc<Vec<u8>>)> {
     for source in face.sources.iter().filter(|s| usable_format(s)) {
         let url = if source.url.trim().starts_with("data:") {
             source.url.trim().to_string()
@@ -251,8 +289,10 @@ fn load(
                 Err(_) => continue,
             }
         };
-        if let Some(id) = fetch_bytes(&url, review, redirects).and_then(|b| blueice_font::web::register(&b)) {
-            return Some(id);
+        if let Some(bytes) = fetch_bytes(&url, review, redirects) {
+            if let Some(id) = blueice_font::web::register(&bytes) {
+                return Some((id, std::sync::Arc::new(bytes)));
+            }
         }
     }
     None
@@ -283,7 +323,7 @@ pub(crate) fn fetch_linked_fonts(
     if diag {
         eprintln!("FONTS {} @font-face rules wanted", wanted.len());
     }
-    let loaded: Vec<Option<WebFontId>> = std::thread::scope(|scope| {
+    let loaded: Vec<Option<(WebFontId, std::sync::Arc<Vec<u8>>)>> = std::thread::scope(|scope| {
         let workers: Vec<_> = wanted
             .iter()
             .map(|(face, base)| scope.spawn(move || load(face, base, review, limits.redirects)))
@@ -297,9 +337,9 @@ pub(crate) fn fetch_linked_fonts(
     for ((face, _), id) in wanted.into_iter().zip(loaded) {
         if diag {
             let first = face.sources.first().map_or("-", |s| s.url.as_str());
-            eprintln!("FONTS {} {}-{} -> {} ({first})", face.family, face.weight_min, face.weight_max, id.map_or("not loaded".to_string(), |i| format!("face {}", i.as_u32())));
+            eprintln!("FONTS {} {}-{} -> {} ({first})", face.family, face.weight_min, face.weight_max, id.as_ref().map_or("not loaded".to_string(), |i| format!("face {}", i.0.as_u32())));
         }
-        let Some(id) = id else { continue };
+        let Some((id, bytes)) = id else { continue };
         catalog.add(
             &face.family,
             CatalogFace {
@@ -308,6 +348,7 @@ pub(crate) fn fetch_linked_fonts(
                 italic: face.italic,
                 ranges: face.unicode_ranges,
                 id,
+                bytes,
             },
         );
     }
@@ -794,5 +835,27 @@ mod tests {
         run_scripts(&mut page);
         let log = page.web_console().join("\n");
         assert!(log.contains("CANVAS true true"), "{log}");
+    }
+
+    #[test]
+    fn canvas_text_can_use_a_face_the_pages_stylesheet_declared() {
+        let html = format!(
+            "<style>@font-face {{ font-family: Sheet; src: url({}) format('woff2'); }}</style>\
+             <body><canvas id=c width=80 height=30></canvas><script>\
+             const g = document.getElementById('c').getContext('2d');\
+             g.font = '20px Sheet'; const own = g.measureText('Hello').width;\
+             g.font = '20px sans-serif'; const plain = g.measureText('Hello').width;\
+             console.log('SHEET ' + (own !== plain) + ' ' + document.fonts.size);\
+             </script></body>",
+            data_url(REGULAR, "font/woff2")
+        );
+        let mut page = crate::Page::new(400.0, 300.0);
+        page.set_web_scripts(true);
+        page.pending_linked_fonts = catalog(&html);
+        page.load_html_str(&html, Some("https://example.com/p".to_string()));
+        page.settle();
+        run_scripts(&mut page);
+        let log = page.web_console().join("\n");
+        assert!(log.contains("SHEET true 0"), "{log}");
     }
 }

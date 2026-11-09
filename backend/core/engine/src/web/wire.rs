@@ -339,6 +339,8 @@ pub(crate) enum ToChild {
     /// Send the document as it is now.
     FetchDoc,
     Answer(AnswerWire),
+    /// The faces the page has now (all of them), for canvas text to name.
+    Fonts(Vec<crate::fonts::ScriptFont>),
 }
 
 /// [`Answer`] as it travels (a picture is compared by its pixels in tests).
@@ -360,6 +362,32 @@ impl PartialEq for AnswerWire {
             _ => false,
         }
     }
+}
+
+fn put_font(e: &mut Enc, font: &crate::fonts::ScriptFont) {
+    e.str(&font.family);
+    e.u32(u32::from(font.weight_min));
+    e.u32(u32::from(font.weight_max));
+    e.bool(font.italic);
+    e.u64(font.ranges.len() as u64);
+    for (a, b) in &font.ranges {
+        e.u32(*a);
+        e.u32(*b);
+    }
+    e.bytes(&font.bytes);
+}
+
+fn get_font(d: &mut Dec) -> Option<crate::fonts::ScriptFont> {
+    let family = d.str()?;
+    let weight_min = d.u32()? as u16;
+    let weight_max = d.u32()? as u16;
+    let italic = d.bool()?;
+    let m = d.count()?;
+    let mut ranges = Vec::with_capacity(m);
+    for _ in 0..m {
+        ranges.push((d.u32()?, d.u32()?));
+    }
+    Some(crate::fonts::ScriptFont { family, weight_min, weight_max, italic, ranges, bytes: d.bytes()? })
 }
 
 impl ToChild {
@@ -403,6 +431,13 @@ impl ToChild {
                 turn.encode(&mut e);
             }
             ToChild::FetchDoc => e.u8(3),
+            ToChild::Fonts(fonts) => {
+                e.u8(5);
+                e.u64(fonts.len() as u64);
+                for font in fonts {
+                    put_font(&mut e, font);
+                }
+            }
             ToChild::Answer(AnswerWire(answer)) => {
                 e.u8(4);
                 match answer {
@@ -453,6 +488,14 @@ impl ToChild {
                 turn: Turn::decode(&mut d)?,
             },
             3 => ToChild::FetchDoc,
+            5 => {
+                let n = d.count()?;
+                let mut fonts = Vec::with_capacity(n);
+                for _ in 0..n {
+                    fonts.push(get_font(&mut d)?);
+                }
+                ToChild::Fonts(fonts)
+            }
             4 => ToChild::Answer(AnswerWire(match d.u8()? {
                 0 => Answer::Text(d.opt_str()?),
                 2 => Answer::Image(match d.u8()? {
@@ -558,16 +601,7 @@ impl FromChild {
                 }
                 e.u64(done.loaded_fonts.len() as u64);
                 for font in &done.loaded_fonts {
-                    e.str(&font.family);
-                    e.u32(u32::from(font.weight_min));
-                    e.u32(u32::from(font.weight_max));
-                    e.bool(font.italic);
-                    e.u64(font.ranges.len() as u64);
-                    for (a, b) in &font.ranges {
-                        e.u32(*a);
-                        e.u32(*b);
-                    }
-                    e.bytes(&font.bytes);
+                    put_font(&mut e, font);
                 }
                 e.bool(done.scroll_to.is_some());
                 e.f64(done.scroll_to.unwrap_or(0.0));
@@ -654,23 +688,7 @@ impl FromChild {
                 let n = d.count()?;
                 let mut loaded_fonts = Vec::with_capacity(n);
                 for _ in 0..n {
-                    let family = d.str()?;
-                    let weight_min = d.u32()? as u16;
-                    let weight_max = d.u32()? as u16;
-                    let italic = d.bool()?;
-                    let m = d.count()?;
-                    let mut ranges = Vec::with_capacity(m);
-                    for _ in 0..m {
-                        ranges.push((d.u32()?, d.u32()?));
-                    }
-                    loaded_fonts.push(crate::fonts::ScriptFont {
-                        family,
-                        weight_min,
-                        weight_max,
-                        italic,
-                        ranges,
-                        bytes: d.bytes()?,
-                    });
+                    loaded_fonts.push(get_font(&mut d)?);
                 }
                 FromChild::Done(Box::new(ChildDone {
                     dirty,
@@ -794,6 +812,10 @@ mod tests {
             },
             ToChild::Doc(vec![]),
             ToChild::FetchDoc,
+            ToChild::Fonts(vec![crate::fonts::ScriptFont {
+                family: "x".into(), weight_min: 400, weight_max: 700, italic: false,
+                ranges: vec![(1, 2)], bytes: vec![9, 8, 7],
+            }]),
             ToChild::Answer(AnswerWire(Answer::Text(Some("block".into())))),
             ToChild::Answer(AnswerWire(Answer::Text(None))),
             ToChild::Answer(AnswerWire(Answer::Image(Some(picture(3, 2, 9))))),

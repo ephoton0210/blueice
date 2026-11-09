@@ -219,6 +219,9 @@ fn serve(stream: UnixStream) -> io::Result<()> {
                     host.with_state(|s| s.doc = doc);
                 }
             }
+            ToChild::Fonts(fonts) => {
+                host.with_state(|s| s.script_fonts = crate::fonts::FontCatalog::from_script_view(&fonts));
+            }
             ToChild::FetchDoc => {
                 // The journal travels with the document and starts over, so the page
                 // sees each change once.

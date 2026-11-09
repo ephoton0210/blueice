@@ -205,6 +205,9 @@ impl Page {
     /// the document out (the page waits for it); otherwise the scripts get a
     /// copy and the page keeps painting from its own.
     fn web_handoff(&mut self, lend: bool) -> Handoff {
+        let fonts = (self.linked_fonts.generation() != self.web_fonts_sent)
+            .then(|| self.linked_fonts.script_view());
+        self.web_fonts_sent = self.linked_fonts.generation();
         let lent_state = self.web.as_ref().is_none_or(ScriptWorker::is_lent_state);
         if !lent_state {
             // A process holds its own document and asks about styles and pictures when it
@@ -225,6 +228,7 @@ impl Page {
                 images: HashMap::new(),
                 viewport: (self.viewport_width, self.viewport_height),
                 url: self.url.clone(),
+                fonts,
             };
         }
         let mut rects = HashMap::new();
@@ -245,6 +249,7 @@ impl Page {
             images: self.images.content.clone(),
             viewport: (self.viewport_width, self.viewport_height),
             url: self.url.clone(),
+            fonts,
         }
     }
 
@@ -690,6 +695,7 @@ impl Page {
             eprintln!("DIAG realm created in {:?}", created.elapsed());
         }
         self.web = Some(worker);
+        self.web_fonts_sent = 0;
         self.web_force_relayout = true;
         self.web_turn(Turn::Startup(Startup {
             scripts: scripts
