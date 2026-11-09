@@ -74,3 +74,18 @@ fn a_character_the_face_lacks_is_still_drawn_from_the_bundled_fonts() {
     let (left, _, right, _) = ink(&text(Some(face), "中"));
     assert!(right > left + 10, "the CJK character is drawn by the fallback: {left}..{right}");
 }
+
+#[test]
+fn a_set_of_faces_is_drawn_character_by_character() {
+    const BOLD: &[u8] = include_bytes!("../../font/tests/data/roboto-latin-700.woff2");
+    let regular = blueice_font::web::register(ROBOTO).unwrap();
+    let bold = blueice_font::web::register(BOLD).unwrap();
+    // `A` from the bold face, everything else from the regular one.
+    let set = blueice_font::web::register_set(&[(bold, vec![(0x41, 0x41)]), (regular, vec![])]).unwrap();
+    let drawn = |face: u32, string: &str| rasterize(&text(Some(face), string));
+    // `a` is in no bold range: the set draws it exactly as the regular face does.
+    assert_eq!(drawn(set.as_u32(), "a"), drawn(regular.as_u32(), "a"));
+    // `A` is the bold face's: drawn exactly as the bold face does, and not as the regular one.
+    assert_eq!(drawn(set.as_u32(), "A"), drawn(bold.as_u32(), "A"));
+    assert_ne!(drawn(set.as_u32(), "A"), drawn(regular.as_u32(), "A"));
+}

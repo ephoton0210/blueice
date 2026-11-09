@@ -96,3 +96,72 @@ fn line_metrics_follow_the_face() {
     assert!((a - ba).abs() > 0.01 || (d - bd).abs() > 0.01, "{a},{d} vs {ba},{bd}");
     assert_eq!(ascent_descent_in(16.0, false, false, None), (ba, bd));
 }
+
+#[test]
+fn a_set_of_faces_draws_each_character_with_the_first_member_whose_range_covers_it() {
+    let upper_face = web::register(WOFF2).unwrap();
+    let lower_face = web::register(WOFF2_BOLD).unwrap();
+    let set = web::register_set(&[
+        (upper_face, vec![(0x41, 0x5A)]),
+        (lower_face, vec![(0x61, 0x7A)]),
+    ])
+    .unwrap();
+    let upper = web::get(upper_face).unwrap();
+    let lower = web::get(lower_face).unwrap();
+    assert!(std::ptr::eq(font_for_char_in('A', false, false, Some(set)), upper));
+    assert!(std::ptr::eq(font_for_char_in('b', false, false, Some(set)), lower));
+    // Outside every range, a digit both faces have a glyph for: the bundled font draws it.
+    assert!(std::ptr::eq(
+        font_for_char_in('7', false, false, Some(set)),
+        font_for_char('7', false, false)
+    ));
+    // Widths follow the same choice, character by character.
+    let expected = font_for_char_in('A', false, false, Some(set)).metrics('A', 16.0).advance_width
+        + font_for_char_in('b', false, false, Some(set)).metrics('b', 16.0).advance_width;
+    assert!((measure_text_width_in("Ab", 16.0, false, false, Some(set)) - f64::from(expected)).abs() < 1e-6);
+}
+
+#[test]
+fn overlapping_ranges_go_to_the_member_listed_first_and_an_empty_range_covers_everything() {
+    let a = web::register(WOFF2).unwrap();
+    let b = web::register(WOFF2_BOLD).unwrap();
+    let first_wins = web::register_set(&[(b, vec![(0x41, 0x7A)]), (a, vec![])]).unwrap();
+    assert!(std::ptr::eq(font_for_char_in('k', false, false, Some(first_wins)), web::get(b).unwrap()));
+    // A character in no range of the first member falls to the member with no range at all.
+    assert!(std::ptr::eq(font_for_char_in('7', false, false, Some(first_wins)), web::get(a).unwrap()));
+}
+
+#[test]
+fn a_member_in_range_that_lacks_the_glyph_leaves_the_character_to_the_next_member_then_the_bundled_fonts() {
+    let roboto = web::register(WOFF2).unwrap();
+    let dejavu = web::register(TTF).unwrap();
+    // `中` is in both ranges but neither face has it: the bundled CJK fallback draws it.
+    let set = web::register_set(&[(roboto, vec![(0x4E00, 0x9FFF)]), (dejavu, vec![(0x4E00, 0x9FFF)])]).unwrap();
+    assert!(std::ptr::eq(
+        font_for_char_in('中', false, false, Some(set)),
+        font_for_char('中', false, false)
+    ));
+}
+
+#[test]
+fn a_set_of_one_member_with_no_range_is_that_face_and_equal_sets_are_one_set() {
+    let a = web::register(WOFF2).unwrap();
+    assert_eq!(web::register_set(&[(a, vec![])]), Some(a));
+    let b = web::register(WOFF2_BOLD).unwrap();
+    let one = web::register_set(&[(a, vec![(1, 2)]), (b, vec![])]).unwrap();
+    let two = web::register_set(&[(a, vec![(1, 2)]), (b, vec![])]).unwrap();
+    assert_eq!(one, two);
+    assert_ne!(one, web::register_set(&[(b, vec![]), (a, vec![(1, 2)])]).unwrap(), "order matters");
+    assert!(web::register_set(&[]).is_none());
+}
+
+#[test]
+fn line_metrics_of_a_set_come_from_the_member_that_covers_ordinary_latin_text() {
+    let latin = web::register(WOFF2).unwrap();
+    let other = web::register(TTF).unwrap();
+    let set = web::register_set(&[(other, vec![(0x400, 0x4FF)]), (latin, vec![(0x0, 0xFF)])]).unwrap();
+    assert_eq!(
+        ascent_descent_in(16.0, false, false, Some(set)),
+        ascent_descent_in(16.0, false, false, Some(latin))
+    );
+}

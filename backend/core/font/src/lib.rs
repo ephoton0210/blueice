@@ -131,10 +131,8 @@ pub fn font_for_char_in(
     italic: bool,
     face: Option<web::WebFontId>,
 ) -> &'static fontdue::Font {
-    if let Some(font) = face.and_then(web::get) {
-        if font.has_glyph(c) {
-            return font;
-        }
+    if let Some(font) = face.and_then(|id| web::font_for(id, c)) {
+        return font;
     }
     font_for_char(c, bold, italic)
 }

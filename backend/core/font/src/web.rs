@@ -24,7 +24,9 @@ const MAX_FACES: usize = 256;
 /// Decoded bytes registered over the life of the process.
 const MAX_TOTAL_BYTES: usize = 96 * 1024 * 1024;
 
-/// A registered face.
+/// What text is drawn with: one registered face, or a set of faces each covering part of the
+/// code points (a family split by `unicode-range`, and the families after it in a `font-family`
+/// list). One face is the set of that face alone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct WebFontId(u32);
 
@@ -39,10 +41,27 @@ impl WebFontId {
     }
 }
 
+/// One member of a set: a face (an index into the registry's faces) and the code points it
+/// covers (empty: all of them).
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct Member {
+    face: u32,
+    ranges: Vec<(u32, u32)>,
+}
+
+impl Member {
+    fn covers(&self, c: char) -> bool {
+        self.ranges.is_empty() || self.ranges.iter().any(|&(lo, hi)| lo <= c as u32 && c as u32 <= hi)
+    }
+}
+
 #[derive(Default)]
 struct Registry {
+    /// Faces by content, to the set that holds that face alone.
     by_content: HashMap<u64, u32>,
     faces: Vec<&'static fontdue::Font>,
+    sets: Vec<Vec<Member>>,
+    by_members: HashMap<Vec<Member>, u32>,
     bytes: usize,
 }
 
@@ -97,14 +116,75 @@ fn register_unguarded(bytes: &[u8]) -> Option<WebFontId> {
     if known.faces.len() >= MAX_FACES || known.bytes + size > MAX_TOTAL_BYTES {
         return None;
     }
-    let id = u32::try_from(known.faces.len()).ok()?;
+    let face = u32::try_from(known.faces.len()).ok()?;
     known.faces.push(Box::leak(Box::new(font)));
+    let members = vec![Member { face, ranges: Vec::new() }];
+    let id = u32::try_from(known.sets.len()).ok()?;
+    known.sets.push(members.clone());
+    known.by_members.insert(members, id);
     known.by_content.insert(key, id);
     known.bytes += size;
     Some(WebFontId(id))
 }
 
-/// The face registered under `id`.
+/// Sets registered over the life of the process.
+const MAX_SETS: usize = 4096;
+
+/// Registers the set of `members` in priority order (the first member that covers a character
+/// and has a glyph for it draws it): each is a registered face and the code point ranges it
+/// covers, none meaning all. Equal sets are one set; a set of one member with no range is that
+/// member's own id. `None` for no members or past the bound.
+pub fn register_set(members: &[(WebFontId, Vec<(u32, u32)>)]) -> Option<WebFontId> {
+    if members.is_empty() {
+        return None;
+    }
+    let mut known = registry().lock().ok()?;
+    let mut resolved = Vec::with_capacity(members.len());
+    for (id, ranges) in members {
+        // A member is a face; if the id given is itself a set, its first member is the face.
+        let face = known.sets.get(id.0 as usize)?.first()?.face;
+        let mut ranges = ranges.clone();
+        ranges.sort_unstable();
+        resolved.push(Member { face, ranges });
+    }
+    if let [only] = resolved.as_slice() {
+        if only.ranges.is_empty() {
+            return known
+                .by_members
+                .get(&resolved)
+                .copied()
+                .map(WebFontId);
+        }
+    }
+    if let Some(&id) = known.by_members.get(&resolved) {
+        return Some(WebFontId(id));
+    }
+    if known.sets.len() >= MAX_SETS {
+        return None;
+    }
+    let id = u32::try_from(known.sets.len()).ok()?;
+    known.sets.push(resolved.clone());
+    known.by_members.insert(resolved, id);
+    Some(WebFontId(id))
+}
+
+/// The face a set is measured by for line metrics: the first member that covers ordinary Latin
+/// text, else the first member.
 pub fn get(id: WebFontId) -> Option<&'static fontdue::Font> {
-    registry().lock().ok()?.faces.get(id.0 as usize).copied()
+    let known = registry().lock().ok()?;
+    let members = known.sets.get(id.0 as usize)?;
+    let primary = members.iter().find(|m| m.covers('a')).or_else(|| members.first())?;
+    known.faces.get(primary.face as usize).copied()
+}
+
+/// The face of set `id` that draws `c`: the first member covering `c` that has a glyph for it.
+pub fn font_for(id: WebFontId, c: char) -> Option<&'static fontdue::Font> {
+    let known = registry().lock().ok()?;
+    known
+        .sets
+        .get(id.0 as usize)?
+        .iter()
+        .filter(|m| m.covers(c))
+        .filter_map(|m| known.faces.get(m.face as usize).copied())
+        .find(|f| f.has_glyph(c))
 }

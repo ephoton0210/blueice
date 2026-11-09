@@ -846,7 +846,12 @@ covers Latin, and records it as `-blueice-web-font` on the style. Layout measure
 face (`measure_text_width_in`, `ascent_descent_in`), `PaintCommand::Text` carries it as `face`, and the
 rasterizer draws with it, taking the baseline from the face's own ascent and a character the face lacks
 from the bundled fonts. Fonts load before the first paint (`font-display: swap` has nothing to swap to).
-Not built: per-character `unicode-range` selection across several faces, variable-font axes (a variable
+`unicode-range` is honoured per character: what an element's `-blueice-web-font` names is a *set* of
+faces (`blueice_font::web::register_set`; one face is the set of itself), each with the ranges it covers --
+for each family in the list that the page has faces for, the faces of its best style and weight, the one
+declared last first, then the next web family, up to a system or generic family -- and every character is
+measured and drawn by the first member whose range covers it and that has a glyph for it, else the bundled
+fonts; line metrics come from the member covering Latin. Not built: variable-font axes (a variable
 face draws at its default instance), synthetic bold/italic for a missing weight, `local()` sources,
 `@font-face` inside `@media`, the `FontFace` and `document.fonts.load` APIs actually loading anything,
 canvas `ctx.font`, and font fallback for native form controls (they keep the bundled fonts).

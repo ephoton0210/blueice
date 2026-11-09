@@ -71,19 +71,22 @@ impl FontCatalog {
         self.families.is_empty()
     }
 
-    /// The face for text with this `font-family` list (lowercased, comma separated), weight and
-    /// style: the first family the page has a face for, unless a system family comes first.
+    /// What text with this `font-family` list (lowercased, comma separated), weight and style is
+    /// drawn with: for each family the page has faces for, the faces of its best-matching style
+    /// and weight, those declared last first; the families after the first join the set so they
+    /// cover what the earlier ones do not. A system or generic family ends the list (the system
+    /// font draws the rest), and a list the page has no face for is `None`.
     pub(crate) fn face_for(&self, families: &str, weight: u16, italic: bool) -> Option<WebFontId> {
+        let mut members: Vec<(WebFontId, Vec<(u32, u32)>)> = Vec::new();
         for family in families.split(',') {
             let family = family.trim();
             if let Some(faces) = self.families.get(family) {
-                return pick(faces, weight, italic);
-            }
-            if SYSTEM_FAMILIES.contains(&family) {
-                return None;
+                members.extend(best_faces(faces, weight, italic));
+            } else if SYSTEM_FAMILIES.contains(&family) {
+                break;
             }
         }
-        None
+        blueice_font::web::register_set(&members)
     }
 
     fn add(&mut self, family: &str, face: CatalogFace) {
@@ -100,25 +103,25 @@ fn weight_distance(face: &CatalogFace, weight: u16) -> u16 {
     }
 }
 
-/// CSS font matching, simplified: the right style first, then the nearest weight; among faces
-/// of a family split by `unicode-range`, the one that covers ordinary Latin text.
-fn pick(faces: &[CatalogFace], weight: u16, italic: bool) -> Option<WebFontId> {
-    let covers_latin = |f: &CatalogFace| {
-        f.ranges.is_empty() || f.ranges.iter().any(|&(lo, hi)| lo <= 0x61 && 0x61 <= hi)
+/// CSS font matching, simplified: the style first, then the nearest weight (the heavier for a
+/// bold request between equally near ones). Every face of the family with that style and weight
+/// range is returned, the one declared last first, with the code points it covers.
+fn best_faces(faces: &[CatalogFace], weight: u16, italic: bool) -> Vec<(WebFontId, Vec<(u32, u32)>)> {
+    let Some(best) = faces.iter().min_by_key(|f| {
+        (
+            u8::from(f.italic != italic),
+            weight_distance(f, weight),
+            if weight > 400 { u16::MAX - f.weight_max } else { f.weight_min },
+        )
+    }) else {
+        return Vec::new();
     };
     faces
         .iter()
-        .filter(|f| covers_latin(f))
-        .min_by_key(|f| {
-            (
-                u8::from(f.italic != italic),
-                weight_distance(f, weight),
-                // Between equally near weights, the heavier for a bold request.
-                if weight > 400 { u16::MAX - f.weight_max } else { f.weight_min },
-            )
-        })
-        .or_else(|| faces.first())
-        .map(|f| f.id)
+        .rev()
+        .filter(|f| (f.italic, f.weight_min, f.weight_max) == (best.italic, best.weight_min, best.weight_max))
+        .map(|f| (f.id, f.ranges.clone()))
+        .collect()
 }
 
 /// The stylesheet texts of a page with the address each resolves its `url()`s against.
@@ -456,16 +459,82 @@ mod tests {
         assert_eq!(asked.load(Ordering::SeqCst), 5);
     }
 
+    /// The address of the face that draws `ch` for text in `families` (faces are compared by
+    /// identity).
+    fn drawn_by(c: &FontCatalog, families: &str, ch: char) -> usize {
+        let font = blueice_font::font_for_char_in(ch, false, false, c.face_for(families, 400, false));
+        std::ptr::from_ref(font) as usize
+    }
+
+    fn font_of(id: WebFontId) -> usize {
+        std::ptr::from_ref(blueice_font::web::get(id).unwrap()) as usize
+    }
+
+    fn bundled(ch: char) -> usize {
+        std::ptr::from_ref(blueice_font::font_for_char(ch, false, false)) as usize
+    }
+
     #[test]
-    fn faces_split_by_unicode_range_choose_the_one_that_covers_latin() {
+    fn a_family_split_by_unicode_range_draws_each_character_with_the_face_that_covers_it() {
         let html = format!(
             "<style>\
-             @font-face {{ font-family: s; src: url({}); unicode-range: U+0400-04FF; }}\
-             @font-face {{ font-family: s; src: url({}); unicode-range: U+0000-00FF; }}</style>",
+             @font-face {{ font-family: s; src: url({}); unicode-range: U+0041-005A; }}\
+             @font-face {{ font-family: s; src: url({}); unicode-range: U+0061-007A; }}</style>",
             data_url(BOLD, "font/woff2"),
             data_url(REGULAR, "font/woff2")
         );
-        assert_eq!(catalog(&html).face_for("s", 400, false), Some(id_of(REGULAR)));
+        let c = catalog(&html);
+        assert_eq!(drawn_by(&c, "s", 'A'), font_of(id_of(BOLD)));
+        assert_eq!(drawn_by(&c, "s", 'a'), font_of(id_of(REGULAR)));
+        assert_eq!(drawn_by(&c, "s", '7'), bundled('7'), "covered by no face: the bundled font");
+    }
+
+    #[test]
+    fn where_ranges_overlap_the_face_declared_last_draws_the_character() {
+        let html = format!(
+            "<style>\
+             @font-face {{ font-family: s; src: url({}); }}\
+             @font-face {{ font-family: s; src: url({}); unicode-range: U+0041-005A; }}</style>",
+            data_url(REGULAR, "font/woff2"),
+            data_url(BOLD, "font/woff2")
+        );
+        let c = catalog(&html);
+        assert_eq!(drawn_by(&c, "s", 'A'), font_of(id_of(BOLD)));
+        assert_eq!(drawn_by(&c, "s", 'a'), font_of(id_of(REGULAR)));
+    }
+
+    #[test]
+    fn the_families_after_the_first_cover_what_it_does_not_until_a_system_family() {
+        let html = format!(
+            "<style>\
+             @font-face {{ font-family: fa; src: url({}); unicode-range: U+0041-005A; }}\
+             @font-face {{ font-family: fb; src: url({}); }}</style>",
+            data_url(BOLD, "font/woff2"),
+            data_url(REGULAR, "font/woff2")
+        );
+        let c = catalog(&html);
+        assert_eq!(drawn_by(&c, "fa,fb", 'A'), font_of(id_of(BOLD)));
+        assert_eq!(drawn_by(&c, "fa,fb", 'a'), font_of(id_of(REGULAR)), "fb covers what fa does not");
+        // A system family in between: the later web family is not reached.
+        assert_eq!(drawn_by(&c, "fa,sans-serif,fb", 'a'), bundled('a'));
+        // A family alone is its own face.
+        assert_eq!(c.face_for("fb", 400, false), Some(id_of(REGULAR)));
+    }
+
+    #[test]
+    fn faces_of_other_weights_stay_out_of_the_set_of_the_best_weight() {
+        let html = format!(
+            "<style>\
+             @font-face {{ font-family: w; src: url({}); font-weight: 400; unicode-range: U+0041-005A; }}\
+             @font-face {{ font-family: w; src: url({}); font-weight: 700; unicode-range: U+0061-007A; }}</style>",
+            data_url(REGULAR, "font/woff2"),
+            data_url(BOLD, "font/woff2")
+        );
+        let c = catalog(&html);
+        let at400 = c.face_for("w", 400, false);
+        let addr = |ch| std::ptr::from_ref(blueice_font::font_for_char_in(ch, false, false, at400)) as usize;
+        assert_eq!(addr('A'), font_of(id_of(REGULAR)));
+        assert_eq!(addr('a'), bundled('a'), "the 700 face is not part of the 400 set");
     }
 
     fn page_with_fonts(html: &str) -> crate::Page {
@@ -514,6 +583,30 @@ mod tests {
         let x_of = |word: &str| got.iter().find(|(t, ..)| t == word).map(|r| r.2).unwrap();
         let own = |t: &str| blueice_font::measure_text_width_in(t, 16.0, false, false, Some(id_of(REGULAR)));
         assert!((x_of("world") - x_of("Hello") - own("Hello") - own(" ")).abs() < 0.01);
+    }
+
+    #[test]
+    fn a_page_lays_out_text_character_by_character_across_the_faces_of_a_split_family() {
+        let html = format!(
+            "<style>\
+             @font-face {{ font-family: s; src: url({}); unicode-range: U+0041-005A; }}\
+             @font-face {{ font-family: s; src: url({}); unicode-range: U+0061-007A, U+0020; }}\
+             body {{ margin: 0 }} p {{ margin: 0; font-family: s }}</style><body><p>Ab cd</p></body>",
+            data_url(BOLD, "font/woff2"),
+            data_url(REGULAR, "font/woff2")
+        );
+        let page = page_with_fonts(&html);
+        let set = page.linked_fonts.face_for("s", 400, false);
+        assert!(set.is_some());
+        let got = runs(&page);
+        assert_eq!(got.iter().map(|r| r.1).collect::<Vec<_>>(), [set.map(WebFontId::as_u32); 2]);
+        let x_of = |word: &str| got.iter().find(|(t, ..)| t == word).map(|r| r.2).unwrap();
+        let w = |t: &str| blueice_font::measure_text_width_in(t, 16.0, false, false, set);
+        assert!((x_of("cd") - (w("Ab") + w(" "))).abs() < 0.01, "{}", x_of("cd"));
+        // The mixed word is wider than the same letters in either single face.
+        let single = |id| blueice_font::measure_text_width_in("Ab", 16.0, false, false, Some(id));
+        let mixed = w("Ab");
+        assert!(mixed != single(id_of(BOLD)) && mixed != single(id_of(REGULAR)));
     }
 
     #[test]
