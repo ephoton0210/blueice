@@ -64,6 +64,12 @@ pub enum PaintCommand {
     PushClip {
         rect: Rect,
     },
+    /// Like `PushClip`, with rounded corners (`overflow` clipping on a box with
+    /// `border-radius`). Closed by the same `PopClip`.
+    PushRoundClip {
+        rect: Rect,
+        radii: Radii,
+    },
     PopClip,
     /// A solid-filled rectangle (a box's `background-color`).
     Rect {
@@ -188,6 +194,11 @@ pub fn dump_frame(frame: &Frame) -> String {
     for command in &frame.commands {
         match command {
             PaintCommand::PushClip { rect } => out.push_str(&format!("clip {}\n", fmt_rect(*rect))),
+            PaintCommand::PushRoundClip { rect, radii } => out.push_str(&format!(
+                "roundclip {} {}\n",
+                fmt_rect(*rect),
+                fmt_radii(radii)
+            )),
             PaintCommand::PopClip => out.push_str("endclip\n"),
             PaintCommand::Rect { rect, color } => {
                 out.push_str(&format!("rect {} {}\n", fmt_rect(*rect), fmt_color(*color)))
@@ -932,7 +943,15 @@ fn paint_fragment(
     });
     let clip = native_clip.or(overflow_clip);
     if let Some(rect) = clip {
-        out.push(PaintCommand::PushClip { rect });
+        // A box that clips and has rounded corners clips its content to them.
+        let radii = overflow_clip
+            .zip(own_style)
+            .map(|(rect, style)| corner_radii(style, rect))
+            .filter(|radii| radii.iter().any(|(rx, ry)| *rx > 0.0 && *ry > 0.0));
+        match radii {
+            Some(radii) => out.push(PaintCommand::PushRoundClip { rect, radii }),
+            None => out.push(PaintCommand::PushClip { rect }),
+        }
     }
     let form = match &fragment.kind {
         FragmentKind::NativeControl { form, .. } => form.as_ref(),
@@ -1776,6 +1795,24 @@ mod tests {
         let text = dump.find("text ").unwrap();
         let endclip = dump.find("endclip").unwrap();
         assert!(clip < text && text < endclip);
+    }
+
+    #[test]
+    fn overflow_hidden_with_a_border_radius_clips_its_children_to_the_rounded_box() {
+        let frame = paint_html(
+            "<div class=a><p>x</p></div><div class=b><p>y</p></div>",
+            ".a { overflow: hidden; border-radius: 10px; width: 50px; height: 30px; } \
+             .b { overflow: hidden; width: 50px; height: 30px; }",
+            200.0,
+        );
+        let dump = dump_frame(&frame);
+        assert!(
+            dump.contains("roundclip 0.0,0.0 50.0x30.0 10.0x10.0/10.0x10.0/10.0x10.0/10.0x10.0"),
+            "{dump}"
+        );
+        // A square box still uses the plain clip.
+        assert!(dump.contains("\nclip 0.0,30.0 50.0x30.0"), "{dump}");
+        assert_eq!(dump.matches("endclip").count(), 2, "{dump}");
     }
 
     #[test]

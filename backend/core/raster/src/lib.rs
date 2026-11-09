@@ -69,6 +69,8 @@ impl PixelClip {
     }
 }
 
+mod round_clip;
+
 const BACKGROUND: [u8; 4] = [255, 255, 255, 255];
 
 struct TextRun<'a> {
@@ -236,15 +238,26 @@ pub fn rasterize(frame: &Frame) -> Pixmap {
         bottom: i64::from(pixmap.height),
     };
     let mut clips = Vec::new();
+    // One entry per open clip: what a rounded clip must restore when it closes.
+    let mut rounds: Vec<Option<round_clip::Corners>> = Vec::new();
     for command in &frame.commands {
         match command {
             PaintCommand::PushClip { rect } => {
+                clips.push(clip);
+                rounds.push(None);
+                clip = clip.intersect(*rect);
+            }
+            PaintCommand::PushRoundClip { rect, radii } => {
+                rounds.push(round_clip::Corners::save(&pixmap, *rect, radii));
                 clips.push(clip);
                 clip = clip.intersect(*rect);
             }
             PaintCommand::PopClip => {
                 if let Some(previous) = clips.pop() {
                     clip = previous;
+                }
+                if let Some(Some(corners)) = rounds.pop() {
+                    corners.restore_outside_the_arcs(&mut pixmap);
                 }
             }
             PaintCommand::Rect { rect, color } => {
@@ -369,6 +382,10 @@ fn rasterize_viewport_culled(
         .cloned()
         .map(|command| match command {
             PaintCommand::PushClip { rect: r } => PaintCommand::PushClip { rect: rect(r) },
+            PaintCommand::PushRoundClip { rect: r, radii } => PaintCommand::PushRoundClip {
+                rect: rect(r),
+                radii: scale_radii(radii, scale),
+            },
             PaintCommand::PopClip => PaintCommand::PopClip,
             PaintCommand::Rect { rect: r, color } => PaintCommand::Rect {
                 rect: rect(r),
@@ -466,7 +483,9 @@ fn may_reach_band(command: &PaintCommand, top: f64, bottom: f64) -> bool {
     let overlaps =
         |y: f64, height: f64, margin: f64| y - margin <= bottom && y + height + margin >= top;
     match command {
-        PaintCommand::PushClip { .. } | PaintCommand::PopClip => true,
+        PaintCommand::PushClip { .. }
+        | PaintCommand::PushRoundClip { .. }
+        | PaintCommand::PopClip => true,
         PaintCommand::Rect { rect, .. }
         | PaintCommand::BorderEdge { rect, .. }
         | PaintCommand::RoundRect { rect, .. }

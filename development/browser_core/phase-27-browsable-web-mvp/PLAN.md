@@ -384,6 +384,9 @@ Progress, third slice (2026-10-28), test-first:
 - **Inline boxes** now paint their own background and border, one fragment per line.
 - **`border-radius`, `box-shadow` (outer), linear/radial gradients** as new display-list
   commands drawn with tiny-skia; inset shadows and `transform` are not painted.
+  `overflow` clipping on a box with `border-radius` is a `PushRoundClip` (closed by the same `PopClip`):
+  the rasterizer copies the four corner squares when it opens and puts back what is outside the arcs
+  (antialiased) when it closes, so no drawing operation needs to know about it.
 - **`::before`/`::after`**: pseudo-element selectors and cascade, `content` strings,
   `attr()`, quotes and hex escapes; generated boxes lay out like children. Counters
   and `url()` content generate nothing. List markers (`disc`/`circle`/`square`,
