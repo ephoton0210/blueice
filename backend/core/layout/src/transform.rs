@@ -81,11 +81,27 @@ fn axis(style: &Style<'_>, tokens: &[Token]) -> Option<Amount> {
 
 /// The space-separated values of an individual `translate` property.
 fn split_values(tokens: &[Token]) -> Vec<Vec<Token>> {
-    tokens
-        .iter()
-        .filter(|t| **t != Token::Whitespace)
-        .map(|t| vec![t.clone()])
-        .collect()
+    let mut values: Vec<Vec<Token>> = Vec::new();
+    let mut depth = 0usize;
+    let mut open = false;
+    for token in tokens {
+        match token {
+            Token::Whitespace if depth == 0 => open = false,
+            other => {
+                if !open {
+                    values.push(Vec::new());
+                    open = true;
+                }
+                match other {
+                    Token::LeftParen => depth += 1,
+                    Token::RightParen => depth = depth.saturating_sub(1),
+                    _ => {}
+                }
+                values.last_mut().expect("a value is open").push(other.clone());
+            }
+        }
+    }
+    values
 }
 
 /// The function calls in a transform list, as lowercased name and comma-separated arguments.

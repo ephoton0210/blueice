@@ -118,6 +118,7 @@ pub enum Format {
     Jpeg,
     Gif,
     WebP,
+    Avif,
     Svg,
 }
 
@@ -130,6 +131,8 @@ pub fn sniff(bytes: &[u8]) -> Option<Format> {
         Some(Format::Gif)
     } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
         Some(Format::WebP)
+    } else if blueice_avif::is_avif(bytes) {
+        Some(Format::Avif)
     } else {
         let head = &bytes[..bytes.len().min(2048)];
         let text = String::from_utf8_lossy(head);
@@ -149,6 +152,7 @@ pub fn decode(bytes: &[u8]) -> Option<RasterImage> {
         Format::Jpeg => decode_jpeg(bytes),
         Format::Gif => decode_gif(bytes),
         Format::WebP => decode_webp(bytes),
+        Format::Avif => decode_avif(bytes),
         Format::Svg => svg::render_svg(std::str::from_utf8(bytes).ok()?, None),
     }
 }
@@ -163,6 +167,12 @@ pub fn intrinsic_size(bytes: &[u8]) -> Option<(u32, u32)> {
         }
         _ => decode(bytes).map(|i| (i.width, i.height)),
     }
+}
+
+fn decode_avif(bytes: &[u8]) -> Option<RasterImage> {
+    let max = u32::try_from(MAX_PIXELS).unwrap_or(u32::MAX);
+    let decoded = blueice_avif::decode(bytes, max)?;
+    finish(decoded.width, decoded.height, decoded.rgba)
 }
 
 fn decode_png(bytes: &[u8]) -> Option<RasterImage> {
@@ -330,6 +340,18 @@ mod svg {
 
 #[cfg(test)]
 mod tests {
+    const AVIF: &[u8] = include_bytes!("../../avif/tests/data/gradient_with_alpha.avif");
+
+    #[test]
+    fn an_avif_decodes_with_its_size_and_alpha_through_the_common_entry_point() {
+        let image = decode(AVIF).expect("an AVIF decodes");
+        assert_eq!((image.width, image.height), (64, 48));
+        let alpha = |x: u32| image.rgba[((24 * image.width + x) * 4 + 3) as usize];
+        assert!(alpha(2) < 130 && alpha(40) > 240, "{} {}", alpha(2), alpha(40));
+        assert_eq!(intrinsic_size(AVIF), Some((64, 48)));
+        assert!(decode(&AVIF[..AVIF.len() / 2]).is_none());
+    }
+
     use super::*;
 
     const PNG: &[u8] = include_bytes!("../tests/fixtures/red_blue.png");
@@ -358,6 +380,7 @@ mod tests {
         assert_eq!(sniff(JPG), Some(Format::Jpeg));
         assert_eq!(sniff(GIF), Some(Format::Gif));
         assert_eq!(sniff(b"RIFF\0\0\0\0WEBPVP8 "), Some(Format::WebP));
+        assert_eq!(sniff(AVIF), Some(Format::Avif));
         assert_eq!(sniff(b"  <svg xmlns='x'/>"), Some(Format::Svg));
         assert_eq!(sniff(b"<?xml version='1.0'?><svg/>"), Some(Format::Svg));
         assert_eq!(sniff(b"<html></html>"), None);

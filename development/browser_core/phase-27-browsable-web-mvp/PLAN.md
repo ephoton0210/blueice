@@ -394,7 +394,13 @@ Progress, third slice (2026-10-28), test-first:
   rendered (the HTML parser now treats SVG as foreign content: self-closing children,
   camel-case names) with the page's colours reaching it; `<use href="file.svg#id">` of an icon
   sprite fetches the file with the images and carries the used `<symbol>`s inside the drawing;
-  a block-level `img`/`svg` takes its picture's size (attributes, CSS, `viewBox` ratio), not the container's width. Decoding is the new
+  a block-level `img`/`svg` takes its picture's size (attributes, CSS, `viewBox` ratio), not the container's width.
+  AVIF stills decode through `blueice-avif` (`avif-parse`, MPL-2.0, for the container; `rav1d` 1.1.0,
+  BSD-2-Clause, with its assembly feature off so there is no C or assembler build step, for AV1) behind a
+  safe `decode()`; all `unsafe` is in that one crate's `av1` module. `zenavif`/`rav1d-safe` were rejected
+  (AGPL-3.0). Colour only through matrix coefficients 601/709/2020 and identity, 8/10/12-bit, alpha items
+  (straight or premultiplied); no HDR tone mapping, grids or animation. `rav1d` logs to stderr on a bad file
+  (its logger callback is private). Decoding is the new
   `blueice-image` crate (SVG through `resvg`, with no text support).
 - Known limits: images are fetched before the page is shown, so a page with many large
   images appears later; `srcset` picks its first candidate and `<picture>` is ignored;

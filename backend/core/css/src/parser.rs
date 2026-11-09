@@ -901,10 +901,20 @@ fn parse_rules_in(
     depth: usize,
 ) -> Vec<Rule> {
     let mut rules = Vec::new();
+    // `@property` initial values: rules that come before every other, so any rule that sets
+    // the property wins at equal specificity.
+    let mut initial_values: Vec<Rule> = Vec::new();
     let mut i = 0;
     while i < tokens.len() {
         match &tokens[i] {
             Token::Whitespace => i += 1,
+            Token::AtKeyword(name) if name.eq_ignore_ascii_case("property") => {
+                let end = skip_at_rule(tokens, i + 1);
+                if let Some(rule) = property_initial_value_rule(&tokens[i + 1..end]) {
+                    initial_values.extend(parse_rules_in(&rule, None, depth + 1));
+                }
+                i = end;
+            }
             Token::AtKeyword(name)
                 if name.eq_ignore_ascii_case("media") && environment.is_some() =>
             {
@@ -979,7 +989,62 @@ fn parse_rules_in(
             }
         }
     }
-    rules
+    initial_values.append(&mut rules);
+    initial_values
+}
+
+/// What `@property --name { inherits: …; initial-value: …; }` means to a cascade that keeps
+/// custom properties as tokens: a rule giving the root the initial value (and, for a property
+/// that does not inherit, a marker that makes descendants of a setter return to it). `prelude_and_block` is everything after `@property`.
+/// `None` when it names no `--property` or has no initial value.
+fn property_initial_value_rule(prelude_and_block: &[Token]) -> Option<Vec<Token>> {
+    let open = prelude_and_block.iter().position(|t| *t == Token::LeftBrace)?;
+    let name = prelude_and_block[..open].iter().find_map(|t| match t {
+        Token::Ident(n) if n.starts_with("--") => Some(n.clone()),
+        _ => None,
+    })?;
+    let close = prelude_and_block.iter().rposition(|t| *t == Token::RightBrace)?;
+    if close <= open {
+        return None;
+    }
+    let mut inherits = false;
+    let mut initial: Option<Vec<Token>> = None;
+    for declaration in prelude_and_block[open + 1..close].split(|t| *t == Token::Semicolon) {
+        let declaration: Vec<Token> = declaration
+            .iter()
+            .skip_while(|t| **t == Token::Whitespace)
+            .cloned()
+            .collect();
+        let (Some(Token::Ident(property)), Some(Token::Colon)) =
+            (declaration.first(), declaration.get(1))
+        else {
+            continue;
+        };
+        let value = &declaration[2..];
+        let start = value.iter().position(|t| *t != Token::Whitespace).unwrap_or(value.len());
+        let end = value.iter().rposition(|t| *t != Token::Whitespace).map_or(start, |e| e + 1);
+        let trimmed = value[start..end].to_vec();
+        if property.eq_ignore_ascii_case("initial-value") && !trimmed.is_empty() {
+            initial = Some(trimmed);
+        } else if property.eq_ignore_ascii_case("inherits") {
+            inherits = matches!(trimmed.first(), Some(Token::Ident(v)) if v.eq_ignore_ascii_case("true"));
+        }
+    }
+    let initial = initial?;
+    // The root holds the initial value, and every element shares the root's table. A property
+    // that does not inherit also leaves a marker (see `vars`) so that the descendants of an
+    // element that sets it go back to the initial value instead of inheriting the set one.
+    let mut rule = vec![Token::Colon, Token::Ident("root".to_string()), Token::LeftBrace];
+    rule.extend([Token::Ident(name.clone()), Token::Colon]);
+    rule.extend(initial.iter().cloned());
+    rule.push(Token::Semicolon);
+    if !inherits {
+        rule.extend([Token::Ident(format!("{}{name}", crate::vars::INITIAL_PREFIX)), Token::Colon]);
+        rule.extend(initial);
+        rule.push(Token::Semicolon);
+    }
+    rule.push(Token::RightBrace);
+    Some(rule)
 }
 
 pub fn parse(input: &str) -> Vec<Rule> {

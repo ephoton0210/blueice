@@ -214,6 +214,25 @@ mod tests {
     }
 
     #[test]
+    fn a_tailwind_centering_translate_moves_the_box_by_half_its_own_width() {
+        // Tailwind v4's `-translate-x-1/2`: a custom property holds the amount, a second one
+        // (`--tw-translate-y`) has no value except its `@property` initial value, and the
+        // `translate` property joins them.
+        let mut page = Page::new(800.0, 300.0);
+        page.load_html_str(
+            "<style>\
+             @property --tw-translate-x { syntax: '*'; inherits: false; initial-value: 0; }\
+             @property --tw-translate-y { syntax: '*'; inherits: false; initial-value: 0; }\
+             .l{left:50%} .t{--tw-translate-x:calc(1/2 * -100%);translate:var(--tw-translate-x) var(--tw-translate-y)}\
+             .w{position:absolute;width:200px;height:40px} .r{position:relative;height:100px}\
+             </style><body style='margin:0'><div class=r>\
+             <svg class='w l t' viewBox='0 0 10 10'><rect width='10' height='10'/></svg></div></body>",
+            None,
+        );
+        assert_eq!(image_commands(&page), vec![(300.0, 0.0, 200.0, 40.0)]);
+    }
+
+    #[test]
     fn an_svg_without_width_or_height_takes_its_view_box_size() {
         let mut page = Page::new(400.0, 300.0);
         page.load_html_str(

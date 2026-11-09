@@ -1370,6 +1370,40 @@ mod tests {
     }
 
     #[test]
+    fn a_registered_property_has_its_initial_value_until_something_sets_it() {
+        // Tailwind v4 relies on `@property` for every `--tw-*` default.
+        let css = "@property --y { syntax: '*'; inherits: false; initial-value: 7px; }\
+                   @property --z { syntax: '*'; inherits: true; initial-value: 3px; }\
+                   @property --none { syntax: '*'; inherits: false; }\
+                   p { width: var(--y); height: var(--z); min-width: var(--none, 1px); }\
+                   .set { --y: 20px; } section { --y: 50px; --z: 9px; }";
+        let doc = blueice_html::parse("<p>a</p><p class=set>b</p><section><p>c</p></section>");
+        let ua = ua_stylesheet();
+        let author = parse(css);
+        let styles = cascade(&doc, &[(Origin::Ua, &ua), (Origin::Author, &author)]);
+        let mut widths: Vec<(u64, Value, Value, Value)> = styles
+            .iter()
+            .filter(|(n, _)| matches!(doc.data(**n), NodeData::Element { tag_name, .. } if tag_name == "p"))
+            .map(|(n, s)| {
+                (
+                    n.as_u64(),
+                    s.other["width"].clone(),
+                    s.other["height"].clone(),
+                    s.other["min-width"].clone(),
+                )
+            })
+            .collect();
+        widths.sort_by_key(|(id, ..)| *id);
+        assert_eq!(widths[0].1, px(7.0), "the initial value");
+        assert_eq!(widths[0].2, px(3.0));
+        assert_eq!(widths[0].3, px(1.0), "no initial value: the fallback");
+        assert_eq!(widths[1].1, px(20.0), "an element that sets it wins");
+        // `inherits: false`: the section's 50px does not reach its child; `inherits: true`: 9px does.
+        assert_eq!(widths[2].1, px(7.0), "not inherited");
+        assert_eq!(widths[2].2, px(9.0), "inherited");
+    }
+
+    #[test]
     fn var_cycles_make_the_property_invalid() {
         let style = style_of(
             "<p>x</p>",

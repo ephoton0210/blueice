@@ -8,6 +8,7 @@ members = [
     "backend/ecma402",
     "backend/bluets",
     "backend/bluets-bluejs",
+    "backend/core/avif",
     "backend/core/dom",
     "backend/core/html",
     "backend/core/css",
@@ -87,6 +88,10 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.blueice-engine]
 opt-level = 3
+[profile.dev.package.blueice-avif]
+opt-level = 3
+[profile.dev.package.blueice-image]
+opt-level = 3
 [profile.test.package.blueice-dom]
 opt-level = 3
 [profile.test.package.blueice-html]
@@ -102,6 +107,10 @@ opt-level = 3
 [profile.test.package.blueice-font]
 opt-level = 3
 [profile.test.package.blueice-engine]
+opt-level = 3
+[profile.test.package.blueice-avif]
+opt-level = 3
+[profile.test.package.blueice-image]
 opt-level = 3
 
 [profile.dev.package.regress]

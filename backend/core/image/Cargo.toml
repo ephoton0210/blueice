@@ -9,6 +9,7 @@ png = "0.17"
 jpeg-decoder = "0.3"
 gif = "0.13"
 image-webp = "0.2"
+blueice-avif = { path = "../avif" }
 resvg = { version = "0.45", default-features = false, optional = true }
 
 [features]

@@ -13,6 +13,14 @@ use std::collections::{HashMap, HashSet};
 
 pub(crate) type CustomProperties = HashMap<String, Vec<Token>>;
 
+/// Prefix of the marker entries `@property` leaves in the root's table for a property that does
+/// not inherit: `INITIAL_PREFIX + "--name"` holds that property's initial value.
+pub(crate) const INITIAL_PREFIX: &str = "--bi-initial:";
+
+/// Present in a table whose element set such a property itself: its descendants must not
+/// inherit that value.
+const DIRTY: &str = "--bi-dirty";
+
 /// An element's resolved table, shared with every descendant that sets none of its own
 /// (the common case; a Tailwind page defines hundreds in `:root`).
 pub(crate) type SharedCustomProperties = std::sync::Arc<CustomProperties>;
@@ -109,10 +117,24 @@ pub(crate) fn resolve(
     inherited: &SharedCustomProperties,
     own: HashMap<String, Vec<Token>>,
 ) -> SharedCustomProperties {
-    if own.is_empty() {
+    let dirty = inherited.contains_key(DIRTY);
+    if own.is_empty() && !dirty {
         return std::sync::Arc::clone(inherited);
     }
     let mut result: CustomProperties = (**inherited).clone();
+    if dirty {
+        // The parent set a property that does not inherit: back to its initial value here.
+        result.remove(DIRTY);
+        for (key, initial) in inherited.iter() {
+            if let Some(name) = key.strip_prefix(INITIAL_PREFIX) {
+                result.insert(name.to_string(), initial.clone());
+            }
+        }
+    }
+    let inherited = &result.clone();
+    let sets_uninherited = own
+        .keys()
+        .any(|name| inherited.contains_key(&format!("{INITIAL_PREFIX}{name}")));
     let mut resolved: HashMap<String, Option<Vec<Token>>> = HashMap::new();
     // In name order: which chains are too deep to trust must not depend on the
     // map's iteration order.
@@ -130,6 +152,9 @@ pub(crate) fn resolve(
                 result.remove(&name);
             }
         }
+    }
+    if sets_uninherited {
+        result.insert(DIRTY.to_string(), vec![Token::Number(1.0)]);
     }
     std::sync::Arc::new(result)
 }
