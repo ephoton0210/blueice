@@ -1,0 +1,534 @@
+{
+  "schema": 1,
+  "acceptedAt": "2026-11-09T08:32:24.144882+00:00",
+  "scope": "Completed behavior-preserving decorator/page-runtime modularization; complete Native/local/Windows regression evidence",
+  "sourceRevision": "backend-tree:ad7f2dc43c2b7f2eefcaadf97312ee7d8da68fb3",
+  "sourceGraphSha256": "37d691679d5db38a16cad174f52e03fae4259fcd936ee536a314308fde90a54e",
+  "baselineCommit": "d5d7820e0ff43930ac14ad9ab4771cd19d099703",
+  "modules": {
+    "commit": "d5d7820e0ff43930ac14ad9ab4771cd19d099703",
+    "files": {
+      "backend/bluets-bluejs/src/tests/page_runtime.rs": {
+        "sha256": "2f2af4004c7ccd1f432d4c3349fe5de0a941652812553d197df2022940a1071b",
+        "lines": 1688,
+        "testNames": [
+          "direct_script_uses_the_page_realms_exact_generation_and_static_metadata",
+          "direct_page_classes_construct_call_methods_inherit_and_use_super",
+          "direct_page_class_fields_initialize_in_order_and_run_like_node",
+          "direct_page_class_field_initializers_map_to_the_original_class",
+          "direct_page_private_and_protected_members_run_like_node",
+          "direct_page_parameter_properties_assign_after_super_like_node",
+          "direct_page_accessors_get_set_static_and_inherit_like_node",
+          "direct_page_private_names_fields_methods_accessors_and_brand_checks_run_like_node",
+          "direct_page_static_blocks_and_fields_initialize_in_source_order_like_node",
+          "direct_page_assign_semantics_lowers_fields_like_typescript_and_node",
+          "direct_page_define_semantics_keeps_the_field_that_assign_semantics_drops",
+          "direct_routes_refuse_what_an_enum_lowering_cannot_inline",
+          "direct_page_while_runs_zero_and_multiple_iterations",
+          "direct_page_callback_method_overloads_run_both_tags_through_one_object_function",
+          "direct_page_callback_method_debug_frame_expires_after_navigation",
+          "direct_page_optional_dot_read_short_circuits_null_and_undefined_receivers",
+          "direct_page_optional_dot_read_debugger_provenance_expires_on_navigation",
+          "direct_page_try_catches_exact_value_and_restores_outer_binding_in_finally",
+          "direct_page_try_finally_preserves_or_replaces_normal_return_and_throw",
+          "direct_page_try_finally_throw_overrides_return_and_catch_rethrow_escapes",
+          "direct_page_try_cannot_catch_or_override_a_fatal_instruction_limit",
+          "direct_page_immutable_typeof_guard_runs_both_branches_and_early_completion",
+          "direct_page_typeof_guard_preserves_throw_and_executes_mutable_and_parameters",
+          "direct_page_while_runs_inside_an_existing_braced_if_branch",
+          "direct_page_while_preserves_return_and_throw_completion",
+          "direct_page_endless_while_exhausts_its_vm_instruction_budget",
+          "direct_page_while_loopback_keeps_its_live_source_map_and_nested_frame",
+          "direct_page_try_nested_safe_points_expire_with_the_page_generation",
+          "direct_page_typeof_guard_keeps_live_nested_provenance_and_rejects_stale_frames",
+          "direct_script_keeps_ambient_host_typings_static_without_making_them_a_program_source",
+          "direct_script_lowers_checked_dom_method_lookup_and_text_assignment",
+          "realm_owner_prunes_classic_script_metadata_as_part_of_navigation",
+          "realm_owner_keeps_only_live_root_symbol_slots_after_navigation",
+          "provenance_mismatch_discards_the_just_installed_page_program",
+          "direct_module_graph_executes_only_its_attached_page_realm_generations",
+          "direct_module_graph_cannot_replace_a_realms_live_canonical_modules",
+          "direct_module_graph_retains_exact_static_metadata_for_every_page_generation",
+          "linked_root_symbol_slots_stay_in_their_own_module_generation",
+          "realm_owner_prunes_every_graph_record_as_part_of_close",
+          "direct_module_graph_provenance_failure_discards_every_admitted_module",
+          "direct_module_graph_debug_failure_forgets_records_and_discards_every_program",
+          "direct_page_enums_build_reverse_maps_merge_and_run_like_node",
+          "direct_page_const_enums_read_their_object_and_ambient_enums_are_erased",
+          "direct_page_namespaces_merge_export_and_read_exported_variables_like_node",
+          "direct_page_namespace_variables_are_properties_seen_through_closures_and_shorthand",
+          "direct_page_namespaces_merge_into_a_function_and_a_class_without_a_second_variable",
+          "direct_page_dotted_and_reopened_namespaces_nest_and_reach_earlier_blocks",
+          "direct_routes_refuse_what_a_namespace_lowering_cannot_do_safely",
+          "direct_page_async_functions_are_async_and_return_promises",
+          "a_top_level_await_in_a_script_is_refused_before_lowering",
+          "direct_page_generators_yield_receive_and_delegate_like_node"
+        ]
+      },
+      "backend/bluets/src/emitter/decorators.rs": {
+        "sha256": "7589927b132667c1149c55164488c5805ecfeea86d82d9d4a4b4a528f7239db5",
+        "lines": 1442,
+        "testNames": []
+      }
+    },
+    "after": {
+      "backend/bluets-bluejs/src/tests/page_runtime.rs": 80,
+      "backend/bluets-bluejs/src/tests/page_runtime/control_flow.rs": 318,
+      "backend/bluets-bluejs/src/tests/page_runtime/module_graph.rs": 243,
+      "backend/bluets-bluejs/src/tests/page_runtime/declarations.rs": 176,
+      "backend/bluets-bluejs/src/tests/page_runtime/classes.rs": 339,
+      "backend/bluets-bluejs/src/tests/page_runtime/lifecycle.rs": 173,
+      "backend/bluets-bluejs/src/tests/page_runtime/debugger.rs": 408,
+      "backend/bluets/src/emitter/decorators.rs": 664,
+      "backend/bluets/src/emitter/decorators/class.rs": 788
+    }
+  },
+  "implementationAudit": {
+    "classLoweringLexicalContentPreserved": true,
+    "classLoweringStringLiteralsPreserved": true,
+    "onlyVisibilityAndParentPathsChanged": true,
+    "originalDecoratorHelperAbiPreserved": true,
+    "pageRuntimeOriginalTestBodiesPreserved": 51,
+    "baselinePageLogSha256": "099e80712c5ab41b993fe80d768a9defcfd7aea7500f075986d5cc57c7d49dd9",
+    "afterPageLogSha256": "7b65df4652a205234d1961a3b1477753108c5279b1ccdfb48043ea538239a290",
+    "focusedDecoratorLogSha256": "b08bd40ccc6c5f4dc804910b38c7ee01deb07dfaa231b2eec3ddc96dd90a82d1",
+    "pageRuntimeAllStringLiteralsPreserved": true,
+    "actualCompiledOriginalTestSelectionsRetained": 51,
+    "newSourceMplHeadersVerified": true
+  },
+  "native": {
+    "suites": 179,
+    "functions": 1027,
+    "failed": 0,
+    "ignored": 0,
+    "filtered": 0,
+    "compilerSha256": "c3cdbb7e1979e98176d2b947e141fe55b87d3b233cb821a7075d696c15afff60",
+    "measurement": "COMPATIBILITY_MEASUREMENT.json",
+    "archiveLogPrefix": "native/"
+  },
+  "workspace": {
+    "passed": 7827,
+    "failed": 0,
+    "ignored": 386,
+    "filtered": 0,
+    "groups": 712,
+    "command": [
+      "cargo",
+      "test",
+      "--workspace",
+      "--no-fail-fast",
+      "--locked",
+      "--offline"
+    ],
+    "exit": 0,
+    "compilerSha256": "752d36e0692e96e4d1c7e311f316c2675f7e63f97db26dd7c03fe04a729397e7",
+    "log": "provenance/workspace.log"
+  },
+  "windows": {
+    "platform": "win32-x64",
+    "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+    "cargo": "cargo 1.98.0 (797e8a9bc 2026-08-05)",
+    "node": "v24.21.0",
+    "namedPassed": 25,
+    "corePassed": 82,
+    "ordinarySupportFiltered": 6,
+    "verifiedSourceFiles": 14605,
+    "compilerSha256": "55b64b2be742277a276a7070cfbe012532e2c65f2aa031e058e46bc262b0e46a",
+    "originalSourceManifestComposition": "Original G-M3 v2 source archive plus its two-file fixture patch and the nine-file modularization patch; capture documents retain their recorded bytes.",
+    "evidence": "provenance/windows-evidence.tar.gz",
+    "archiveSha256": "9ced425ebc163ac032763171ad486266dc019d3bdb596d1da1771a78d9a4b3e8"
+  },
+  "mapBindings": {
+    "native": {
+      "sourceRevision": "backend-tree:ad7f2dc43c2b7f2eefcaadf97312ee7d8da68fb3",
+      "label": "native",
+      "pid": 55123,
+      "observedAt": "2026-11-09T06:14:03.629673+00:00",
+      "compilerSha256": "c3cdbb7e1979e98176d2b947e141fe55b87d3b233cb821a7075d696c15afff60",
+      "compilerSnapshot": "/private/tmp/bluets-maintenance-20261109/native-cli-snapshot",
+      "testExecutable": "/Users/ephoton/git/blueice-bluets/target/debug/deps/ge5_source_maps-65284d37c0752630",
+      "testExecutableSha256": "9e553103d1e726fe9af6946e3a141cd73b9702c0e8d0fb68301082eade0e778d",
+      "reportPath": "/var/folders/y4/zd34wgns1j5ddjvp004fz7yw0000gn/T/bluets-ge5-declaration-report-55123.json",
+      "scope": "Process-bound complete8407x2 declaration/JavaScript metadata/bounds report; final whole-suite/gates are recorded separately",
+      "reportNotBeforeEpoch": 1794204841.67268,
+      "verified": true,
+      "reportFreshSinceBinding": true,
+      "reportModifiedEpoch": 1794206124.8069293,
+      "reportSha256": "bb4ed58276c250e79ee79e930738f41f639b9fee173b504c82e2831101ae6c7e",
+      "retainedReport": "/private/tmp/bluets-maintenance-20261109/native-declaration-map-report.json",
+      "archiveReportMember": "provenance/native-declaration-map-report.json",
+      "archiveCompilerMember": "provenance/native-cli"
+    },
+    "workspace": {
+      "sourceRevision": "backend-tree:ad7f2dc43c2b7f2eefcaadf97312ee7d8da68fb3",
+      "label": "workspace",
+      "pid": 10140,
+      "observedAt": "2026-11-09T07:57:13.932279+00:00",
+      "compilerSha256": "752d36e0692e96e4d1c7e311f316c2675f7e63f97db26dd7c03fe04a729397e7",
+      "compilerSnapshot": "/private/tmp/bluets-maintenance-20261109/workspace-cli-snapshot",
+      "testExecutable": "/Users/ephoton/git/blueice-bluets/target/debug/deps/ge5_source_maps-155ebb5531525fa6",
+      "testExecutableSha256": "57479803279bf7eaad71990b499a40afa8bff2a89b1a0c96c2ebbb321cee2fd1",
+      "reportPath": "/var/folders/y4/zd34wgns1j5ddjvp004fz7yw0000gn/T/bluets-ge5-declaration-report-10140.json",
+      "scope": "Process-bound complete8407x2 declaration/JavaScript metadata/bounds report; final whole-suite/gates are recorded separately",
+      "reportNotBeforeEpoch": 1794211031.9833422,
+      "verified": true,
+      "reportFreshSinceBinding": true,
+      "reportModifiedEpoch": 1794211963.780741,
+      "reportSha256": "bb4ed58276c250e79ee79e930738f41f639b9fee173b504c82e2831101ae6c7e",
+      "retainedReport": "/private/tmp/bluets-maintenance-20261109/workspace-declaration-map-report.json",
+      "archiveReportMember": "provenance/workspace-declaration-map-report.json",
+      "archiveCompilerMember": "provenance/workspace-cli"
+    }
+  },
+  "localGates": [
+    {
+      "label": "suite-write",
+      "command": [
+        "cargo",
+        "run",
+        "-p",
+        "blueice-bluets",
+        "--example",
+        "compatibility_inventory",
+        "--locked",
+        "--offline",
+        "--",
+        "--write",
+        "backend-tree:ad7f2dc43c2b7f2eefcaadf97312ee7d8da68fb3"
+      ],
+      "exit": 0,
+      "log": "suite-write.log",
+      "sha256": "9946dad1d0b2688dc0d5a6d13457a6d888d760432a9ba41a45f4250802fcb05a"
+    },
+    {
+      "label": "source-check",
+      "command": [
+        "cargo",
+        "run",
+        "-p",
+        "blueice-bluets",
+        "--example",
+        "compatibility_inventory",
+        "--locked",
+        "--offline",
+        "--",
+        "--check-staged"
+      ],
+      "exit": 0,
+      "log": "source-check.log",
+      "sha256": "a018b5fc434fd89ec19bb21f58168ae12a44086563a7ca47939a327194252a4b"
+    },
+    {
+      "label": "native-build",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "blueice-bluets",
+        "-p",
+        "blueice-bluets-bluejs",
+        "--no-run",
+        "--locked",
+        "--offline"
+      ],
+      "exit": 0,
+      "log": "native-build.log",
+      "sha256": "f7609e3d47676d4aee056fbfe34d3232098deab69992760c8a360eaf29daf1d3"
+    },
+    {
+      "label": "native",
+      "command": [
+        "node",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/measure_compatibility_cases.cjs",
+        "--output-dir",
+        "/private/tmp/bluets-maintenance-20261109/native",
+        "--staged-source",
+        "--jobs",
+        "4"
+      ],
+      "exit": 0,
+      "log": "native.log",
+      "sha256": "5a6b288e6d2694ab51de4e2ec83914bbefaa9994ca5db52d5c71bd0965e7da55"
+    },
+    {
+      "label": "cases-write",
+      "command": [
+        "cargo",
+        "run",
+        "-p",
+        "blueice-bluets",
+        "--example",
+        "compatibility_inventory",
+        "--locked",
+        "--offline",
+        "--",
+        "--write-cases",
+        "backend-tree:ad7f2dc43c2b7f2eefcaadf97312ee7d8da68fb3",
+        "/private/tmp/bluets-maintenance-20261109/native/measurement.json"
+      ],
+      "exit": 0,
+      "log": "cases-write.log",
+      "sha256": "6a9c2bf8d27b3b4765d1640404d4fc21716fc990dc5d40df23dcfefd588342b4"
+    },
+    {
+      "label": "suite-labels",
+      "command": [
+        "cargo",
+        "run",
+        "-p",
+        "blueice-bluets",
+        "--example",
+        "compatibility_inventory",
+        "--locked",
+        "--offline",
+        "--",
+        "--write",
+        "backend-tree:ad7f2dc43c2b7f2eefcaadf97312ee7d8da68fb3"
+      ],
+      "exit": 0,
+      "log": "suite-labels.log",
+      "sha256": "1fb0fb354b320519a55e1c318a237c5b6cd71df3fbaa6d20eb538b77e9b7f9c6"
+    },
+    {
+      "label": "account-write",
+      "command": [
+        "python3",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/account_inventory_rows.py",
+        "--write"
+      ],
+      "exit": 0,
+      "log": "account-write.log",
+      "sha256": "a0569c4da1a8dc461c73777fef0b9f67cd74f439396424d965b7a6067a849ca3"
+    },
+    {
+      "label": "status-write",
+      "command": [
+        "python3",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/check_compatibility_status.py",
+        "--write"
+      ],
+      "exit": 0,
+      "log": "status-write.log",
+      "sha256": "15369a59ba9bc0f7c61fd1397430cd9f87b259b5c75842a14789c69200c43ef0"
+    },
+    {
+      "label": "workspace-build",
+      "command": [
+        "cargo",
+        "test",
+        "--workspace",
+        "--no-run",
+        "--locked",
+        "--offline"
+      ],
+      "exit": 0,
+      "log": "workspace-build.log",
+      "sha256": "d558efa8daa314dc17b9bf164846c7c059d9f6737bf7ca7acd447401176dee42"
+    },
+    {
+      "label": "workspace",
+      "command": [
+        "cargo",
+        "test",
+        "--workspace",
+        "--no-fail-fast",
+        "--locked",
+        "--offline"
+      ],
+      "exit": 0,
+      "log": "workspace.log",
+      "sha256": "d9f5aaec868c65c8dca97b6872816fedc5008eb1b24f8485767024d3925b095a"
+    },
+    {
+      "label": "fmt-check",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit": 0,
+      "log": "fmt-check.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--features",
+        "blueice-bluets/windows-symlink-tests",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit": 0,
+      "log": "clippy.log",
+      "sha256": "5a087b90fd3ad38b4f107aab589df1b8c69a92bab3a21d1ec99173e5fa974d73"
+    },
+    {
+      "label": "node-tools",
+      "command": [
+        "node",
+        "--test",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ci_inventory_checkout.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/collect_ge5_cohort_coverage.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/gc3_policy.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge2_observations.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge4_observations.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_accessor_ending_inventory.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_async_arrow_finally_controls.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_class_declaration_chain.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_class_declaration_endpoints.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_class_expression_assignment.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_class_field_holes.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_class_generated_bindings.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_class_method_holes.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_cohort_coverage.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_decorator_field_endpoints.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_decorator_helpers.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_decorator_member_endpoints.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_decorator_method_members.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_decorator_numeric_keys.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_erased_import_comments.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_helper_collision_frames.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_acquisitions.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_declaration_maps.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_declarations.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_envelope.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_execution.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_expression_maps.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_helpers.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_imports.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_module.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_references.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_source.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_maps.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_metadata_callable_capability.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_metadata_class_artifacts.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_metadata_class_graph.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_native_patch.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_preserved_class_endpoints.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_role_stream.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_safe_home_ir.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/gm2_state_paths.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/measure_compatibility_cases.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/oracle_shards.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/report_windows_symlink_tests.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/select_oracle_commands.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/backend/bluets/tests/fixtures/oracle_support/fixture_paths.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/backend/bluets/tests/fixtures/oracle_support/normalize_map_source.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/backend/bluets/tests/fixtures/oracle_support/redact_root.test.cjs",
+        "/Users/ephoton/git/blueice-bluets/backend/bluets/tests/fixtures/oracle_support/resolve_package.test.cjs"
+      ],
+      "exit": 0,
+      "log": "node-tools.log",
+      "sha256": "19cf1ef325c6776ddeb69424f18e75b38c393309bd692c9ac6395a285e63db51"
+    },
+    {
+      "label": "python-tools",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools",
+        "-p",
+        "test_*.py"
+      ],
+      "exit": 0,
+      "log": "python-tools.log",
+      "sha256": "88b681690d44f3a9c68fa797520a1f1e105d64b384db24d53ee1ccaaa041a879"
+    },
+    {
+      "label": "source-final",
+      "command": [
+        "cargo",
+        "run",
+        "-p",
+        "blueice-bluets",
+        "--example",
+        "compatibility_inventory",
+        "--locked",
+        "--offline",
+        "--",
+        "--check-staged"
+      ],
+      "exit": 0,
+      "log": "source-final.log",
+      "sha256": "2b60e861cc656c6b40dbdd7f816508f9dce3669445d6eb7d42376f6ffd30572a"
+    },
+    {
+      "label": "cases-final",
+      "command": [
+        "cargo",
+        "run",
+        "-p",
+        "blueice-bluets",
+        "--example",
+        "compatibility_inventory",
+        "--locked",
+        "--offline",
+        "--",
+        "--check-cases-staged"
+      ],
+      "exit": 0,
+      "log": "cases-final.log",
+      "sha256": "a8cc6785068ddc38f29670a96af290541280110b704b4807aa7d7c4103ff463d"
+    },
+    {
+      "label": "account-final",
+      "command": [
+        "python3",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/account_inventory_rows.py",
+        "--check"
+      ],
+      "exit": 0,
+      "log": "account-final.log",
+      "sha256": "a0569c4da1a8dc461c73777fef0b9f67cd74f439396424d965b7a6067a849ca3"
+    },
+    {
+      "label": "status-final",
+      "command": [
+        "python3",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/check_compatibility_status.py",
+        "--check"
+      ],
+      "exit": 0,
+      "log": "status-final.log",
+      "sha256": "15369a59ba9bc0f7c61fd1397430cd9f87b259b5c75842a14789c69200c43ef0"
+    }
+  ],
+  "tooling": {
+    "nodePassed": 297,
+    "nodeExistingOptionalSkipped": 3,
+    "pythonPassed": 13
+  },
+  "caseAccounting": {
+    "retainedIdentitiesAndClassifications": 39426,
+    "counts": {
+      "listed": 39426,
+      "checked": 39426,
+      "agreements": 38599,
+      "comparison_cases": 38605,
+      "open": 3,
+      "refused": 3,
+      "reference_only": 633,
+      "boundary_controls": 188
+    },
+    "newCaseIdentities": 0,
+    "fullTypeScriptParity": false
+  },
+  "evidence": {
+    "index": "MODULARIZATION_ARTIFACTS.json",
+    "indexSha256": "af0ecedd8e47aabc4fc4599856ffcfd8d7fc3836e6b8160c1917ce545ce3f69b",
+    "archive": "MODULARIZATION_EVIDENCE.tar.gz",
+    "archiveSha256": "63f79842c4ebfdfed94b70c7883c0be6eb7418de578aca3baa847b1f1ff72143"
+  },
+  "fullScopedAcceptance": true,
+  "conclusion": "success"
+}

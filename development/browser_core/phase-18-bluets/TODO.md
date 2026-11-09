@@ -33,8 +33,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:41f02c04944c3195cd9c00c664b4b1264beda805`.
-Input graph SHA-256: `c5a30f7a492b960bdd0248326aefa71804cb1d2769195d75eb85529aa95181f5`.
+Compiler/oracle source: `backend-tree:ad7f2dc43c2b7f2eefcaadf97312ee7d8da68fb3`.
+Input graph SHA-256: `37d691679d5db38a16cad174f52e03fae4259fcd936ee536a314308fde90a54e`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -43,7 +43,7 @@ Older dated measurements below retain their original scope; they are not this cu
 
 <!-- BEGIN GM3 CURRENT PLATFORM EVIDENCE -->
 
-**Fresh G-M3 platform evidence (2026-11-09):** the current source `backend-tree:41f02c04944c3195cd9c00c664b4b1264beda805` passes Windows x86_64 symlink 25/25 and core oracle 82/82, plus the complete local gates. All 14,598 extracted source files match their expected hashes. The AC-K14 baseline paragraph above retains its older recorded source; this separate [G-M3 acceptance](GM3_CURRENT_INTEGRATION_MEASUREMENT.json) is the fresh measured Windows profile. Broader platform/toolchain combinations remain open.
+**Current platform regression (2026-11-09):** source `backend-tree:ad7f2dc43c2b7f2eefcaadf97312ee7d8da68fb3` passes Windows x86_64 symlink 25/25 and core oracle 82/82 plus the complete local gates after the module split. All 14,605 files in the recorded source-archive-plus-patches manifest match their expected hashes. [Current modularization acceptance](MODULARIZATION_MEASUREMENT.json) retains fresh commands and raw evidence; the [original G-M3 acceptance](GM3_CURRENT_INTEGRATION_MEASUREMENT.json) keeps its prior recorded source. Broader platform/toolchain combinations remain open.
 
 <!-- END GM3 CURRENT PLATFORM EVIDENCE -->
 
@@ -59,6 +59,30 @@ complete ordinary two-crate tests, rustfmt and warnings-denied Clippy. The
 broader G-C1 inventory row remains open for unmeasured CLI/recovery coverage;
 the finite checklist does not claim full parity. See the
 [acceptance record](PLAN.md#phase-l--g-c1-implementation).
+
+## Maintenance and real-project follow-up — 2026-11-09
+
+User-authorized follow-up to the completed finite Phase L packages:
+
+- [x] Split `page_runtime.rs` by test responsibility and extract the decorator
+  class-lowering module. Preserve all 51 original page-runtime test bodies,
+  helper identity, emitted output and owner boundaries. Accept only with the
+  complete source-bound Native/local workspace gates, Windows 82 core oracles,
+  module-size measurements and retained raw logs.
+  Accepted source `backend-tree:ad7f2dc43c2b7f2eefcaadf97312ee7d8da68fb3`: 51 unchanged page-runtime test bodies;
+  decorator parent 664 lines and class module 788; page-runtime parent 80 and
+  six test modules at most 408 lines. Native: 179 suites / 1,027 functions;
+  workspace: 7,827 passed; Windows: 25 symlink cases + 82 core oracles.
+  All final gates pass. [Measurement](MODULARIZATION_MEASUREMENT.json).
+- [ ] Establish a fixed real-project audit using unchanged mitt 3.0.1 source at
+  `b240473b5707857ba2c6a8e6d707c28d1e39da49`. Freeze CommonJS/ES2022/strict,
+  byte-exact declarations, eight named runtime scenarios, declaration consumers,
+  and warm/edit/clean rebuild checks before recording. Audit completion means
+  a reproducible measured result with explicit blockers; project compatibility
+  requires every acceptance property to pass and is reported separately.
+- [ ] Map each reproduced project blocker to the existing G-ID, with its minimal
+  source, pinned Native result, BlueTSC diagnostic and a concrete repair gate.
+  This analysis does not assert that a newly discovered language gap is fixed.
 
 ## Completed baseline (condensed)
 

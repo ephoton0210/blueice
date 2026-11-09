@@ -34,8 +34,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:41f02c04944c3195cd9c00c664b4b1264beda805`.
-Input graph SHA-256: `c5a30f7a492b960bdd0248326aefa71804cb1d2769195d75eb85529aa95181f5`.
+Compiler/oracle source: `backend-tree:ad7f2dc43c2b7f2eefcaadf97312ee7d8da68fb3`.
+Input graph SHA-256: `37d691679d5db38a16cad174f52e03fae4259fcd936ee536a314308fde90a54e`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -44,7 +44,7 @@ Older dated measurements below retain their original scope; they are not this cu
 
 <!-- BEGIN GM3 CURRENT PLATFORM EVIDENCE -->
 
-**Fresh G-M3 platform evidence (2026-11-09):** the current source `backend-tree:41f02c04944c3195cd9c00c664b4b1264beda805` passes Windows x86_64 symlink 25/25 and core oracle 82/82, plus the complete local gates. All 14,598 extracted source files match their expected hashes. The AC-K14 baseline paragraph above retains its older recorded source; this separate [G-M3 acceptance](GM3_CURRENT_INTEGRATION_MEASUREMENT.json) is the fresh measured Windows profile. Broader platform/toolchain combinations remain open.
+**Current platform regression (2026-11-09):** source `backend-tree:ad7f2dc43c2b7f2eefcaadf97312ee7d8da68fb3` passes Windows x86_64 symlink 25/25 and core oracle 82/82 plus the complete local gates after the module split. All 14,605 files in the recorded source-archive-plus-patches manifest match their expected hashes. [Current modularization acceptance](MODULARIZATION_MEASUREMENT.json) retains fresh commands and raw evidence; the [original G-M3 acceptance](GM3_CURRENT_INTEGRATION_MEASUREMENT.json) keeps its prior recorded source. Broader platform/toolchain combinations remain open.
 
 <!-- END GM3 CURRENT PLATFORM EVIDENCE -->
 
@@ -18758,3 +18758,33 @@ All 22 finite Phase L checklist packages are complete. The broader G-M3 row stay
 open outside this measured Windows profile, as do other unmeasured feature-row
 scopes. Full TypeScript parity remains OFF. Hosted CI and a new arm64 run are not
 acceptance prerequisites.
+
+
+## Maintenance — decorator and page-runtime modularization — 2026-11-09
+
+The user-authorized follow-up is complete at `backend-tree:ad7f2dc43c2b7f2eefcaadf97312ee7d8da68fb3`.
+`decorators.rs` shrinks from 1,442 to 664 lines; its class-level lowering is a
+788-line private module. The class method preserves lexical content and every
+string literal after resolving parent paths and its internal visibility.
+The versioned helper identity, emitted edits and canonical owner boundaries are
+unchanged. `page_runtime.rs` shrinks from 1,688 to 80 lines; six responsibility
+modules contain all 51 original test bodies byte-for-byte, with a maximum of
+408 lines. Existing 51 page-runtime and 22 focused decorator tests pass.
+
+Fresh complete regression: 179 Native suites / 1,027 functions, zero failed,
+ignored or filtered; the full workspace command exits zero with
+7,827 passed, 386 existing ignored, zero failed/filtered.
+Formatting, warnings-denied workspace all-target Clippy (including the Windows
+test feature), 297 Node tooling tests and 13 Python tests pass. Three existing
+optional Node skips remain separate. Both process-bound 8,407 × 2 decoded-map
+reports retain zero differences and their separate Native/workspace CLI hashes.
+Windows x86_64 passes all 25 named symlink cases and all 82 pinned core oracles;
+its six filtered ordinary support tests remain separately named. All 14,605
+files match the recorded original-source-plus-patches manifest. Existing link
+capability is reused without changing VM settings or privileges.
+
+All 39,426 earlier case identities, classifications and counts remain intact.
+The split adds no language coverage claim or new G-ID; broader feature rows
+remain open and full TypeScript parity stays OFF. The [measurement](MODULARIZATION_MEASUREMENT.json)
+and [raw evidence index](MODULARIZATION_ARTIFACTS.json) bind source, compiler,
+test selections, original source, module sizes, commands, logs and tools.
