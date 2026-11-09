@@ -867,6 +867,8 @@ decodes it into its own registry (a `WebFontId` is per process, so bytes cross, 
 set (family taken from the `font` shorthand). Not built: faces the stylesheets declare are not listed in
 `document.fonts`, `loadingdone`/`loadingerror` events, `ready` stays resolved, `local()` sources.
 
+Canvas 2D text (2026-11-09): `fillText` (with `textAlign`, `textBaseline`, `maxWidth`, the transform and `globalAlpha`) and `measureText` use the real glyphs and advances. `font` is parsed (`style weight size[/lh] family-list`); its families are looked up in the faces scripts added through `document.fonts` (a script-side catalog in the script process, since face ids are per process), then the bundled fonts. Faces from the page's stylesheets are not known to the script process, so a canvas does not draw in them yet. `strokeText`, gradients as text fill, `direction` and the bounding-box metrics (approximated from the size) are not built.
+
 ## Page scripts off the session thread (2026-11-03)
 
 **Problem, measured.** In the macOS app on tw.yahoo.com, a wheel scroll's frame took a

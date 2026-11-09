@@ -2415,7 +2415,7 @@
     constructor(canvas) {
       this.canvas = canvas;
       this._id = bi('c2dCreate', canvas._id, canvas.width, canvas.height);
-      this._state = { fillStyle: '#000000', strokeStyle: '#000000', globalAlpha: 1, m: [1, 0, 0, 1, 0, 0], font: '10px sans-serif', lineWidth: 1 };
+      this._state = { fillStyle: '#000000', strokeStyle: '#000000', globalAlpha: 1, m: [1, 0, 0, 1, 0, 0], font: '10px sans-serif', textAlign: 'start', textBaseline: 'alphabetic', lineWidth: 1 };
       this._stack = [];
     }
     _c(op, ...args) {
@@ -2429,6 +2429,10 @@
     set globalAlpha(v) { v = Number(v); if (v >= 0 && v <= 1) this._state.globalAlpha = v; }
     get font() { return this._state.font; }
     set font(v) { this._state.font = String(v); }
+    get textAlign() { return this._state.textAlign; }
+    set textAlign(v) { v = String(v); if (['start', 'end', 'left', 'right', 'center'].includes(v)) this._state.textAlign = v; }
+    get textBaseline() { return this._state.textBaseline; }
+    set textBaseline(v) { v = String(v); if (['top', 'hanging', 'middle', 'alphabetic', 'ideographic', 'bottom'].includes(v)) this._state.textBaseline = v; }
     get lineWidth() { return this._state.lineWidth; }
     set lineWidth(v) { this._state.lineWidth = Number(v) || 1; }
     save() { this._stack.push(Object.assign({}, this._state, { m: this._state.m.slice() })); }
@@ -2486,9 +2490,21 @@
     fill() {}
     stroke() {}
     clip() {}
-    fillText() {}
+    fillText(text, x, y, maxWidth) {
+      x = Number(x); y = Number(y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      const st = this._state;
+      this._c('fillText', String(text), x, y, st.font, st.fillStyle, st.globalAlpha, JSON.stringify(st.m), st.textAlign,
+        st.textBaseline, maxWidth === undefined || !(maxWidth >= 0) ? -1 : Number(maxWidth));
+    }
     strokeText() {}
-    measureText(text) { return { width: String(text).length * 6, actualBoundingBoxLeft: 0, actualBoundingBoxRight: String(text).length * 6, actualBoundingBoxAscent: 8, actualBoundingBoxDescent: 2 }; }
+    measureText(text) {
+      const font = this._state.font;
+      const width = this._c('measureText', String(text), font);
+      const size = parseFloat((/([\d.]+)px/.exec(font) || [0, 10])[1]);
+      return { width, actualBoundingBoxLeft: 0, actualBoundingBoxRight: width, actualBoundingBoxAscent: size * 0.8,
+        actualBoundingBoxDescent: size * 0.2, fontBoundingBoxAscent: size * 0.93, fontBoundingBoxDescent: size * 0.24 };
+    }
     setLineDash() {}
     getLineDash() { return []; }
     createLinearGradient() { return { addColorStop() {} }; }

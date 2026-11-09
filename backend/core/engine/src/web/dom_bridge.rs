@@ -123,6 +123,8 @@ pub(crate) struct DomState {
     pub(crate) loaded_images: Vec<(String, std::sync::Arc<crate::images::LoadedImage>)>,
     /// Faces scripts added to the document, for the page to draw with.
     pub(crate) loaded_fonts: Vec<crate::fonts::ScriptFont>,
+    /// The same faces, registered here for canvas text to name.
+    pub(crate) script_fonts: crate::fonts::FontCatalog,
     /// Decoded pictures by node (images and canvases), lent by the page.
     pub images: HashMap<NodeId, std::sync::Arc<blueice_image::RasterImage>>,
 }
@@ -150,6 +152,7 @@ impl DomState {
             script_images: HashMap::new(),
             loaded_images: Vec::new(),
             loaded_fonts: Vec::new(),
+            script_fonts: Default::default(),
             images: HashMap::new(),
         }
     }
@@ -328,14 +331,16 @@ impl DomState {
                     return Ok(Reply::Null);
                 }
                 let d = blueice_css::face_descriptors(&text(1), &text(2), &text(3));
-                self.loaded_fonts.push(crate::fonts::ScriptFont {
+                let font = crate::fonts::ScriptFont {
                     family: text(0),
                     weight_min: d.weight_min,
                     weight_max: d.weight_max,
                     italic: d.italic,
                     ranges: d.unicode_ranges,
                     bytes,
-                });
+                };
+                self.script_fonts.add_script_font(&font);
+                self.loaded_fonts.push(font);
                 Reply::Text("ok".into())
             }
             // ---- 2D canvas ----
@@ -362,7 +367,7 @@ impl DomState {
                 };
                 let name = text(1);
                 let c = self.c2d.get_mut(&id).ok_or("no such canvas context")?;
-                c.call(&name, &args[2..])?
+                c.call_with_fonts(&name, &args[2..], &self.script_fonts)?
             }
             "c2dPng" => {
                 let id = match args.first() {

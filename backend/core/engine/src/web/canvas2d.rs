@@ -4,7 +4,8 @@
 
 //! A small `CanvasRenderingContext2D`: a straight-alpha RGBA bitmap that
 //! scripts fill with rectangles, draw pictures onto and read pixels back from.
-//! No paths or text yet -- those calls are accepted and draw nothing -- so
+//! Text is drawn and measured in the fonts the page has (`font`, `fillText`, `measureText`).
+//! No paths yet -- those calls are accepted and draw nothing -- so
 //! pages that use a canvas to read an image's pixels or to composite pictures
 //! work, and everything else degrades to an empty canvas rather than failing.
 
@@ -79,7 +80,141 @@ fn over(dst: &mut [u8], src: [u8; 4], alpha: f64) {
     dst[3] = (out_a * 255.0).round().clamp(0.0, 255.0) as u8;
 }
 
+/// A canvas `font` string, resolved.
+struct CanvasFont {
+    size: f64,
+    bold: bool,
+    italic: bool,
+    face: Option<blueice_font::web::WebFontId>,
+}
+
+impl CanvasFont {
+    /// `[style] [weight] size[/line-height] family[, family]...`; anything else is the default
+    /// `10px sans-serif`.
+    fn parse(spec: &str, fonts: &crate::fonts::FontCatalog) -> CanvasFont {
+        let default = CanvasFont { size: 10.0, bold: false, italic: false, face: None };
+        let (mut weight, mut italic) = (400_u16, false);
+        let mut words = spec.split_whitespace();
+        let mut size = None;
+        for word in words.by_ref() {
+            let lower = word.to_ascii_lowercase();
+            let head = lower.split('/').next().unwrap_or("");
+            let unit = |u: &str, k: f64| head.strip_suffix(u).and_then(|n| n.parse::<f64>().ok()).map(|n| n * k);
+            let px = unit("px", 1.0)
+                .or_else(|| unit("pt", 4.0 / 3.0))
+                .or_else(|| unit("rem", 16.0))
+                .or_else(|| unit("em", 16.0))
+                .or_else(|| unit("%", 0.16));
+            if let Some(px) = px {
+                size = Some(px);
+                break;
+            }
+            match lower.as_str() {
+                "italic" | "oblique" => italic = true,
+                "bold" | "bolder" => weight = 700,
+                "lighter" => weight = 300,
+                "normal" | "small-caps" => {}
+                n => match n.parse::<u16>() {
+                    Ok(w) if (1..=1000).contains(&w) => weight = w,
+                    _ => return default,
+                },
+            }
+        }
+        let Some(size) = size.filter(|s| s.is_finite() && *s > 0.0) else {
+            return default;
+        };
+        let families: Vec<String> = words
+            .collect::<Vec<_>>()
+            .join(" ")
+            .split(',')
+            .map(|f| f.trim().trim_matches(|c| c == '"' || c == '\'').to_ascii_lowercase())
+            .filter(|f| !f.is_empty())
+            .collect();
+        CanvasFont {
+            size: size.min(1000.0),
+            bold: weight >= 600,
+            italic,
+            face: if families.is_empty() { None } else { fonts.face_for(&families.join(","), weight, italic) },
+        }
+    }
+
+    fn width(&self, text: &str) -> f64 {
+        blueice_font::measure_text_width_in(text, self.size, self.bold, self.italic, self.face)
+    }
+}
+
 impl Canvas2d {
+    #[allow(clippy::too_many_arguments)]
+    fn fill_text(
+        &mut self,
+        text: &str,
+        (x, y): (f64, f64),
+        font: &CanvasFont,
+        color: [u8; 4],
+        alpha: f64,
+        m: &Affine,
+        (align, baseline): (&str, &str),
+        max_width: f64,
+    ) {
+        let width = font.width(text);
+        let (ascent, descent) =
+            blueice_font::ascent_descent_in(font.size, font.bold, font.italic, font.face);
+        let mut m = *m;
+        if max_width >= 0.0 && width > max_width && width > 0.0 {
+            // Wider than allowed: squeezed horizontally about the anchor.
+            let s = max_width / width;
+            let squeeze = [s, 0.0, 0.0, 1.0, x * (1.0 - s), 0.0];
+            m = [
+                m[0] * squeeze[0],
+                m[1] * squeeze[0],
+                m[2],
+                m[3],
+                m[0] * squeeze[4] + m[4],
+                m[1] * squeeze[4] + m[5],
+            ];
+        }
+        let drawn_width = width;
+        let left = match align {
+            "center" => x - drawn_width / 2.0,
+            "right" | "end" => x - drawn_width,
+            _ => x,
+        };
+        let base = match baseline {
+            "top" => y + ascent,
+            "hanging" => y + ascent * 0.8,
+            "middle" => y + (ascent - descent) / 2.0,
+            "bottom" | "ideographic" => y - descent,
+            _ => y,
+        };
+        let Some(inv) = invert(&m) else { return };
+        let mut pen = left;
+        for ch in text.chars() {
+            let face = blueice_font::font_for_char_in(ch, font.bold, font.italic, font.face);
+            let (metrics, bitmap) = face.rasterize(ch, font.size as f32);
+            let (gx, gy) = (pen + f64::from(metrics.xmin), base - f64::from(metrics.ymin) - metrics.height as f64);
+            pen += f64::from(metrics.advance_width);
+            if metrics.width == 0 || metrics.height == 0 {
+                continue;
+            }
+            let (x0, y0, x1, y1) = self.bounds(&m, gx, gy, metrics.width as f64, metrics.height as f64);
+            for py in y0..y1 {
+                for px in x0..x1 {
+                    let (u, v) = apply(&inv, px as f64 + 0.5, py as f64 + 0.5);
+                    let (cx, cy) = ((u - gx).floor(), (v - gy).floor());
+                    if cx < 0.0 || cy < 0.0 || cx >= metrics.width as f64 || cy >= metrics.height as f64 {
+                        continue;
+                    }
+                    let coverage = f64::from(bitmap[cy as usize * metrics.width + cx as usize]) / 255.0;
+                    if coverage > 0.0 {
+                        let i = ((py as u32 * self.w + px as u32) * 4) as usize;
+                        over(&mut self.rgba[i..i + 4], color, alpha * coverage);
+                    }
+                }
+            }
+        }
+        self.dirty = true;
+    }
+
     pub fn new(canvas: blueice_dom::NodeId, w: u32, h: u32) -> Option<Canvas2d> {
         if u64::from(w) * u64::from(h) > MAX_PIXELS {
             return None;
@@ -277,8 +412,41 @@ impl Canvas2d {
     /// `drawImage` (w h pixels sx sy sw sh dx dy dw dh alpha transform),
     /// `getImageData` (x y w h), `putImageData` (pixels w h dx dy),
     /// `resize` (w h).
+    #[cfg(test)]
     pub fn call(&mut self, op: &str, a: &[Reply]) -> Result<Reply, String> {
+        self.call_with_fonts(op, a, &crate::fonts::FontCatalog::default())
+    }
+
+    /// [`call`](Self::call), with the faces scripts added to the page for `font` to name.
+    pub fn call_with_fonts(
+        &mut self,
+        op: &str,
+        a: &[Reply],
+        fonts: &crate::fonts::FontCatalog,
+    ) -> Result<Reply, String> {
         Ok(match op {
+            "fillText" => {
+                // text, x, y, font, colour, alpha, matrix, align, baseline, maxWidth (<0: none)
+                let font = CanvasFont::parse(text(a, 3), fonts);
+                let color = blueice_css::parse_css_color(text(a, 4))
+                    .map_or([0, 0, 0, 255], |(r, g, b, al)| [r, g, b, al]);
+                let max = if a.get(9).is_some() { num(a, 9) } else { -1.0 };
+                self.fill_text(
+                    text(a, 0),
+                    (num(a, 1), num(a, 2)),
+                    &font,
+                    color,
+                    num(a, 5).clamp(0.0, 1.0),
+                    &affine(a, 6),
+                    (text(a, 7), text(a, 8)),
+                    max,
+                );
+                Reply::Undefined
+            }
+            "measureText" => {
+                let font = CanvasFont::parse(text(a, 1), fonts);
+                Reply::Number(font.width(text(a, 0)))
+            }
             "fillRect" | "clearRect" => {
                 let color = blueice_css::parse_css_color(text(a, 4))
                     .map_or([0, 0, 0, 255], |(r, g, b, al)| [r, g, b, al]);
@@ -526,5 +694,93 @@ mod tests {
         )
         .unwrap();
         assert_eq!(px(&c, 1, 1), [0, 0, 0, 0]);
+    }
+
+    fn ink(c: &Canvas2d) -> Vec<(u32, u32)> {
+        let mut out = Vec::new();
+        for y in 0..c.h {
+            for x in 0..c.w {
+                if px(c, x, y)[3] > 0 {
+                    out.push((x, y));
+                }
+            }
+        }
+        out
+    }
+
+    fn fill_text(c: &mut Canvas2d, args: &[Reply], fonts: &crate::fonts::FontCatalog) {
+        c.call_with_fonts("fillText", args, fonts).unwrap();
+    }
+
+    /// text, x, y, font, color, alpha, matrix, align, baseline, maxWidth
+    fn text_args(s: &str, x: f64, y: f64, font: &str, align: &str) -> Vec<Reply> {
+        vec![
+            t(s), n(x), n(y), t(font), t("#ff0000"), n(1.0),
+            t("[1,0,0,1,0,0]"), t(align), t("alphabetic"), n(-1.0),
+        ]
+    }
+
+    #[test]
+    fn filled_text_puts_ink_on_the_baseline_in_the_requested_colour() {
+        let mut c = canvas(120, 60);
+        let none = crate::fonts::FontCatalog::default();
+        fill_text(&mut c, &text_args("Hi", 10.0, 40.0, "20px sans-serif", "start"), &none);
+        let ink = ink(&c);
+        assert!(!ink.is_empty());
+        assert!(ink.iter().all(|&(x, y)| x >= 8 && (20..=42).contains(&y)), "{ink:?}");
+        assert!(ink.iter().any(|&(x, y)| px(&c, x, y) == [255, 0, 0, 255]), "solid red inside the stems");
+        // Bigger text covers more.
+        let mut big = canvas(120, 60);
+        fill_text(&mut big, &text_args("Hi", 10.0, 50.0, "40px sans-serif", "start"), &none);
+        assert!(super::tests::ink(&big).len() > 2 * ink.len());
+    }
+
+    #[test]
+    fn alignment_moves_the_ink_to_either_side_of_the_point() {
+        let none = crate::fonts::FontCatalog::default();
+        let extent = |align: &str| {
+            let mut c = canvas(200, 40);
+            fill_text(&mut c, &text_args("Hello", 100.0, 30.0, "20px sans-serif", align), &none);
+            let i = ink(&c);
+            (i.iter().map(|p| p.0).min().unwrap(), i.iter().map(|p| p.0).max().unwrap())
+        };
+        let (l0, l1) = extent("left");
+        let (r0, r1) = extent("right");
+        let (c0, c1) = extent("center");
+        assert!(l0 >= 98 && l1 > 100);
+        assert!(r1 <= 102 && r0 < 100);
+        assert!(c0 < 100 && c1 > 100);
+        assert!((i64::from(l1 - l0) - i64::from(r1 - r0)).abs() <= 2);
+    }
+
+    #[test]
+    fn measuring_text_uses_the_real_widths_of_the_font_asked_for() {
+        let mut c = canvas(10, 10);
+        let none = crate::fonts::FontCatalog::default();
+        let mut w = |font: &str| match c.call_with_fonts("measureText", &[t("Hello"), t(font)], &none).unwrap() {
+            Reply::Number(w) => w,
+            other => panic!("{other:?}"),
+        };
+        let expect = blueice_font::measure_text_width("Hello", 16.0, false, false);
+        assert!((w("16px sans-serif") - expect).abs() < 0.01);
+        assert!((w("32px sans-serif") - 2.0 * expect).abs() < 0.01);
+        assert!(w("bold 16px sans-serif") > expect);
+    }
+
+    #[test]
+    fn a_family_the_script_added_is_measured_and_drawn() {
+        let bytes = include_bytes!("../../../font/tests/data/roboto-latin-400.woff2");
+        let mut catalog = crate::fonts::FontCatalog::default();
+        assert!(catalog.add_script_font(&crate::fonts::ScriptFont {
+            family: "Dyn".into(), weight_min: 400, weight_max: 400, italic: false, ranges: vec![], bytes: bytes.to_vec(),
+        }));
+        let mut c = canvas(10, 10);
+        let mut w = |font: &str| match c.call_with_fonts("measureText", &[t("Hello"), t(font)], &catalog).unwrap() {
+            Reply::Number(w) => w,
+            other => panic!("{other:?}"),
+        };
+        let own = blueice_font::measure_text_width_in("Hello", 16.0, false, false, catalog.face_for("dyn", 400, false));
+        assert!((w("16px \"Dyn\", serif") - own).abs() < 0.01);
+        assert!((w("16px sans-serif") - own).abs() > 0.5);
     }
 }

@@ -769,4 +769,30 @@ mod tests {
         assert!(log.contains("CHECK1 1 true loaded"), "{log}");
         assert!(runs(&page)[0].1.is_some(), "{log}");
     }
+
+    #[test]
+    fn canvas_text_is_drawn_and_measured_in_a_face_the_script_added() {
+        let html = format!(
+            "<body><canvas id=c width=80 height=30></canvas><script>\
+             const f = new FontFace('Dyn', 'url({})');\
+             f.load().then(() => {{\
+               document.fonts.add(f);\
+               const g = document.getElementById('c').getContext('2d');\
+               g.font = '20px Dyn';\
+               const own = g.measureText('Hello').width;\
+               g.font = '20px sans-serif';\
+               const bundled = g.measureText('Hello').width;\
+               g.font = '20px Dyn'; g.fillStyle = '#ff0000'; g.fillText('Hello', 2, 22);\
+               const d = g.getImageData(0, 0, 80, 30).data; let ink = 0;\
+               for (let i = 3; i < d.length; i += 4) if (d[i] > 0) ink++;\
+               console.log('CANVAS ' + (own !== bundled) + ' ' + (ink > 20));\
+             }});\
+             </script></body>",
+            data_url(REGULAR, "font/woff2")
+        );
+        let mut page = script_page(&html);
+        run_scripts(&mut page);
+        let log = page.web_console().join("\n");
+        assert!(log.contains("CANVAS true true"), "{log}");
+    }
 }
