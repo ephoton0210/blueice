@@ -7,6 +7,10 @@
 //! rendering and atomic publishing.  Every test drives the real compiled
 //! binary with real arguments and inspects its exit status and streams.
 
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
+#[path = "oracle_support/symlink_support.rs"]
+mod symlink_support;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -710,10 +714,10 @@ fn a_config_build_can_be_pointed_at_a_config_in_a_subdirectory() {
     assert!(!scratch.path("build").exists());
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 #[test]
 fn symlinked_entries_and_imports_cannot_escape_the_project_root() {
-    use std::os::unix::fs::symlink;
+    use symlink_support::symlink;
     let scratch = Scratch::new();
     scratch
         .write(

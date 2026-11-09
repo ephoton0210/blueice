@@ -4,14 +4,18 @@
 
 //! End-to-end coverage for the standalone `bluetsc` process boundary.
 
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
+#[path = "oracle_support/symlink_support.rs"]
+mod symlink_support;
+
 use std::collections::BTreeMap;
 use std::fs;
-#[cfg(unix)]
-use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
+use symlink_support::symlink;
 
 static TEST_DIRECTORY_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -669,7 +673,7 @@ fn repeated_config_builds_publish_byte_identical_artifacts() {
     fs::remove_dir_all(temporary).unwrap();
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 #[test]
 fn config_build_rejects_an_output_directory_with_a_symlinked_parent_outside_the_root() {
     let temporary = unique_test_directory();

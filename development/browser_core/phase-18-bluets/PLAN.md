@@ -9,7 +9,7 @@
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-11-06).**
+**Current BlueTS / BlueTSC compatibility status (2026-11-09).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
 Pinned compiler: **TypeScript 5.9.3**. **N = 39,426 suite-qualified
@@ -34,13 +34,19 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:314b3a4e4b369817a44c59d601ef5b1b020397fa`.
-Input graph SHA-256: `efd4fffed9cedcaef6ff1d03308abfc5494b89da22e113b51dc96162de11ef68`.
+Compiler/oracle source: `backend-tree:41f02c04944c3195cd9c00c664b4b1264beda805`.
+Input graph SHA-256: `c5a30f7a492b960bdd0248326aefa71804cb1d2769195d75eb85529aa95181f5`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
 
 <!-- END CURRENT BLUETS STATUS -->
+
+<!-- BEGIN GM3 CURRENT PLATFORM EVIDENCE -->
+
+**Fresh G-M3 platform evidence (2026-11-09):** the current source `backend-tree:41f02c04944c3195cd9c00c664b4b1264beda805` passes Windows x86_64 symlink 25/25 and core oracle 82/82, plus the complete local gates. All 14,598 extracted source files match their expected hashes. The AC-K14 baseline paragraph above retains its older recorded source; this separate [G-M3 acceptance](GM3_CURRENT_INTEGRATION_MEASUREMENT.json) is the fresh measured Windows profile. Broader platform/toolchain combinations remain open.
+
+<!-- END GM3 CURRENT PLATFORM EVIDENCE -->
 
 ## Objective
 
@@ -18627,3 +18633,128 @@ history is retained byte-for-byte in that archive; original failed cohorts keep
 their separate original artifact indexes. G-C3 is complete for this frozen scope.
 All 21 active Phase L packages are complete; optional G-M3 remains deferred under
 the existing rule. Broader feature rows retain their policy and full parity is OFF.
+
+
+## Phase L — G-M3 frozen Windows x86_64 implementation matrix
+
+Activated at the user's request on 2026-11-09. `GM3_FROZEN_MATRIX.json` freezes
+all 25 previously excluded names: 24 test functions plus the repointed-symlink
+oracle row. Original fixture hashes and the baseline commit remain recorded.
+The Windows VM already has Developer Mode and actual file/directory symlink
+creation; its Rust 1.98.0 and Node 24.21.0 tools are available. The dedicated
+workspace uses the existing B: filesystem with sufficient free space.
+
+A test-only `windows-symlink-tests` feature compiles these original fixtures on
+Windows through native file/directory link APIs. Existing default Windows case
+selection is preserved; the G-M3 run explicitly enables the feature and records
+actual test execution. Source-derived default skip reports cannot count as passes.
+The fixed minimum is every named Windows case, a fresh 82-core oracle run, the
+same local ordinary/Native/workspace/style/publication gates, and durable logs
+bound to actual source/compiler/toolchain hashes. No new TODO identifier, VM
+privilege, filesystem-authority expansion, arm64 or hosted-CI prerequisite is added.
+At activation, implementation and focused testing were pending. The final
+acceptance below records completion against this frozen matrix.
+
+
+### Reproducing the complete G-M3 local Native cohort
+
+The complete Native catalog includes fixtures that require explicit report
+locations and an immutable normal CLI hash. The five output variables below
+match the earlier accepted G-C3 Native profile. With `--jobs 4`, the existing
+runner assigns each suite a separate directory under its output root. The G-C3
+scratch root must use its canonical spelling on macOS (`/private/...`), so a
+`/var` alias does not leak into an otherwise identical expected error trace.
+These are measurement inputs; missing required inputs are setup failures.
+
+Build both crates' tests first with the same Cargo profile, identify the normal
+`bluetsc` executable (Cargo `profile.test = false`), and hash those exact bytes.
+Set the pinned TypeScript 5.9.3 and Acorn 8.15.0 shims, then run on macOS/Linux:
+
+```sh
+CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 \
+CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 RUST_TEST_THREADS=4 \
+BLUEICE_BLUETSC_ORACLE="<pinned-tsc-shim>" \
+BLUEICE_ACORN_ORACLE="<pinned-acorn-shim>" FORCE_COLOR=0 \
+BLUEICE_GE5_EXPECTED_COMPILER_SHA256="<normal-bluetsc-sha256>" \
+BLUEICE_GC3_REPORT_DIRECTORY="<canonical-capture-root>/gc3" \
+BLUEICE_GE5_ROLE_REPORT_DIRECTORY="<canonical-capture-root>/roles" \
+BLUEICE_GE5_ROLE_OBSERVATION_DIRECTORY="<canonical-capture-root>/observations" \
+BLUEICE_GE5_ADJACENT_OBSERVATION_DIRECTORY="<canonical-capture-root>/adjacent" \
+BLUEICE_GE5_NODE_ROLE_REPORT="<canonical-capture-root>/node-roles.json" \
+node development/browser_core/phase-18-bluets/tools/measure_compatibility_cases.cjs \
+  --output-dir "<new-empty-output>" --staged-source --jobs 4
+```
+
+For the complete local workspace, use the canonical package executable
+`node_modules/typescript/bin/tsc` and `node_modules/acorn/bin/acorn`. The local
+string-export verifier derives a sibling package from the TypeScript program
+location; a `.bin/tsc` alias is the same executable but does not supply that
+package layout. Keep the original failure when correcting this setup and replay
+the unchanged complete target with its source/binary identities verified.
+
+The frozen source/catalog must already pass `--check-staged`. Never publish a
+partial component as the full case denominator. A same-source continuation
+must verify all retained selections, raw log hashes, source/tool digests and the
+normal CLI hash before retaining successful suites; failed raw results remain
+archived. The accepted Windows selection is separate: its `--ignored` command
+runs all 82 pinned oracles and filters six ordinary support tests. Verify the
+selected names against `--list --ignored`; those six are not skipped oracles.
+
+
+## Phase L — G-M3 final bounded Windows acceptance — 2026-11-09
+
+The frozen 25-case Windows x86_64 contract is complete at `backend-tree:41f02c04944c3195cd9c00c664b4b1264beda805`.
+All 24 original test functions and the repointed-symlink Native matrix row pass,
+with unchanged assertion invocations and original oracle fixture bytes.
+Windows also passes all 82 pinned core oracles. Its six filtered ordinary support
+tests are named separately and verified against the compiled ignored selection;
+they are not omitted oracles. All 14,598 extracted source files match the frozen
+archive-plus-two-file-patch manifest. The existing SYSTEM token and Developer
+Mode supplied file/directory link capability; no privileges were enabled.
+
+The test-only feature shares one platform link helper. Windows reparse targets
+use native separators before verbatim canonicalization, and the owner-gate
+snapshot reuses the existing project-path normalizer. Production code and
+canonical owner authority are unchanged; the expected Native/BlueTS owner
+refusal difference remains intact. Default Windows binaries keep their explicit
+25-case exclusions. Actual execution and the static exclusion report are separate.
+
+The complete local cohort passes 179/179 suites and
+1,027 functions, with zero failed, ignored or filtered tests.
+It retains 48 verified same-source v2 successes and 20 v3 successes, then runs 111
+failed/unrun suites. Every retained test selection, raw log hash, source/tool
+digest and normal CLI identity is verified. Failed raw components remain in the
+archive. The generated composite header is also retained before correcting
+inherited subset counts; no test outcome, runtime timestamp or source identity
+changes. The exact selected suites and continuation scope are versioned.
+
+The complete workspace cohort passes 7,827 unique tests with zero unresolved failures and
+386 existing ignored tests. Workspace formatting, all-target Clippy with
+warnings denied (including the test feature), Node/Python tooling and final
+source/case/status accounting pass. Native and workspace each retain a separate
+process-bound 8407x2 declaration/JavaScript metadata-and-bounds report with zero
+differences. The original full `cargo test --workspace --no-fail-fast` invocation
+retains its exit 101 and one oracle-alias setup failure. The exact unchanged
+local-string-export target then passes 120 configurations, 180 maps, 240 executions
+and 22,662 controls after using the same physical TypeScript executable at its
+canonical package path. The complete initial selection plus this exact replay
+is validated as one workspace cohort; the original invocation is never relabelled
+as a zero-exit run. All 39,426 earlier case identities and classifications remain intact;
+Windows assertions and replays are not added to that denominator.
+
+Tooling checks pass 297 Node tests and all 13 Python tests. The three existing
+optional Node skips retain their platform/explicit-opt-in conditions and are
+not credited as Windows parity.
+
+CLI identities: Native `c4004d013d1974beea7ed72b96588d4ef79e09a8d694f33dfb0cc7d6010e8467`;
+Windows `9308a818dfa3612ea25f02610b78516708be543bb8169fa9dedae6477f570a28`;
+workspace `e6ea0bbe2dfc15728d74ecd62a0aa775a7bb79a339f9a4e056ccd81dd9976743`. Their builds/platforms remain
+separate. [Accepted measurements](GM3_CURRENT_INTEGRATION_MEASUREMENT.json) and
+[raw evidence index](GM3_COHORT_ARTIFACTS.json) bind exact names, commands, tools,
+source hashes and logs. The source manifest, Windows compiler and both original
+Windows runs are preserved alongside local failures and successful continuations.
+
+All 22 finite Phase L checklist packages are complete. The broader G-M3 row stays
+open outside this measured Windows profile, as do other unmeasured feature-row
+scopes. Full TypeScript parity remains OFF. Hosted CI and a new arm64 run are not
+acceptance prerequisites.

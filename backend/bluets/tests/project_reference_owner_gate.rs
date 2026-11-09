@@ -4,6 +4,13 @@
 
 //! K.12.1.6: referenced projects stay inside the canonical owner root.
 
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
+#[path = "oracle_support/symlink_support.rs"]
+mod symlink_support;
+
+#[path = "oracle_support/project_paths.rs"]
+mod project_paths;
+
 use serde_json::json;
 use std::env;
 use std::fs;
@@ -21,7 +28,7 @@ struct Snapshot {
     built: Vec<String>,
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 impl Snapshot {
     fn row(&self) -> String {
         format!(
@@ -87,8 +94,8 @@ fn materialize(base: &Path, escape: bool) -> PathBuf {
     project(&dependency, &[], "export const value = 1;\n");
     fs::write(dependency.join("marker"), "outside-marker\n").unwrap();
     if escape {
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(&dependency, owner.join("dep")).unwrap();
+        #[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
+        symlink_support::symlink(&dependency, owner.join("dep")).unwrap();
     }
     project(
         &owner,
@@ -125,15 +132,16 @@ fn snapshot(scenario: &str, output: &Output, owner: &Path) -> Snapshot {
             })
         })
         .map(|path| {
-            let path = Path::new(path);
-            let relative = if let Ok(relative) = path.strip_prefix(owner) {
-                relative.to_string_lossy().into_owned()
-            } else if let Ok(relative) = path.strip_prefix(owner.parent().unwrap()) {
-                format!("../{}", relative.to_string_lossy())
+            let relative = project_paths::relative_to(owner, path);
+            if !Path::new(&relative).is_absolute() {
+                return relative;
+            }
+            let parent_relative = project_paths::relative_to(owner.parent().unwrap(), path);
+            if !Path::new(&parent_relative).is_absolute() {
+                format!("../{parent_relative}")
             } else {
-                path.to_string_lossy().into_owned()
-            };
-            relative.trim_start_matches("./").replace('\\', "/")
+                relative
+            }
         })
         .collect();
     Snapshot {
@@ -147,7 +155,7 @@ fn snapshot(scenario: &str, output: &Output, owner: &Path) -> Snapshot {
     }
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 #[test]
 #[ignore = "requires pinned TypeScript 5.9.3"]
 fn pinned_build_records_owner_gate_difference() {
@@ -198,7 +206,7 @@ fn internal_reference_still_builds_and_executes() {
     fs::remove_dir_all(base).unwrap();
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 #[test]
 fn symlinked_reference_outside_owner_root_is_refused_before_read_or_emit() {
     let base = temporary("bluetsc-escape");

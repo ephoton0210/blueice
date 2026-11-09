@@ -4,6 +4,10 @@
 
 //! K.12.1.4: project references consume emitted declarations at the CLI boundary.
 
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
+#[path = "oracle_support/symlink_support.rs"]
+mod symlink_support;
+
 use serde_json::json;
 use std::env;
 use std::fs;
@@ -411,10 +415,10 @@ fn declaration_only_reference_never_authorizes_a_value_import() {
     fs::remove_dir_all(root).unwrap();
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 #[test]
 fn symlinked_referenced_declaration_cannot_escape_the_owner_root() {
-    use std::os::unix::fs::symlink;
+    use symlink_support::symlink;
 
     let root = temporary("symlink-output");
     materialize(&root);

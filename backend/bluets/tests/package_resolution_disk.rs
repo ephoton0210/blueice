@@ -5,8 +5,12 @@
 //! The package resolver on a real disk (J.4.3): canonical roots, symlinks that
 //! stay inside or leave them, and cache invalidation by revalidation.
 
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
+#[path = "oracle_support/symlink_support.rs"]
+mod symlink_support;
+
 use std::fs;
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -54,14 +58,14 @@ impl Drop for Tree {
     }
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 fn link(target: &Path, at: &Path) {
     fs::create_dir_all(at.parent().unwrap()).unwrap();
-    let _ = fs::remove_file(at);
-    std::os::unix::fs::symlink(target, at).unwrap();
+    let _ = fs::remove_file(at).or_else(|_| fs::remove_dir(at));
+    symlink_support::symlink(target, at).unwrap();
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 #[test]
 fn symlinks_inside_the_roots_are_followed_and_those_that_leave_are_not() {
     let tree = Tree::new("links");
@@ -97,7 +101,7 @@ fn symlinks_inside_the_roots_are_followed_and_those_that_leave_are_not() {
         .is_ok());
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 #[test]
 fn a_symlinked_file_inside_a_package_that_leaves_the_roots_is_refused() {
     let tree = Tree::new("filelink");
@@ -122,7 +126,7 @@ fn a_symlinked_file_inside_a_package_that_leaves_the_roots_is_refused() {
     );
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 #[test]
 fn a_node_modules_directory_that_is_itself_a_link_out_is_refused_per_package() {
     let tree = Tree::new("modules-link");
@@ -200,7 +204,7 @@ fn non_string_types_fields_fall_back_to_the_index_declaration() {
     }
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 #[test]
 fn a_cached_resolution_is_discarded_when_what_it_depended_on_changes() {
     let tree = Tree::new("invalidate");
@@ -278,7 +282,7 @@ fn relative_source_extensions_probe_in_pinned_order_and_invalidate_missing_candi
     assert!(source.revalidate());
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 #[test]
 fn relative_declaration_fallback_refuses_a_symlink_outside_owner_roots() {
     let tree = Tree::new("relative-declaration-escape");

@@ -1,0 +1,205 @@
+{
+  "schema": 1,
+  "scope": "Activated existing G-M3 finite Windowsx86_64 symlink evidence; preserve original assertions and owner boundaries. No skipped case counts as parity.",
+  "recordedAt": "2026-11-09T00:29:35.705270+00:00",
+  "baselineCommit": "360d7d921dfcb4d2783b0fc28290b5571eb27903",
+  "baselineBackendTree": "314b3a4e4b369817a44c59d601ef5b1b020397fa",
+  "targetPlatform": "Windows x86_64",
+  "targetHost": "pb60g.bravotekcorp.cc",
+  "targetVm": "omnisolve-winui-automation",
+  "testFeature": "windows-symlink-tests",
+  "cases": [
+    {
+      "name": "cli::config_build_rejects_an_output_directory_with_a_symlinked_parent_outside_the_root",
+      "source": "backend/bluets/tests/cli.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "c0c4d80e28b7a6de6c9d172626a0d000428167d004a49b02ddbc6d09beff0b3b",
+      "kind": "test-function"
+    },
+    {
+      "name": "coverage_bluets_cli::symlinked_entries_and_imports_cannot_escape_the_project_root",
+      "source": "backend/bluets/tests/coverage_bluets_cli.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "258bd60339659b221f5f36175019faf69bc2e8d215f3c9d98903a7a3647cc340",
+      "kind": "test-function"
+    },
+    {
+      "name": "declaration_option_boundaries::declaration_directory_symlink_refuses_before_any_publication",
+      "source": "backend/bluets/tests/declaration_option_boundaries.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "803381de9dbd34b2f39e19cabd2c098fe0444d7f103353674984477ccfa9cfa7",
+      "kind": "test-function"
+    },
+    {
+      "name": "json_assets::json_symlinks_cannot_read_or_publish_an_asset_outside_the_owner_root",
+      "source": "backend/bluets/tests/json_assets.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "53df00678f23842680ebcd85b5580329882d577cf7a05578657d0340507e7c93",
+      "kind": "test-function"
+    },
+    {
+      "name": "jsx_runtime_boundaries::runtime_declaration_symlink_escape_is_refused_before_loading",
+      "source": "backend/bluets/tests/jsx_runtime_boundaries.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "41ce9e3ca4636186fae223357d9115d69095c0fd81725c02b8417f81b53bed49",
+      "kind": "test-function"
+    },
+    {
+      "name": "package_feature_boundaries::package_manifest_symlink_refuses_before_reading_outside_roots",
+      "source": "backend/bluets/tests/package_feature_boundaries.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "ae0bbcaef4692c54fa1f4908527e59c250c0e8faa2ed596ecb6a7482690abf8a",
+      "kind": "test-function"
+    },
+    {
+      "name": "package_resolution_disk::a_cached_resolution_is_discarded_when_what_it_depended_on_changes",
+      "source": "backend/bluets/tests/package_resolution_disk.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "6371191e835befccc7c4c647997cce4ffc2148e4c58002f657c3bb71b905d733",
+      "kind": "test-function"
+    },
+    {
+      "name": "package_resolution_disk::a_node_modules_directory_that_is_itself_a_link_out_is_refused_per_package",
+      "source": "backend/bluets/tests/package_resolution_disk.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "6371191e835befccc7c4c647997cce4ffc2148e4c58002f657c3bb71b905d733",
+      "kind": "test-function"
+    },
+    {
+      "name": "package_resolution_disk::a_symlinked_file_inside_a_package_that_leaves_the_roots_is_refused",
+      "source": "backend/bluets/tests/package_resolution_disk.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "6371191e835befccc7c4c647997cce4ffc2148e4c58002f657c3bb71b905d733",
+      "kind": "test-function"
+    },
+    {
+      "name": "package_resolution_disk::relative_declaration_fallback_refuses_a_symlink_outside_owner_roots",
+      "source": "backend/bluets/tests/package_resolution_disk.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "6371191e835befccc7c4c647997cce4ffc2148e4c58002f657c3bb71b905d733",
+      "kind": "test-function"
+    },
+    {
+      "name": "package_resolution_disk::symlinks_inside_the_roots_are_followed_and_those_that_leave_are_not",
+      "source": "backend/bluets/tests/package_resolution_disk.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "6371191e835befccc7c4c647997cce4ffc2148e4c58002f657c3bb71b905d733",
+      "kind": "test-function"
+    },
+    {
+      "name": "packages::a_package_symlinked_outside_every_authorized_root_is_refused",
+      "source": "backend/bluets/tests/packages.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "32db08df6a2edc0a497901beb3e7703effec37b54ba845c58c4bf301eb5996cd",
+      "kind": "test-function"
+    },
+    {
+      "name": "packages::a_symlinked_package_inside_the_root_resolves_to_its_real_directory",
+      "source": "backend/bluets/tests/packages.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "32db08df6a2edc0a497901beb3e7703effec37b54ba845c58c4bf301eb5996cd",
+      "kind": "test-function"
+    },
+    {
+      "name": "path_mapping_boundaries::automatic_type_library_symlink_is_refused_before_publication",
+      "source": "backend/bluets/tests/path_mapping_boundaries.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "2d47122830087fe44114620517a1b81f1bfe70db5352d59b13397ae7aea91b04",
+      "kind": "test-function"
+    },
+    {
+      "name": "path_mapping_boundaries::virtual_root_symlink_is_refused_before_publication",
+      "source": "backend/bluets/tests/path_mapping_boundaries.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "2d47122830087fe44114620517a1b81f1bfe70db5352d59b13397ae7aea91b04",
+      "kind": "test-function"
+    },
+    {
+      "name": "path_mapping_boundaries::wildcard_target_symlink_is_refused_before_publication",
+      "source": "backend/bluets/tests/path_mapping_boundaries.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "2d47122830087fe44114620517a1b81f1bfe70db5352d59b13397ae7aea91b04",
+      "kind": "test-function"
+    },
+    {
+      "name": "project_build_freshness::build_state_symlink_is_refused_before_read",
+      "source": "backend/bluets/tests/project_build_freshness.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "073eba671497a79c02b72964e486c13acd149562527ecabc9e557a8cf02a60a1",
+      "kind": "test-function"
+    },
+    {
+      "name": "project_build_invalidation::repointed_symlink_invalidates_even_with_identical_bytes",
+      "source": "backend/bluets/tests/project_build_invalidation.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "298eacfb65886e9bcfbde4375921082f602881c5f626f2eda65c6711d5dcafb6",
+      "kind": "test-function"
+    },
+    {
+      "name": "project_build_invalidation::repointed-symlink pinned oracle row",
+      "source": "backend/bluets/tests/project_build_invalidation.rs",
+      "reason": "The pinned matrix filters this symlink case behind `cfg!(unix)` on Windows.",
+      "baselineSourceSha256": "298eacfb65886e9bcfbde4375921082f602881c5f626f2eda65c6711d5dcafb6",
+      "kind": "oracle-row"
+    },
+    {
+      "name": "project_config::configurations_files_and_outputs_cannot_follow_links_outside_the_owner_root",
+      "source": "backend/bluets/tests/project_config.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "45df7b2d90c6e143a1d03d9e78cf6e8bc3c2bbc5c80b1274da7fb62721981a0f",
+      "kind": "test-function"
+    },
+    {
+      "name": "project_reference_owner_gate::pinned_build_records_owner_gate_difference",
+      "source": "backend/bluets/tests/project_reference_owner_gate.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "d7d3564b734b517fadd131e124f72df033276dba9a41dc545d9417daf9486fe8",
+      "kind": "test-function"
+    },
+    {
+      "name": "project_reference_owner_gate::symlinked_reference_outside_owner_root_is_refused_before_read_or_emit",
+      "source": "backend/bluets/tests/project_reference_owner_gate.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "d7d3564b734b517fadd131e124f72df033276dba9a41dc545d9417daf9486fe8",
+      "kind": "test-function"
+    },
+    {
+      "name": "project_referenced_declarations::symlinked_referenced_declaration_cannot_escape_the_owner_root",
+      "source": "backend/bluets/tests/project_referenced_declarations.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "9f146eb7d7ddd616d24d5804fe6890aa1d9452601bd76884726009ad31684cb5",
+      "kind": "test-function"
+    },
+    {
+      "name": "source_option_boundaries::javascript_symlink_escape_is_refused_before_reading_the_body",
+      "source": "backend/bluets/tests/source_option_boundaries.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "287be6fa10e6eaa8f284c35d3bc2598491d386fa7ed5331e197f38e4eaa9111e",
+      "kind": "test-function"
+    },
+    {
+      "name": "source_option_boundaries::json_symlink_escape_is_refused_before_reading_the_body",
+      "source": "backend/bluets/tests/source_option_boundaries.rs",
+      "reason": "Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.",
+      "baselineSourceSha256": "287be6fa10e6eaa8f284c35d3bc2598491d386fa7ed5331e197f38e4eaa9111e",
+      "kind": "test-function"
+    }
+  ],
+  "counts": {
+    "testFunctions": 24,
+    "oracleRows": 1,
+    "total": 25
+  },
+  "fixtureSha256": {
+    "backend/bluets/tests/fixtures/project_reference_owner_gate/owner-gate-matrix.tsv": "be75ac02dc4fc4873b7e7ca6d83dfc8f0613b405454febe1c99dd3d22e6089ae",
+    "backend/bluets/tests/fixtures/project_build_invalidation/build-invalidation-matrix.tsv": "6c929113b9b5ccc59d88d9b981a1b26598df1eb29e6dbab593d99dcf0b2dae75"
+  },
+  "acceptance": {
+    "namedCases": "All24 existing named test functions compiled and executed on Windows; pinned repointed-symlink row selected and compared with unchanged observations. Zero unexplained skips.",
+    "authority": "Existing file/directory symlink capability only; preserve canonical confinement, refusal-before-read/emit and cache invalidation. No VM privilege or filesystem-authority expansion.",
+    "platformBaseline": "Fresh Windowsx86_64 core TypeScript82 oracle run at the measured source plus complete local tests; no arm64 or hosted-CI prerequisite.",
+    "localGates": "Original named symlink cases, full workspace, complete both-crate ordinary/ignored Native catalog, format, warnings-denied all-target Clippy and matching source/case/status publication.",
+    "retention": "Record actual source/compiler hashes, toolchain, selected names, results, skips and full logs. Preserve original fixtures and earlier evidence; broader parity remains OFF."
+  },
+  "fullGM3Accepted": false
+}

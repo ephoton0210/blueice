@@ -4,6 +4,10 @@
 
 //! New resolution inputs preserve canonical read bounds and cache identity.
 
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
+#[path = "oracle_support/symlink_support.rs"]
+mod symlink_support;
+
 use blueice_bluets::package_resolution::{
     ImportMode, ModuleResolution, OsPackageFs, PackageFs, PackageResolver, PackageResolverConfig,
     ResolveError,
@@ -102,7 +106,7 @@ fn types_version_target_escape_refuses_before_reading_outside_roots() {
 }
 
 #[test]
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 fn package_manifest_symlink_refuses_before_reading_outside_roots() {
     let tree = Tree::new("manifest-link");
     tree.write(
@@ -110,7 +114,7 @@ fn package_manifest_symlink_refuses_before_reading_outside_roots() {
         "export type Answer = number;\n",
     );
     tree.write("outside.json", r#"{"types":"index.d.ts"}"#);
-    std::os::unix::fs::symlink(
+    symlink_support::symlink(
         tree.root.join("outside.json"),
         tree.root.join("app/node_modules/pkg/package.json"),
     )

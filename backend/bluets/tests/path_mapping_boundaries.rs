@@ -4,6 +4,10 @@
 
 //! Path and type-library options retain the CLI's owner-root boundary.
 
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
+#[path = "oracle_support/symlink_support.rs"]
+mod symlink_support;
+
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -88,7 +92,7 @@ fn mapped_target_escape_is_refused_before_publication() {
 }
 
 #[test]
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 fn wildcard_target_symlink_is_refused_before_publication() {
     let tree = Tree::new("wildcard-link");
     tree.write(
@@ -100,7 +104,7 @@ fn wildcard_target_symlink_is_refused_before_publication() {
         "export type Unused = number;\n",
     );
     tree.write("outside.d.ts", "OUTSIDE_BODY\n");
-    std::os::unix::fs::symlink(
+    symlink_support::symlink(
         tree.0.join("outside.d.ts"),
         tree.0.join("app/types/answer.d.ts"),
     )
@@ -110,7 +114,7 @@ fn wildcard_target_symlink_is_refused_before_publication() {
 }
 
 #[test]
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 fn virtual_root_symlink_is_refused_before_publication() {
     let tree = Tree::new("virtual-link");
     tree.write(
@@ -118,14 +122,14 @@ fn virtual_root_symlink_is_refused_before_publication() {
         "import type { Answer } from './answer'; export const result: Answer = 42;\n",
     );
     tree.write("outside/answer.d.ts", "OUTSIDE_BODY\n");
-    std::os::unix::fs::symlink(tree.0.join("outside"), tree.0.join("app/generated")).unwrap();
+    symlink_support::symlink(tree.0.join("outside"), tree.0.join("app/generated")).unwrap();
     tree.config(json!({"rootDirs": ["src", "generated"]}));
     tree.write("app/main.ts", "export const result: number = 42;\n");
     tree.assert_confined_refusal();
 }
 
 #[test]
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 fn automatic_type_library_symlink_is_refused_before_publication() {
     let tree = Tree::new("types-link");
     tree.write("app/main.ts", "export const result: Answer = 42;\n");
@@ -134,7 +138,7 @@ fn automatic_type_library_symlink_is_refused_before_publication() {
         "declare type Unused = number;\n",
     );
     tree.write("outside/index.d.ts", "OUTSIDE_BODY\n");
-    std::os::unix::fs::symlink(
+    symlink_support::symlink(
         tree.0.join("outside"),
         tree.0.join("app/node_modules/@types/globals"),
     )

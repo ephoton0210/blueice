@@ -8,7 +8,7 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-11-06).**
+**Current BlueTS / BlueTSC compatibility status (2026-11-09).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
 Pinned compiler: **TypeScript 5.9.3**. **N = 39,426 suite-qualified
@@ -33,19 +33,26 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:314b3a4e4b369817a44c59d601ef5b1b020397fa`.
-Input graph SHA-256: `efd4fffed9cedcaef6ff1d03308abfc5494b89da22e113b51dc96162de11ef68`.
+Compiler/oracle source: `backend-tree:41f02c04944c3195cd9c00c664b4b1264beda805`.
+Input graph SHA-256: `c5a30f7a492b960bdd0248326aefa71804cb1d2769195d75eb85529aa95181f5`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
 
 <!-- END CURRENT BLUETS STATUS -->
 
-**Current work (2026-11-06):** A–J and K.1–K.14 are the completed baseline,
-not a full-parity claim. All **21 active Phase L implementation/compatibility
-packages are complete within their frozen scopes**, including G-T1's exact-output
-second stage and G-C3. The only unchecked package is **G-M3**, explicitly deferred
-unless the user requests a broader platform claim. No additional release gate is activated.
+<!-- BEGIN GM3 CURRENT PLATFORM EVIDENCE -->
+
+**Fresh G-M3 platform evidence (2026-11-09):** the current source `backend-tree:41f02c04944c3195cd9c00c664b4b1264beda805` passes Windows x86_64 symlink 25/25 and core oracle 82/82, plus the complete local gates. All 14,598 extracted source files match their expected hashes. The AC-K14 baseline paragraph above retains its older recorded source; this separate [G-M3 acceptance](GM3_CURRENT_INTEGRATION_MEASUREMENT.json) is the fresh measured Windows profile. Broader platform/toolchain combinations remain open.
+
+<!-- END GM3 CURRENT PLATFORM EVIDENCE -->
+
+**Current work (2026-11-09):** A–J and K.1–K.14 remain the completed baseline.
+All **22 existing Phase L checklist packages are complete within their frozen
+scopes**, including G-T1's exact-output second stage, G-C3 and the bounded
+Windows x86_64 G-M3 profile. Broader unmeasured combinations remain open and
+full TypeScript parity stays OFF. The accepted Windows 82-core/local-workspace
+boundary is unchanged; no new hosted-CI or arm64 gate is required.
 
 G-C1 acceptance includes the source-bound 102-suite / 247-oracle measurement,
 complete ordinary two-crate tests, rustfmt and warnings-denied Clippy. The
@@ -115,7 +122,10 @@ all-platform or single-run prerequisite.
    tests and every ignored oracle with `BLUEICE_BLUETSC_ORACLE=<tsc 5.9.3>`,
    `BLUEICE_ACORN_ORACLE=<acorn 8.15.0>` and `FORCE_COLOR=0`, plus workspace
    rustfmt and warnings-denied two-crate all-target Clippy. Run Cargo commands
-   sequentially on the shared target. Final/milestone validation also needs the
+   sequentially on the shared target. Complete Native recordings also need the
+   immutable CLI hash and explicit capture variables documented in the
+   [G-M3 reproduction profile](PLAN.md#reproducing-the-complete-g-m3-local-native-cohort).
+   Final/milestone validation also needs the
    complete local workspace tests/all-target Clippy and the accepted Windows VM
    82 core oracles; do not add a mandatory GitHub Actions gate. Existing coverage
    thresholds/exclusions are not weakened.
@@ -952,18 +962,32 @@ Existing measured behavior is reused; it is not implemented again.
     validated as preserved syntax, not falsely reported as directly executable.
     Provider loading, metadata typing and helper use acquire no additional authority.
 
-### Deferred — broader platform evidence, not a new release gate
+### Completed — bounded Windows x86_64 platform evidence
 
-- [ ] **G-M3 — Optional platform/symlink parity evidence.**
-  - **Status:** deferred unless the user requests a broader platform claim.
-    Windows VM 82 core oracles plus complete local tests remain sufficient;
-    neither Windows arm64 nor hosted all-leg success becomes mandatory here.
-  - **Scope / pass if activated:** inventory the current named Unix-only symlink
-    exclusions (currently 25), run the explicitly authorized applicable cases on
-    the requested platform, and record exact revision, toolchain, selected names,
-    results and skip reasons. A skipped test is not parity evidence; historical
-    hosted runs do not prove a later source. Do not enable VM privileges or broaden
-    filesystem authority merely to change a skip into a pass.
+- [x] **G-M3 — Windows x86_64 platform/symlink parity evidence.**
+  - **Frozen minimum:** execute the original 24 test functions and the unchanged
+    repointed-symlink oracle row on the requested Windows profile, with original
+    assertions, owner confinement, cache invalidation and no unexplained skips.
+    Require fresh Windows 82 core oracles and the complete local ordinary/Native,
+    workspace, format, warnings-denied Clippy and source/case/status gates.
+  - **Accepted (2026-11-09):** Windows 25/25 named cases and 82/82 core oracles;
+    all 14,598 source files match their expected hashes. Local named 25/25,
+    complete 179 Native suites / 1,027 functions with zero failures,
+    ignored or filtered tests, and the complete workspace
+    (7,827 passed, 0 unresolved failures, 386 existing ignored) pass.
+    The initial workspace invocation retains its one tool-path setup failure;
+    the unchanged complete target passes after correcting the oracle path,
+    with identical source, test binary and compiler hashes.
+    Formatting, workspace all-target Clippy and publication checks pass.
+  - **Scope:** test-only `windows-symlink-tests` uses existing file/directory
+    link capability on the pb60g VM. Production code, original oracle bytes and
+    owner authority stay unchanged. Default Windows exclusions remain explicitly
+    reported; broader unmeasured platform combinations remain open.
+  - **Evidence:** [frozen 25-case matrix](GM3_FROZEN_MATRIX.json),
+    [accepted measurement](GM3_CURRENT_INTEGRATION_MEASUREMENT.json) and
+    [verified raw evidence index](GM3_COHORT_ARTIFACTS.json). Both initial Windows
+    fixture failures, measurement setup failures and same-source continuations
+    are retained. No skipped case is credited as parity.
 
 ## Measurement and policy notes
 

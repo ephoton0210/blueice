@@ -32,6 +32,18 @@ test('discovers Unix-only tests in either attribute order', () => {
   );
 });
 
+test('discovers the explicit Windows symlink feature without treating it as a pass', () => {
+  const source = [
+    '#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]',
+    '#[test]',
+    'fn portable_symlink_boundary() {}',
+  ].join('\n');
+  assert.deepEqual(
+    unixOnlyTests(source, 'backend/bluets/tests/example.rs').map(entry => entry.name),
+    ['example::portable_symlink_boundary'],
+  );
+});
+
 test('the Windows report names every currently Unix-gated symlink case and why it is skipped', () => {
   const cases = skippedSymlinkCases();
   assert.equal(cases.length, 25);
@@ -58,7 +70,9 @@ test('prints reasons and appends the same report to the CI job summary', () => {
     });
     assert.equal(result.status, 0, result.stderr);
     assert(result.stdout.includes('project_reference_owner_gate::pinned_build_records_owner_gate_difference'));
-    assert(result.stdout.includes('SKIPPED | Excluded from the Windows test binary'));
+    assert(result.stdout.includes('SKIPPED | Excluded from the default Windows test binary'));
+    assert(result.stdout.includes('windows-symlink-tests'));
+    assert(result.stdout.includes('This report is not an execution result.'));
     assert.equal(fs.readFileSync(summary, 'utf8'), result.stdout);
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });

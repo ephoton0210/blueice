@@ -4,6 +4,10 @@
 
 //! K.12.2.2: observed filesystem inputs invalidate project build state.
 
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
+#[path = "oracle_support/symlink_support.rs"]
+mod symlink_support;
+
 use serde_json::json;
 use std::collections::BTreeSet;
 use std::env;
@@ -88,9 +92,9 @@ fn materialize(root: &Path, case: &str) {
     )
     .unwrap();
     if case == "repointed-symlink" {
-        #[cfg(unix)]
+        #[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
         {
-            use std::os::unix::fs::symlink;
+            use symlink_support::symlink;
             fs::create_dir_all(root.join("metadata")).unwrap();
             for name in ["a", "b"] {
                 fs::write(
@@ -197,9 +201,9 @@ fn mutate(root: &Path, change: &str) {
         )
         .unwrap(),
         "repointed-symlink" => {
-            #[cfg(unix)]
+            #[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
             {
-                use std::os::unix::fs::symlink;
+                use symlink_support::symlink;
                 fs::remove_file(root.join("package.json")).unwrap();
                 symlink("metadata/b.json", root.join("package.json")).unwrap();
             }
@@ -271,7 +275,10 @@ fn pinned_rebuild_matrix() {
     );
     let observed = CASES
         .iter()
-        .filter(|case| cfg!(unix) || **case != "repointed-symlink")
+        .filter(|case| {
+            cfg!(any(unix, all(windows, feature = "windows-symlink-tests")))
+                || **case != "repointed-symlink"
+        })
         .map(|case| {
             (
                 (*case).to_string(),
@@ -296,7 +303,10 @@ fn pinned_rebuild_matrix() {
             observed,
             recorded
                 .into_iter()
-                .filter(|(case, _)| cfg!(unix) || case != "repointed-symlink")
+                .filter(|(case, _)| cfg!(any(
+                    unix,
+                    all(windows, feature = "windows-symlink-tests")
+                )) || case != "repointed-symlink")
                 .collect::<Vec<_>>()
         );
     }
@@ -390,7 +400,7 @@ fn nearer_package_invalidates() {
     assert_public("nearer-package");
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 #[test]
 fn repointed_symlink_invalidates_even_with_identical_bytes() {
     assert_public("repointed-symlink");

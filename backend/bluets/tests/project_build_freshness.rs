@@ -4,6 +4,10 @@
 
 //! K.12.1.3: rebuild decisions from pinned TypeScript 5.9.3 `--build --verbose`.
 
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
+#[path = "oracle_support/symlink_support.rs"]
+mod symlink_support;
+
 use serde_json::json;
 use std::collections::BTreeSet;
 use std::env;
@@ -311,10 +315,10 @@ fn selective_rebuilds_execute_and_declare_like_typescript() {
     assert_eq!(native_artifacts, oracle_artifacts);
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 #[test]
 fn build_state_symlink_is_refused_before_read() {
-    use std::os::unix::fs::symlink;
+    use symlink_support::symlink;
 
     let root = temporary("state-symlink");
     let outside = temporary("outside-state");

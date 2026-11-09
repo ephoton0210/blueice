@@ -3,6 +3,10 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Runtime type providers obey owner refusals, resource bounds and cache identity.
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
+#[path = "oracle_support/symlink_support.rs"]
+mod symlink_support;
+
 use blueice_bluets::package_resolution::ImportMode;
 use blueice_bluets::{
     compile, CompilerOptions, DiagnosticCode, IncrementalCompiler, JsxMode, ModuleKind,
@@ -265,11 +269,11 @@ impl Drop for Tree {
 }
 
 #[test]
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 fn runtime_declaration_symlink_escape_is_refused_before_loading() {
     let tree = Tree::new("symlink");
     tree.write("outside.d.ts", "OUTSIDE_RUNTIME_BODY");
-    std::os::unix::fs::symlink(
+    symlink_support::symlink(
         tree.0.join("outside.d.ts"),
         tree.0.join("app/node_modules/typed-ui/jsx-runtime.d.ts"),
     )

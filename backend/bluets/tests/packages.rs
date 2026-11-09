@@ -6,6 +6,10 @@
 //! `moduleResolution` resolves bare specifiers from the dependency tree the
 //! owner authorized, on a real disk with real symlinks, and nothing outside it.
 
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
+#[path = "oracle_support/symlink_support.rs"]
+mod symlink_support;
+
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Output};
@@ -183,7 +187,7 @@ fn without_a_configured_module_resolution_bare_specifiers_stay_refused() {
     );
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 #[test]
 fn a_package_symlinked_outside_every_authorized_root_is_refused() {
     let project = Project::new("escape");
@@ -196,7 +200,7 @@ fn a_package_symlinked_outside_every_authorized_root_is_refused() {
         "import { shout } from \"typed-pkg\";\nexport const o = shout(\"a\");\n",
     );
     fs::create_dir_all(project.root.join("app/node_modules")).unwrap();
-    std::os::unix::fs::symlink(
+    symlink_support::symlink(
         project.root.join("outside/typed-pkg"),
         project.root.join("app/node_modules/typed-pkg"),
     )
@@ -217,7 +221,7 @@ fn a_package_symlinked_outside_every_authorized_root_is_refused() {
     assert_eq!(project.manifest()["packageResolution"]["externalRoots"], 1);
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 #[test]
 fn a_symlinked_package_inside_the_root_resolves_to_its_real_directory() {
     let project = Project::new("inside");
@@ -230,7 +234,7 @@ fn a_symlinked_package_inside_the_root_resolves_to_its_real_directory() {
         "import { shout } from \"typed-pkg\";\nexport const o = shout(\"a\");\n",
     );
     fs::create_dir_all(project.root.join("app/node_modules")).unwrap();
-    std::os::unix::fs::symlink(
+    symlink_support::symlink(
         project.root.join("app/.store/typed-pkg-1"),
         project.root.join("app/node_modules/typed-pkg"),
     )

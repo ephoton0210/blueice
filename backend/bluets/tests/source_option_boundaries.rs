@@ -4,6 +4,10 @@
 
 //! JavaScript checking and JSON source selection preserve the public CLI boundary.
 
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
+#[path = "oracle_support/symlink_support.rs"]
+mod symlink_support;
+
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::{Command, Output};
@@ -154,7 +158,7 @@ fn source_policy_options_contribute_to_the_build_fingerprint() {
 }
 
 #[test]
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 fn javascript_symlink_escape_is_refused_before_reading_the_body() {
     let tree = Tree::new("javascript-link");
     tree.write(
@@ -162,13 +166,13 @@ fn javascript_symlink_escape_is_refused_before_reading_the_body() {
         "import { answer } from './value.js'; export const result = answer;\n",
     );
     tree.write("outside.js", "OUTSIDE_BODY\n");
-    std::os::unix::fs::symlink(tree.0.join("outside.js"), tree.0.join("app/value.js")).unwrap();
+    symlink_support::symlink(tree.0.join("outside.js"), tree.0.join("app/value.js")).unwrap();
     tree.config("main.ts", json!({"allowJs": true, "checkJs": false}));
     tree.refusal("outside");
 }
 
 #[test]
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 fn json_symlink_escape_is_refused_before_reading_the_body() {
     let tree = Tree::new("json-link");
     tree.write(
@@ -176,7 +180,7 @@ fn json_symlink_escape_is_refused_before_reading_the_body() {
         "import data from './data.json'; export const result = data.answer;\n",
     );
     tree.write("outside.json", "OUTSIDE_BODY\n");
-    std::os::unix::fs::symlink(tree.0.join("outside.json"), tree.0.join("app/data.json")).unwrap();
+    symlink_support::symlink(tree.0.join("outside.json"), tree.0.join("app/data.json")).unwrap();
     tree.config(
         "main.ts",
         json!({"resolveJsonModule": true, "esModuleInterop": true}),

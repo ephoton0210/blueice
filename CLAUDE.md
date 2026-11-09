@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-11-06).**
+**Current BlueTS / BlueTSC compatibility status (2026-11-09).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
 Pinned compiler: **TypeScript 5.9.3**. **N = 39,426 suite-qualified
@@ -31,13 +31,19 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:314b3a4e4b369817a44c59d601ef5b1b020397fa`.
-Input graph SHA-256: `efd4fffed9cedcaef6ff1d03308abfc5494b89da22e113b51dc96162de11ef68`.
+Compiler/oracle source: `backend-tree:41f02c04944c3195cd9c00c664b4b1264beda805`.
+Input graph SHA-256: `c5a30f7a492b960bdd0248326aefa71804cb1d2769195d75eb85529aa95181f5`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
 
 <!-- END CURRENT BLUETS STATUS -->
+
+<!-- BEGIN GM3 CURRENT PLATFORM EVIDENCE -->
+
+**Fresh G-M3 platform evidence (2026-11-09):** the current source `backend-tree:41f02c04944c3195cd9c00c664b4b1264beda805` passes Windows x86_64 symlink 25/25 and core oracle 82/82, plus the complete local gates. All 14,598 extracted source files match their expected hashes. The AC-K14 baseline paragraph above retains its older recorded source; this separate [G-M3 acceptance](development/browser_core/phase-18-bluets/GM3_CURRENT_INTEGRATION_MEASUREMENT.json) is the fresh measured Windows profile. Broader platform/toolchain combinations remain open.
+
+<!-- END GM3 CURRENT PLATFORM EVIDENCE -->
 
 See [Phase 18 TODO](development/browser_core/phase-18-bluets/TODO.md) and
 [decision/evidence](development/browser_core/phase-18-bluets/PLAN.md) for scope and validation.

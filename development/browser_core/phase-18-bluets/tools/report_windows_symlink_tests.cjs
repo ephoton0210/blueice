@@ -11,13 +11,16 @@ const path = require('node:path');
 const ROOT = path.resolve(__dirname, '../../../..');
 const ATTRIBUTE_BLOCK = /((?:^[ \t]*#\[[^\r\n]*\][ \t]*\r?\n)+)[ \t]*fn[ \t]+([A-Za-z_][A-Za-z_0-9]*)[ \t]*\(/gm;
 const UNIX_ONLY_REASON = 'Excluded from the Windows test binary by `#[cfg(unix)]`; the fixture uses Unix-only symlink APIs.';
-const MATRIX_REASON = 'The pinned matrix filters this symlink case behind `cfg!(unix)` on Windows.';
+const FEATURE_GATE = '#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]';
+const FEATURE_REASON = 'Excluded from the default Windows test binary; enable the test-only `windows-symlink-tests` feature after verifying existing file/directory symlink capability. This report is not an execution result.';
+const MATRIX_REASON = 'The pinned matrix selects this row on Unix or with the Windows test-only `windows-symlink-tests` feature; default Windows builds omit it.';
 
 function unixOnlyTests(source, relativePath) {
   const tests = [];
   for (const match of source.matchAll(ATTRIBUTE_BLOCK)) {
-    if (match[1].includes('#[cfg(unix)]') && match[1].includes('#[test]')) {
-      tests.push({ name: `${path.basename(relativePath, '.rs')}::${match[2]}`, source: relativePath });
+    if ((match[1].includes('#[cfg(unix)]') || match[1].includes(FEATURE_GATE)) && match[1].includes('#[test]')) {
+      tests.push({ name: `${path.basename(relativePath, '.rs')}::${match[2]}`, source: relativePath,
+        reason: match[1].includes(FEATURE_GATE) ? FEATURE_REASON : UNIX_ONLY_REASON });
     }
   }
   return tests;
@@ -38,12 +41,13 @@ function skippedSymlinkCases(root = ROOT) {
     return rustTestFiles(directory).flatMap((fullPath) => {
       const relativePath = path.relative(root, fullPath).replaceAll(path.sep, '/');
       return unixOnlyTests(fs.readFileSync(fullPath, 'utf8'), relativePath)
-        .map((test) => ({ ...test, reason: UNIX_ONLY_REASON }));
+        .map((test) => ({ ...test }));
     });
   });
   const matrixPath = 'backend/bluets/tests/project_build_invalidation.rs';
   const matrix = fs.readFileSync(path.join(root, matrixPath), 'utf8');
-  if (!matrix.includes('cfg!(unix) || **case != "repointed-symlink"')) {
+  if (!matrix.includes('feature = "windows-symlink-tests"') ||
+      !matrix.includes('**case != "repointed-symlink"')) {
     throw new Error('The repointed-symlink matrix filter changed; review the Windows report.');
   }
   tests.push({
@@ -61,8 +65,8 @@ function renderReport(tests) {
   return [
     '### Windows symlink test report',
     '',
-    'These cases are omitted by existing Unix-only test fixtures, not counted as Windows passes.',
-    'The Windows workspace suite runs all other compiled tests; each omitted case is listed below.',
+    'Default Windows builds omit these cases. The test-only `windows-symlink-tests` feature compiles them after an owner checks existing symlink capability.',
+    'This source inventory is not a pass result. Actual selected names, results and permission profiles are recorded separately by G-M3.',
     '',
     '| Test or oracle row | Status | Printed reason |',
     '| --- | --- | --- |',

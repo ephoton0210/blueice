@@ -4,15 +4,19 @@
 
 //! K.2.1: real project configuration is compared at the CLI boundary.
 
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
+#[path = "oracle_support/symlink_support.rs"]
+mod symlink_support;
+
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::env;
 use std::fs;
-#[cfg(unix)]
-use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
+use symlink_support::symlink;
 
 const MATRIX: &str = include_str!("fixtures/project_config/config-checker-matrix.tsv");
 static NEXT: AtomicU64 = AtomicU64::new(0);
@@ -241,7 +245,7 @@ fn unknown_options_name_the_option() {
     );
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 #[test]
 fn configurations_files_and_outputs_cannot_follow_links_outside_the_owner_root() {
     let temporary = temporary("links");

@@ -4,6 +4,10 @@
 
 //! Declaration publishing preserves the CLI's canonical owner-root boundary.
 
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
+#[path = "oracle_support/symlink_support.rs"]
+mod symlink_support;
+
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -103,9 +107,9 @@ fn declaration_directory_escape_refuses_before_any_publication() {
 }
 
 #[test]
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 fn declaration_directory_symlink_refuses_before_any_publication() {
-    use std::os::unix::fs::symlink;
+    use symlink_support::symlink;
 
     let root = Temporary::new("symlink");
     let outside = root.0.join("outside");

@@ -4,6 +4,10 @@
 
 //! JSON attribute dependencies retain owner bounds and actual asset identity.
 
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
+#[path = "oracle_support/symlink_support.rs"]
+mod symlink_support;
+
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -104,13 +108,13 @@ fn json_resolution_requires_the_explicit_effective_option() {
     fs::remove_dir_all(root).unwrap();
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, all(windows, feature = "windows-symlink-tests")))]
 #[test]
 fn json_symlinks_cannot_read_or_publish_an_asset_outside_the_owner_root() {
     let root = project("escape", true);
     let outside = root.with_extension("outside");
     fs::write(&outside, "{\"nested\":{\"value\":42}}").unwrap();
-    std::os::unix::fs::symlink(&outside, root.join("src/data.json")).unwrap();
+    symlink_support::symlink(&outside, root.join("src/data.json")).unwrap();
     let output = build(&root);
     assert!(!output.status.success());
     assert!(report(&output).contains("outside"), "{}", report(&output));
