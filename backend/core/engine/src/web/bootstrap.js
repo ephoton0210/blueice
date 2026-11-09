@@ -1728,10 +1728,12 @@
       return this.offsetHeight;
     }
     get scrollTop() {
-      return this._scrollTop || 0;
+      // The root element's scroll position is the window's.
+      return this === document.documentElement || this === document.body ? global.scrollY || 0 : this._scrollTop || 0;
     }
     set scrollTop(v) {
-      this._scrollTop = +v || 0;
+      if (this === document.documentElement || this === document.body) requestWindowScroll(+v);
+      else this._scrollTop = +v || 0;
     }
     get scrollLeft() {
       return this._scrollLeft || 0;
@@ -1739,9 +1741,33 @@
     set scrollLeft(v) {
       this._scrollLeft = +v || 0;
     }
-    scrollIntoView() {}
-    scrollTo() {}
-    scrollBy() {}
+    scrollIntoView(arg) {
+      // `true`/`false` and `{ block }`: where in the window the element comes to rest.
+      const block = arg === false ? 'end' : arg && typeof arg === 'object' && arg.block ? String(arg.block) : 'start';
+      const r = this.getBoundingClientRect();
+      const [, vh] = viewportSize();
+      const y = global.scrollY || 0;
+      const top = r.top + y;
+      let target = top;
+      if (block === 'center') target = top - (vh - r.height) / 2;
+      else if (block === 'end') target = top + r.height - vh;
+      else if (block === 'nearest') {
+        if (r.top < 0) target = top;
+        else if (r.top + r.height > vh) target = top + r.height - vh;
+        else target = y;
+      }
+      requestWindowScroll(target);
+    }
+    scrollTo(a, b) {
+      if (this === document.documentElement || this === document.body) return global.scrollTo(a, b);
+      const top = a && typeof a === 'object' ? a.top : b;
+      if (Number.isFinite(+top)) this._scrollTop = Math.max(0, +top);
+    }
+    scrollBy(a, b) {
+      if (this === document.documentElement || this === document.body) return global.scrollBy(a, b);
+      const dy = a && typeof a === 'object' ? a.top : b;
+      if (Number.isFinite(+dy)) this._scrollTop = Math.max(0, (this._scrollTop || 0) + +dy);
+    }
     focus() {
       if (document._active === this) return;
       const previous = document._active;
@@ -4413,6 +4439,21 @@
   };
 
   const viewportSize = () => JSON.parse(bi('viewport'));
+  // Scrolling the window from a script: the page is asked to go there (clamped to what can
+  // scroll), and `scrollY` reads the new position at once, as it does in a browser.
+  function requestWindowScroll(y) {
+    if (!Number.isFinite(y)) return;
+    const [, vh] = viewportSize();
+    const height = document.documentElement ? JSON.parse(bi('rect', document.documentElement._id))[3] : 0;
+    y = Math.max(0, height > 0 ? Math.min(y, Math.max(0, height - vh)) : y);
+    bi('scrollTo', y);
+    global.scrollY = y;
+    global.pageYOffset = y;
+  }
+  function windowScrollTo(a, b) {
+    const top = a && typeof a === 'object' ? a.top : b;
+    if (top !== undefined) requestWindowScroll(+top);
+  }
   const scheduleCallbacks = {
     requestAnimationFrame(cb) {
       return setTimeout(() => cb(nowMs()), 16);
@@ -4592,9 +4633,12 @@
     getComputedStyle: (el) => computed(el),
     matchMedia,
     getSelection: () => selectionApi,
-    scrollTo() {},
-    scrollBy() {},
-    scroll() {},
+    scrollTo: windowScrollTo,
+    scrollBy(a, b) {
+      const dy = a && typeof a === 'object' ? a.top : b;
+      if (Number.isFinite(+dy)) requestWindowScroll((global.scrollY || 0) + +dy);
+    },
+    scroll: windowScrollTo,
     alert() {},
     confirm: () => false,
     prompt: () => null,

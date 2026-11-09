@@ -167,6 +167,21 @@ impl Page {
         }
     }
 
+    /// A script scrolled the window to `y` (document pixels from the top): the page goes there,
+    /// within what can be scrolled, and the new position is a frame to publish -- the human and
+    /// anything reading the representation see it in the same render pass as any other scroll.
+    /// The scripts hear of it as a scroll event on the next tick, like a wheel scroll.
+    fn scroll_from_script(&mut self, y: f64) {
+        let max_scroll = (self.fragment.height - self.viewport_height).max(0.0);
+        let y = y.clamp(0.0, max_scroll);
+        if (y - self.scroll_y).abs() < f64::EPSILON {
+            return;
+        }
+        self.scroll_y = y;
+        self.script_change_unpublished = true;
+        self.script_change_unpublished_by_web = true;
+    }
+
     pub(crate) fn take_web_navigation(&mut self) -> Option<String> {
         self.web_navigation.take()
     }
@@ -340,6 +355,7 @@ impl Page {
     /// styles come back too); a turn run on a copy leaves the page's styles.
     fn finish_turn(&mut self, done: Done, lent: bool) -> (Vec<(NodeId, String)>, bool) {
         let r = done.returned;
+        let scroll_to = r.scroll_to;
         let (dirty, navigations, requests, url, jobs, canvases, loaded) = (
             r.dirty,
             r.navigations,
@@ -387,6 +403,9 @@ impl Page {
                 }
                 NavigationRequest::Go(_) => {}
             }
+        }
+        if let Some(y) = scroll_to {
+            self.scroll_from_script(y);
         }
         if !loaded.is_empty() {
             for (src, image) in loaded {
@@ -848,6 +867,91 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    /// 3000 px of page: a 100 px header, then boxes `a` (at 1000), `b` (at 2000) and a tail.
+    const TALL: &str = "<body style='margin:0'><div style='height:1000px'>top</div>\
+        <div id=a style='height:200px'>a</div><div style='height:800px'></div>\
+        <div id=b style='height:100px'>b</div><div style='height:900px'></div></body>";
+
+    fn scrolled_by(script: &str) -> f64 {
+        let mut page = page(TALL);
+        page.web_eval(script);
+        page.settle();
+        page.scroll_y()
+    }
+
+    #[test]
+    fn a_page_script_can_scroll_the_window() {
+        assert_eq!(scrolled_by("window.scrollTo(0, 500)"), 500.0);
+        assert_eq!(scrolled_by("window.scrollTo({ top: 700, behavior: 'smooth' })"), 700.0);
+        assert_eq!(scrolled_by("window.scroll(0, 250)"), 250.0);
+        assert_eq!(scrolled_by("window.scrollTo(0, 100); window.scrollBy(0, 50)"), 150.0);
+        assert_eq!(scrolled_by("window.scrollBy({ top: 80, left: 5 })"), 80.0);
+        assert_eq!(scrolled_by("document.documentElement.scrollTop = 321"), 321.0);
+        assert_eq!(scrolled_by("document.scrollingElement.scrollTop = 99"), 99.0);
+        assert_eq!(scrolled_by("document.body.scrollTop = 42"), 42.0);
+        // The end of the page, and not past it; not before the start; nonsense is ignored.
+        assert_eq!(scrolled_by("window.scrollTo(0, 99999)"), 2700.0);
+        assert_eq!(scrolled_by("window.scrollTo(0, 300); window.scrollTo(0, -50)"), 0.0);
+        assert_eq!(scrolled_by("window.scrollTo(0, 300); window.scrollTo(0, NaN)"), 300.0);
+        assert_eq!(scrolled_by("window.scrollTo(0, 300); window.scrollTo()"), 300.0);
+    }
+
+    #[test]
+    fn scroll_position_reads_back_in_the_same_script() {
+        let mut page = page(
+            "<body style='margin:0'><div style='height:3000px'></div><p id=out>x</p></body>",
+        );
+        page.web_eval(
+            "window.scrollTo(0, 640);\
+             document.getElementById('out').textContent = [window.scrollY, window.pageYOffset, document.documentElement.scrollTop].join(',');",
+        );
+        page.settle();
+        assert!(texts(&page).iter().any(|t| t == "640,640,640"), "{:?}", texts(&page));
+    }
+
+    #[test]
+    fn scroll_into_view_aligns_the_element() {
+        // The viewport is 300 px tall: `a` is 200 px at 1000, `b` 100 px at 2000.
+        assert_eq!(scrolled_by("document.getElementById('a').scrollIntoView()"), 1000.0);
+        assert_eq!(scrolled_by("document.getElementById('a').scrollIntoView(true)"), 1000.0);
+        assert_eq!(scrolled_by("document.getElementById('a').scrollIntoView({ block: 'start' })"), 1000.0);
+        assert_eq!(scrolled_by("document.getElementById('a').scrollIntoView({ block: 'center' })"), 950.0);
+        assert_eq!(scrolled_by("document.getElementById('a').scrollIntoView({ block: 'end' })"), 900.0);
+        assert_eq!(scrolled_by("document.getElementById('a').scrollIntoView(false)"), 900.0);
+        // `nearest` moves only as far as needed: from the top, `b` comes in at the bottom edge.
+        assert_eq!(scrolled_by("document.getElementById('b').scrollIntoView({ block: 'nearest' })"), 1800.0);
+        // ...and not at all when it is already showing.
+        assert_eq!(
+            scrolled_by(
+                "window.scrollTo(0, 1900); document.getElementById('b').scrollIntoView({ block: 'nearest' })"
+            ),
+            1900.0
+        );
+        // The last element cannot be scrolled to the top: the page ends first.
+        assert_eq!(scrolled_by("document.getElementById('b').scrollIntoView()"), 2000.0);
+    }
+
+    #[test]
+    fn a_scripted_scroll_is_a_scroll_event_a_new_frame_and_a_fresh_look_at_what_is_visible() {
+        let mut page = page(
+            "<body style='margin:0'><div style='height:1500px'>top</div><p id=out>0</p><script>\
+             let n = 0;\
+             window.addEventListener('scroll', () => { n += 1; document.getElementById('out').textContent = 'scrolls ' + n + ' at ' + window.scrollY; });\
+             </script></body>",
+        );
+        let _ = page.take_unpublished_script_change();
+        page.web_eval("window.scrollTo(0, 600)");
+        page.settle();
+        for _ in 0..20 {
+            page.tick_web();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(page.scroll_y(), 600.0);
+        assert!(page.take_unpublished_script_change(), "the scroll is a frame to publish");
+        let shown = texts(&page).join(" ");
+        assert!(shown.contains("scrolls 1 at 600"), "one scroll event, seeing the new position: {shown}");
     }
 
     fn background_page(html: &str) -> Page {

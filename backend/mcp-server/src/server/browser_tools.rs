@@ -239,7 +239,7 @@ impl BlueIceMcpServer {
     }
 
     #[tool(
-        description = "Scroll the page the way a person's mouse wheel does: delta_y CSS pixels (positive = down) sent as separate wheel notches (notch_px each, default 20, the amount one wheel line scrolls in the human window), interval_ms apart (default 16). Each notch waits for core's frame, and the result is a trajectory, not screenshots: the page's scroll position and, for each tracked node, its document and viewport position before the first notch and after every notch, with per-notch send-to-frame time, frame generation and size. track lists node IDs to follow; omit it to follow the first eight visible named nodes. At most 2000 notches and 60 s per call."
+        description = "Scroll the page the way a person's mouse wheel does: delta_y CSS pixels (positive = down) sent as separate wheel notches (notch_px each, default 20, the amount one wheel line scrolls in the human window), interval_ms apart (default 16). Each notch waits for core's frame, and the result is a trajectory, not screenshots: how far the page really moved (moved_px per notch and in total, against requested_px: it is less at the ends of the page, and different when the page's own script scrolled it, as window.scrollTo and scrollIntoView can), the page's scroll position and, for each tracked node, its document and viewport position before the first notch and after every notch, with per-notch send-to-frame time, frame generation and size. track lists node IDs to follow; omit it to follow the first eight visible named nodes. At most 2000 notches and 60 s per call."
     )]
     pub(super) async fn scroll(
         &self,

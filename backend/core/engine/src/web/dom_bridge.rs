@@ -104,6 +104,8 @@ pub(crate) struct DomState {
     pub viewport: (f64, f64),
     pub url: String,
     pub navigations: Vec<NavigationRequest>,
+    /// Where a script last asked the window to scroll to, for the page to take.
+    pub scroll_to: Option<f64>,
     pub cookies: String,
     /// External scripts a script inserted: `(script element, absolute URL)`.
     pub script_requests: Vec<(NodeId, String)>,
@@ -135,6 +137,7 @@ impl DomState {
             viewport,
             url: url.to_string(),
             navigations: Vec::new(),
+            scroll_to: None,
             cookies: String::new(),
             script_requests: Vec::new(),
             net_jobs: Vec::new(),
@@ -777,6 +780,14 @@ impl DomState {
             }
             "reload" => {
                 self.navigations.push(NavigationRequest::Reload);
+                Reply::Undefined
+            }
+            "scrollTo" => {
+                if let Some(Reply::Number(y)) = args.first() {
+                    if y.is_finite() {
+                        self.scroll_to = Some(y.max(0.0));
+                    }
+                }
                 Reply::Undefined
             }
             "go" => {

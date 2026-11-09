@@ -111,3 +111,47 @@ fn a_quiet_session_pushes_no_frames_on_its_own() {
     let dir = handle.join().unwrap();
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[test]
+fn a_scroll_made_by_page_script_is_one_frame_and_the_same_position_in_the_representation() {
+    // A human watching the window and an AI reading the representation must see a script's
+    // scroll the way they see a wheel scroll: a frame pushed on the session tick, and a
+    // representation of the same generation holding the same `scroll_y`.
+    let dir = temp_frame_dir("script-scroll-frame");
+    let gatekeeper = clearing_gatekeeper("script-scroll-frame");
+    let (mut client, mut server) = client_pair();
+    client
+        .set_read_timeout(Some(Duration::from_secs(20)))
+        .unwrap();
+    let handle = thread::spawn(move || {
+        let mut tabs = TabManager::new(320.0, 200.0);
+        let page = default_page(&mut tabs);
+        page.set_web_scripts(true);
+        page.load_html_str(
+            "<body style='margin:0'><div style='height:3000px'>top</div><script>\
+             setTimeout(() => window.scrollTo(0, 500), 30);</script></body>",
+            Some("https://example.com/p".to_string()),
+        );
+        let mut generation = 0u64;
+        run_session(&mut tabs, &mut server, &dir, &mut generation, &gatekeeper).unwrap();
+        dir
+    });
+    handshake(&mut client);
+
+    // No request after the handshake, yet the scroll arrives as a frame.
+    let first = blueice_ipc::read_server_message(&mut client).unwrap();
+    let ServerMessage::FrameReady { generation, .. } = first else {
+        panic!("expected an unprompted FrameReady, got {first:?}");
+    };
+    blueice_ipc::write_client_message(&mut client, &ClientMessage::GetRepresentation).unwrap();
+    let reply = blueice_ipc::read_server_message(&mut client).unwrap();
+    let ServerMessage::Representation(snapshot) = reply else {
+        panic!("expected Representation, got {reply:?}");
+    };
+    assert_eq!(snapshot.generation, generation, "same render pass");
+    assert_eq!(snapshot.scroll_y, 500.0, "the position the script scrolled to");
+
+    blueice_ipc::write_client_message(&mut client, &ClientMessage::Shutdown).unwrap();
+    let dir = handle.join().unwrap();
+    let _ = std::fs::remove_dir_all(dir);
+}

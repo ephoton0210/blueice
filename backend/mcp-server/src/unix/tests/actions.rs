@@ -387,6 +387,59 @@ fn a_wheel_scroll_records_the_page_and_node_trajectory_notch_by_notch() {
 }
 
 #[test]
+fn a_scroll_record_says_how_far_the_page_really_moved_so_scripts_and_page_ends_show() {
+    let (client, server) = UnixStream::pair().unwrap();
+    let representation = |scroll_y: f64, generation: u64| -> FakeCoreStep {
+        Box::new(move |msg, s| {
+            assert!(matches!(msg, ClientMessage::GetRepresentation));
+            let mut snapshot = sample_snapshot(generation);
+            snapshot.scroll_y = scroll_y;
+            reply(s, &ServerMessage::Representation(snapshot));
+        })
+    };
+    let notch = |generation: u64| -> FakeCoreStep {
+        Box::new(move |msg, s| {
+            assert!(matches!(msg, ClientMessage::Scroll { .. }));
+            reply_tab(
+                s,
+                1,
+                &ServerMessage::FrameReady {
+                    shm_path: "/tmp/x".to_string(),
+                    width: 10,
+                    height: 40,
+                    generation,
+                },
+            );
+        })
+    };
+    // Three 20 px notches. The first moves the page 20; before the second a page script
+    // scrolled it on its own (to 200); the third finds the end of the page and moves nothing.
+    fake_core(
+        server,
+        vec![
+            representation(0.0, 1),
+            notch(2),
+            representation(20.0, 2),
+            notch(3),
+            representation(200.0, 3),
+            notch(4),
+            representation(200.0, 4),
+        ],
+    );
+    let mut conn = CoreConnection::new(client);
+    let record = conn
+        .scroll(60.0, 20.0, Duration::ZERO, Some(vec![]), None)
+        .unwrap();
+    assert_eq!(
+        record.steps.iter().map(|s| s.moved_px).collect::<Vec<_>>(),
+        [Some(20.0), Some(180.0), Some(0.0)]
+    );
+    assert_eq!(record.requested_px, 60.0);
+    assert_eq!(record.moved_px, 200.0, "the page's own scroll counts: it is where the page ended up");
+    assert_eq!(record.final_scroll_y, 200.0);
+}
+
+#[test]
 fn without_a_track_list_the_first_visible_named_nodes_are_followed() {
     let (client, server) = UnixStream::pair().unwrap();
     fake_core(

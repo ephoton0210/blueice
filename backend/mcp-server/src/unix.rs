@@ -153,6 +153,10 @@ pub struct ScrollStep {
     pub height: Option<u32>,
     /// The layout after this notch; `None` when core refused it.
     pub position: Option<TrajectorySample>,
+    /// How far the page's scroll position really moved since the sample before this one
+    /// (positive = down). Not always `delta_y`: it is less at the ends of the page, and more
+    /// or different when the page's own script scrolled it in between.
+    pub moved_px: Option<f64>,
 }
 
 /// The complete record of one [`CoreConnection::scroll`].
@@ -166,6 +170,12 @@ pub struct ScrollRecord {
     /// The layout before the first notch.
     pub start: TrajectorySample,
     pub steps: Vec<ScrollStep>,
+    /// What was asked for in total, and how far the page's scroll position moved from the start
+    /// to the last sample taken (the page's own scrolls included).
+    pub requested_px: f64,
+    pub moved_px: f64,
+    /// The page's scroll position at the last sample taken.
+    pub final_scroll_y: f64,
 }
 
 /// Splits a scroll of `total` pixels into wheel notches of at most `notch`
@@ -629,7 +639,7 @@ impl<S: Read + Write> CoreConnection<S> {
                 .collect(),
         };
         let start = sample(&first, &tracked_ids, None, started.elapsed());
-        let mut steps = Vec::new();
+        let mut steps: Vec<ScrollStep> = Vec::new();
         let mut error = None;
         for (index, delta_y) in scroll_notches(total_delta_y, notch_px)
             .into_iter()
@@ -696,6 +706,12 @@ impl<S: Read + Write> CoreConnection<S> {
             } else {
                 None
             };
+            let before = steps
+                .iter()
+                .rev()
+                .find_map(|step| step.position.as_ref())
+                .map_or(start.scroll_y, |p| p.scroll_y);
+            let moved_px = position.as_ref().map(|p| p.scroll_y - before);
             steps.push(ScrollStep {
                 index,
                 delta_y,
@@ -705,16 +721,25 @@ impl<S: Read + Write> CoreConnection<S> {
                 width,
                 height,
                 position,
+                moved_px,
             });
             if error.is_some() {
                 break;
             }
         }
+        let final_scroll_y = steps
+            .iter()
+            .rev()
+            .find_map(|step| step.position.as_ref())
+            .map_or(start.scroll_y, |p| p.scroll_y);
         Ok(ScrollRecord {
             error,
             total_ms: started.elapsed().as_secs_f64() * 1000.0,
             url: first.url.clone(),
             tracked: tracked_ids,
+            requested_px: steps.iter().map(|step| step.delta_y).sum(),
+            moved_px: final_scroll_y - start.scroll_y,
+            final_scroll_y,
             start,
             steps,
         })

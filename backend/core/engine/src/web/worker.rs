@@ -57,6 +57,8 @@ pub(crate) struct Returned {
     pub styles: Option<HashMap<NodeId, ComputedStyle>>,
     pub dirty: bool,
     pub navigations: Vec<NavigationRequest>,
+    /// Where a script asked the window to scroll to.
+    pub scroll_to: Option<f64>,
     pub script_requests: Vec<(NodeId, String)>,
     pub url: String,
     pub net_jobs: Vec<super::net::NetJob>,
@@ -103,7 +105,7 @@ enum Event {
 
 /// How a process's turn stands.
 enum Poll {
-    Done(ChildDone),
+    Done(Box<ChildDone>),
     Pending,
     Failed,
 }
@@ -200,6 +202,7 @@ impl ScriptWorker {
                         styles: Some(std::mem::take(&mut s.styles)),
                         dirty: std::mem::take(&mut s.dirty),
                         navigations: std::mem::take(&mut s.navigations),
+                        scroll_to: s.scroll_to.take(),
                         script_requests: std::mem::take(&mut s.script_requests),
                         url: s.url.clone(),
                         net_jobs: std::mem::take(&mut s.net_jobs),
@@ -390,7 +393,7 @@ impl ScriptWorker {
                 }
             },
             Backend::Process(link) => match Self::poll_link(link, page) {
-                Poll::Done(done) => Some(self.process_done(done)),
+                Poll::Done(done) => Some(self.process_done(*done)),
                 Poll::Pending => None,
                 Poll::Failed => {
                     self.busy = false;
@@ -415,7 +418,7 @@ impl ScriptWorker {
                 }
             },
             Backend::Process(link) => match Self::wait_link(link, page) {
-                Poll::Done(done) => Some(self.process_done(done)),
+                Poll::Done(done) => Some(self.process_done(*done)),
                 Poll::Pending | Poll::Failed => {
                     self.busy = false;
                     None
@@ -433,7 +436,7 @@ impl ScriptWorker {
             match link.events.try_recv() {
                 Ok(event) => {
                     if let Some(done) = Self::process_event(link, event, page) {
-                        return Poll::Done(done);
+                        return Poll::Done(Box::new(done));
                     }
                     if link.failed {
                         return Poll::Failed;
@@ -471,7 +474,7 @@ impl ScriptWorker {
             match link.events.recv_timeout(left) {
                 Ok(event) => {
                     if let Some(done) = Self::process_event(link, event, page) {
-                        return Poll::Done(done);
+                        return Poll::Done(Box::new(done));
                     }
                 }
                 Err(_) => link.failed = true,
@@ -527,7 +530,7 @@ impl ScriptWorker {
     /// Handles one thing the process said; returns the turn's result if that was it.
     fn process_event(link: &mut ProcessLink, event: Event, page: &dyn PageQueries) -> Option<ChildDone> {
         match event {
-            Event::Message(FromChild::Done(done)) => Some(done),
+            Event::Message(FromChild::Done(done)) => Some(*done),
             Event::Message(FromChild::Query(query)) => {
                 let began = Instant::now();
                 let answer = match query {
@@ -559,6 +562,7 @@ impl ScriptWorker {
             styles: None,
             dirty: done.dirty,
             navigations: done.navigations,
+            scroll_to: done.scroll_to,
             script_requests: done
                 .script_requests
                 .into_iter()

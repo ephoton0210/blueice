@@ -192,3 +192,30 @@ fn what_the_page_itself_changes_in_the_document_is_what_scripts_read_next() {
         texts(p).iter().any(|t| t == "read:typed")
     });
 }
+
+#[test]
+fn a_script_in_the_process_can_scroll_the_page_and_hears_about_it() {
+    // A timer in the scripts' process scrolls the window; the page goes there, and the process
+    // is told (a scroll event with the new position) like for a wheel scroll.
+    let mut page = page(
+        "<body style='margin:0'><div style='height:3000px'>top</div><p id=out>idle</p><script>\
+         window.addEventListener('scroll', () => { document.getElementById('out').textContent = 'heard ' + window.scrollY; });\
+         setTimeout(() => window.scrollTo(0, 900), 20);\
+         </script></body>",
+    );
+    assert_eq!(page.script_backend(), "process");
+    until(&mut page, "the page to be scrolled by its script", |p| p.scroll_y() == 900.0);
+    until(&mut page, "the script to hear its own scroll", |p| texts(p).iter().any(|t| t == "900"));
+}
+
+#[test]
+fn scroll_into_view_in_the_process_uses_the_pages_layout() {
+    let mut page = page(
+        "<body style='margin:0'><div style='height:1200px'>top</div><div id=t style='height:100px'>target</div>\
+         <div style='height:1500px'></div><script>\
+         setTimeout(() => document.getElementById('t').scrollIntoView({ block: 'center' }), 20);\
+         </script></body>",
+    );
+    // 300 px window: the 100 px target at 1200 is centred by scrolling to 1200 - (300 - 100) / 2.
+    until(&mut page, "the target to be centred", |p| p.scroll_y() == 1100.0);
+}

@@ -478,6 +478,8 @@ pub(crate) struct ChildDone {
     pub net_jobs: Vec<NetJob>,
     pub canvases: Vec<(u64, Arc<RasterImage>)>,
     pub loaded_images: Vec<(String, Arc<RasterImage>)>,
+    /// Where a script asked the window to scroll to (document pixels from the top).
+    pub scroll_to: Option<f64>,
     pub next_timer_due: Option<u64>,
     pub clock_ms: u64,
     pub console: Vec<String>,
@@ -488,7 +490,7 @@ pub(crate) struct ChildDone {
 pub(crate) enum FromChild {
     Ready,
     InitFailed(String),
-    Done(ChildDone),
+    Done(Box<ChildDone>),
     Query(Query),
     /// The document as it is now, and what changed in it since the page last
     /// had it (a change journal), so the page can restyle incrementally.
@@ -553,6 +555,8 @@ impl FromChild {
                     e.str(src);
                     e.image(image);
                 }
+                e.bool(done.scroll_to.is_some());
+                e.f64(done.scroll_to.unwrap_or(0.0));
                 e.opt_u64(done.next_timer_due);
                 e.u64(done.clock_ms);
                 e.strs(&done.console);
@@ -633,7 +637,7 @@ impl FromChild {
                 for _ in 0..n {
                     loaded_images.push((d.str()?, Arc::new(d.image()?)));
                 }
-                FromChild::Done(ChildDone {
+                FromChild::Done(Box::new(ChildDone {
                     dirty,
                     navigations,
                     script_requests,
@@ -641,10 +645,15 @@ impl FromChild {
                     net_jobs,
                     canvases,
                     loaded_images,
+                    scroll_to: {
+                        let asked = d.bool()?;
+                        let y = d.f64()?;
+                        asked.then_some(y)
+                    },
                     next_timer_due: d.opt_u64()?,
                     clock_ms: d.u64()?,
                     console: d.strs()?,
-                })
+                }))
             }
             3 => FromChild::Query(match d.u8()? {
                 0 => Query::Computed {
@@ -809,11 +818,12 @@ mod tests {
             }],
             canvases: vec![(5, picture(4, 4, 1))],
             loaded_images: vec![("img.png".into(), picture(2, 3, 5))],
+            scroll_to: Some(1234.5),
             next_timer_due: Some(1234),
             clock_ms: 99,
             console: vec!["[log] hi".into(), "[error] 失敗".into()],
         };
-        let back = match FromChild::decode(&FromChild::Done(done.clone()).encode()).unwrap() {
+        let back = match FromChild::decode(&FromChild::Done(Box::new(done.clone())).encode()).unwrap() {
             FromChild::Done(back) => back,
             other => panic!("{other:?}"),
         };
@@ -822,6 +832,12 @@ mod tests {
         assert_eq!(back.script_requests, done.script_requests);
         assert_eq!(back.url, done.url);
         assert_eq!(back.net_jobs, done.net_jobs);
+        assert_eq!(back.scroll_to, Some(1234.5));
+        let none = ChildDone { scroll_to: None, ..done.clone() };
+        match FromChild::decode(&FromChild::Done(Box::new(none)).encode()).unwrap() {
+            FromChild::Done(back) => assert_eq!(back.scroll_to, None),
+            other => panic!("{other:?}"),
+        }
         assert_eq!(back.next_timer_due, done.next_timer_due);
         assert_eq!(back.clock_ms, done.clock_ms);
         assert_eq!(back.console, done.console);
@@ -842,7 +858,7 @@ mod tests {
                 doc: vec![5; 40],
                 changes: vec![1, 2],
             },
-            FromChild::Done(done),
+            FromChild::Done(Box::new(done)),
         ] {
             let bytes = message.encode();
             assert!(FromChild::decode(&bytes).is_some(), "{message:?}");

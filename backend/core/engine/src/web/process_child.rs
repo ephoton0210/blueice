@@ -176,6 +176,7 @@ fn serve(stream: UnixStream) -> io::Result<()> {
                 let done = host.with_state(|s| ChildDone {
                     dirty: s.dirty || s.doc.revision() != revision,
                     navigations: std::mem::take(&mut s.navigations),
+                    scroll_to: s.scroll_to.take(),
                     script_requests: std::mem::take(&mut s.script_requests)
                         .into_iter()
                         .map(|(node, url)| (node.as_u64(), url))
@@ -209,7 +210,7 @@ fn serve(stream: UnixStream) -> io::Result<()> {
                     clock_ms: host.now_ms(),
                     ..done
                 };
-                write_frame(&mut output, &FromChild::Done(done).encode())?;
+                write_frame(&mut output, &FromChild::Done(Box::new(done)).encode())?;
             }
             ToChild::Doc(bytes) => {
                 // The page changed the document itself (typing, say): this is it now.

@@ -816,6 +816,19 @@ feeds the page's cascade no rules (the SVG renderer reads it), so it changes not
 that page after scrolling to the logos: restyle passes 104 -> 59, their total 11.4 s -> 4.5 s, passes over
 200 ms 13 -> 4. `BI_PROFILE_LAYOUT` says which style element forced a full cascade.
 
+### Page scripts can scroll the window (2026-11-08)
+
+`window.scrollTo`/`scroll`/`scrollBy` (numbers or `{ top, behavior }`; smooth is instant, the final position
+is what matters), `element.scrollIntoView` (`true`/`false`, `block: start|center|end|nearest`, computed from
+the element's box and the window) and `documentElement`/`body`/`scrollingElement` `scrollTop` now ask the
+page to scroll. `scrollY` reads the new position at once; the request travels back as `scroll_to` in the
+turn's result (`Returned` for a thread, `ChildDone` over the wire for the process), and `Page` clamps it to
+the scrollable range, publishes a frame (`script_change_unpublished`) and, as for a wheel scroll, tells the
+scripts with a scroll event and a fresh look at what is visible on the next tick. Inner scrolling
+containers keep a plain `scrollTop` that moves nothing (not built). Tested through a thread page, through the
+real script process, and through a session where the representation and the frame it follows share the
+`generation` and the `scroll_y`.
+
 ## Page scripts off the session thread (2026-11-03)
 
 **Problem, measured.** In the macOS app on tw.yahoo.com, a wheel scroll's frame took a
