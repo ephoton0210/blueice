@@ -708,17 +708,27 @@ pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(St
             expand_box_shorthand_property_named(["top", "right", "bottom", "left"], value_tokens)
         }
         "font-family" => {
-            // MVP doesn't do font fallback matching -- take the first
-            // named font in the comma list and store it as-is.
-            let first = trim_ws(value_tokens);
-            let name = first.iter().find_map(|t| match t {
-                Token::Ident(s) => Some(s.to_ascii_lowercase()),
-                Token::QuotedString(s) => Some(s.to_ascii_lowercase()),
-                _ => None,
-            });
-            match name {
-                Some(n) => vec![("font-family".to_string(), Value::Keyword(n))],
-                None => vec![],
+            // The whole list, each name lowercased and the names joined by commas, so the
+            // first one a page has a font for can be chosen (a `Keyword`, since a family
+            // name is not a length or a colour). Unquoted multi-word names (`Helvetica
+            // Neue`) are one name.
+            let mut names: Vec<String> = Vec::new();
+            for part in split_on(trim_ws(value_tokens), |t| *t == Token::Comma) {
+                let words: Vec<String> = trim_ws(part)
+                    .iter()
+                    .filter_map(|t| match t {
+                        Token::Ident(s) | Token::QuotedString(s) => Some(s.to_ascii_lowercase()),
+                        _ => None,
+                    })
+                    .collect();
+                if !words.is_empty() {
+                    names.push(words.join(" "));
+                }
+            }
+            if names.is_empty() {
+                vec![]
+            } else {
+                vec![("font-family".to_string(), Value::Keyword(names.join(",")))]
             }
         }
         _ => {
@@ -1349,11 +1359,11 @@ mod tests {
     }
 
     #[test]
-    fn font_family_takes_the_first_name_in_the_list() {
+    fn font_family_keeps_the_whole_list_for_fallback() {
         let rules = parse(r#"p { font-family: "Helvetica Neue", Arial, sans-serif; }"#);
         assert_eq!(
             rules[0].declarations[0].value,
-            Value::Keyword("helvetica neue".to_string())
+            Value::Keyword("helvetica neue,arial,sans-serif".to_string())
         );
     }
 

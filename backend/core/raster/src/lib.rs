@@ -26,7 +26,7 @@
 
 mod shapes;
 
-use blueice_font::font_for_char;
+use blueice_font::{ascent_descent_in, font_for_char_in, web::WebFontId};
 use blueice_paint::{Color, Frame, PaintCommand};
 
 const ASSUMED_ASCENT_RATIO: f64 = 0.8;
@@ -81,6 +81,7 @@ struct TextRun<'a> {
     font_size_px: f64,
     bold: bool,
     italic: bool,
+    face: Option<WebFontId>,
 }
 
 /// An RGBA8, row-major pixel buffer -- the engine's final rendered
@@ -178,14 +179,20 @@ impl Pixmap {
         let Color::Rgba(r, g, b, a) = run.color else {
             return;
         };
-        let baseline_y = run.y + run.font_size_px * ASSUMED_ASCENT_RATIO;
+        // A page's own face puts the baseline where its own ascent says (layout aligned the
+        // line with the same figure); the bundled fonts keep the assumed ratio.
+        let ascent = match run.face {
+            Some(_) => ascent_descent_in(run.font_size_px, run.bold, run.italic, run.face).0,
+            None => run.font_size_px * ASSUMED_ASCENT_RATIO,
+        };
+        let baseline_y = run.y + ascent;
         let mut pen_x = run.x;
         for ch in run.text.chars() {
             // Per-character, not once for the whole run: a run can mix
             // scripts (e.g. a CJK sentence with an English word in it),
             // and `blueice-font`'s CJK fallback only kicks in for the
             // specific characters the primary face can't cover.
-            let f = font_for_char(ch, run.bold, run.italic);
+            let f = font_for_char_in(ch, run.bold, run.italic, run.face);
             let (metrics, bitmap) = f.rasterize(ch, run.font_size_px as f32);
             let bitmap_top = baseline_y - (metrics.ymin as f64 + metrics.height as f64);
             let bitmap_left = pen_x + metrics.xmin as f64;
@@ -310,6 +317,7 @@ pub fn rasterize(frame: &Frame) -> Pixmap {
                 font_size_px,
                 bold,
                 italic,
+                face,
             } => pixmap.draw_text(
                 TextRun {
                     x: *x,
@@ -319,6 +327,7 @@ pub fn rasterize(frame: &Frame) -> Pixmap {
                     font_size_px: *font_size_px,
                     bold: *bold,
                     italic: *italic,
+                    face: face.map(WebFontId::from_u32),
                 },
                 clip,
             ),
@@ -458,6 +467,7 @@ fn rasterize_viewport_culled(
                 font_size_px,
                 bold,
                 italic,
+                face,
             } => PaintCommand::Text {
                 x: x * scale,
                 y: (y - scroll_y) * scale,
@@ -466,6 +476,7 @@ fn rasterize_viewport_culled(
                 font_size_px: font_size_px * scale,
                 bold,
                 italic,
+                face,
             },
         })
         .collect();
@@ -540,6 +551,7 @@ mod tests {
                 font_size_px: 14.0,
                 bold: false,
                 italic: false,
+                face: None,
             });
         }
         let page = frame(100.0, 1000.0, commands.clone());
@@ -565,6 +577,7 @@ mod tests {
                 font_size_px: 14.0,
                 bold: false,
                 italic: false,
+                face: None,
             });
         }
         commands.push(PaintCommand::Shadow {
@@ -713,6 +726,7 @@ mod tests {
                 font_size_px: 16.0,
                 bold: false,
                 italic: false,
+                face: None,
             }],
         ));
         let has_ink = (0..pixmap.height)
@@ -733,6 +747,7 @@ mod tests {
                 font_size_px: 16.0,
                 bold: false,
                 italic: false,
+                face: None,
             }],
         ));
         for y in 0..pixmap.height {
@@ -755,6 +770,7 @@ mod tests {
                 font_size_px: 20.0,
                 bold: false,
                 italic: false,
+                face: None,
             }],
         ));
         let two_char = rasterize(&frame(
@@ -768,6 +784,7 @@ mod tests {
                 font_size_px: 20.0,
                 bold: false,
                 italic: false,
+                face: None,
             }],
         ));
         let ink_extent = |p: &Pixmap| -> u32 {

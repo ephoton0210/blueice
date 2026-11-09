@@ -137,6 +137,9 @@ pub enum PaintCommand {
         font_size_px: f64,
         bold: bool,
         italic: bool,
+        /// The page-supplied face (`blueice_font::web`) the text is drawn with; `None` for
+        /// the bundled fonts.
+        face: Option<u32>,
     },
 }
 
@@ -263,14 +266,16 @@ pub fn dump_frame(frame: &Frame) -> String {
                 font_size_px,
                 bold,
                 italic,
+                face,
             } => out.push_str(&format!(
-                "text {},{} \"{text}\" {} {} {} {}\n",
+                "text {},{} \"{text}\" {} {} {} {}{}\n",
                 fmt_num(*x),
                 fmt_num(*y),
                 fmt_color(*color),
                 fmt_num(*font_size_px),
                 if *bold { "bold" } else { "normal" },
-                if *italic { "italic" } else { "normal" }
+                if *italic { "italic" } else { "normal" },
+                face.map_or(String::new(), |f| format!(" face={f}"))
             )),
         }
     }
@@ -885,6 +890,7 @@ fn paint_fragment(
                     .get("letter-spacing")
                     .and_then(|v| length_px(v, style.font_size_px))
                     .filter(|s| *s != 0.0);
+                let face = face_of(style);
                 let mut emit = |x: f64, text: String| {
                     out.push(PaintCommand::Text {
                         x,
@@ -894,6 +900,7 @@ fn paint_fragment(
                         font_size_px: style.font_size_px,
                         bold,
                         italic,
+                        face,
                     });
                 };
                 match spacing {
@@ -901,11 +908,12 @@ fn paint_fragment(
                         let mut cursor = x;
                         for c in text.chars() {
                             emit(cursor, c.to_string());
-                            cursor += blueice_font::measure_text_width(
+                            cursor += blueice_font::measure_text_width_in(
                                 &c.to_string(),
                                 style.font_size_px,
                                 bold,
                                 italic,
+                                face.map(blueice_font::web::WebFontId::from_u32),
                             ) + spacing;
                         }
                     }
@@ -975,6 +983,14 @@ fn paint_fragment(
     }
 }
 
+/// The page-supplied face the engine chose for this style's text (see `blueice_font::web`).
+fn face_of(style: &ComputedStyle) -> Option<u32> {
+    match style.other.get("-blueice-web-font") {
+        Some(Value::Number(n)) if *n >= 0.0 => Some(*n as u32),
+        _ => None,
+    }
+}
+
 /// The underline, overline and line-through strokes of one text run.
 fn paint_decorations(
     fragment: &Fragment,
@@ -995,7 +1011,12 @@ fn paint_decorations(
         return;
     }
     let size = style.font_size_px;
-    let (ascent, descent) = blueice_font::ascent_descent(size, style.is_bold(), style.is_italic());
+    let (ascent, descent) = blueice_font::ascent_descent_in(
+        size,
+        style.is_bold(),
+        style.is_italic(),
+        face_of(style).map(blueice_font::web::WebFontId::from_u32),
+    );
     let baseline = y + (fragment.height - (ascent + descent)) / 2.0 + ascent;
     let thickness = (size / 16.0).max(1.0);
     let decoration_color = match style.other.get("text-decoration-color") {
@@ -1100,6 +1121,7 @@ fn paint_native_form(
                     font_size_px: style.font_size_px,
                     bold: style.is_bold(),
                     italic: style.is_italic(),
+                    face: None,
                 });
             }
             return;
@@ -1145,6 +1167,7 @@ fn paint_native_form(
         font_size_px: style.font_size_px,
         bold: style.is_bold(),
         italic: style.is_italic(),
+        face: None,
     });
 }
 
@@ -1672,6 +1695,7 @@ mod tests {
                     font_size_px: 16.0,
                     bold: false,
                     italic: false,
+                    face: None,
                 },
                 PaintCommand::Text {
                     x: 1.0,
@@ -1681,6 +1705,7 @@ mod tests {
                     font_size_px: 16.0,
                     bold: true,
                     italic: true,
+                    face: None,
                 },
             ],
         };
@@ -1813,6 +1838,30 @@ mod tests {
         // A square box still uses the plain clip.
         assert!(dump.contains("\nclip 0.0,30.0 50.0x30.0"), "{dump}");
         assert_eq!(dump.matches("endclip").count(), 2, "{dump}");
+    }
+
+    #[test]
+    fn text_in_a_page_font_names_the_face_it_is_drawn_with() {
+        let frame = paint_html(
+            "<p class=w>web</p><p>plain</p>",
+            ".w { -blueice-web-font: 7; }",
+            200.0,
+        );
+        let faces: Vec<(String, Option<u32>)> = frame
+            .commands
+            .iter()
+            .filter_map(|c| match c {
+                PaintCommand::Text { text, face, .. } => Some((text.clone(), *face)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            faces,
+            [("web".to_string(), Some(7)), ("plain".to_string(), None)]
+        );
+        let dump = dump_frame(&frame);
+        assert!(dump.contains("\"web\" #000000 16.0 normal normal face=7"), "{dump}");
+        assert!(dump.contains("\"plain\" #000000 16.0 normal normal\n"), "{dump}");
     }
 
     #[test]

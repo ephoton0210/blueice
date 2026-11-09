@@ -268,6 +268,16 @@ impl<'a> Style<'a> {
         self.style.and_then(|s| s.other.get(property))
     }
 
+    /// The page-supplied face this element's text is drawn with, if the engine found one for
+    /// its `font-family` (set on the style by the page after the cascade; see
+    /// `blueice_font::web`).
+    pub fn web_face(&self) -> Option<blueice_font::web::WebFontId> {
+        match self.raw("-blueice-web-font") {
+            Some(Value::Number(n)) if *n >= 0.0 => Some(blueice_font::web::WebFontId::from_u32(*n as u32)),
+            _ => None,
+        }
+    }
+
     pub fn keyword(&self, property: &str) -> Option<&'a str> {
         match self.raw(property) {
             Some(Value::Keyword(k)) => Some(k.as_str()),

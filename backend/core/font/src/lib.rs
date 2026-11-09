@@ -45,6 +45,8 @@
 //! regular-weight CJK inside a bold heading), not a second missing-
 //! glyph bug reappearing one level down.
 
+pub mod web;
+
 use std::sync::OnceLock;
 
 const FONT_REGULAR: &[u8] = include_bytes!("../assets/DejaVuSans.ttf");
@@ -119,6 +121,55 @@ pub fn font_for_char(c: char, bold: bool, italic: bool) -> &'static fontdue::Fon
         return primary;
     }
     cjk_fallback()
+}
+
+/// [`font_for_char`] with a page's own face tried first: `face` if it has a glyph for `c`,
+/// otherwise whatever the bundled fonts would use.
+pub fn font_for_char_in(
+    c: char,
+    bold: bool,
+    italic: bool,
+    face: Option<web::WebFontId>,
+) -> &'static fontdue::Font {
+    if let Some(font) = face.and_then(web::get) {
+        if font.has_glyph(c) {
+            return font;
+        }
+    }
+    font_for_char(c, bold, italic)
+}
+
+/// [`measure_text_width`] for text drawn with a page's own face (`None`: the bundled fonts).
+pub fn measure_text_width_in(
+    text: &str,
+    font_size_px: f64,
+    bold: bool,
+    italic: bool,
+    face: Option<web::WebFontId>,
+) -> f64 {
+    text.chars()
+        .map(|c| {
+            font_for_char_in(c, bold, italic, face)
+                .metrics(c, font_size_px as f32)
+                .advance_width as f64
+        })
+        .sum()
+}
+
+/// [`ascent_descent`] of a page's own face (`None`: the bundled fonts).
+pub fn ascent_descent_in(
+    font_size_px: f64,
+    bold: bool,
+    italic: bool,
+    face: Option<web::WebFontId>,
+) -> (f64, f64) {
+    match face.and_then(web::get) {
+        Some(font) => match font.horizontal_line_metrics(font_size_px as f32) {
+            Some(metrics) => (f64::from(metrics.ascent), f64::from(-metrics.descent)),
+            None => (font_size_px * 0.93, font_size_px * 0.24),
+        },
+        None => ascent_descent(font_size_px, bold, italic),
+    }
 }
 
 /// The real rendered width of `text` at `font_size_px` in the given

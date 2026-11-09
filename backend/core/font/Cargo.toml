@@ -6,3 +6,5 @@ license.workspace = true
 
 [dependencies]
 fontdue = "0.9"
+# WOFF and WOFF2 decoding for fonts a page brings with it (pure Rust).
+wuff = "0.2.10"

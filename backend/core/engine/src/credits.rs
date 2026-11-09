@@ -110,6 +110,25 @@ pub fn credits_html(locale: &str) -> String {
         ));
     }
 
+    // The libraries compiled into the binary whose licenses ask for their notice to travel with
+    // it. The legal text is English, as the licenses give it; only the lead-in is translated.
+    body.push_str(&format!(
+        "<h2>{}</h2><p>{}</p>",
+        t("libraries-heading"),
+        t("libraries-intro")
+    ));
+    for (name, keys) in [
+        ("rav1d (AV1 decoder, BSD-2-Clause)", &["rav1d-copyright", "rav1d-license"][..]),
+        ("brotli-decompressor (BSD-3-Clause)", &["brotli-copyright", "brotli-license"][..]),
+        ("wuff (WOFF and WOFF2 decoder, MIT)", &["wuff-copyright", "wuff-license"][..]),
+        ("avif-parse (AVIF container parser, MPL-2.0)", &["avif-parse-notice"][..]),
+    ] {
+        body.push_str(&format!("<h3>{name}</h3>"));
+        for key in keys {
+            body.push_str(&format!("<p>{}</p>", en(key)));
+        }
+    }
+
     format!(
         "<html><head><title>{}</title></head><body>{}</body></html>",
         t("about-title"),
@@ -173,6 +192,23 @@ mod tests {
             !html.contains("非正式翻譯"),
             "the English-only page must not carry a translation notice"
         );
+    }
+
+    #[test]
+    fn the_notices_the_bundled_libraries_licenses_require_are_on_the_page_in_every_locale() {
+        for locale in [blueice_i18n::DEFAULT_LOCALE, "zh-TW"] {
+            let html = credits_html(locale);
+            // rav1d (BSD-2-Clause) and its binary-distribution condition.
+            assert!(html.contains("VideoLAN and dav1d authors"), "{locale}");
+            assert!(html.contains("Redistributions in binary form must reproduce"), "{locale}");
+            // brotli-decompressor (BSD-3-Clause).
+            assert!(html.contains("Copyright (c) 2016 Dropbox, Inc."), "{locale}");
+            // wuff (MIT, ported from Google's woff2) and avif-parse (MPL-2.0).
+            assert!(html.contains("Nico Burns"), "{locale}");
+            assert!(html.contains("Google Inc."), "{locale}");
+            assert!(html.contains("avif-parse"), "{locale}");
+            assert!(html.contains("Permission is hereby granted, free of charge"), "{locale}");
+        }
     }
 
     #[test]

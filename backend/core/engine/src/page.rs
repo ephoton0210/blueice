@@ -78,6 +78,9 @@ pub struct Page {
     /// them: the per-node map paint reads and the inline-SVG renders so far.
     linked_images: crate::images::LinkedImages,
     pending_linked_images: crate::images::LinkedImages,
+    /// The faces of the page's `@font-face` rules, and those fetched for the next load.
+    pub(crate) linked_fonts: crate::fonts::FontCatalog,
+    pub(crate) pending_linked_fonts: crate::fonts::FontCatalog,
     linked_scripts: crate::scripts_fetch::LinkedScripts,
     pending_linked_scripts: crate::scripts_fetch::LinkedScripts,
     linked_modules: crate::scripts_fetch::LinkedModules,
@@ -208,6 +211,8 @@ impl Page {
             pending_linked_styles: Default::default(),
             linked_images: Default::default(),
             pending_linked_images: Default::default(),
+            linked_fonts: Default::default(),
+            pending_linked_fonts: Default::default(),
             linked_scripts: Default::default(),
             pending_linked_scripts: Default::default(),
             linked_modules: Default::default(),
@@ -284,6 +289,7 @@ impl Page {
         self.linked_styles = std::mem::take(&mut self.pending_linked_styles);
         self.style_epoch = None;
         self.linked_images = std::mem::take(&mut self.pending_linked_images);
+        self.linked_fonts = std::mem::take(&mut self.pending_linked_fonts);
         self.linked_scripts = std::mem::take(&mut self.pending_linked_scripts);
         self.linked_modules = std::mem::take(&mut self.pending_linked_modules);
         self.web = None;
@@ -600,6 +606,7 @@ impl Page {
         let fetched = clearance.into_subresources();
         self.pending_linked_styles = fetched.styles;
         self.pending_linked_images = fetched.images;
+        self.pending_linked_fonts = fetched.fonts;
         self.pending_linked_scripts = fetched.scripts;
         self.pending_linked_modules = fetched.modules;
         self.web_review = fetched.review;

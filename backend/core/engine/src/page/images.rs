@@ -85,6 +85,7 @@ impl Page {
             }
         }
         self.images = images;
+        crate::fonts::assign_faces(&self.linked_fonts, &mut self.styles);
     }
 
     /// Repoints canvases at their latest pictures without a restyle.
@@ -410,6 +411,15 @@ mod tests {
                 page.pending_linked_modules.len()
             );
         }
+        let font_started = std::time::Instant::now();
+        page.pending_linked_fonts = crate::fonts::fetch_linked_fonts(
+            &fetched.body,
+            &styles,
+            &fetched.final_url,
+            &|_| true,
+            crate::fonts::DEFAULT_FONT_LIMITS,
+        );
+        eprintln!("fetched fonts in {:?}", font_started.elapsed());
         page.pending_linked_styles = styles;
         page.pending_linked_images = linked_images;
         let laid_out = std::time::Instant::now();

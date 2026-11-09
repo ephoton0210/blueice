@@ -144,6 +144,7 @@ struct TextProps {
     font_size: f64,
     bold: bool,
     italic: bool,
+    face: Option<blueice_font::web::WebFontId>,
     letter_spacing: f64,
     word_spacing: f64,
 }
@@ -154,13 +155,14 @@ impl TextProps {
             font_size: style.font_size(),
             bold: style.style.is_some_and(|s| s.is_bold()),
             italic: style.style.is_some_and(|s| s.is_italic()),
+            face: style.web_face(),
             letter_spacing: style.px("letter-spacing", f64::NAN).unwrap_or(0.0),
             word_spacing: style.px("word-spacing", f64::NAN).unwrap_or(0.0),
         }
     }
 
     fn width(&self, text: &str) -> f64 {
-        blueice_font::measure_text_width(text, self.font_size, self.bold, self.italic)
+        blueice_font::measure_text_width_in(text, self.font_size, self.bold, self.italic, self.face)
             + self.letter_spacing * text.chars().count() as f64
     }
 
@@ -580,10 +582,11 @@ fn line_height_of(style: &Style<'_>) -> f64 {
 /// line-height's half-leading split evenly around the font's own extent.
 fn text_extent(style: &Style<'_>) -> (f64, f64) {
     let line_height = line_height_of(style);
-    let (ascent, descent) = blueice_font::ascent_descent(
+    let (ascent, descent) = blueice_font::ascent_descent_in(
         style.font_size(),
         style.style.is_some_and(|s| s.is_bold()),
         style.style.is_some_and(|s| s.is_italic()),
+        style.web_face(),
     );
     let half_leading = (line_height - (ascent + descent)) / 2.0;
     (ascent + half_leading, descent + half_leading)
@@ -1089,10 +1092,11 @@ pub(crate) fn layout_run_around(
                 let style = ctx.style(node);
                 let padding = style.padding(content_width);
                 let border = style.border(content_width);
-                let (ascent, descent) = blueice_font::ascent_descent(
+                let (ascent, descent) = blueice_font::ascent_descent_in(
                     style.font_size(),
                     style.style.is_some_and(|s| s.is_bold()),
                     style.style.is_some_and(|s| s.is_italic()),
+                    style.web_face(),
                 );
                 Fragment {
                     node: Some(node),
@@ -1171,6 +1175,34 @@ mod tests {
 
     fn space() -> f64 {
         word_width(" ")
+    }
+
+    const ROBOTO: &[u8] = include_bytes!("../../font/tests/data/roboto-latin-400.woff2");
+
+    #[test]
+    fn text_with_a_web_font_is_measured_and_spaced_with_that_face() {
+        let face = blueice_font::web::register(ROBOTO).expect("a face");
+        let f = body(
+            "<p>Hello world</p><p class=d>Hello world</p>",
+            &format!("p:not(.d) {{ -blueice-web-font: {}; }}", face.as_u32()),
+            800.0,
+        );
+        let own = &f.children[0].children[0];
+        let plain = &f.children[1].children[0];
+        let t = texts(own);
+        let own_width = |text: &str| blueice_font::measure_text_width_in(text, 16.0, false, false, Some(face));
+        assert_eq!(t.len(), 2);
+        assert!(
+            (t[1].1 - (own_width("Hello") + own_width(" "))).abs() < 0.01,
+            "the second word starts where the face's own widths put it: {t:?}"
+        );
+        assert!((texts(plain)[1].1 - (word_width("Hello") + space())).abs() < 0.01);
+        assert!((t[1].1 - texts(plain)[1].1).abs() > 0.5, "and not where the bundled font does");
+        // Line boxes follow the face's own ascent and descent.
+        let (a, d) = blueice_font::ascent_descent_in(16.0, false, false, Some(face));
+        let (ba, bd) = blueice_font::ascent_descent(16.0, false, false);
+        assert!((a - ba).abs() > 0.01 || (d - bd).abs() > 0.01);
+        assert!((own.height - plain.height).abs() < 3.0);
     }
 
     #[test]

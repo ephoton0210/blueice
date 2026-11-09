@@ -27,6 +27,7 @@ mod calc;
 mod cascade;
 mod color;
 mod content;
+mod font_face;
 mod gradient;
 mod media;
 mod parser;
@@ -49,6 +50,7 @@ pub use gradient::{
     StopPosition,
 };
 pub use media::{matches_media, MediaEnvironment};
+pub use font_face::{font_faces, FontFaceRule, FontSource};
 pub use parser::{Declaration, Rule};
 pub use selector::{
     matches, matches_pseudo_element, ComplexSelector, Compound, PseudoElement, SimpleSelector,

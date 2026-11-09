@@ -16,6 +16,7 @@ pub mod compiler_service;
 pub mod credits;
 pub mod debugger;
 pub mod downloads_page;
+mod fonts;
 mod gatekeeper_client;
 pub mod gatekeeper_settings_page;
 mod images;

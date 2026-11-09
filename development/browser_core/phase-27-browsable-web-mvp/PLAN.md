@@ -829,6 +829,28 @@ containers keep a plain `scrollTop` that moves nothing (not built). Tested throu
 real script process, and through a session where the representation and the frame it follows share the
 `generation` and the `scroll_y`.
 
+### Web fonts (2026-11-08)
+
+`@font-face` rules (`blueice_css::font_faces`, read from the text because `unicode-range: U+0131` is hex;
+rules inside `@layer` and a supported `@supports` are found, `@media` ones are not) in a page's `<style>`
+elements and fetched sheets name the fonts to load. `engine/src/fonts.rs` fetches them with the page's other
+subresources (same per-hop review, 24 faces and 8 MiB each at most, `data:` URLs decoded locally), tries
+each face's sources in order (skipping `embedded-opentype`/`svg` hints), and registers what decodes in
+`blueice_font::web` -- WOFF2 and WOFF through `wuff` (MIT, pure Rust), plain TrueType and CFF/OpenType
+directly -- as a small `WebFontId`, deduplicated by content, bounded to 256 faces / 96 MiB for the life of
+the process (past that a file is simply not registered). A `font-family` list is kept whole in the computed
+style; after each cascade `fonts::assign_faces` gives every element the first family the page has a face for
+(unless a system or generic family such as `sans-serif`/`system-ui` comes first), matched on style, then
+nearest weight (the heavier for a bold request), then, among faces split by `unicode-range`, the one that
+covers Latin, and records it as `-blueice-web-font` on the style. Layout measures and aligns lines with that
+face (`measure_text_width_in`, `ascent_descent_in`), `PaintCommand::Text` carries it as `face`, and the
+rasterizer draws with it, taking the baseline from the face's own ascent and a character the face lacks
+from the bundled fonts. Fonts load before the first paint (`font-display: swap` has nothing to swap to).
+Not built: per-character `unicode-range` selection across several faces, variable-font axes (a variable
+face draws at its default instance), synthetic bold/italic for a missing weight, `local()` sources,
+`@font-face` inside `@media`, the `FontFace` and `document.fonts.load` APIs actually loading anything,
+canvas `ctx.font`, and font fallback for native form controls (they keep the bundled fonts).
+
 ## Page scripts off the session thread (2026-11-03)
 
 **Problem, measured.** In the macOS app on tw.yahoo.com, a wheel scroll's frame took a

@@ -47,6 +47,7 @@ use std::time::Duration;
 pub(crate) struct PageSubresources {
     pub styles: crate::stylesheet::LinkedStyles,
     pub images: crate::images::LinkedImages,
+    pub fonts: crate::fonts::FontCatalog,
     pub scripts: crate::scripts_fetch::LinkedScripts,
     pub modules: crate::scripts_fetch::LinkedModules,
     pub review: Option<crate::page::NetworkReview>,
@@ -68,6 +69,8 @@ pub(crate) struct GatekeeperClearance {
     linked_styles: crate::stylesheet::LinkedStyles,
     /// The page's images, fetched and decoded the same way. Optional too.
     linked_images: crate::images::LinkedImages,
+    /// The page's fonts (`@font-face`), fetched and decoded the same way.
+    linked_fonts: crate::fonts::FontCatalog,
     /// The page's external scripts, fetched the same way.
     linked_scripts: crate::scripts_fetch::LinkedScripts,
     /// The page's module graph (module scripts, preloads, islands and what
@@ -90,6 +93,7 @@ impl GatekeeperClearance {
         PageSubresources {
             styles: self.linked_styles,
             images: self.linked_images,
+            fonts: self.linked_fonts,
             scripts: self.linked_scripts,
             modules: self.linked_modules,
             review: self.network_review,
@@ -374,12 +378,20 @@ pub(crate) fn check_and_fetch_request(
             &review,
             crate::images::DEFAULT_IMAGE_LIMITS,
         );
+        let linked_fonts = crate::fonts::fetch_linked_fonts(
+            &fetched.body,
+            &linked_styles,
+            &fetched.final_url,
+            &review,
+            crate::fonts::DEFAULT_FONT_LIMITS,
+        );
         return NavOutcome::Cleared {
             clearance: GatekeeperClearance {
                 tab_id,
                 url: fetched.final_url.clone(),
                 linked_styles,
                 linked_images,
+                linked_fonts,
                 linked_scripts,
                 linked_modules,
                 network_review: crate::web_scripts_enabled().then(|| {

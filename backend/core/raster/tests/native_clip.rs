@@ -87,6 +87,7 @@ fn clipping_applies_to_text_glyphs_and_empty_intersections() {
                 font_size_px: 16.0,
                 bold: false,
                 italic: false,
+                face: None,
             },
             PaintCommand::PushClip {
                 rect: Rect {

@@ -479,7 +479,7 @@ fn list_marker(
     let font_size = style.font_size();
     let bold = style.style.is_some_and(|s| s.is_bold());
     let italic = style.style.is_some_and(|s| s.is_italic());
-    let width = blueice_font::measure_text_width(&text, font_size, bold, italic);
+    let width = blueice_font::measure_text_width_in(&text, font_size, bold, italic, style.web_face());
     // Level with the first text on the first line.
     fn first_text(children: &[Fragment], y: f64) -> Option<(f64, f64)> {
         for child in children {
@@ -838,11 +838,12 @@ fn layout_block_level_uncached(
         extent = match &form {
             Some(crate::NativeForm::Button(label)) => {
                 let style = ctx.style(node);
-                blueice_font::measure_text_width(
+                blueice_font::measure_text_width_in(
                     label,
                     style.font_size(),
                     style.style.is_some_and(|s| s.is_bold()),
                     style.style.is_some_and(|s| s.is_italic()),
+                    style.web_face(),
                 )
             }
             _ => 0.0,
