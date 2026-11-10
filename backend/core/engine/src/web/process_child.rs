@@ -220,7 +220,7 @@ fn serve(stream: UnixStream) -> io::Result<()> {
                 }
             }
             ToChild::Fonts(fonts) => {
-                host.with_state(|s| s.script_fonts = crate::fonts::FontCatalog::from_script_view(&fonts));
+                host.with_state(|s| s.set_page_fonts(&fonts));
             }
             ToChild::FetchDoc => {
                 // The journal travels with the document and starts over, so the page

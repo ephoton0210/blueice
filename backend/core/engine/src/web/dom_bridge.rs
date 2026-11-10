@@ -125,6 +125,8 @@ pub(crate) struct DomState {
     pub(crate) loaded_fonts: Vec<crate::fonts::ScriptFont>,
     /// The same faces, registered here for canvas text to name.
     pub(crate) script_fonts: crate::fonts::FontCatalog,
+    /// The faces the page's stylesheets declared (`script_fonts` less what scripts added).
+    pub(crate) sheet_fonts: Vec<crate::fonts::ScriptFont>,
     /// Decoded pictures by node (images and canvases), lent by the page.
     pub images: HashMap<NodeId, std::sync::Arc<blueice_image::RasterImage>>,
 }
@@ -153,6 +155,7 @@ impl DomState {
             loaded_images: Vec::new(),
             loaded_fonts: Vec::new(),
             script_fonts: Default::default(),
+            sheet_fonts: Vec::new(),
             images: HashMap::new(),
         }
     }
@@ -181,6 +184,12 @@ impl DomState {
             ));
         }
         out
+    }
+
+    /// Replaces the page's face catalog with the one the page told us of.
+    pub(crate) fn set_page_fonts(&mut self, view: &[crate::fonts::ScriptFont]) {
+        self.script_fonts = crate::fonts::FontCatalog::from_script_view(view);
+        self.sheet_fonts = view.iter().filter(|f| !self.loaded_fonts.contains(f)).cloned().collect();
     }
 
     /// The bytes of a font a script gave: base64 text, or (when that is empty) a `data:` URL.
@@ -320,6 +329,20 @@ impl DomState {
                     Some(_) => Reply::Text("ok".into()),
                     None => Reply::Null,
                 }
+            }
+            // The faces the stylesheets declared, one per line: family, weight range, style
+            // (0/1), unicode ranges as `lo-hi` hex pairs joined by commas.
+            "fontList" => {
+                let lines: Vec<String> = self
+                    .sheet_fonts
+                    .iter()
+                    .map(|f| {
+                        let ranges: Vec<String> =
+                            f.ranges.iter().map(|(a, b)| format!("{a:X}-{b:X}")).collect();
+                        format!("{}\t{}\t{}\t{}\t{}", f.family, f.weight_min, f.weight_max, u8::from(f.italic), ranges.join(","))
+                    })
+                    .collect();
+                Reply::Text(lines.join("\n"))
             }
             // A loaded face joined the document's set: (family, weight, style, unicode-range,
             // body as base64 or empty, url).

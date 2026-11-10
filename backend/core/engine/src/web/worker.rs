@@ -198,7 +198,7 @@ impl ScriptWorker {
                             s.url = url;
                         }
                         if let Some(fonts) = &handoff.fonts {
-                            s.script_fonts = crate::fonts::FontCatalog::from_script_view(fonts);
+                            s.set_page_fonts(fonts);
                         }
                         s.dirty = false;
                     });

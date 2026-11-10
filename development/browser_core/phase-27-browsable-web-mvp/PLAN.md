@@ -863,8 +863,7 @@ ArrayBuffer | view, descriptors)` has `status`/`loaded`/`load()`; a URL is fetch
 decodes it into its own registry (a `WebFontId` is per process, so bytes cross, not ids), adds it to
 `linked_fonts` (at most 64 per page) and takes a full recascade, so every element chooses its face again.
 `document.fonts.add` of an unloaded face loads it; `load(font)`/`check(font)` work on the faces added to the
-set (family taken from the `font` shorthand). Not built: faces the stylesheets declare are not listed in
-`document.fonts`, `loadingdone`/`loadingerror` events, `ready` stays resolved, `local()` sources.
+set (family taken from the `font` shorthand). Faces the stylesheets declare are listed in `document.fonts` (status `loaded`, family as the page keeps it, lowercased; read through the `fontList` bridge op the first time the set is touched), `status` is `loading` while a face of the set loads, `ready` is a new pending promise per batch, and `loading`/`loadingdone`/`loadingerror` fire (with `fontfaces`) on the set and its `on*` handlers. Not built: `local()` sources.
 
 Variable fonts (2026-11-09): a face with an `fvar` `wght` axis is drawn at the element's weight (clamped to the `@font-face` weight range, then to the axis): `blueice_font::web::register_set_weighted` gives each set member a weight, `Glyphs` is a static font or a `VarInstance` (outlines moved by `ttf-parser`, drawn by `ab_glyph_rasterizer`; one instance per face and weight, made on first use). Other axes (`wdth`, `slnt`, `opsz`, ...) are not applied. Test font: Inter (OFL) in `backend/core/font/tests/data`.
 

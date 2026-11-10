@@ -868,6 +868,43 @@ mod tests {
     }
 
     #[test]
+    fn ready_and_the_loading_events_follow_the_faces_a_script_has_loading() {
+        let html = format!(
+            "<body><p>Hi</p><script>\
+             const log = (m) => console.log(m);\
+             log('STATUS0 ' + document.fonts.status);\
+             document.fonts.ready.then(() => log('READY0'));\
+             document.fonts.addEventListener('loading', () => log('EV loading ' + document.fonts.status));\
+             document.fonts.onloadingdone = (e) => log('EV done ' + e.fontfaces.length + ' ' + document.fonts.status);\
+             document.fonts.addEventListener('loadingerror', (e) => log('EV error ' + e.fontfaces.length));\
+             const f = new FontFace('Evt', 'url({})');\
+             document.fonts.add(f);\
+             f.load();\
+             log('STATUS1 ' + document.fonts.status);\
+             const r = document.fonts.ready;\
+             r.then(() => {{\
+               log('READY1 ' + document.fonts.status);\
+               const bad = new FontFace('Broken', 'url(data:font/woff2;base64,AAAA)');\
+               document.fonts.add(bad); bad.load();\
+             }});\
+             </script></body>",
+            data_url(REGULAR, "font/woff2")
+        );
+        let mut page = script_page(&html);
+        run_scripts(&mut page);
+        let log = page.web_console().join("\n");
+        assert!(log.contains("STATUS0 loaded"), "{log}");
+        assert!(log.contains("READY0"), "ready is resolved when nothing is loading: {log}");
+        assert!(log.contains("EV loading loading"), "{log}");
+        assert!(log.contains("STATUS1 loading"), "{log}");
+        assert!(log.contains("EV done 1 loaded"), "{log}");
+        assert!(log.contains("READY1 loaded"), "{log}");
+        assert!(log.contains("EV error 1"), "a face that fails fires loadingerror: {log}");
+        let at = |needle: &str| log.find(needle).unwrap_or(usize::MAX);
+        assert!(at("EV loading") < at("EV done") && at("EV done") < at("READY1"), "{log}");
+    }
+
+    #[test]
     fn canvas_text_can_use_a_face_the_pages_stylesheet_declared() {
         let html = format!(
             "<style>@font-face {{ font-family: Sheet; src: url({}) format('woff2'); }}</style>\
@@ -876,6 +913,7 @@ mod tests {
              g.font = '20px Sheet'; const own = g.measureText('Hello').width;\
              g.font = '20px sans-serif'; const plain = g.measureText('Hello').width;\
              console.log('SHEET ' + (own !== plain) + ' ' + document.fonts.size);\
+             const [sf] = [...document.fonts]; console.log('SHEETFACE ' + sf.family + ' ' + sf.status + ' ' + sf.weight + ' ' + document.fonts.check('16px Sheet'));\
              </script></body>",
             data_url(REGULAR, "font/woff2")
         );
@@ -886,7 +924,8 @@ mod tests {
         page.settle();
         run_scripts(&mut page);
         let log = page.web_console().join("\n");
-        assert!(log.contains("SHEET true 0"), "{log}");
+        assert!(log.contains("SHEET true 1"), "{log}");
+        assert!(log.contains("SHEETFACE sheet loaded 400 true"), "{log}");
     }
 
     #[test]

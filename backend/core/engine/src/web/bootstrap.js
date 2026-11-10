@@ -818,9 +818,15 @@
   // (a URL is fetched like any other font request, with CORS), checked by the page's own font
   // decoder, and handed to the page when it is in the document's set, which is what makes
   // elements with that family draw and measure in it. Faces the stylesheets declare are loaded
-  // before the page is shown and are not listed here.
+  // before the page is shown; they are listed (loaded) the first time the set is read, under the
+  // family name lowercased, which is how the page keeps it.
   const fontSetFaces = new Set();
-  let fontLoads = 0;
+  // The faces of the set that are loading now, and how the batch ends: `loadingdone` and
+  // `loadingerror` tell what that batch loaded and what failed.
+  const fontPending = new Set();
+  let fontBatch = null;
+  let fontSetReady = null;
+  let fontSheetListed = false;
   const fontUrls = (source) => {
     const urls = [];
     const re = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]*))\s*\)/g;
@@ -852,7 +858,9 @@
         this._reject = reject;
       });
       this.loaded.catch(() => {});
-      if (typeof source === 'string') {
+      if (source === null) {
+        // A face the stylesheets declared: loaded before the script ran (see `fontListSheet`).
+      } else if (typeof source === 'string') {
         this._urls = fontUrls(source).map(resolveUrl);
         if (this._urls.length === 0) this._fail('SyntaxError');
       } else if (source instanceof ArrayBuffer || ArrayBuffer.isView(source)) {
@@ -873,10 +881,12 @@
       this._status = 'loaded';
       this._resolve(this);
       if (this._joined) this._announce();
+      fontEnd(this, true);
     }
     _fail(name) {
       this._status = 'error';
       this._reject(new DOMException('The font face could not be loaded.', name));
+      fontEnd(this, false);
     }
     // Hands the loaded face to the page once it is in the document's set.
     _announce() {
@@ -889,10 +899,8 @@
       if (this._status !== 'unloaded' || this._loading) return this.loaded;
       this._status = 'loading';
       this._loading = true;
-      fontLoads++;
-      const done = () => {
-        fontLoads--;
-      };
+      if (this._joined) fontBegin(this);
+      const done = () => {};
       const tryNext = (i) => {
         if (i >= this._urls.length) {
           done();
@@ -927,45 +935,102 @@
     return text.split(',').map((f) => f.trim().replace(/^["']|["']$/g, '').toLowerCase()).filter(Boolean);
   };
   const facesFor = (font) => {
+    fontListSheet();
     const wanted = fontFamiliesOf(font);
     return [...fontSetFaces].filter((f) => wanted.includes(f.family.replace(/^["']|["']$/g, '').toLowerCase()));
   };
-  const fontFaceSet = (() => {
-    const set = {
-      get status() { return fontLoads > 0 ? 'loading' : 'loaded'; },
-      get size() { return fontSetFaces.size; },
-      onloading: null,
-      onloadingdone: null,
-      onloadingerror: null,
-      add(face) {
-        if (!(face instanceof FontFace)) throw new TypeError('document.fonts.add: not a FontFace');
-        fontSetFaces.add(face);
-        face._joined = true;
-        face._announce();
-        return set;
-      },
-      delete(face) { return fontSetFaces.delete(face); },
-      has(face) { return fontSetFaces.has(face); },
-      clear() { fontSetFaces.clear(); },
-      load(font) {
-        const faces = facesFor(font);
-        return Promise.all(faces.map((f) => f.load())).then(() => faces);
-      },
-      check(font) {
-        return facesFor(font).every((f) => f.status === 'loaded');
-      },
-      forEach(callback, thisArg) { fontSetFaces.forEach((f) => callback.call(thisArg, f, f, set)); },
-      entries: () => fontSetFaces.entries(),
-      keys: () => fontSetFaces.keys(),
-      values: () => fontSetFaces.values(),
-      [Symbol.iterator]: () => fontSetFaces.values(),
-      addEventListener() {},
-      removeEventListener() {},
-      dispatchEvent: () => true,
-    };
-    set.ready = Promise.resolve(set);
-    return set;
-  })();
+  const fontFaceSet = new EventTarget();
+  // A face of the set starts loading: the first one of a batch makes the set `loading`.
+  const fontBegin = (face) => {
+    if (fontPending.has(face)) return;
+    if (fontPending.size === 0) {
+      fontBatch = { loaded: [], failed: [] };
+      let resolve;
+      fontSetReady = new Promise((r) => { resolve = r; });
+      fontSetReady._resolve = resolve;
+      fontPending.add(face);
+      fontFire('loading', []);
+      return;
+    }
+    fontPending.add(face);
+  };
+  const fontEnd = (face, ok) => {
+    if (!fontPending.delete(face)) return;
+    (ok ? fontBatch.loaded : fontBatch.failed).push(face);
+    if (fontPending.size > 0) return;
+    const batch = fontBatch;
+    const ready = fontSetReady;
+    fontBatch = null;
+    fontFire('loadingdone', batch.loaded);
+    if (batch.failed.length) fontFire('loadingerror', batch.failed);
+    ready._resolve(fontFaceSet);
+  };
+  const fontFire = (type, faces) => {
+    const event = new Event(type);
+    event.fontfaces = faces;
+    const handler = fontFaceSet['on' + type];
+    try {
+      if (typeof handler === 'function') handler.call(fontFaceSet, event);
+    } catch (e) { /* a handler's error does not stop the others */ }
+    fontFaceSet.dispatchEvent(event);
+  };
+  // The faces the stylesheets declared, listed once.
+  const fontListSheet = () => {
+    if (fontSheetListed) return;
+    fontSheetListed = true;
+    const text = bi('fontList');
+    if (!text) return;
+    for (const line of String(text).split('\n')) {
+      const [family, min, max, italic, ranges] = line.split('\t');
+      const face = new FontFace(family, null, {
+        weight: min === max ? min : min + ' ' + max,
+        style: italic === '1' ? 'italic' : 'normal',
+        unicodeRange: ranges ? ranges.split(',').map((r) => {
+          const [a, b] = r.split('-');
+          return a === b ? 'U+' + a : 'U+' + a + '-' + b;
+        }).join(', ') : undefined,
+      });
+      face._status = 'loaded';
+      face._announced = true;
+      face._joined = true;
+      face._resolve(face);
+      fontSetFaces.add(face);
+    }
+  };
+  Object.defineProperties(fontFaceSet, {
+    status: { get: () => (fontPending.size > 0 ? 'loading' : 'loaded') },
+    size: { get: () => (fontListSheet(), fontSetFaces.size) },
+    ready: { get: () => fontSetReady || (fontSetReady = Promise.resolve(fontFaceSet)) },
+  });
+  Object.assign(fontFaceSet, {
+    onloading: null,
+    onloadingdone: null,
+    onloadingerror: null,
+    add(face) {
+      if (!(face instanceof FontFace)) throw new TypeError('document.fonts.add: not a FontFace');
+      fontListSheet();
+      fontSetFaces.add(face);
+      face._joined = true;
+      face._announce();
+      if (face._status === 'loading') fontBegin(face);
+      return fontFaceSet;
+    },
+    delete(face) { fontListSheet(); return fontSetFaces.delete(face); },
+    has(face) { fontListSheet(); return fontSetFaces.has(face); },
+    clear() { fontListSheet(); fontSetFaces.clear(); },
+    load(font) {
+      const faces = facesFor(font);
+      return Promise.all(faces.map((f) => f.load())).then(() => faces);
+    },
+    check(font) {
+      return facesFor(font).every((f) => f.status === 'loaded');
+    },
+    forEach(callback, thisArg) { fontListSheet(); fontSetFaces.forEach((f) => callback.call(thisArg, f, f, fontFaceSet)); },
+    entries: () => (fontListSheet(), fontSetFaces.entries()),
+    keys: () => (fontListSheet(), fontSetFaces.keys()),
+    values: () => (fontListSheet(), fontSetFaces.values()),
+    [Symbol.iterator]: () => (fontListSheet(), fontSetFaces.values()),
+  });
 
   class DocumentFragment extends Node {
     constructor() {
