@@ -109,7 +109,7 @@ impl FontCatalog {
         italic: bool,
     ) -> (Option<WebFontId>, u8) {
         let mut synthesis = None;
-        let mut members: Vec<(WebFontId, Vec<(u32, u32)>)> = Vec::new();
+        let mut members: Vec<blueice_font::web::WeightedMember> = Vec::new();
         for family in families.split(',') {
             let family = family.trim();
             if let Some(faces) = self.families.get(family) {
@@ -123,7 +123,7 @@ impl FontCatalog {
                 break;
             }
         }
-        (blueice_font::web::register_set(&members), synthesis.unwrap_or(0))
+        (blueice_font::web::register_set_weighted(&members), synthesis.unwrap_or(0))
     }
 
     /// Adds a face a script supplied. False when it does not decode, or the page already has as
@@ -212,7 +212,7 @@ fn best_of(faces: &[CatalogFace], weight: u16, italic: bool) -> Option<&CatalogF
     })
 }
 
-fn best_faces(faces: &[CatalogFace], weight: u16, italic: bool) -> Vec<(WebFontId, Vec<(u32, u32)>)> {
+fn best_faces(faces: &[CatalogFace], weight: u16, italic: bool) -> Vec<blueice_font::web::WeightedMember> {
     let Some(best) = best_of(faces, weight, italic) else {
         return Vec::new();
     };
@@ -220,7 +220,7 @@ fn best_faces(faces: &[CatalogFace], weight: u16, italic: bool) -> Vec<(WebFontI
         .iter()
         .rev()
         .filter(|f| (f.italic, f.weight_min, f.weight_max) == (best.italic, best.weight_min, best.weight_max))
-        .map(|f| (f.id, f.ranges.clone()))
+        .map(|f| (f.id, f.ranges.clone(), weight.clamp(f.weight_min, f.weight_max)))
         .collect()
 }
 
@@ -575,15 +575,15 @@ mod tests {
     /// identity).
     fn drawn_by(c: &FontCatalog, families: &str, ch: char) -> usize {
         let font = blueice_font::font_for_char_in(ch, false, false, c.face_for(families, 400, false));
-        std::ptr::from_ref(font) as usize
+        font.address()
     }
 
     fn font_of(id: WebFontId) -> usize {
-        std::ptr::from_ref(blueice_font::web::get(id).unwrap()) as usize
+        blueice_font::web::get(id).unwrap().address()
     }
 
     fn bundled(ch: char) -> usize {
-        std::ptr::from_ref(blueice_font::font_for_char(ch, false, false)) as usize
+        blueice_font::Glyphs::Static(blueice_font::font_for_char(ch, false, false)).address()
     }
 
     #[test]
@@ -644,7 +644,7 @@ mod tests {
         );
         let c = catalog(&html);
         let at400 = c.face_for("w", 400, false);
-        let addr = |ch| std::ptr::from_ref(blueice_font::font_for_char_in(ch, false, false, at400)) as usize;
+        let addr = |ch| blueice_font::font_for_char_in(ch, false, false, at400).address();
         assert_eq!(addr('A'), font_of(id_of(REGULAR)));
         assert_eq!(addr('a'), bundled('a'), "the 700 face is not part of the 400 set");
     }
@@ -908,5 +908,28 @@ mod tests {
         assert_eq!(synth("both", 700, false), 0, "a real bold face exists");
         assert_eq!(synth("both", 400, true), 2);
         assert_eq!(synth("sans-serif", 700, false), 0, "no page face: nothing to synthesize");
+    }
+
+    #[test]
+    fn a_variable_face_is_drawn_at_each_elements_weight_and_needs_no_synthetic_bold() {
+        let inter = include_bytes!("../../font/tests/data/inter-latin-var.woff2");
+        let html = format!(
+            "<style>@font-face {{ font-family: Var; src: url({}) format('woff2'); font-weight: 100 900; }}\
+             body {{ margin: 0 }} p {{ margin: 0; font-family: Var; font-size: 32px }}\
+             .l {{ font-weight: 200 }} .h {{ font-weight: 800 }}</style>\
+             <body><p class=l>Hamburgefonstiv</p><p class=h>Hamburgefonstiv</p></body>",
+            data_url(inter, "font/woff2")
+        );
+        let page = page_with_fonts(&html);
+        let got = runs(&page);
+        let (light, heavy) = (got[0].1.unwrap(), got[1].1.unwrap());
+        assert_ne!(light, heavy, "one file, two weights, two faces");
+        let w = |id: u32| blueice_font::measure_text_width_in("Hamburgefonstiv", 32.0, false, false, Some(WebFontId::from_u32(id)));
+        assert!(w(light) < w(heavy));
+        let c = &page.linked_fonts;
+        assert_eq!(c.face_and_synthesis("var", 800, false).1, 0, "the axis reaches 800");
+        let cmds: Vec<_> = page.render().commands.into_iter().filter_map(|c| match c {
+            blueice_paint::PaintCommand::Text { bold, .. } => Some(bold), _ => None }).collect();
+        assert_eq!(cmds, [false, false]);
     }
 }

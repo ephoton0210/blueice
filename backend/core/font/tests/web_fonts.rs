@@ -7,6 +7,7 @@
 
 use blueice_font::web::{self, MAX_FONT_BYTES};
 use blueice_font::{
+    Glyphs,
     ascent_descent, ascent_descent_in, font_for_char, font_for_char_in, measure_text_width,
     measure_text_width_in,
 };
@@ -81,10 +82,7 @@ fn a_character_the_face_lacks_comes_from_the_bundled_fonts() {
     let a = measure_text_width_in("a", 16.0, false, false, Some(roboto));
     let zhong = measure_text_width("中", 16.0, false, false);
     assert!((mixed - (a + zhong)).abs() < 1e-6, "{mixed} {a} {zhong}");
-    assert!(std::ptr::eq(
-        font_for_char_in('中', false, false, Some(roboto)),
-        font_for_char('中', false, false)
-    ));
+    assert!(font_for_char_in('中', false, false, Some(roboto)).address() == Glyphs::Static(font_for_char('中', false, false)).address());
 }
 
 #[test]
@@ -108,13 +106,10 @@ fn a_set_of_faces_draws_each_character_with_the_first_member_whose_range_covers_
     .unwrap();
     let upper = web::get(upper_face).unwrap();
     let lower = web::get(lower_face).unwrap();
-    assert!(std::ptr::eq(font_for_char_in('A', false, false, Some(set)), upper));
-    assert!(std::ptr::eq(font_for_char_in('b', false, false, Some(set)), lower));
+    assert!(font_for_char_in('A', false, false, Some(set)).address() == upper.address());
+    assert!(font_for_char_in('b', false, false, Some(set)).address() == lower.address());
     // Outside every range, a digit both faces have a glyph for: the bundled font draws it.
-    assert!(std::ptr::eq(
-        font_for_char_in('7', false, false, Some(set)),
-        font_for_char('7', false, false)
-    ));
+    assert!(font_for_char_in('7', false, false, Some(set)).address() == Glyphs::Static(font_for_char('7', false, false)).address());
     // Widths follow the same choice, character by character.
     let expected = font_for_char_in('A', false, false, Some(set)).metrics('A', 16.0).advance_width
         + font_for_char_in('b', false, false, Some(set)).metrics('b', 16.0).advance_width;
@@ -126,9 +121,9 @@ fn overlapping_ranges_go_to_the_member_listed_first_and_an_empty_range_covers_ev
     let a = web::register(WOFF2).unwrap();
     let b = web::register(WOFF2_BOLD).unwrap();
     let first_wins = web::register_set(&[(b, vec![(0x41, 0x7A)]), (a, vec![])]).unwrap();
-    assert!(std::ptr::eq(font_for_char_in('k', false, false, Some(first_wins)), web::get(b).unwrap()));
+    assert!(font_for_char_in('k', false, false, Some(first_wins)).address() == web::get(b).unwrap().address());
     // A character in no range of the first member falls to the member with no range at all.
-    assert!(std::ptr::eq(font_for_char_in('7', false, false, Some(first_wins)), web::get(a).unwrap()));
+    assert!(font_for_char_in('7', false, false, Some(first_wins)).address() == web::get(a).unwrap().address());
 }
 
 #[test]
@@ -137,10 +132,7 @@ fn a_member_in_range_that_lacks_the_glyph_leaves_the_character_to_the_next_membe
     let dejavu = web::register(TTF).unwrap();
     // `中` is in both ranges but neither face has it: the bundled CJK fallback draws it.
     let set = web::register_set(&[(roboto, vec![(0x4E00, 0x9FFF)]), (dejavu, vec![(0x4E00, 0x9FFF)])]).unwrap();
-    assert!(std::ptr::eq(
-        font_for_char_in('中', false, false, Some(set)),
-        font_for_char('中', false, false)
-    ));
+    assert!(font_for_char_in('中', false, false, Some(set)).address() == Glyphs::Static(font_for_char('中', false, false)).address());
 }
 
 #[test]
@@ -164,4 +156,48 @@ fn line_metrics_of_a_set_come_from_the_member_that_covers_ordinary_latin_text() 
         ascent_descent_in(16.0, false, false, Some(set)),
         ascent_descent_in(16.0, false, false, Some(latin))
     );
+}
+
+const INTER_VAR: &[u8] = include_bytes!("data/inter-latin-var.woff2");
+
+fn varied(weight: u16) -> blueice_font::web::WebFontId {
+    let face = web::register(INTER_VAR).unwrap();
+    web::register_set_weighted(&[(face, vec![], weight)]).unwrap()
+}
+
+#[test]
+fn a_variable_face_is_drawn_at_the_weight_asked_for() {
+    let (light, regular, black) = (varied(100), varied(400), varied(900));
+    assert_ne!(light, regular);
+    let width = |id| measure_text_width_in("Hamburgefonstiv", 32.0, false, false, Some(id));
+    assert!(width(light) < width(regular) && width(regular) < width(black), "wider as it gets heavier");
+    // Heavier strokes: more ink.
+    let ink = |id| {
+        let (_, bitmap) = font_for_char_in('H', false, false, Some(id)).rasterize('H', 64.0);
+        bitmap.iter().map(|&v| u64::from(v)).sum::<u64>()
+    };
+    assert!(ink(light) < ink(regular) && ink(regular) < ink(black));
+}
+
+#[test]
+fn weights_outside_the_axis_are_clamped_and_equal_sets_are_one() {
+    assert_eq!(varied(900), varied(5000), "past the axis maximum is the maximum");
+    assert_eq!(varied(400), varied(400));
+    // A static face has no weights: the same set whatever weight it is asked for.
+    let roboto = web::register(WOFF2).unwrap();
+    let at = |w| web::register_set_weighted(&[(roboto, vec![], w)]).unwrap();
+    assert_eq!(at(100), at(900));
+}
+
+#[test]
+fn a_variable_glyphs_metrics_agree_with_the_bitmap() {
+    let id = varied(700);
+    let face = font_for_char_in('g', false, false, Some(id));
+    let (m, bitmap) = face.rasterize('g', 40.0);
+    assert_eq!(bitmap.len(), m.width * m.height);
+    assert!(m.width > 10 && m.height > 20 && m.advance_width > 10.0);
+    assert!(m.ymin < 0, "g has a descender below the baseline");
+    let (asc, desc) = ascent_descent_in(40.0, false, false, Some(id));
+    assert!(asc > 25.0 && desc > 5.0);
+    assert!(face.has_glyph('g') && !face.has_glyph('\u{4e00}'));
 }

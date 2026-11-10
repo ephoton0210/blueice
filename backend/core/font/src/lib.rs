@@ -46,6 +46,8 @@
 //! glyph bug reappearing one level down.
 
 pub mod web;
+mod variable;
+pub use variable::VarInstance;
 
 use std::sync::OnceLock;
 
@@ -123,6 +125,52 @@ pub fn font_for_char(c: char, bold: bool, italic: bool) -> &'static fontdue::Fon
     cjk_fallback()
 }
 
+/// A face that draws characters: a static font, or a variable one at a weight. Copyable, and
+/// the same face is the same [`address`](Glyphs::address).
+#[derive(Clone, Copy)]
+pub enum Glyphs {
+    Static(&'static fontdue::Font),
+    Variable(&'static VarInstance),
+}
+
+impl Glyphs {
+    pub fn has_glyph(self, c: char) -> bool {
+        match self {
+            Glyphs::Static(f) => f.has_glyph(c),
+            Glyphs::Variable(v) => v.has_glyph(c),
+        }
+    }
+
+    pub fn metrics(self, c: char, px: f32) -> fontdue::Metrics {
+        match self {
+            Glyphs::Static(f) => f.metrics(c, px),
+            Glyphs::Variable(v) => v.metrics(c, px),
+        }
+    }
+
+    pub fn rasterize(self, c: char, px: f32) -> (fontdue::Metrics, Vec<u8>) {
+        match self {
+            Glyphs::Static(f) => f.rasterize(c, px),
+            Glyphs::Variable(v) => v.rasterize(c, px),
+        }
+    }
+
+    pub fn horizontal_line_metrics(self, px: f32) -> Option<fontdue::LineMetrics> {
+        match self {
+            Glyphs::Static(f) => f.horizontal_line_metrics(px),
+            Glyphs::Variable(v) => v.line_metrics(px),
+        }
+    }
+
+    /// An identity for comparing faces.
+    pub fn address(self) -> usize {
+        match self {
+            Glyphs::Static(f) => std::ptr::from_ref(f) as usize,
+            Glyphs::Variable(v) => std::ptr::from_ref(v) as usize,
+        }
+    }
+}
+
 /// [`font_for_char`] with a page's own face tried first: `face` if it has a glyph for `c`,
 /// otherwise whatever the bundled fonts would use.
 pub fn font_for_char_in(
@@ -130,11 +178,11 @@ pub fn font_for_char_in(
     bold: bool,
     italic: bool,
     face: Option<web::WebFontId>,
-) -> &'static fontdue::Font {
+) -> Glyphs {
     if let Some(font) = face.and_then(|id| web::font_for(id, c)) {
         return font;
     }
-    font_for_char(c, bold, italic)
+    Glyphs::Static(font_for_char(c, bold, italic))
 }
 
 /// [`measure_text_width`] for text drawn with a page's own face (`None`: the bundled fonts).

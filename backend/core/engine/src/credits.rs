@@ -121,6 +121,8 @@ pub fn credits_html(locale: &str) -> String {
         ("rav1d (AV1 decoder, BSD-2-Clause)", &["rav1d-copyright", "rav1d-license"][..]),
         ("brotli-decompressor (BSD-3-Clause)", &["brotli-copyright", "brotli-license"][..]),
         ("wuff (WOFF and WOFF2 decoder, MIT)", &["wuff-copyright", "wuff-license"][..]),
+        ("ttf-parser (variable font outlines, MIT)", &["ttf-parser-copyright", "ttf-parser-license"][..]),
+        ("ab_glyph_rasterizer (glyph rasterizer, Apache-2.0)", &["ab-glyph-rasterizer-notice"][..]),
         ("avif-parse (AVIF container parser, MPL-2.0)", &["avif-parse-notice"][..]),
     ] {
         body.push_str(&format!("<h3>{name}</h3>"));
@@ -207,6 +209,8 @@ mod tests {
             assert!(html.contains("Nico Burns"), "{locale}");
             assert!(html.contains("Google Inc."), "{locale}");
             assert!(html.contains("avif-parse"), "{locale}");
+            assert!(html.contains("Yevhenii Reizner"), "{locale}");
+            assert!(html.contains("Alex Butler"), "{locale}");
             assert!(html.contains("Permission is hereby granted, free of charge"), "{locale}");
         }
     }

@@ -460,7 +460,9 @@ dependencies = [
 name = "blueice-font"
 version = "0.1.0"
 dependencies = [
+ "ab_glyph_rasterizer",
  "fontdue",
+ "ttf-parser",
  "wuff",
 ]
 

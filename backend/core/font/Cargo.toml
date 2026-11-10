@@ -8,3 +8,7 @@ license.workspace = true
 fontdue = "0.9"
 # WOFF and WOFF2 decoding for fonts a page brings with it (pure Rust).
 wuff = "0.2.10"
+# Variable fonts (`fvar`/`gvar`/`HVAR`): outlines at a chosen weight, rasterized here because
+# fontdue draws only a font's default instance.
+ttf-parser = "0.25"
+ab_glyph_rasterizer = "0.1"
