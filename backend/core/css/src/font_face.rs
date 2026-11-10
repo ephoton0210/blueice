@@ -283,16 +283,21 @@ pub struct FaceDescriptors {
     pub weight_min: u16,
     pub weight_max: u16,
     pub italic: bool,
+    pub stretch_min: u16,
+    pub stretch_max: u16,
     pub unicode_ranges: Vec<(u32, u32)>,
 }
 
-pub fn face_descriptors(weight: &str, style: &str, unicode_range: &str) -> FaceDescriptors {
+pub fn face_descriptors(weight: &str, style: &str, stretch: &str, unicode_range: &str) -> FaceDescriptors {
     let (weight_min, weight_max) = parse_weight(weight);
+    let (stretch_min, stretch_max) = parse_stretch(stretch);
     let style = style.trim().to_ascii_lowercase();
     FaceDescriptors {
         weight_min,
         weight_max,
         italic: style.starts_with("italic") || style.starts_with("oblique"),
+        stretch_min,
+        stretch_max,
         unicode_ranges: parse_ranges(unicode_range),
     }
 }

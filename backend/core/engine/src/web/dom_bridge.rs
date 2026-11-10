@@ -347,7 +347,10 @@ impl DomState {
                     .map(|f| {
                         let ranges: Vec<String> =
                             f.ranges.iter().map(|(a, b)| format!("{a:X}-{b:X}")).collect();
-                        format!("{}\t{}\t{}\t{}\t{}", f.family, f.weight_min, f.weight_max, u8::from(f.italic), ranges.join(","))
+                        format!(
+                            "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                            f.family, f.weight_min, f.weight_max, u8::from(f.italic), ranges.join(","), f.stretch_min, f.stretch_max
+                        )
                     })
                     .collect();
                 Reply::Text(lines.join("\n"))
@@ -361,12 +364,14 @@ impl DomState {
                 if self.loaded_fonts.len() >= crate::fonts::MAX_SCRIPT_FONTS {
                     return Ok(Reply::Null);
                 }
-                let d = blueice_css::face_descriptors(&text(1), &text(2), &text(3));
+                let d = blueice_css::face_descriptors(&text(1), &text(2), &text(6), &text(3));
                 let font = crate::fonts::ScriptFont {
                     family: text(0),
                     weight_min: d.weight_min,
                     weight_max: d.weight_max,
                     italic: d.italic,
+                    stretch_min: d.stretch_min,
+                    stretch_max: d.stretch_max,
                     ranges: d.unicode_ranges,
                     bytes,
                 };

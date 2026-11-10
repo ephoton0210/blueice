@@ -144,13 +144,15 @@ fn escaped_characters_in_selectors_do_not_hide_the_faces_that_follow() {
 #[test]
 fn descriptors_given_as_text_parse_like_those_of_a_rule() {
     use blueice_css::face_descriptors;
-    let d = face_descriptors("300 700", "italic", "U+0041-005A, U+61");
+    let d = face_descriptors("300 700", "italic", "75% 125%", "U+0041-005A, U+61");
     assert_eq!((d.weight_min, d.weight_max, d.italic), (300, 700, true));
+    assert_eq!((d.stretch_min, d.stretch_max), (750, 1250));
     assert_eq!(d.unicode_ranges, vec![(0x41, 0x5A), (0x61, 0x61)]);
-    let d = face_descriptors("bold", "normal", "");
+    let d = face_descriptors("bold", "normal", "", "");
+    assert_eq!((d.stretch_min, d.stretch_max), (1000, 1000));
     assert_eq!((d.weight_min, d.weight_max, d.italic), (700, 700, false));
     assert!(d.unicode_ranges.is_empty());
-    let d = face_descriptors("", "", "");
+    let d = face_descriptors("", "", "", "");
     assert_eq!((d.weight_min, d.weight_max), (400, 400));
 }
 

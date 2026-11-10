@@ -61,6 +61,9 @@ pub(crate) struct ScriptFont {
     pub weight_min: u16,
     pub weight_max: u16,
     pub italic: bool,
+    /// The widths it covers, `font-stretch` percentages in tenths.
+    pub stretch_min: u16,
+    pub stretch_max: u16,
     pub ranges: Vec<(u32, u32)>,
     pub bytes: Vec<u8>,
 }
@@ -157,8 +160,8 @@ impl FontCatalog {
                 weight_min: font.weight_min,
                 weight_max: font.weight_max,
                 italic: font.italic,
-                stretch_min: 1000,
-                stretch_max: 1000,
+                stretch_min: font.stretch_min,
+                stretch_max: font.stretch_max,
                 ranges: font.ranges.clone(),
                 id,
                 bytes,
@@ -182,6 +185,8 @@ impl FontCatalog {
                     weight_min: f.weight_min,
                     weight_max: f.weight_max,
                     italic: f.italic,
+                    stretch_min: f.stretch_min,
+                    stretch_max: f.stretch_max,
                     ranges: f.ranges.clone(),
                     bytes: f.bytes.as_ref().clone(),
                 });
@@ -504,6 +509,28 @@ fn stretch_of(style: &blueice_css::ComputedStyle) -> u16 {
     (percent * 10.0).round().clamp(10.0, 10000.0) as u16
 }
 
+/// Which of bold (1) and italic (2) the style lets the engine make by drawing
+/// (`font-synthesis`, `-weight`, `-style`).
+fn synthesis_allowed(style: &blueice_css::ComputedStyle) -> u8 {
+    use blueice_css::{Token, Value};
+    let (mut weight, mut slant) = (true, true);
+    match style.other.get("font-synthesis") {
+        Some(Value::Keyword(k)) => match k.as_str() {
+            "none" | "small-caps" => (weight, slant) = (false, false),
+            "weight" => slant = false,
+            "style" => weight = false,
+            _ => {}
+        },
+        Some(Value::Unparsed(tokens)) => {
+            let has = |word: &str| tokens.iter().any(|t| matches!(t, Token::Ident(i) if i.eq_ignore_ascii_case(word)));
+            (weight, slant) = (has("weight"), has("style"));
+        }
+        _ => {}
+    }
+    let off = |name: &str| matches!(style.other.get(name), Some(Value::Keyword(k)) if k == "none");
+    u8::from(weight && !off("font-synthesis-weight")) | (u8::from(slant && !off("font-synthesis-style")) << 1)
+}
+
 /// What a computed style asks of its face.
 fn request_of(style: &blueice_css::ComputedStyle) -> FaceRequest {
     use blueice_css::{Token, Value};
@@ -558,6 +585,7 @@ pub(crate) fn assign_faces(
         let (face, synthesis) = *chosen
             .entry(key.clone())
             .or_insert_with(|| catalog.face_for_request(&key.0, &key.1));
+        let synthesis = synthesis & synthesis_allowed(style);
         match face {
             Some(id) => {
                 style
@@ -1154,6 +1182,91 @@ mod tests {
     }
 
     #[test]
+    fn a_font_face_a_script_makes_can_declare_its_stretch() {
+        let html = format!(
+            "<style>body {{ margin: 0 }} p {{ margin: 0; font-family: Dyn; font-stretch: 75% }}</style>\
+             <body><p>Hamburgefonstiv<span>|</span></p><script>\
+             const f = new FontFace('Dyn', 'url({})', {{ weight: '300 800', stretch: '75% 100%' }});\
+             document.fonts.add(f); f.load();\
+             </script></body>",
+            data_url(OPEN_SANS, "font/woff2")
+        );
+        let mut page = script_page(&html);
+        run_scripts(&mut page);
+        let narrow = runs(&page)[1].2;
+        let wide = run_width("font-stretch: 75% 100%", "font-stretch: 100%", OPEN_SANS);
+        assert!(narrow < wide * 0.9, "{narrow} vs {wide}");
+    }
+
+    #[test]
+    fn a_script_strokes_rectangles_and_measures_the_ink_of_text() {
+        let html = "<body><canvas id=c width=40 height=40></canvas><script>\
+             const g = document.getElementById('c').getContext('2d');\
+             g.strokeStyle = '#0000ff'; g.lineWidth = 4; g.strokeRect(10, 10, 20, 20);\
+             const d = g.getImageData(0, 0, 40, 40).data;\
+             const a = (x, y) => d[(y * 40 + x) * 4 + 3];\
+             console.log('RECT ' + a(10, 10) + ' ' + a(8, 20) + ' ' + a(11, 20) + ' ' + a(20, 20) + ' ' + a(5, 20) + ' ' + a(20, 33));\
+             g.font = '40px sans-serif'; const m = g.measureText('Hg');\
+             console.log('BOX ' + (m.actualBoundingBoxAscent > 20) + ' ' + (m.actualBoundingBoxDescent > 5) + ' ' +\
+               (m.actualBoundingBoxRight > 20) + ' ' + (m.fontBoundingBoxAscent > m.actualBoundingBoxAscent) + ' ' + (m.width > 40));\
+             </script></body>";
+        let mut page = script_page(html);
+        run_scripts(&mut page);
+        let log = page.web_console().join("\n");
+        assert!(log.contains("RECT 255 255 255 0 0 0"), "the line covers 8..12 on each side, not the inside nor the outside: {log}");
+        assert!(log.contains("BOX true true true true true"), "{log}");
+    }
+
+    #[test]
+    fn a_script_fills_and_strokes_paths() {
+        let html = "<body><canvas id=c width=100 height=100></canvas><script>\
+             const g = document.getElementById('c').getContext('2d');\
+             const px = (x, y) => { const d = g.getImageData(x, y, 1, 1).data; return d[3] === 0 ? '-' : d[0] + ',' + d[1] + ',' + d[2]; };\
+             const out = [];\
+             g.fillStyle = '#ff0000'; g.beginPath(); g.moveTo(10, 10); g.lineTo(50, 10); g.lineTo(10, 50); g.closePath(); g.fill();\
+             out.push('TRI ' + px(15, 15) + ' ' + px(45, 45));\
+             g.clearRect(0, 0, 100, 100); g.fillStyle = '#00ff00'; g.beginPath(); g.arc(50, 50, 20, 0, Math.PI * 2); g.fill();\
+             out.push('ARC ' + px(50, 50) + ' ' + px(50, 33) + ' ' + px(50, 25) + ' ' + px(69, 50) + ' ' + px(72, 50));\
+             g.clearRect(0, 0, 100, 100); g.fillStyle = '#0000ff'; g.beginPath(); g.rect(10, 10, 80, 80); g.rect(30, 30, 40, 40); g.fill('evenodd');\
+             out.push('EO ' + px(20, 20) + ' ' + px(50, 50));\
+             g.clearRect(0, 0, 100, 100); g.beginPath(); g.rect(10, 10, 80, 80); g.rect(30, 30, 40, 40); g.fill();\
+             out.push('NZ ' + px(50, 50));\
+             g.clearRect(0, 0, 100, 100); g.strokeStyle = '#ff00ff'; g.lineWidth = 10; g.beginPath(); g.moveTo(10, 50); g.lineTo(90, 50); g.stroke();\
+             out.push('LINE ' + px(50, 46) + ' ' + px(50, 54) + ' ' + px(50, 40) + ' ' + px(5, 50));\
+             g.clearRect(0, 0, 100, 100); g.lineCap = 'round'; g.beginPath(); g.moveTo(10, 50); g.lineTo(90, 50); g.stroke();\
+             out.push('CAP ' + px(7, 50));\
+             g.clearRect(0, 0, 100, 100); g.fillStyle = '#123456'; g.beginPath(); g.moveTo(10, 90); g.bezierCurveTo(10, 10, 90, 10, 90, 90); g.closePath(); g.fill();\
+             out.push('BEZ ' + px(50, 70) + ' ' + px(50, 20));\
+             g.clearRect(0, 0, 100, 100); g.beginPath(); g.roundRect(10, 10, 80, 80, 30); g.fill();\
+             out.push('RR ' + px(50, 50) + ' ' + px(11, 11) + ' ' + px(30, 12));\
+             g.clearRect(0, 0, 100, 100); g.beginPath(); g.moveTo(10, 10); g.arcTo(90, 10, 90, 90, 20); g.lineTo(90, 90); g.lineWidth = 4; g.stroke();\
+             out.push('ARCTO ' + px(50, 10) + ' ' + px(90, 50) + ' ' + px(87, 13));\
+             g.beginPath(); g.rect(10, 10, 20, 20);\
+             out.push('IN ' + g.isPointInPath(20, 20) + ' ' + g.isPointInPath(40, 40));\
+             g.clearRect(0, 0, 100, 100); g.save(); g.translate(50, 50); g.scale(2, 1); g.fillStyle = '#ff0000'; g.beginPath(); g.arc(0, 0, 10, 0, 7); g.fill(); g.restore();\
+             out.push('XF ' + px(65, 50) + ' ' + px(50, 62) + ' ' + px(50, 55));\
+             try { g.arc(0, 0, -1, 0, 1); } catch (e) { out.push('NEG ' + e.name); }\
+             console.log(out.join(' | '));\
+             </script></body>";
+        let mut page = script_page(html);
+        run_scripts(&mut page);
+        let log = page.web_console().join("\n");
+        let has = |s: &str| assert!(log.contains(s), "{s} in {log}");
+        has("TRI 255,0,0 -");
+        has("ARC 0,255,0 0,255,0 - 0,255,0 -");
+        has("EO 0,0,255 -");
+        has("NZ 0,0,255");
+        has("LINE 255,0,255 255,0,255 - -");
+        has("CAP 255,0,255");
+        has("BEZ 18,52,86 -");
+        has("RR 18,52,86 - 18,52,86");
+        has("ARCTO 255,0,255 255,0,255 -");
+        has("IN true false");
+        has("XF 255,0,0 - 255,0,0");
+        has("NEG IndexSizeError");
+    }
+
+    #[test]
     fn a_script_paints_canvas_text_with_gradients_and_outlines() {
         let html = "<body><canvas id=c width=120 height=60></canvas><script>\
              const g = document.getElementById('c').getContext('2d');\
@@ -1182,13 +1295,13 @@ mod tests {
     #[test]
     fn canvas_text_can_use_a_face_the_pages_stylesheet_declared() {
         let html = format!(
-            "<style>@font-face {{ font-family: Sheet; src: url({}) format('woff2'); }}</style>\
+            "<style>@font-face {{ font-family: Sheet; font-stretch: 75% 100%; src: url({}) format('woff2'); }}</style>\
              <body><canvas id=c width=80 height=30></canvas><script>\
              const g = document.getElementById('c').getContext('2d');\
              g.font = '20px Sheet'; const own = g.measureText('Hello').width;\
              g.font = '20px sans-serif'; const plain = g.measureText('Hello').width;\
              console.log('SHEET ' + (own !== plain) + ' ' + document.fonts.size);\
-             const [sf] = [...document.fonts]; console.log('SHEETFACE ' + sf.family + ' ' + sf.status + ' ' + sf.weight + ' ' + document.fonts.check('16px Sheet'));\
+             const [sf] = [...document.fonts]; console.log('SHEETFACE ' + sf.family + ' ' + sf.status + ' ' + sf.weight + ' ' + sf.stretch + ' ' + document.fonts.check('16px Sheet'));\
              </script></body>",
             data_url(REGULAR, "font/woff2")
         );
@@ -1200,7 +1313,7 @@ mod tests {
         run_scripts(&mut page);
         let log = page.web_console().join("\n");
         assert!(log.contains("SHEET true 1"), "{log}");
-        assert!(log.contains("SHEETFACE sheet loaded 400 true"), "{log}");
+        assert!(log.contains("SHEETFACE sheet loaded 400 75% 100% true"), "{log}");
     }
 
     #[test]
@@ -1222,6 +1335,43 @@ mod tests {
         assert_eq!(synth("both", 700, false), 0, "a real bold face exists");
         assert_eq!(synth("both", 400, true), 2);
         assert_eq!(synth("sans-serif", 700, false), 0, "no page face: nothing to synthesize");
+    }
+
+    #[test]
+    fn font_synthesis_can_forbid_the_drawing_tricks() {
+        let html = format!(
+            "<style>@font-face {{ font-family: only; src: url({}); }}\
+             p {{ font-family: only; font-weight: bold; font-style: italic }}\
+             .none {{ font-synthesis: none }} .w {{ font-synthesis: weight }} .s {{ font-synthesis: style }}\
+             .nw {{ font-synthesis-weight: none }} .ns {{ font-synthesis-style: none }}</style>\
+             <body><p id=a>a</p><p id=b class=none>b</p><p id=c class=w>c</p><p id=d class=s>d</p>\
+             <p id=e class=nw>e</p><p id=f class=ns>f</p><div class=none><p id=g>g</p></div></body>",
+            data_url(REGULAR, "font/woff2")
+        );
+        let doc = blueice_html::parse(&html);
+        let ua = blueice_css::ua_stylesheet();
+        let author = blueice_css::parse(&html[html.find("<style>").unwrap() + 7..html.find("</style>").unwrap()]).rules;
+        let mut styles = blueice_css::cascade(&doc, &[(blueice_css::Origin::Ua, &ua), (blueice_css::Origin::Author, &author)]);
+        assign_faces(&catalog(&html), &mut styles);
+        let synth = |id: &str| {
+            let node = styles
+                .keys()
+                .copied()
+                .find(|n| {
+                    matches!(doc.data(*n), blueice_dom::NodeData::Element { attributes, .. }
+                        if attributes.iter().any(|(k, v)| k == "id" && v == id))
+                })
+                .unwrap();
+            match styles[&node].other.get("-blueice-web-synth") {
+                Some(blueice_css::Value::Number(n)) => *n as u8,
+                _ => 0,
+            }
+        };
+        assert_eq!(
+            ["a", "b", "c", "d", "e", "f", "g"].map(synth),
+            [3, 0, 1, 2, 2, 1, 0],
+            "default, none, weight, style, no weight, no style, inherited none"
+        );
     }
 
     #[test]

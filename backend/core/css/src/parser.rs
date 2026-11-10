@@ -674,6 +674,7 @@ pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(St
             | "transform"
             | "translate"
             | "font-variation-settings"
+            | "font-synthesis"
             | "font-style"
     ) {
         let trimmed = trim_ws(value_tokens);

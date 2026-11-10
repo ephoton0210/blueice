@@ -9,6 +9,7 @@
 //! pages that use a canvas to read an image's pixels or to composite pictures
 //! work, and everything else degrades to an empty canvas rather than failing.
 
+use super::canvas_path::{self, Cap, Join, StrokeStyle, Subpath};
 use super::dom_bridge::Reply;
 use super::net::{base64_decode, base64_encode};
 
@@ -78,6 +79,25 @@ fn over(dst: &mut [u8], src: [u8; 4], alpha: f64) {
         dst[c] = v.round().clamp(0.0, 255.0) as u8;
     }
     dst[3] = (out_a * 255.0).round().clamp(0.0, 255.0) as u8;
+}
+
+/// The subpaths a script sends: `[{"p":[x0,y0,x1,y1,...],"c":closed}, ...]`, bounded.
+fn parse_paths(json: &str) -> Vec<Subpath> {
+    let Ok(serde_json::Value::Array(list)) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    let mut budget = 200_000_usize;
+    let mut out = Vec::new();
+    for item in list.iter().take(4096) {
+        let numbers: Vec<f64> = item["p"].as_array().map_or(Vec::new(), |a| a.iter().filter_map(|n| n.as_f64()).collect());
+        let points: Vec<(f64, f64)> = numbers.chunks_exact(2).map(|c| (c[0], c[1])).collect();
+        if points.len() > budget {
+            break;
+        }
+        budget -= points.len();
+        out.push(Subpath { points, closed: item["c"].as_i64().unwrap_or(0) != 0 });
+    }
+    out
 }
 
 /// One glyph's coverage bitmap and where its top-left lies in user space.
@@ -198,12 +218,27 @@ struct CanvasFont {
     face: Option<blueice_font::web::WebFontId>,
 }
 
+/// A `font-stretch` keyword as a percentage in tenths.
+fn stretch_keyword(word: &str) -> Option<u16> {
+    Some(match word {
+        "ultra-condensed" => 500,
+        "extra-condensed" => 625,
+        "condensed" => 750,
+        "semi-condensed" => 875,
+        "semi-expanded" => 1125,
+        "expanded" => 1250,
+        "extra-expanded" => 1500,
+        "ultra-expanded" => 2000,
+        _ => return None,
+    })
+}
+
 impl CanvasFont {
     /// `[style] [weight] size[/line-height] family[, family]...`; anything else is the default
     /// `10px sans-serif`.
     fn parse(spec: &str, fonts: &crate::fonts::FontCatalog) -> CanvasFont {
         let default = CanvasFont { size: 10.0, bold: false, italic: false, face: None };
-        let (mut weight, mut italic) = (400_u16, false);
+        let (mut weight, mut italic, mut stretch) = (400_u16, false, 1000_u16);
         let mut words = spec.split_whitespace();
         let mut size = None;
         for word in words.by_ref() {
@@ -218,6 +253,10 @@ impl CanvasFont {
             if let Some(px) = px {
                 size = Some(px);
                 break;
+            }
+            if let Some(s) = stretch_keyword(&lower) {
+                stretch = s;
+                continue;
             }
             match lower.as_str() {
                 "italic" | "oblique" => italic = true,
@@ -251,6 +290,7 @@ impl CanvasFont {
                 let mut req = crate::fonts::FaceRequest::new(weight, italic);
                 req.size = (size * 10.0).round().clamp(1.0, 10000.0) as u16;
                 req.optical = true;
+                req.stretch = stretch;
                 fonts.face_for_request(&families.join(","), &req).0
             },
         }
@@ -418,6 +458,36 @@ impl Canvas2d {
             }
         }
         self.paint_mask(&m, (left as f64, top as f64), (w, h), &band, paint, alpha);
+    }
+
+    /// Paints `polygons` (user space) through `m` with `paint`.
+    fn paint_polygons(
+        &mut self,
+        polygons: &[Vec<canvas_path::Point>],
+        m: &Affine,
+        even_odd: bool,
+        paint: &Paint,
+        alpha: f64,
+    ) {
+        let Some(inv) = invert(m) else { return };
+        let device: Vec<Vec<canvas_path::Point>> = polygons
+            .iter()
+            .map(|poly| poly.iter().map(|&(x, y)| apply(m, x, y)).collect())
+            .collect();
+        let Some(mask) = canvas_path::rasterize(&device, even_odd, self.w, self.h) else { return };
+        for row in 0..mask.h {
+            for col in 0..mask.w {
+                let c = mask.coverage[row * mask.w + col];
+                if c == 0 {
+                    continue;
+                }
+                let (px, py) = (mask.x + col as i64, mask.y + row as i64);
+                let (u, v) = apply(&inv, px as f64 + 0.5, py as f64 + 0.5);
+                let i = ((py as u32 * self.w + px as u32) * 4) as usize;
+                over(&mut self.rgba[i..i + 4], paint.at(u, v), alpha * f64::from(c) / 255.0);
+            }
+        }
+        self.dirty = true;
     }
 
     pub fn new(canvas: blueice_dom::NodeId, w: u32, h: u32) -> Option<Canvas2d> {
@@ -645,9 +715,59 @@ impl Canvas2d {
                 }
                 Reply::Undefined
             }
+            // text, font, align, baseline: width, then the ink's extents from the alignment point
+            // (left and right either side, ascent above the baseline, descent below) and the
+            // font's own, as comma-separated numbers.
+            "measureBox" => {
+                let font = CanvasFont::parse(text(a, 1), fonts);
+                let (glyphs, _) = Self::place_text(
+                    text(a, 0),
+                    (0.0, 0.0),
+                    &font,
+                    &[1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                    (text(a, 2), text(a, 3)),
+                    -1.0,
+                );
+                let min = |f: fn(&Placed) -> f64| glyphs.iter().map(f).fold(f64::INFINITY, f64::min);
+                let max = |f: fn(&Placed) -> f64| glyphs.iter().map(f).fold(f64::NEG_INFINITY, f64::max);
+                let (left, right, ascent, descent) = if glyphs.is_empty() {
+                    (0.0, 0.0, 0.0, 0.0)
+                } else {
+                    (-min(|g| g.x), max(|g| g.x + g.w as f64), -min(|g| g.y), max(|g| g.y + g.h as f64))
+                };
+                let (fa, fd) = blueice_font::ascent_descent_in(font.size, font.bold, font.italic, font.face);
+                Reply::Text(format!("{},{left},{right},{ascent},{descent},{fa},{fd}", font.width(text(a, 0))))
+            }
             "measureText" => {
                 let font = CanvasFont::parse(text(a, 1), fonts);
                 Reply::Number(font.width(text(a, 0)))
+            }
+            // path (JSON), paint, alpha, matrix, even-odd (fillPath); and line width, cap, join,
+            // miter limit (strokePath).
+            "fillPath" | "strokePath" => {
+                let paths = parse_paths(text(a, 0));
+                let (paint, alpha, m) = (Paint::parse(text(a, 1)), num(a, 2).clamp(0.0, 1.0), affine(a, 3));
+                if op == "fillPath" {
+                    let even_odd = num(a, 4) != 0.0;
+                    self.paint_polygons(&canvas_path::fill_polygons(&paths), &m, even_odd, &paint, alpha);
+                } else {
+                    let style = StrokeStyle {
+                        width: num(a, 4),
+                        cap: match text(a, 5) {
+                            "round" => Cap::Round,
+                            "square" => Cap::Square,
+                            _ => Cap::Butt,
+                        },
+                        join: match text(a, 6) {
+                            "round" => Join::Round,
+                            "bevel" => Join::Bevel,
+                            _ => Join::Miter,
+                        },
+                        miter_limit: if a.get(7).is_some() { num(a, 7).max(1.0) } else { 10.0 },
+                    };
+                    self.paint_polygons(&canvas_path::stroke_polygons(&paths, &style), &m, false, &paint, alpha);
+                }
+                Reply::Undefined
             }
             "fillRect" | "clearRect" => {
                 let paint = Paint::parse(text(a, 4));
@@ -973,7 +1093,7 @@ mod tests {
         let bytes = include_bytes!("../../../font/tests/data/roboto-latin-400.woff2");
         let mut catalog = crate::fonts::FontCatalog::default();
         assert!(catalog.add_script_font(&crate::fonts::ScriptFont {
-            family: "Dyn".into(), weight_min: 400, weight_max: 400, italic: false, ranges: vec![], bytes: bytes.to_vec(),
+            family: "Dyn".into(), weight_min: 400, weight_max: 400, italic: false, stretch_min: 1000, stretch_max: 1000, ranges: vec![], bytes: bytes.to_vec(),
         }));
         let mut c = canvas(10, 10);
         let mut w = |font: &str| match c.call_with_fonts("measureText", &[t("Hello"), t(font)], &catalog).unwrap() {
@@ -1064,7 +1184,7 @@ mod tests {
         let bytes = include_bytes!("../../../font/tests/data/inter-latin-opsz.woff2");
         let mut catalog = crate::fonts::FontCatalog::default();
         assert!(catalog.add_script_font(&crate::fonts::ScriptFont {
-            family: "Opt".into(), weight_min: 100, weight_max: 900, italic: false, ranges: vec![], bytes: bytes.to_vec(),
+            family: "Opt".into(), weight_min: 100, weight_max: 900, italic: false, stretch_min: 1000, stretch_max: 1000, ranges: vec![], bytes: bytes.to_vec(),
         }));
         let mut c = canvas(10, 10);
         let mut w = |font: &str| match c.call_with_fonts("measureText", &[t("Hamburgefonstiv"), t(font)], &catalog).unwrap() {
@@ -1073,5 +1193,47 @@ mod tests {
         };
         let (small, large) = (w("14px Opt"), w("28px Opt"));
         assert!((large / small - 2.0).abs() > 0.01, "{small} {large}: the large size is drawn in the display cut");
+    }
+
+    #[test]
+    fn a_canvas_font_shorthand_can_ask_for_a_width() {
+        let bytes = include_bytes!("../../../font/tests/data/opensans-latin-wdth.woff2");
+        let mut catalog = crate::fonts::FontCatalog::default();
+        assert!(catalog.add_script_font(&crate::fonts::ScriptFont {
+            family: "Wide".into(), weight_min: 300, weight_max: 800, italic: false, stretch_min: 750, stretch_max: 1000,
+            ranges: vec![], bytes: bytes.to_vec(),
+        }));
+        let mut c = canvas(10, 10);
+        let mut w = |font: &str| match c.call_with_fonts("measureText", &[t("Hamburgefonstiv"), t(font)], &catalog).unwrap() {
+            Reply::Number(w) => w,
+            other => panic!("{other:?}"),
+        };
+        let (normal, condensed) = (w("20px Wide"), w("condensed 20px Wide"));
+        assert!(condensed < normal * 0.9, "{condensed} vs {normal}");
+        assert!((w("ultra-expanded 20px Wide") - normal).abs() < 0.01, "held to the declared range");
+    }
+
+    #[test]
+    fn measuring_a_box_reports_where_the_ink_lies_around_the_alignment_point() {
+        let mut c = canvas(10, 10);
+        let none = crate::fonts::FontCatalog::default();
+        let mut measure = |text: &str, align: &str, baseline: &str| -> Vec<f64> {
+            match c.call_with_fonts("measureBox", &[t(text), t("40px sans-serif"), t(align), t(baseline)], &none).unwrap() {
+                Reply::Text(s) => s.split(',').map(|n| n.parse().unwrap()).collect(),
+                other => panic!("{other:?}"),
+            }
+        };
+        let h = measure("H", "left", "alphabetic");
+        let g = measure("g", "left", "alphabetic");
+        let (width, ascent, descent, font_ascent) = (h[0], h[3], h[4], h[5]);
+        assert!(ascent > 20.0 && ascent < font_ascent, "cap height lies under the font ascent: {h:?}");
+        assert!(descent < 1.5, "H sits on the baseline: {h:?}");
+        assert!(g[4] > 5.0, "g hangs below it: {g:?}");
+        assert!(h[2] > 20.0 && h[2] <= width + 1.0, "the right edge is inside the advance: {h:?}");
+        let centred = measure("H", "center", "alphabetic");
+        assert!(centred[1] > 8.0 && centred[1] <= width / 2.0 && centred[2] > 8.0 && centred[2] <= width / 2.0, "ink lies either side of the centre, inside the half advance: {centred:?}");
+        let top = measure("H", "left", "top");
+        assert!(top[3] < 2.0 && top[4] > 20.0, "with the top baseline the ink hangs below: {top:?}");
+        assert_eq!(measure("", "left", "alphabetic")[1..5], [0.0; 4]);
     }
 }

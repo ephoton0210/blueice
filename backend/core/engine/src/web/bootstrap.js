@@ -892,7 +892,7 @@
     _announce() {
       if (this._status === 'loaded' && !this._announced) {
         this._announced = true;
-        bi('fontAdd', this.family, this.weight, this.style, this.unicodeRange === 'U+0-10FFFF' ? '' : this.unicodeRange, this._body, this._url);
+        bi('fontAdd', this.family, this.weight, this.style, this.unicodeRange === 'U+0-10FFFF' ? '' : this.unicodeRange, this._body, this._url, this.stretch === 'normal' ? '' : this.stretch);
       }
     }
     load() {
@@ -981,10 +981,12 @@
     const text = bi('fontList');
     if (!text) return;
     for (const line of String(text).split('\n')) {
-      const [family, min, max, italic, ranges] = line.split('\t');
+      const [family, min, max, italic, ranges, smin, smax] = line.split('\t');
+      const pct = (tenths) => String(Number(tenths) / 10) + '%';
       const face = new FontFace(family, null, {
         weight: min === max ? min : min + ' ' + max,
         style: italic === '1' ? 'italic' : 'normal',
+        stretch: smin === smax ? (smin === '1000' ? 'normal' : pct(smin)) : pct(smin) + ' ' + pct(smax),
         unicodeRange: ranges ? ranges.split(',').map((r) => {
           const [a, b] = r.split('-');
           return a === b ? 'U+' + a : 'U+' + a + '-' + b;
@@ -2502,8 +2504,10 @@
     constructor(canvas) {
       this.canvas = canvas;
       this._id = bi('c2dCreate', canvas._id, canvas.width, canvas.height);
-      this._state = { fillStyle: '#000000', strokeStyle: '#000000', globalAlpha: 1, m: [1, 0, 0, 1, 0, 0], font: '10px sans-serif', textAlign: 'start', textBaseline: 'alphabetic', lineWidth: 1 };
+      this._state = { fillStyle: '#000000', strokeStyle: '#000000', globalAlpha: 1, m: [1, 0, 0, 1, 0, 0], font: '10px sans-serif', textAlign: 'start', textBaseline: 'alphabetic', lineWidth: 1, lineCap: 'butt', lineJoin: 'miter', miterLimit: 10 };
       this._stack = [];
+      this._subs = [];
+      this._cur = null;
     }
     _c(op, ...args) {
       return bi('c2d', this._id, op, ...args);
@@ -2521,7 +2525,13 @@
     get textBaseline() { return this._state.textBaseline; }
     set textBaseline(v) { v = String(v); if (['top', 'hanging', 'middle', 'alphabetic', 'ideographic', 'bottom'].includes(v)) this._state.textBaseline = v; }
     get lineWidth() { return this._state.lineWidth; }
-    set lineWidth(v) { this._state.lineWidth = Number(v) || 1; }
+    set lineWidth(v) { v = Number(v); if (v > 0 && Number.isFinite(v)) this._state.lineWidth = v; }
+    get lineCap() { return this._state.lineCap; }
+    set lineCap(v) { v = String(v); if (['butt', 'round', 'square'].includes(v)) this._state.lineCap = v; }
+    get lineJoin() { return this._state.lineJoin; }
+    set lineJoin(v) { v = String(v); if (['miter', 'round', 'bevel'].includes(v)) this._state.lineJoin = v; }
+    get miterLimit() { return this._state.miterLimit; }
+    set miterLimit(v) { v = Number(v); if (v > 0 && Number.isFinite(v)) this._state.miterLimit = v; }
     save() { this._stack.push(Object.assign({}, this._state, { m: this._state.m.slice() })); }
     restore() { if (this._stack.length) this._state = this._stack.pop(); }
     setTransform(a, b, c, d, e, f) {
@@ -2539,7 +2549,18 @@
     rotate(a) { const c = Math.cos(a), s = Math.sin(a); this.transform(c, s, -s, c, 0, 0); }
     fillRect(x, y, w, h) { this._c('fillRect', x, y, w, h, paintOf(this._state.fillStyle), this._state.globalAlpha, JSON.stringify(this._state.m)); }
     clearRect(x, y, w, h) { this._c('clearRect', x, y, w, h, '#000', 1, JSON.stringify(this._state.m)); }
-    strokeRect() {}
+    // The outline of a rectangle: four bars of `lineWidth`, centred on its edges.
+    strokeRect(x, y, w, h) {
+      x = Number(x); y = Number(y); w = Number(w); h = Number(h);
+      if (![x, y, w, h].every(Number.isFinite) || (w === 0 && h === 0)) return;
+      const st = this._state, half = st.lineWidth / 2, paint = paintOf(st.strokeStyle), m = JSON.stringify(st.m);
+      const x0 = Math.min(x, x + w), y0 = Math.min(y, y + h), aw = Math.abs(w), ah = Math.abs(h);
+      const bar = (bx, by, bw, bh) => this._c('fillRect', bx, by, bw, bh, paint, st.globalAlpha, m);
+      bar(x0 - half, y0 - half, aw + st.lineWidth, st.lineWidth);
+      bar(x0 - half, y0 + ah - half, aw + st.lineWidth, st.lineWidth);
+      bar(x0 - half, y0 + half, st.lineWidth, Math.max(ah - st.lineWidth, 0));
+      bar(x0 + aw - half, y0 + half, st.lineWidth, Math.max(ah - st.lineWidth, 0));
+    }
     drawImage(source, a, b, c, d, e, f, g, h) {
       const px = pixelsOf(source);
       if (!px) return;
@@ -2562,20 +2583,159 @@
       this._c('putImageData', bytesToBase64(bytes), image.width, image.height, x, y);
     }
     createImageData(w, h) { return w && typeof w === 'object' ? new ImageData(w.width, w.height) : new ImageData(w, h); }
-    // Paths, text and gradients are accepted and draw nothing yet.
-    beginPath() {}
-    closePath() {}
-    moveTo() {}
-    lineTo() {}
-    bezierCurveTo() {}
-    quadraticCurveTo() {}
-    arc() {}
-    arcTo() {}
-    ellipse() {}
-    rect() {}
-    roundRect() {}
-    fill() {}
-    stroke() {}
+    // ---- paths: points are kept in user space and drawn with the transform in force at
+    // fill() or stroke(). A curve is flattened into short lines as it is added.
+    _startSub(x, y) {
+      this._cur = { p: [x, y], c: 0, _in: false };
+      this._sx = this._lx = x;
+      this._sy = this._ly = y;
+    }
+    _add(x, y) {
+      const c = this._cur;
+      if (!c._in) { c._in = true; this._subs.push(c); }
+      if (c.p.length < 400000) c.p.push(x, y);
+      this._lx = x;
+      this._ly = y;
+    }
+    beginPath() { this._subs = []; this._cur = null; }
+    moveTo(x, y) {
+      x = Number(x); y = Number(y);
+      if (Number.isFinite(x) && Number.isFinite(y)) this._startSub(x, y);
+    }
+    lineTo(x, y) {
+      x = Number(x); y = Number(y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      if (!this._cur) this._startSub(x, y);
+      this._add(x, y);
+    }
+    closePath() {
+      const c = this._cur;
+      if (!c || !c._in) return;
+      c.c = 1;
+      this._startSub(this._sx, this._sy);
+    }
+    quadraticCurveTo(cx, cy, x, y) {
+      [cx, cy, x, y] = [cx, cy, x, y].map(Number);
+      if (![cx, cy, x, y].every(Number.isFinite)) return;
+      if (!this._cur) this._startSub(cx, cy);
+      const x0 = this._lx, y0 = this._ly;
+      for (let i = 1; i <= 24; i++) {
+        const t = i / 24, u = 1 - t;
+        this._add(u * u * x0 + 2 * u * t * cx + t * t * x, u * u * y0 + 2 * u * t * cy + t * t * y);
+      }
+    }
+    bezierCurveTo(c1x, c1y, c2x, c2y, x, y) {
+      [c1x, c1y, c2x, c2y, x, y] = [c1x, c1y, c2x, c2y, x, y].map(Number);
+      if (![c1x, c1y, c2x, c2y, x, y].every(Number.isFinite)) return;
+      if (!this._cur) this._startSub(c1x, c1y);
+      const x0 = this._lx, y0 = this._ly;
+      for (let i = 1; i <= 32; i++) {
+        const t = i / 32, u = 1 - t;
+        this._add(u * u * u * x0 + 3 * u * u * t * c1x + 3 * u * t * t * c2x + t * t * t * x,
+          u * u * u * y0 + 3 * u * u * t * c1y + 3 * u * t * t * c2y + t * t * t * y);
+      }
+    }
+    // The points of an arc of an ellipse, joined to the current point by a line.
+    _arc(x, y, rx, ry, rot, a0, a1, ccw) {
+      const TAU = Math.PI * 2;
+      let sweep;
+      if (!ccw) sweep = a1 - a0 >= TAU ? TAU : (((a1 - a0) % TAU) + TAU) % TAU;
+      else sweep = a0 - a1 >= TAU ? -TAU : -((((a0 - a1) % TAU) + TAU) % TAU);
+      const cr = Math.cos(rot), sr = Math.sin(rot);
+      const at = (a) => {
+        const px = rx * Math.cos(a), py = ry * Math.sin(a);
+        return [x + px * cr - py * sr, y + px * sr + py * cr];
+      };
+      const n = Math.max(4, Math.ceil(Math.abs(sweep) / (Math.PI / 2) * Math.max(4, Math.min(32, Math.ceil(Math.sqrt(Math.max(rx, ry)) * 3)))));
+      const [sx, sy] = at(a0);
+      if (!this._cur) this._startSub(sx, sy);
+      this._add(sx, sy);
+      for (let i = 1; i <= n; i++) {
+        const [px, py] = at(a0 + sweep * i / n);
+        this._add(px, py);
+      }
+    }
+    arc(x, y, r, a0, a1, ccw) {
+      [x, y, r, a0, a1] = [x, y, r, a0, a1].map(Number);
+      if (![x, y, r, a0, a1].every(Number.isFinite)) return;
+      if (r < 0) throw new DOMException('The radius provided (' + r + ') is negative.', 'IndexSizeError');
+      this._arc(x, y, r, r, 0, a0, a1, !!ccw);
+    }
+    ellipse(x, y, rx, ry, rot, a0, a1, ccw) {
+      [x, y, rx, ry, rot, a0, a1] = [x, y, rx, ry, rot, a0, a1].map(Number);
+      if (![x, y, rx, ry, rot, a0, a1].every(Number.isFinite)) return;
+      if (rx < 0 || ry < 0) throw new DOMException('The radius provided is negative.', 'IndexSizeError');
+      this._arc(x, y, rx, ry, rot, a0, a1, !!ccw);
+    }
+    arcTo(x1, y1, x2, y2, r) {
+      [x1, y1, x2, y2, r] = [x1, y1, x2, y2, r].map(Number);
+      if (![x1, y1, x2, y2, r].every(Number.isFinite)) return;
+      if (r < 0) throw new DOMException('The radius provided (' + r + ') is negative.', 'IndexSizeError');
+      if (!this._cur) this._startSub(x1, y1);
+      const x0 = this._lx, y0 = this._ly;
+      const d1 = [x0 - x1, y0 - y1], d2 = [x2 - x1, y2 - y1];
+      const l1 = Math.hypot(d1[0], d1[1]), l2 = Math.hypot(d2[0], d2[1]);
+      const cross = d1[0] * d2[1] - d1[1] * d2[0];
+      if (l1 === 0 || l2 === 0 || r === 0 || Math.abs(cross) < 1e-12 * l1 * l2) { this.lineTo(x1, y1); return; }
+      const u1 = [d1[0] / l1, d1[1] / l1], u2 = [d2[0] / l2, d2[1] / l2];
+      const theta = Math.acos(Math.max(-1, Math.min(1, u1[0] * u2[0] + u1[1] * u2[1])));
+      const t = r / Math.tan(theta / 2);
+      const t1 = [x1 + u1[0] * t, y1 + u1[1] * t], t2 = [x1 + u2[0] * t, y1 + u2[1] * t];
+      const bis = [u1[0] + u2[0], u1[1] + u2[1]], bl = Math.hypot(bis[0], bis[1]);
+      const k = r / Math.sin(theta / 2);
+      const c = [x1 + bis[0] / bl * k, y1 + bis[1] / bl * k];
+      this._add(t1[0], t1[1]);
+      const a0 = Math.atan2(t1[1] - c[1], t1[0] - c[0]);
+      let diff = Math.atan2(t2[1] - c[1], t2[0] - c[0]) - a0;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      const n = Math.max(4, Math.ceil(Math.abs(diff) / (Math.PI / 2) * 8));
+      for (let i = 1; i <= n; i++) this._add(c[0] + r * Math.cos(a0 + diff * i / n), c[1] + r * Math.sin(a0 + diff * i / n));
+    }
+    rect(x, y, w, h) {
+      [x, y, w, h] = [x, y, w, h].map(Number);
+      if (![x, y, w, h].every(Number.isFinite)) return;
+      this._startSub(x, y);
+      this._add(x, y);
+      this._add(x + w, y);
+      this._add(x + w, y + h);
+      this._add(x, y + h);
+      this.closePath();
+    }
+    roundRect(x, y, w, h, radii) {
+      [x, y, w, h] = [x, y, w, h].map(Number);
+      if (![x, y, w, h].every(Number.isFinite)) return;
+      let r = Array.isArray(radii) ? Number(radii[0]) : radii && typeof radii === 'object' ? Number(radii.x) : Number(radii);
+      if (!(r > 0)) r = 0;
+      if (w < 0) { x += w; w = -w; }
+      if (h < 0) { y += h; h = -h; }
+      r = Math.min(r, w / 2, h / 2);
+      const HALF = Math.PI / 2;
+      this._startSub(x + r, y);
+      this._add(x + r, y);
+      this._add(x + w - r, y);
+      this._arc(x + w - r, y + r, r, r, 0, -HALF, 0, false);
+      this._add(x + w, y + h - r);
+      this._arc(x + w - r, y + h - r, r, r, 0, 0, HALF, false);
+      this._add(x + r, y + h);
+      this._arc(x + r, y + h - r, r, r, 0, HALF, Math.PI, false);
+      this._add(x, y + r);
+      this._arc(x + r, y + r, r, r, 0, Math.PI, Math.PI * 1.5, false);
+      this.closePath();
+    }
+    fill(a, b) {
+      const rule = typeof a === 'string' ? a : typeof b === 'string' ? b : 'nonzero';
+      if (!this._subs.length) return;
+      const st = this._state;
+      this._c('fillPath', JSON.stringify(this._subs), paintOf(st.fillStyle), st.globalAlpha, JSON.stringify(st.m), rule === 'evenodd' ? 1 : 0);
+    }
+    stroke() {
+      if (!this._subs.length) return;
+      const st = this._state;
+      this._c('strokePath', JSON.stringify(this._subs), paintOf(st.strokeStyle), st.globalAlpha, JSON.stringify(st.m),
+        st.lineWidth, st.lineCap, st.lineJoin, st.miterLimit);
+    }
+    // The clipping region is not kept: the path is accepted and drawing stays unclipped.
     clip() {}
     fillText(text, x, y, maxWidth) {
       x = Number(x); y = Number(y);
@@ -2593,17 +2753,34 @@
     }
     measureText(text) {
       const font = this._state.font;
-      const width = this._c('measureText', String(text), font);
-      const size = parseFloat((/([\d.]+)px/.exec(font) || [0, 10])[1]);
-      return { width, actualBoundingBoxLeft: 0, actualBoundingBoxRight: width, actualBoundingBoxAscent: size * 0.8,
-        actualBoundingBoxDescent: size * 0.2, fontBoundingBoxAscent: size * 0.93, fontBoundingBoxDescent: size * 0.24 };
+      const [width, left, right, ascent, descent, fontAscent, fontDescent] =
+        String(this._c('measureBox', String(text), font, this._state.textAlign, this._state.textBaseline)).split(',').map(Number);
+      return { width, actualBoundingBoxLeft: left, actualBoundingBoxRight: right, actualBoundingBoxAscent: ascent,
+        actualBoundingBoxDescent: descent, fontBoundingBoxAscent: fontAscent, fontBoundingBoxDescent: fontDescent,
+        emHeightAscent: fontAscent, emHeightDescent: fontDescent, alphabeticBaseline: 0, hangingBaseline: fontAscent * 0.8,
+        ideographicBaseline: -fontDescent };
     }
     setLineDash() {}
     getLineDash() { return []; }
     createLinearGradient(x0, y0, x1, y1) { return new CanvasGradient('linear', [x0, y0, x1, y1]); }
     createRadialGradient(x0, y0, r0, x1, y1, r1) { return new CanvasGradient('radial', [x0, y0, r0, x1, y1, r1]); }
     createPattern() { return null; }
-    isPointInPath() { return false; }
+    isPointInPath(x, y, rule) {
+      x = Number(x); y = Number(y);
+      if (typeof x !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+      let winding = 0;
+      for (const sub of this._subs) {
+        const p = sub.p, n = p.length / 2;
+        for (let i = 0; i < n; i++) {
+          const ax = p[i * 2], ay = p[i * 2 + 1], bx = p[((i + 1) % n) * 2], by = p[((i + 1) % n) * 2 + 1];
+          if ((ay <= y) !== (by <= y)) {
+            const cross = (bx - ax) * (y - ay) - (x - ax) * (by - ay);
+            if (ay <= y ? cross > 0 : cross < 0) winding += ay <= y ? 1 : -1;
+          }
+        }
+      }
+      return rule === 'evenodd' ? (Math.abs(winding) & 1) === 1 : winding !== 0;
+    }
     getContextAttributes() { return { alpha: true, desynchronized: false, colorSpace: 'srgb', willReadFrequently: false }; }
     _resize(w, h) { this._c('resize', w, h); }
   }
