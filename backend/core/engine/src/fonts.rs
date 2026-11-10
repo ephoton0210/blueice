@@ -97,16 +97,33 @@ impl FontCatalog {
     /// cover what the earlier ones do not. A system or generic family ends the list (the system
     /// font draws the rest), and a list the page has no face for is `None`.
     pub(crate) fn face_for(&self, families: &str, weight: u16, italic: bool) -> Option<WebFontId> {
+        self.face_and_synthesis(families, weight, italic).0
+    }
+
+    /// [`face_for`](Self::face_for), and which of bold (1) and italic (2) the page's primary
+    /// face lacks, so the text is made bold or slanted by drawing instead.
+    pub(crate) fn face_and_synthesis(
+        &self,
+        families: &str,
+        weight: u16,
+        italic: bool,
+    ) -> (Option<WebFontId>, u8) {
+        let mut synthesis = None;
         let mut members: Vec<(WebFontId, Vec<(u32, u32)>)> = Vec::new();
         for family in families.split(',') {
             let family = family.trim();
             if let Some(faces) = self.families.get(family) {
+                if synthesis.is_none() {
+                    synthesis = best_of(faces, weight, italic).map(|best| {
+                        u8::from(weight >= 600 && best.weight_max < 600) | (u8::from(italic && !best.italic) << 1)
+                    });
+                }
                 members.extend(best_faces(faces, weight, italic));
             } else if SYSTEM_FAMILIES.contains(&family) {
                 break;
             }
         }
-        blueice_font::web::register_set(&members)
+        (blueice_font::web::register_set(&members), synthesis.unwrap_or(0))
     }
 
     /// Adds a face a script supplied. False when it does not decode, or the page already has as
@@ -185,14 +202,18 @@ fn weight_distance(face: &CatalogFace, weight: u16) -> u16 {
 /// CSS font matching, simplified: the style first, then the nearest weight (the heavier for a
 /// bold request between equally near ones). Every face of the family with that style and weight
 /// range is returned, the one declared last first, with the code points it covers.
-fn best_faces(faces: &[CatalogFace], weight: u16, italic: bool) -> Vec<(WebFontId, Vec<(u32, u32)>)> {
-    let Some(best) = faces.iter().min_by_key(|f| {
+fn best_of(faces: &[CatalogFace], weight: u16, italic: bool) -> Option<&CatalogFace> {
+    faces.iter().min_by_key(|f| {
         (
             u8::from(f.italic != italic),
             weight_distance(f, weight),
             if weight > 400 { u16::MAX - f.weight_max } else { f.weight_min },
         )
-    }) else {
+    })
+}
+
+fn best_faces(faces: &[CatalogFace], weight: u16, italic: bool) -> Vec<(WebFontId, Vec<(u32, u32)>)> {
+    let Some(best) = best_of(faces, weight, italic) else {
         return Vec::new();
     };
     faces
@@ -377,24 +398,33 @@ pub(crate) fn assign_faces(
     if catalog.is_empty() {
         return;
     }
-    let mut chosen: HashMap<(String, u16, bool), Option<WebFontId>> = HashMap::new();
+    let mut chosen: HashMap<(String, u16, bool), (Option<WebFontId>, u8)> = HashMap::new();
     for style in styles.values_mut() {
         let Some(families) = style.font_family.as_deref() else {
             style.other.remove("-blueice-web-font");
+            style.other.remove("-blueice-web-synth");
             continue;
         };
         let key = (families.to_string(), weight_of(style), style.is_italic());
-        let face = *chosen
+        let (face, synthesis) = *chosen
             .entry(key.clone())
-            .or_insert_with(|| catalog.face_for(&key.0, key.1, key.2));
+            .or_insert_with(|| catalog.face_and_synthesis(&key.0, key.1, key.2));
         match face {
             Some(id) => {
                 style
                     .other
                     .insert("-blueice-web-font".to_string(), Value::Number(f64::from(id.as_u32())));
+                if synthesis == 0 {
+                    style.other.remove("-blueice-web-synth");
+                } else {
+                    style
+                        .other
+                        .insert("-blueice-web-synth".to_string(), Value::Number(f64::from(synthesis)));
+                }
             }
             None => {
                 style.other.remove("-blueice-web-font");
+                style.other.remove("-blueice-web-synth");
             }
         }
     }
@@ -857,5 +887,26 @@ mod tests {
         run_scripts(&mut page);
         let log = page.web_console().join("\n");
         assert!(log.contains("SHEET true 0"), "{log}");
+    }
+
+    #[test]
+    fn a_missing_bold_or_italic_is_to_be_made_by_drawing() {
+        let html = format!(
+            "<style>@font-face {{ font-family: only; src: url({}); font-weight: 400; }}\
+             @font-face {{ font-family: both; src: url({}); font-weight: 400; }}\
+             @font-face {{ font-family: both; src: url({}); font-weight: 700; }}</style>",
+            data_url(REGULAR, "font/woff2"),
+            data_url(REGULAR, "font/woff2"),
+            data_url(BOLD, "font/woff2")
+        );
+        let c = catalog(&html);
+        let synth = |f: &str, w, i| c.face_and_synthesis(f, w, i).1;
+        assert_eq!(synth("only", 400, false), 0);
+        assert_eq!(synth("only", 700, false), 1);
+        assert_eq!(synth("only", 400, true), 2);
+        assert_eq!(synth("only", 700, true), 3);
+        assert_eq!(synth("both", 700, false), 0, "a real bold face exists");
+        assert_eq!(synth("both", 400, true), 2);
+        assert_eq!(synth("sans-serif", 700, false), 0, "no page face: nothing to synthesize");
     }
 }

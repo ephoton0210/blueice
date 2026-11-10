@@ -866,6 +866,8 @@ decodes it into its own registry (a `WebFontId` is per process, so bytes cross, 
 set (family taken from the `font` shorthand). Not built: faces the stylesheets declare are not listed in
 `document.fonts`, `loadingdone`/`loadingerror` events, `ready` stays resolved, `local()` sources.
 
+Synthetic bold/italic (2026-11-09): when the primary face of a list has no weight >= 600 for a bold request, or no italic for an italic one, `assign_faces` records `-blueice-web-synth` (1 bold, 2 italic); a page-face run is then emitted `bold`/`italic` only for what the face lacks, and the rasterizer smears the glyph sideways (size/20 px, at least 1) and shears it 0.2 about the baseline. Advances are not widened. Characters that fall back to the bundled fonts inside such a run are not synthesized.
+
 Canvas 2D text (2026-11-09): `fillText` (with `textAlign`, `textBaseline`, `maxWidth`, the transform and `globalAlpha`) and `measureText` use the real glyphs and advances. `font` is parsed (`style weight size[/lh] family-list`); its families are looked up in the faces scripts added through `document.fonts` (a script-side catalog in the script process, since face ids are per process), then the bundled fonts. The page's own faces (stylesheet `@font-face` too) reach the scripts: a `Handoff.fonts` (thread) or a `ToChild::Fonts` frame (process) carries every face's file and descriptors whenever the page's catalog changed, and the script side decodes its own copy (face ids are per process), so a canvas draws in the page's fonts. `strokeText`, gradients as text fill, `direction` and the bounding-box metrics (approximated from the size) are not built.
 
 ## Page scripts off the session thread (2026-11-03)

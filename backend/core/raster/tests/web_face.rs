@@ -89,3 +89,26 @@ fn a_set_of_faces_is_drawn_character_by_character() {
     assert_eq!(drawn(set.as_u32(), "A"), drawn(bold.as_u32(), "A"));
     assert_ne!(drawn(set.as_u32(), "A"), drawn(regular.as_u32(), "A"));
 }
+
+#[test]
+fn a_face_without_bold_or_italic_is_smeared_and_slanted_by_drawing() {
+    let id = blueice_font::web::register(ROBOTO).unwrap().as_u32();
+    let styled = |bold, italic| {
+        let mut frame = text(Some(id), "Hi");
+        if let PaintCommand::Text { bold: b, italic: i, .. } = &mut frame.commands[0] {
+            (*b, *i) = (bold, italic);
+        }
+        frame
+    };
+    let count = |frame: &Frame| {
+        let p = rasterize(frame);
+        (0..p.height).flat_map(|y| (0..p.width).map(move |x| (x, y))).filter(|&(x, y)| p.get_pixel(x, y)[0] < 128).count()
+    };
+    let plain = count(&styled(false, false));
+    assert!(count(&styled(true, false)) > plain + plain / 10, "bold has more ink");
+    // Slanting moves the top of the glyphs right and leaves the baseline row where it was.
+    let (l0, _, r0, _) = ink(&styled(false, false));
+    let (l1, _, r1, _) = ink(&styled(false, true));
+    assert!(r1 > r0 && l1 >= l0, "{l0}..{r0} vs {l1}..{r1}");
+    assert!(count(&styled(false, true)).abs_diff(plain) < plain / 5, "same amount of ink");
+}

@@ -186,6 +186,11 @@ impl Pixmap {
             None => run.font_size_px * ASSUMED_ASCENT_RATIO,
         };
         let baseline_y = run.y + ascent;
+        // A page face that lacks the weight or slant asked for is made bold by smearing each
+        // glyph sideways and slanted by shearing it about the baseline.
+        let synthesized = run.face.is_some();
+        let smear = if synthesized && run.bold { (run.font_size_px / 20.0).max(1.0).round() as i64 } else { 0 };
+        let slant = if synthesized && run.italic { 0.2 } else { 0.0 };
         let mut pen_x = run.x;
         for ch in run.text.chars() {
             // Per-character, not once for the whole run: a run can mix
@@ -202,14 +207,17 @@ impl Pixmap {
                     if coverage == 0 {
                         continue;
                     }
-                    let px = (bitmap_left + col as f64).round() as i64;
                     let py = (bitmap_top + row as f64).round() as i64;
-                    self.set_pixel_blended(
-                        px,
-                        py,
-                        [r, g, b, ((coverage * a as u32) / 255) as u8],
-                        clip,
-                    );
+                    let shear = (baseline_y - py as f64) * slant;
+                    let px = (bitmap_left + col as f64 + shear).round() as i64;
+                    for extra in 0..=smear {
+                        self.set_pixel_blended(
+                            px + extra,
+                            py,
+                            [r, g, b, ((coverage * a as u32) / 255) as u8],
+                            clip,
+                        );
+                    }
                 }
             }
             pen_x += metrics.advance_width as f64;

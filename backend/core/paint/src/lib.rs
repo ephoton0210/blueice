@@ -878,8 +878,7 @@ fn paint_fragment(
         FragmentKind::Block | FragmentKind::NativeControl { .. } | FragmentKind::Line => {}
         FragmentKind::Text(text) | FragmentKind::NativeText { text, .. } if !fragment.hidden => {
             if let Some(style) = own_style {
-                let bold = style.is_bold();
-                let italic = style.is_italic();
+                let (face, bold, italic) = text_face(style);
                 // The nearest block ancestor's opacity is already in `inherited`.
                 let color = apply_opacity(style.color, inherited.opacity);
                 // The rasterizer draws a string at its natural advances, so a
@@ -890,7 +889,6 @@ fn paint_fragment(
                     .get("letter-spacing")
                     .and_then(|v| length_px(v, style.font_size_px))
                     .filter(|s| *s != 0.0);
-                let face = face_of(style);
                 let mut emit = |x: f64, text: String| {
                     out.push(PaintCommand::Text {
                         x,
@@ -984,6 +982,27 @@ fn paint_fragment(
 }
 
 /// The page-supplied face the engine chose for this style's text (see `blueice_font::web`).
+/// What the face lacks of the style's weight and slant (`-blueice-web-synth`: 1 bold, 2 italic):
+/// text in a page face is `bold`/`italic` only to have the rasterizer make it so.
+fn synthesis_of(style: &ComputedStyle) -> (bool, bool) {
+    match style.other.get("-blueice-web-synth") {
+        Some(Value::Number(n)) => (*n as u32 & 1 != 0, *n as u32 & 2 != 0),
+        _ => (false, false),
+    }
+}
+
+/// `(face, bold, italic)` of a run of text in `style`: with a page face, the weight and slant
+/// the face lacks; without one, the style's own.
+fn text_face(style: &ComputedStyle) -> (Option<u32>, bool, bool) {
+    match face_of(style) {
+        Some(face) => {
+            let (bold, italic) = synthesis_of(style);
+            (Some(face), bold, italic)
+        }
+        None => (None, style.is_bold(), style.is_italic()),
+    }
+}
+
 fn face_of(style: &ComputedStyle) -> Option<u32> {
     match style.other.get("-blueice-web-font") {
         Some(Value::Number(n)) if *n >= 0.0 => Some(*n as u32),
@@ -1119,8 +1138,8 @@ fn paint_native_form(
                         opacity,
                     ),
                     font_size_px: style.font_size_px,
-                    bold: style.is_bold(),
-                    italic: style.is_italic(),
+                    bold: text_face(style).1,
+                    italic: text_face(style).2,
                     face: face_of(style),
                 });
             }
@@ -1165,8 +1184,8 @@ fn paint_native_form(
         text,
         color: apply_opacity(style.color, opacity),
         font_size_px: style.font_size_px,
-        bold: style.is_bold(),
-        italic: style.is_italic(),
+        bold: text_face(style).1,
+        italic: text_face(style).2,
         face: face_of(style),
     });
 }
@@ -1862,6 +1881,27 @@ mod tests {
         let dump = dump_frame(&frame);
         assert!(dump.contains("\"web\" #000000 16.0 normal normal face=7"), "{dump}");
         assert!(dump.contains("\"plain\" #000000 16.0 normal normal\n"), "{dump}");
+    }
+
+    #[test]
+    fn text_in_a_page_face_is_bold_or_italic_only_where_the_face_lacks_it() {
+        let frame = paint_html(
+            "<p class=a>one</p><p class=b>two</p><p class=c>three</p><p class=d>four</p>",
+            ".a, .b, .c { -blueice-web-font: 7; font-weight: bold; font-style: italic } \
+             .b { -blueice-web-synth: 1 } .c { -blueice-web-synth: 2 } \
+             .d { font-weight: bold; font-style: italic }",
+            300.0,
+        );
+        let flags = |w: &str| {
+            frame.commands.iter().find_map(|c| match c {
+                PaintCommand::Text { text, bold, italic, .. } if text == w => Some((*bold, *italic)),
+                _ => None,
+            })
+        };
+        assert_eq!(flags("one"), Some((false, false)), "the face covers both");
+        assert_eq!(flags("two"), Some((true, false)));
+        assert_eq!(flags("three"), Some((false, true)));
+        assert_eq!(flags("four"), Some((true, true)), "no page face: the style's own");
     }
 
     #[test]
