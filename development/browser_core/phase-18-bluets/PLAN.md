@@ -18831,3 +18831,17 @@ the existing complete acceptance gates.
 ## Post-mitt inventory reconciliation — 2026-11-10
 
 The current inventory descriptions now link the completed G-T1/G-C1/G-M2 project repairs and complete map checks to [their accepted source and measurements](PROJECT_FOLLOWUP_ACCEPTANCE.md). The source symlink inventory contains 26 cases; the frozen Windows matrix still measures 25, and the added Unix-only incremental control is not a Windows pass. This documentation-only update preserves the 39,512 case identities/classifications, all 22 broad open areas and the original runtime evidence. [Recorded consistency checks](INVENTORY_FOLLOWUP_CHECKS.json) are not a new compiler or VM run.
+
+## Second real-project audit — defu, 2026-11-10
+
+The [frozen multi-file audit](DEFU_PROJECT_AUDIT.md) retains all three original
+production sources, exact Native declaration/edit baselines and twelve authored
+runtime scenarios. Native passes the full profile; BlueTSC's cold build is
+blocked by contextual parameter names, conditional tuple infer-rest parsing and
+null-first unknown-object flow. Eight independent minimal controls reproduce
+four false refusals across these three families. Original source is unchanged;
+all dependent BlueTSC checks stay blocked. This is completed investigation,
+with [source-bound measurements](DEFU_PROJECT_MEASUREMENT.json), not completed
+compiler compatibility. The TODO lists finite G-T1/G-T2/G-C1 prerequisite repair
+and subsequent G-M1/G-M2 evaluation separately. Existing 39,512 case identities,
+policy differences and broad feature statuses remain unchanged.

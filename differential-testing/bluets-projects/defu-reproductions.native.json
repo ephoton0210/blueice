@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "scope": "Native observations frozen before production compiler changes; negative controls compare verdicts and retain complete raw diagnostics without claiming diagnostic parity.",
+  "cases": [
+    {
+      "id": "contextual-default-parameter",
+      "sourceSha256": "088ec9fc6455ade3da397a823b324987629a483971a507ad022c7c7074651d4a",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "export declare function read(namespace?: string): string;\n"
+        }
+      }
+    },
+    {
+      "id": "contextual-generic-function-type",
+      "sourceSha256": "ed97a4718b6897c6b0bbc569808d56669084d566791c1ba0a15ecfbabb4e5327",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "export type Merger = <T>(namespace: string, value: T) => T;\n"
+        }
+      }
+    },
+    {
+      "id": "infer-tuple-rest",
+      "sourceSha256": "14985dcf824ff2d27bc625fc8cc4526200a425e378b1b7e20efc1133f863ca45",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "export type Tail<T extends unknown[]> = T extends [unknown, ...infer Rest] ? Rest : never;\n"
+        }
+      }
+    },
+    {
+      "id": "null-first-object-guard",
+      "sourceSha256": "3300ccee8d1e6768f915763aeebec5bbc190d54f55399e229fdfa1c691319bbe",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "export declare function has(value: unknown): boolean;\n"
+        }
+      }
+    },
+    {
+      "id": "typeof-first-object-guard",
+      "sourceSha256": "27ef1557828b5715fed5009bf99322495cd047f60a38104128c8bcbe933a7bad",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "export declare function has(value: unknown): boolean;\n"
+        }
+      }
+    },
+    {
+      "id": "nullable-object-guard",
+      "sourceSha256": "3068d1cbe9c9f33034df49e7236650b48d605d067a92f111844e8e7d5e48d9b4",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,123): error TS18047: 'value' is possibly 'null'.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "reserved-parameter",
+      "sourceSha256": "485eb1b6ea46b95a0aaccea6ec3f6413ac7b930f05c2c17fe20dac71d2c02900",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,17): error TS7010: 'read', which lacks return-type annotation, implicitly has an 'any' return type.\nsrc/main.ts(5,22): error TS1390: 'class' is not allowed as a parameter name.\nsrc/main.ts(5,27): error TS1005: '{' expected.\nsrc/main.ts(5,29): error TS1434: Unexpected keyword or identifier.\nsrc/main.ts(5,29): error TS2693: 'string' only refers to a type, but is being used as a value here.\nsrc/main.ts(5,35): error TS1128: Declaration or statement expected.\nsrc/main.ts(5,36): error TS1128: Declaration or statement expected.\nsrc/main.ts(5,38): error TS1434: Unexpected keyword or identifier.\nsrc/main.ts(5,38): error TS2693: 'string' only refers to a type, but is being used as a value here.\nsrc/main.ts(5,59): error TS1005: '{' expected.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "infer-outside-conditional",
+      "sourceSha256": "af663e0e6dc3e46e3ec2dbd0b3834a8ca4a688e62b0206bf4e295661db1ebd65",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,27): error TS1338: 'infer' declarations are only permitted in the 'extends' clause of a conditional type.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "scope": "Authored minimal reproductions and negative controls, separate from the project and global case denominator. Native verdicts are frozen before compiler implementation.",
+  "profile": {
+    "id": "commonjs-es2022",
+    "compilerOptions": {
+      "target": "ES2022",
+      "module": "CommonJS",
+      "moduleResolution": "Node",
+      "strict": true,
+      "lib": [
+        "ES2022"
+      ],
+      "declaration": true,
+      "sourceMap": true,
+      "noEmitOnError": true,
+      "rootDir": "src",
+      "outDir": "dist"
+    },
+    "include": [
+      "src/**/*.ts"
+    ]
+  },
+  "cases": [
+    {
+      "id": "contextual-default-parameter",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport function read(namespace = \".\"): string { return namespace; }\n"
+    },
+    {
+      "id": "contextual-generic-function-type",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport type Merger = <T>(namespace: string, value: T) => T;\n"
+    },
+    {
+      "id": "infer-tuple-rest",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport type Tail<T extends unknown[]> = T extends [unknown, ...infer Rest] ? Rest : never;\n"
+    },
+    {
+      "id": "null-first-object-guard",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport function has(value: unknown): boolean { if (value === null || typeof value !== \"object\") { return false; } return Symbol.iterator in value; }\n"
+    },
+    {
+      "id": "typeof-first-object-guard",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport function has(value: unknown): boolean { if (typeof value !== \"object\" || value === null) { return false; } return Symbol.iterator in value; }\n"
+    },
+    {
+      "id": "nullable-object-guard",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport function has(value: unknown): boolean { if (typeof value !== \"object\") { return false; } return Symbol.iterator in value; }\n"
+    },
+    {
+      "id": "reserved-parameter",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport function read(class: string): string { return class; }\n"
+    },
+    {
+      "id": "infer-outside-conditional",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport type Outside = [...infer Rest];\n"
+    }
+  ]
+}

@@ -56,3 +56,45 @@ The measured blockers and repair gates are recorded in the Phase 18
 [real-project audit](../../development/browser_core/phase-18-bluets/REAL_PROJECT_AUDIT.md).
 
 The [completed mitt follow-up](../../development/browser_core/phase-18-bluets/PROJECT_FOLLOWUP_ACCEPTANCE.md) retains the repaired project result and the earlier blocked audit separately. Broad unmeasured project combinations remain open.
+
+## Second project: defu
+
+[The frozen defu manifest](defu-v6.1.4.json) selects every production TypeScript
+source at commit `1b9fcab2c1479f0295a5f867c6ec36a01fda2dfb`. The upstream tag
+is `v6.1.4`; its original `package.json` says `6.1.3`, which is preserved
+verbatim. All original MIT notices, including the helper's upstream provenance,
+remain in the archive. No package script or upstream test runner is invoked.
+
+```sh
+node --test differential-testing/bluets-projects/defu-audit.test.cjs
+node differential-testing/bluets-projects/defu-audit.cjs \
+  --compiler /absolute/path/bluetsc \
+  --typescript /absolute/path/node_modules/typescript/bin/tsc \
+  --output /absolute/path/new-empty-defu-audit
+node differential-testing/bluets-projects/defu-reproduce.cjs \
+  --compiler /absolute/path/bluetsc \
+  --typescript /absolute/path/node_modules/typescript/bin/tsc \
+  --output /absolute/path/new-empty-defu-reproductions
+```
+
+The fixed CommonJS/ES2022/strict production profile discovers all three original
+sources. Twelve authored runtime scenarios, complete byte-exact declarations,
+positive/negative consumers, a dependent type-consumer verdict change and
+implementation/type/dependency edits establish the project gate. The configured
+public incremental-state file is recorded separately from emitted artifacts;
+its path-dependent bytes are not a portable Native-byte claim. All other public
+artifacts, including extra manifests, remain in warm/clean comparisons.
+
+The [Native reference](defu-v6.1.4.native.json) was frozen before observing
+BlueTSC. Every later audit requires its exact Native declarations and per-phase
+input/artifact observations; compiler/library byte changes invalidate it.
+The separate [minimal controls](defu-reproductions.json) and
+[Native observations](defu-reproductions.native.json) compare verdicts and retain
+complete raw diagnostics, without claiming diagnostic parity for rejected
+syntax. Both commands use fresh directories, record the actual compiler hash
+and verify committed backend source before and after execution. Exit 2 records
+observed incompatibility; exit 1 means an invalid audit/setup. A blocked cold
+build cannot supply downstream project successes.
+
+[The measured audit and repair gates](../../development/browser_core/phase-18-bluets/DEFU_PROJECT_AUDIT.md)
+keep the new project's result separate from mitt and the global case denominator.

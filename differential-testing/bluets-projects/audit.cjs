@@ -204,4 +204,5 @@ if (require.main === module) {
     process.exitCode = report.compatible ? 0 : 2;
   } catch (error) { console.error(error); process.exitCode = 1; }
 }
-module.exports = {declarations, compatible, unpackFixture, audit, incrementalArtifacts};
+module.exports = {declarations, compatible, unpackFixture, audit, incrementalArtifacts,
+  hash, inventory, sourceSnapshot};

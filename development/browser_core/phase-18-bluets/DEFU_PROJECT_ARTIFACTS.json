@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:3567e7e2748a08e22f3422a47709fb1cd7211ec0",
+  "artifacts": [
+    {
+      "path": "DEFU_PROJECT_EVIDENCE.tar.gz",
+      "bytes": 242221,
+      "sha256": "4d27023c34307da0948a7e9698850ac456442a84c914092a0539c161e4c6b5f6",
+      "scope": "All project/probe observations, original/updated Native controls, invalid initial calibration, tool initialization failure, complete corrected tool logs and actual audit-tool bytes. Original upstream source archive is separately versioned by the project manifest."
+    }
+  ]
+}

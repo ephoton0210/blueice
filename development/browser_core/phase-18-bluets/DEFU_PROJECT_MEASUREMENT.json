@@ -1,0 +1,1958 @@
+{
+  "schema": 1,
+  "recordedAt": "2026-11-10T01:09:24.827378+00:00",
+  "conclusion": "audit-complete-project-blocked",
+  "compilerRepairComplete": false,
+  "project": {
+    "schema": 1,
+    "project": "defu",
+    "upstreamTag": "v6.1.4",
+    "packageVersion": "6.1.3",
+    "versionNote": "The original package.json at this upstream tag says 6.1.3; preserve it verbatim and identify the audited source by its exact commit.",
+    "repository": "https://github.com/unjs/defu",
+    "revision": "1b9fcab2c1479f0295a5f867c6ec36a01fda2dfb",
+    "archive": "fixtures/defu-v6.1.4.tar.gz",
+    "archiveSha256": "0bc0d3affd378817bebbf46af78bcb9a972f8b28dec04a4357674b9423ceefe3",
+    "files": {
+      "LICENSE": "46231df5a7733c3f52f11b71f3df61813007745b62b09031acfb45fb42d75082",
+      "README.md": "73db219cb5d0737da0bf2281a99eaaacac3d3a6432cbb0449e31158b36454241",
+      "package.json": "e2e5bbb13dfc534b682c1b8cde4bd82da6910611619c8af8299b447554c34c18",
+      "tsconfig.json": "cef8c91e4c5b63cf2b85939fa72b72f2fb7f1c55b2504205250f164ea6c0d810",
+      "src/_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+      "src/defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+      "src/types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817",
+      "lib/defu.cjs": "5b1d7045d7e4d1810e102ce211df6f5b1d3ea0e17d14a75df5ef3c90e6b499ca"
+    },
+    "productionSources": [
+      "src/_utils.ts",
+      "src/defu.ts",
+      "src/types.ts"
+    ],
+    "profiles": [
+      {
+        "id": "commonjs-es2022",
+        "compilerOptions": {
+          "target": "ES2022",
+          "module": "CommonJS",
+          "moduleResolution": "Node",
+          "strict": true,
+          "lib": [
+            "ES2022"
+          ],
+          "declaration": true,
+          "sourceMap": true,
+          "noEmitOnError": true,
+          "rootDir": "src",
+          "outDir": "dist"
+        },
+        "include": [
+          "src/**/*.ts"
+        ]
+      }
+    ],
+    "incrementalOptions": {
+      "incremental": true,
+      "tsBuildInfoFile": "dist/project.tsbuildinfo"
+    },
+    "runtimeScenarios": [
+      "priority-and-defaults",
+      "nullish-values",
+      "array-concatenation",
+      "nested-records",
+      "nonplain-values",
+      "custom-number-merger",
+      "namespace-forwarding",
+      "function-merger",
+      "array-function-merger",
+      "prototype-key-observations",
+      "cross-module-plain-object-helper",
+      "named-export-inventory"
+    ],
+    "edits": {
+      "implementation": {
+        "path": "src/_utils.ts",
+        "from": "  return true;",
+        "to": "  return Boolean(true);"
+      },
+      "exportedType": {
+        "path": "src/types.ts",
+        "from": "  fn: DefuFn;",
+        "to": "  fn: string;"
+      },
+      "addedDependency": {
+        "path": "src/_audit_dep.ts",
+        "source": "// BlueIce authored dependency-addition probe.\nexport const auditTrue = true;\n",
+        "importPath": "src/_utils.ts",
+        "import": "import { auditTrue } from \"./_audit_dep\";\n",
+        "from": "  return Boolean(true);",
+        "to": "  return auditTrue;"
+      }
+    },
+    "acceptance": [
+      "All three unchanged production TypeScript sources compile with pinned TypeScript 5.9.3 and BlueTSC.",
+      "Compare complete declaration inventories and every byte; retain complete artifact inventories without silently filtering extra publications.",
+      "Both actual outputs pass all twelve frozen authored runtime scenarios; not the upstream full test suite.",
+      "Native consumers of each emitted declaration set accept positive controls and reject wrong types; the exported-type edit changes its independent dependent-consumer verdict.",
+      "Explicit incremental initial/warm, imported implementation/type edits, dependency addition/missing/restoration and edited-clean reconstruction are measured separately.",
+      "A refused cold build blocks dependent BlueTSC acceptance; all Native controls must pass before its baseline is valid."
+    ],
+    "policy": "Current owner input/state/publication confinement remains enforced. This project audit is separate from global compiler case counts; no full-parity claim."
+  },
+  "sourceRevision": "backend-tree:3567e7e2748a08e22f3422a47709fb1cd7211ec0",
+  "compilerSha256": "7d6bdef3de9ebf24b5b3f6a9999b5fb809f0b933509e9dca3d7531098928c0fe",
+  "compilerBuildEvidence": "PROJECT_FOLLOWUP_MEASUREMENT.json",
+  "compilerBytes": "PROJECT_FOLLOWUP_COMPILER_EVIDENCE.tar.gz",
+  "audit": {
+    "schema": 1,
+    "startedAt": "2026-11-10T01:03:25.914Z",
+    "project": {
+      "schema": 1,
+      "project": "defu",
+      "upstreamTag": "v6.1.4",
+      "packageVersion": "6.1.3",
+      "versionNote": "The original package.json at this upstream tag says 6.1.3; preserve it verbatim and identify the audited source by its exact commit.",
+      "repository": "https://github.com/unjs/defu",
+      "revision": "1b9fcab2c1479f0295a5f867c6ec36a01fda2dfb",
+      "archive": "fixtures/defu-v6.1.4.tar.gz",
+      "archiveSha256": "0bc0d3affd378817bebbf46af78bcb9a972f8b28dec04a4357674b9423ceefe3",
+      "files": {
+        "LICENSE": "46231df5a7733c3f52f11b71f3df61813007745b62b09031acfb45fb42d75082",
+        "README.md": "73db219cb5d0737da0bf2281a99eaaacac3d3a6432cbb0449e31158b36454241",
+        "package.json": "e2e5bbb13dfc534b682c1b8cde4bd82da6910611619c8af8299b447554c34c18",
+        "tsconfig.json": "cef8c91e4c5b63cf2b85939fa72b72f2fb7f1c55b2504205250f164ea6c0d810",
+        "src/_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+        "src/defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+        "src/types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817",
+        "lib/defu.cjs": "5b1d7045d7e4d1810e102ce211df6f5b1d3ea0e17d14a75df5ef3c90e6b499ca"
+      },
+      "productionSources": [
+        "src/_utils.ts",
+        "src/defu.ts",
+        "src/types.ts"
+      ],
+      "profiles": [
+        {
+          "id": "commonjs-es2022",
+          "compilerOptions": {
+            "target": "ES2022",
+            "module": "CommonJS",
+            "moduleResolution": "Node",
+            "strict": true,
+            "lib": [
+              "ES2022"
+            ],
+            "declaration": true,
+            "sourceMap": true,
+            "noEmitOnError": true,
+            "rootDir": "src",
+            "outDir": "dist"
+          },
+          "include": [
+            "src/**/*.ts"
+          ]
+        }
+      ],
+      "incrementalOptions": {
+        "incremental": true,
+        "tsBuildInfoFile": "dist/project.tsbuildinfo"
+      },
+      "runtimeScenarios": [
+        "priority-and-defaults",
+        "nullish-values",
+        "array-concatenation",
+        "nested-records",
+        "nonplain-values",
+        "custom-number-merger",
+        "namespace-forwarding",
+        "function-merger",
+        "array-function-merger",
+        "prototype-key-observations",
+        "cross-module-plain-object-helper",
+        "named-export-inventory"
+      ],
+      "edits": {
+        "implementation": {
+          "path": "src/_utils.ts",
+          "from": "  return true;",
+          "to": "  return Boolean(true);"
+        },
+        "exportedType": {
+          "path": "src/types.ts",
+          "from": "  fn: DefuFn;",
+          "to": "  fn: string;"
+        },
+        "addedDependency": {
+          "path": "src/_audit_dep.ts",
+          "source": "// BlueIce authored dependency-addition probe.\nexport const auditTrue = true;\n",
+          "importPath": "src/_utils.ts",
+          "import": "import { auditTrue } from \"./_audit_dep\";\n",
+          "from": "  return Boolean(true);",
+          "to": "  return auditTrue;"
+        }
+      },
+      "acceptance": [
+        "All three unchanged production TypeScript sources compile with pinned TypeScript 5.9.3 and BlueTSC.",
+        "Compare complete declaration inventories and every byte; retain complete artifact inventories without silently filtering extra publications.",
+        "Both actual outputs pass all twelve frozen authored runtime scenarios; not the upstream full test suite.",
+        "Native consumers of each emitted declaration set accept positive controls and reject wrong types; the exported-type edit changes its independent dependent-consumer verdict.",
+        "Explicit incremental initial/warm, imported implementation/type edits, dependency addition/missing/restoration and edited-clean reconstruction are measured separately.",
+        "A refused cold build blocks dependent BlueTSC acceptance; all Native controls must pass before its baseline is valid."
+      ],
+      "policy": "Current owner input/state/publication confinement remains enforced. This project audit is separate from global compiler case counts; no full-parity claim."
+    },
+    "scope": "Complete unchanged defu production source at one frozen CommonJS/ES2022 profile, authored consumers/runtime/edit probes; separate from the upstream test suite and global compiler case counts.",
+    "sourceRevision": "backend-tree:3567e7e2748a08e22f3422a47709fb1cd7211ec0",
+    "sourceSnapshot": {
+      "sourceRevision": "backend-tree:3567e7e2748a08e22f3422a47709fb1cd7211ec0",
+      "baseCommit": "8852b24a97216a11190fe5910e879dd81fb7064e",
+      "verifiedFiles": 13982,
+      "mode": "committed-backend-tree"
+    },
+    "compilerSha256": "7d6bdef3de9ebf24b5b3f6a9999b5fb809f0b933509e9dca3d7531098928c0fe",
+    "node": "v26.7.0",
+    "typescript": {
+      "version": "5.9.3",
+      "executableSha256": "8d5fa5bd883fec0979fc2004f1fe1d99aef40570155d550eadc0b03b55513bf0",
+      "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+      "libraries": {
+        "lib.decorators.d.ts": "8e7f8264d0fb4c5339605a15daadb037bf238c10b654bb3eee14208f860a32ea",
+        "lib.decorators.legacy.d.ts": "782dec38049b92d4e85c1585fbea5474a219c6984a35b004963b00beb1aab538",
+        "lib.dom.asynciterable.d.ts": "d7a3c8b952931daebdfc7a2897c53c0a1c73624593fa070e46bd537e64dcd20a",
+        "lib.dom.d.ts": "080941d9f9ff9307f7e27a83bcd888b7c8270716c39af943532438932ec1d0b9",
+        "lib.dom.iterable.d.ts": "2e80ee7a49e8ac312cc11b77f1475804bee36b3b2bc896bead8b6e1266befb43",
+        "lib.es2015.collection.d.ts": "dc2df20b1bcdc8c2d34af4926e2c3ab15ffe1160a63e58b7e09833f616efff44",
+        "lib.es2015.core.d.ts": "c57796738e7f83dbc4b8e65132f11a377649c00dd3eee333f672b8f0a6bea671",
+        "lib.es2015.d.ts": "45b7ab580deca34ae9729e97c13cfd999df04416a79116c3bfb483804f85ded4",
+        "lib.es2015.generator.d.ts": "515d0b7b9bea2e31ea4ec968e9edd2c39d3eebf4a2d5cbd04e88639819ae3b71",
+        "lib.es2015.iterable.d.ts": "0559b1f683ac7505ae451f9a96ce4c3c92bdc71411651ca6ddb0e88baaaad6a3",
+        "lib.es2015.promise.d.ts": "0dc1e7ceda9b8b9b455c3a2d67b0412feab00bd2f66656cd8850e8831b08b537",
+        "lib.es2015.proxy.d.ts": "ce691fb9e5c64efb9547083e4a34091bcbe5bdb41027e310ebba8f7d96a98671",
+        "lib.es2015.reflect.d.ts": "8d697a2a929a5fcb38b7a65594020fcef05ec1630804a33748829c5ff53640d0",
+        "lib.es2015.symbol.d.ts": "4ff2a353abf8a80ee399af572debb8faab2d33ad38c4b4474cff7f26e7653b8d",
+        "lib.es2015.symbol.wellknown.d.ts": "fb0f136d372979348d59b3f5020b4cdb81b5504192b1cacff5d1fbba29378aa1",
+        "lib.es2016.array.include.d.ts": "d15bea3d62cbbdb9797079416b8ac375ae99162a7fba5de2c6c505446486ac0a",
+        "lib.es2016.d.ts": "3facaf05f0c5fc569c5649dd359892c98a85557e3e0c847964caeb67076f4d75",
+        "lib.es2016.full.d.ts": "807e0e0bdc67605dd28efe18f20ab5fcd75d944ef95936120702335f9379094b",
+        "lib.es2016.intl.d.ts": "68d18b664c9d32a7336a70235958b8997ebc1c3b8505f4f1ae2b7e7753b87618",
+        "lib.es2017.arraybuffer.d.ts": "eb3d66c8327153d8fa7dd03f9c58d351107fe824c79e9b56b462935176cdf12a",
+        "lib.es2017.d.ts": "e44bb8bbac7f10ecc786703fe0a6a4b952189f908707980ba8f3c8975a760962",
+        "lib.es2017.date.d.ts": "38f0219c9e23c915ef9790ab1d680440d95419ad264816fa15009a8851e79119",
+        "lib.es2017.full.d.ts": "1d242d5c24cf285c88bc4fb93c5ff903de8319064e282986edeb6247ba028d5e",
+        "lib.es2017.intl.d.ts": "4de680d5bb41c17f7f68e0419412ca23c98d5749dcaaea1896172f06435891fc",
+        "lib.es2017.object.d.ts": "69ab18c3b76cd9b1be3d188eaf8bba06112ebbe2f47f6c322b5105a6fbc45a2e",
+        "lib.es2017.sharedmemory.d.ts": "a680117f487a4d2f30ea46f1b4b7f58bef1480456e18ba53ee85c2746eeca012",
+        "lib.es2017.string.d.ts": "2f11ff796926e0832f9ae148008138ad583bd181899ab7dd768a2666700b1893",
+        "lib.es2017.typedarrays.d.ts": "954296b30da6d508a104a3a0b5d96b76495c709785c1d11610908e63481ee667",
+        "lib.es2018.asyncgenerator.d.ts": "ac9538681b19688c8eae65811b329d3744af679e0bdfa5d842d0e32524c73e1c",
+        "lib.es2018.asynciterable.d.ts": "0a969edff4bd52585473d24995c5ef223f6652d6ef46193309b3921d65dd4376",
+        "lib.es2018.d.ts": "5e1c4c362065a6b95ff952c0eab010f04dcd2c3494e813b493ecfd4fcb9fc0d8",
+        "lib.es2018.full.d.ts": "95f1023b824c2c511c48f1201e2d1188bcb0ca1138a309a870b956d2e92e44ab",
+        "lib.es2018.intl.d.ts": "9e9fbd7030c440b33d021da145d3232984c8bb7916f277e8ffd3dc2e3eae2bdb",
+        "lib.es2018.promise.d.ts": "811ec78f7fefcabbda4bfa93b3eb67d9ae166ef95f9bff989d964061cbf81a0c",
+        "lib.es2018.regexp.d.ts": "717937616a17072082152a2ef351cb51f98802fb4b2fdabd32399843875974ca",
+        "lib.es2019.array.d.ts": "d7e7d9b7b50e5f22c915b525acc5a49a7a6584cf8f62d0569e557c5cfc4b2ac2",
+        "lib.es2019.d.ts": "68d73b4a11549f9c0b7d352d10e91e5dca8faa3322bfb77b661839c42b1ddec7",
+        "lib.es2019.full.d.ts": "08f6861df84fba9719c14d5adc3ba40be9f0c687639e6c4df3c05b9301b8ff94",
+        "lib.es2019.intl.d.ts": "74f7fa2d027d5b33eb0471c8e82a6c87216223181ec31247c357a3e8e2fddc5b",
+        "lib.es2019.object.d.ts": "71c37f4c9543f31dfced6c7840e068c5a5aacb7b89111a4364b1d5276b852557",
+        "lib.es2019.string.d.ts": "576711e016cf4f1804676043e6a0a5414252560eb57de9faceee34d79798c850",
+        "lib.es2019.symbol.d.ts": "89c1b1281ba7b8a96efc676b11b264de7a8374c5ea1e6617f11880a13fc56dc6",
+        "lib.es2020.bigint.d.ts": "d6d7ae4d1f1f3772e2a3cde568ed08991a8ae34a080ff1151af28b7f798e22ca",
+        "lib.es2020.d.ts": "5efce4fc3c29ea84e8928f97adec086e3dc876365e0982cc8479a07954a3efd4",
+        "lib.es2020.date.d.ts": "063600664504610fe3e99b717a1223f8b1900087fab0b4cad1496a114744f8df",
+        "lib.es2020.full.d.ts": "1305d1e76ca44e30fb8b2b8075fa522b83f60c0bcf5d4326a9d2cf79b53724f8",
+        "lib.es2020.intl.d.ts": "639e512c0dfc3fad96a84caad71b8834d66329a1f28dc95e3946c9b58176c73a",
+        "lib.es2020.number.d.ts": "368af93f74c9c932edd84c58883e736c9e3d53cec1fe24c0b0ff451f529ceab1",
+        "lib.es2020.promise.d.ts": "934019d7e3c81950f9a8426d093458b65d5aff2c7c1511233c0fd5b941e608ab",
+        "lib.es2020.sharedmemory.d.ts": "52ada8e0b6e0482b728070b7639ee42e83a9b1c22d205992756fe020fd9f4a47",
+        "lib.es2020.string.d.ts": "3bdefe1bfd4d6dee0e26f928f93ccc128f1b64d5d501ff4a8cf3c6371200e5e6",
+        "lib.es2020.symbol.wellknown.d.ts": "59fb2c069260b4ba00b5643b907ef5d5341b167e7d1dbf58dfd895658bda2867",
+        "lib.es2021.d.ts": "feecb1be483ed332fad555aff858affd90a48ab19ba7272ee084704eb7167569",
+        "lib.es2021.full.d.ts": "4a66df3ab5de5cfcda11538cffddd67ff6a174e003788e270914c1e0248483cf",
+        "lib.es2021.intl.d.ts": "965f36eae237dd74e6cca203a43e9ca801ce38824ead814728a2807b1910117d",
+        "lib.es2021.promise.d.ts": "af3dd424cf267428f30ccfc376f47a2c0114546b55c44d8c0f1d57d841e28d74",
+        "lib.es2021.string.d.ts": "995c005ab91a498455ea8dfb63aa9f83fa2ea793c3d8aa344be4a1678d06d399",
+        "lib.es2021.weakref.d.ts": "959d36cddf5e7d572a65045b876f2956c973a586da58e5d26cde519184fd9b8a",
+        "lib.es2022.array.d.ts": "3925a6c820dcb1a06506c90b1577db1fdbf7705d65b62b99dce4be75c637e26b",
+        "lib.es2022.d.ts": "ee7bad0c15b58988daa84371e0b89d313b762ab83cb5b31b8a2d1162e8eb41c2",
+        "lib.es2022.error.d.ts": "0a3d63ef2b853447ec4f749d3f368ce642264246e02911fcb1590d8c161b8005",
+        "lib.es2022.full.d.ts": "3cbad9a1ba4453443026ed38e4b8be018abb26565fa7c944376463ad9df07c41",
+        "lib.es2022.intl.d.ts": "8cdf8847677ac7d20486e54dd3fcf09eda95812ac8ace44b4418da1bbbab6eb8",
+        "lib.es2022.object.d.ts": "8444af78980e3b20b49324f4a16ba35024fef3ee069a0eb67616ea6ca821c47a",
+        "lib.es2022.regexp.d.ts": "b4b67b1a91182421f5df999988c690f14d813b9850b40acd06ed44691f6727ad",
+        "lib.es2022.string.d.ts": "3287d9d085fbd618c3971944b65b4be57859f5415f495b33a6adc994edd2f004",
+        "lib.es2023.array.d.ts": "df83c2a6c73228b625b0beb6669c7ee2a09c914637e2d35170723ad49c0f5cd4",
+        "lib.es2023.collection.d.ts": "436aaf437562f276ec2ddbee2f2cdedac7664c1e4c1d2c36839ddd582eeb3d0a",
+        "lib.es2023.d.ts": "27bdc30a0e32783366a5abeda841bc22757c1797de8681bbe81fbc735eeb1c10",
+        "lib.es2023.full.d.ts": "785921608325fa246b450f05b238f4b3ed659f1099af278ce9ebbc9416a13f1d",
+        "lib.es2023.intl.d.ts": "8e3c06ea092138bf9fa5e874a1fdbc9d54805d074bee1de31b99a11e2fec239d",
+        "lib.es2024.arraybuffer.d.ts": "87dc0f382502f5bbce5129bdc0aea21e19a3abbc19259e0b43ae038a9fc4e326",
+        "lib.es2024.collection.d.ts": "b1cb28af0c891c8c96b2d6b7be76bd394fddcfdb4709a20ba05a7c1605eea0f9",
+        "lib.es2024.d.ts": "8fd575e12870e9944c7e1d62e1f5a73fcf23dd8d3a321f2a2c74c20d022283fe",
+        "lib.es2024.full.d.ts": "b3e9cef4eed59f8a2249ed834ba4aabe9d0d4e9037d4679487fa17dad99004a3",
+        "lib.es2024.object.d.ts": "2fef54945a13095fdb9b84f705f2b5994597640c46afeb2ce78352fab4cb3279",
+        "lib.es2024.promise.d.ts": "ac77cb3e8c6d3565793eb90a8373ee8033146315a3dbead3bde8db5eaf5e5ec6",
+        "lib.es2024.regexp.d.ts": "56e4ed5aab5f5920980066a9409bfaf53e6d21d3f8d020c17e4de584d29600ad",
+        "lib.es2024.sharedmemory.d.ts": "4ece9f17b3866cc077099c73f4983bddbcb1dc7ddb943227f1ec070f529dedd1",
+        "lib.es2024.string.d.ts": "0a6282c8827e4b9a95f4bf4f5c205673ada31b982f50572d27103df8ceb8013c",
+        "lib.es5.d.ts": "c430d44666289dae81f30fa7b2edebf186ecc91a2d4c71266ea6ae76388792e1",
+        "lib.es6.d.ts": "df039a67536fe2acc3affdcbfb645892f842db36fe599e8e652e2f0c640a90d1",
+        "lib.esnext.array.d.ts": "1c9319a09485199c1f7b0498f2988d6d2249793ef67edda49d1e584746be9032",
+        "lib.esnext.collection.d.ts": "e3a2a0cee0f03ffdde24d89660eba2685bfbdeae955a6c67e8c4c9fd28928eeb",
+        "lib.esnext.d.ts": "2ab096661c711e4a81cc464fa1e6feb929a54f5340b46b0a07ac6bbf857471f0",
+        "lib.esnext.decorators.d.ts": "d4b1d2c51d058fc21ec2629fff7a76249dec2e36e12960ea056e3ef89174080f",
+        "lib.esnext.disposable.d.ts": "51ad4c928303041605b4d7ae32e0c1ee387d43a24cd6f1ebf4a2699e1076d4fa",
+        "lib.esnext.error.d.ts": "73f78680d4c08509933daf80947902f6ff41b6230f94dd002ae372620adb0f60",
+        "lib.esnext.float16.d.ts": "196cb558a13d4533a5163286f30b0509ce0210e4b316c56c38d4c0fd2fb38405",
+        "lib.esnext.full.d.ts": "bde31fd423cd93b0eff97197a3f66df7c93e8c0c335cbeb113b7ff1ac35c23f4",
+        "lib.esnext.intl.d.ts": "811c71eee4aa0ac5f7adf713323a5c41b0cf6c4e17367a34fbce379e12bbf0a4",
+        "lib.esnext.iterator.d.ts": "22adec94ef7047a6c9d1af3cb96be87a335908bf9ef386ae9fd50eeb37f44c47",
+        "lib.esnext.promise.d.ts": "60037901da1a425516449b9a20073aa03386cce92f7a1fd902d7602be3a7c2e9",
+        "lib.esnext.sharedmemory.d.ts": "c5239f5c01bcfa9cd32f37c496cf19c61d69d37e48be9de612b541aac915805b",
+        "lib.scripthost.d.ts": "cd034f499c6cdca722b60c04b5b1b78e058487a7085a8e0d6fb50809947ee573",
+        "lib.webworker.asynciterable.d.ts": "ca417afee74054e99d5a8252b35bef26ca6e2942d67d343fce6b42fc9f432993",
+        "lib.webworker.d.ts": "6d08cde2bfb6ff909efbf7cb7d6d55be412cf4b9f48fd0430185986973fa91f5",
+        "lib.webworker.importscripts.d.ts": "80e18897e5884b6723488d4f5652167e7bb5024f946743134ecc4aa4ee731f89",
+        "lib.webworker.iterable.d.ts": "d6c6331ce67c41b2ad5bfb0c8c022403980b479a377a44da8f16b61120418f66"
+      }
+    },
+    "tools": {
+      "audit.cjs": "cf61421f2d2e7ca144535d5e6025d14653ff16f87666668673bf69d6018bd73f",
+      "audit.test.cjs": "5dbead8ac12314cca1b1da23d14a38d2f5bfdfced65d2c798fec17df39de4efd",
+      "defu-audit.cjs": "a5b0a4e2e4d8040a81525ac78463a189ff3c3f7ee778f277dbf6c247e9542568",
+      "defu-audit.test.cjs": "d4792defaf14939ece0ea3fae08c4a7546f3ce8b200e766cd6a18d8df4554e6d",
+      "defu-consumers.cjs": "495a11bdeb9e6a24f3d487b7c86941fba20500203c59e6b8ed95a852c240e2bc",
+      "defu-reproduce.cjs": "35207c14df684fb40f9cd3520db5f76450f65649136ca04cced922692bd7fcdf",
+      "defu-runtime.cjs": "b7c9ec246f0b940a8a8d0bb9156dcb9e6c83013576af3bd8b3fc01bf648ed2ae",
+      "smoke.cjs": "67d41a714c902199f3fb1c84d4f8888dcecbec621c8f7e48216b349be29e1d97"
+    },
+    "commands": [
+      {
+        "label": "native-cold",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+        "exit": 0,
+        "stdout": "native-cold.stdout",
+        "stderr": "native-cold.stderr",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "native-cold-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+        "exit": 0,
+        "stdout": "native-cold-runtime.stdout",
+        "stderr": "native-cold-runtime.stderr",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "native-positive-consumer",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "consumer.ts",
+          "--noEmit",
+          "--strict",
+          "--target",
+          "ES2022",
+          "--module",
+          "CommonJS",
+          "--moduleResolution",
+          "Node",
+          "--lib",
+          "ES2022",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+        "exit": 0,
+        "stdout": "native-positive-consumer.stdout",
+        "stderr": "native-positive-consumer.stderr",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "native-negative-consumer",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "consumer.ts",
+          "--noEmit",
+          "--strict",
+          "--target",
+          "ES2022",
+          "--module",
+          "CommonJS",
+          "--moduleResolution",
+          "Node",
+          "--lib",
+          "ES2022",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+        "exit": 2,
+        "stdout": "native-negative-consumer.stdout",
+        "stderr": "native-negative-consumer.stderr",
+        "stdoutSha256": "02950431164cdbac716c41f786d0ef44a5917f28d4331179ee92b09bb2e6ba01",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "native-type-consumer-before",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "consumer.ts",
+          "--noEmit",
+          "--strict",
+          "--target",
+          "ES2022",
+          "--module",
+          "CommonJS",
+          "--moduleResolution",
+          "Node",
+          "--lib",
+          "ES2022",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+        "exit": 0,
+        "stdout": "native-type-consumer-before.stdout",
+        "stderr": "native-type-consumer-before.stderr",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "native-incremental-initial",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+        "exit": 0,
+        "stdout": "native-incremental-initial.stdout",
+        "stderr": "native-incremental-initial.stderr",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "native-warm",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+        "exit": 0,
+        "stdout": "native-warm.stdout",
+        "stderr": "native-warm.stderr",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "native-imported-implementation-edit",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+        "exit": 0,
+        "stdout": "native-imported-implementation-edit.stdout",
+        "stderr": "native-imported-implementation-edit.stderr",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "native-implementation-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+        "exit": 0,
+        "stdout": "native-implementation-runtime.stdout",
+        "stderr": "native-implementation-runtime.stderr",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "native-exported-type-edit",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+        "exit": 0,
+        "stdout": "native-exported-type-edit.stdout",
+        "stderr": "native-exported-type-edit.stderr",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "native-type-consumer-after",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "consumer.ts",
+          "--noEmit",
+          "--strict",
+          "--target",
+          "ES2022",
+          "--module",
+          "CommonJS",
+          "--moduleResolution",
+          "Node",
+          "--lib",
+          "ES2022",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+        "exit": 2,
+        "stdout": "native-type-consumer-after.stdout",
+        "stderr": "native-type-consumer-after.stderr",
+        "stdoutSha256": "b92cbcfe7ccec2289f856e37e6326094399f23f8c804448c983c136c78cd1fc9",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "native-dependency-added",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+        "exit": 0,
+        "stdout": "native-dependency-added.stdout",
+        "stderr": "native-dependency-added.stderr",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "native-dependency-added-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+        "exit": 0,
+        "stdout": "native-dependency-added-runtime.stdout",
+        "stderr": "native-dependency-added-runtime.stderr",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "native-dependency-missing",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+        "exit": 1,
+        "stdout": "native-dependency-missing.stdout",
+        "stderr": "native-dependency-missing.stderr",
+        "stdoutSha256": "a0bcc1b3325d094bedeb1ecdb2b81cea08d6248d431161f7be870ce73bf65c5b",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "native-dependency-restored",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+        "exit": 0,
+        "stdout": "native-dependency-restored.stdout",
+        "stderr": "native-dependency-restored.stderr",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "native-dependency-restored-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+        "exit": 0,
+        "stdout": "native-dependency-restored-runtime.stdout",
+        "stderr": "native-dependency-restored-runtime.stderr",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "native-clean-rebuild",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native-clean",
+        "exit": 0,
+        "stdout": "native-clean-rebuild.stdout",
+        "stderr": "native-clean-rebuild.stderr",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "native-restored-warm",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+        "exit": 0,
+        "stdout": "native-restored-warm.stdout",
+        "stderr": "native-restored-warm.stderr",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "bluets-cold",
+        "command": [
+          "/private/tmp/bluets-publication-gates-20261110/native-cli",
+          "build",
+          "--config",
+          "tsconfig.json",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/bluets",
+        "exit": 1,
+        "stdout": "bluets-cold.stdout",
+        "stderr": "bluets-cold.stderr",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderrSha256": "f597f0ea3773e98a81f2059bb2538b937c6ca3cbc86417de734459986b29c081"
+      }
+    ],
+    "native": {
+      "stages": [
+        {
+          "stage": "cold",
+          "command": {
+            "label": "native-cold",
+            "command": [
+              "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+              "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+              "-p",
+              "tsconfig.json",
+              "--pretty",
+              "false"
+            ],
+            "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+            "exit": 0,
+            "stdout": "native-cold.stdout",
+            "stderr": "native-cold.stderr",
+            "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "artifacts": {
+            "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+            "_utils.js": "61247d4e1510e0bc286b330e04825598d37329fe1936391c6f32055179a5f19c",
+            "_utils.js.map": "d0154862244411699a2900523e122cb578254537391d3b5819acb25c807b9d03",
+            "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+            "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+            "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+            "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+            "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+            "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+          },
+          "inputs": {
+            "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+            "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+            "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+          },
+          "publicState": null
+        },
+        {
+          "stage": "incremental-initial",
+          "command": {
+            "label": "native-incremental-initial",
+            "command": [
+              "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+              "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+              "-p",
+              "tsconfig.json",
+              "--pretty",
+              "false"
+            ],
+            "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+            "exit": 0,
+            "stdout": "native-incremental-initial.stdout",
+            "stderr": "native-incremental-initial.stderr",
+            "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "artifacts": {
+            "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+            "_utils.js": "61247d4e1510e0bc286b330e04825598d37329fe1936391c6f32055179a5f19c",
+            "_utils.js.map": "d0154862244411699a2900523e122cb578254537391d3b5819acb25c807b9d03",
+            "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+            "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+            "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+            "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+            "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+            "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+          },
+          "inputs": {
+            "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+            "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+            "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+          },
+          "publicState": {
+            "sha256": "756f074b1df8d605b630a0c0519d815806d6d72db8dca789596ef2b21035cfac",
+            "bytes": 12003
+          }
+        },
+        {
+          "stage": "warm",
+          "command": {
+            "label": "native-warm",
+            "command": [
+              "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+              "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+              "-p",
+              "tsconfig.json",
+              "--pretty",
+              "false"
+            ],
+            "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+            "exit": 0,
+            "stdout": "native-warm.stdout",
+            "stderr": "native-warm.stderr",
+            "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "artifacts": {
+            "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+            "_utils.js": "61247d4e1510e0bc286b330e04825598d37329fe1936391c6f32055179a5f19c",
+            "_utils.js.map": "d0154862244411699a2900523e122cb578254537391d3b5819acb25c807b9d03",
+            "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+            "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+            "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+            "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+            "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+            "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+          },
+          "inputs": {
+            "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+            "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+            "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+          },
+          "publicState": {
+            "sha256": "756f074b1df8d605b630a0c0519d815806d6d72db8dca789596ef2b21035cfac",
+            "bytes": 12003
+          }
+        },
+        {
+          "stage": "imported-implementation-edit",
+          "command": {
+            "label": "native-imported-implementation-edit",
+            "command": [
+              "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+              "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+              "-p",
+              "tsconfig.json",
+              "--pretty",
+              "false"
+            ],
+            "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+            "exit": 0,
+            "stdout": "native-imported-implementation-edit.stdout",
+            "stderr": "native-imported-implementation-edit.stderr",
+            "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "artifacts": {
+            "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+            "_utils.js": "cf51dc4a79ed475582fc6650e444d75c4ffc6b48b0c909f25bbe5c12047f8091",
+            "_utils.js.map": "2d6b9d9baaf70675a7d4ae2026458376349d1be2034a61ca4fa4a18835f8c4de",
+            "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+            "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+            "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+            "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+            "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+            "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+          },
+          "inputs": {
+            "_utils.ts": "7005176bc69017956fefd25391eed392017d9d6539c19891060568ff6b3907cc",
+            "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+            "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+          },
+          "publicState": {
+            "sha256": "462e1f8347e21e3253ff82017835a1bad379d14a23ee116b67ca669ba1ebdc41",
+            "bytes": 12003
+          }
+        },
+        {
+          "stage": "exported-type-edit",
+          "command": {
+            "label": "native-exported-type-edit",
+            "command": [
+              "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+              "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+              "-p",
+              "tsconfig.json",
+              "--pretty",
+              "false"
+            ],
+            "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+            "exit": 0,
+            "stdout": "native-exported-type-edit.stdout",
+            "stderr": "native-exported-type-edit.stderr",
+            "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "artifacts": {
+            "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+            "_utils.js": "cf51dc4a79ed475582fc6650e444d75c4ffc6b48b0c909f25bbe5c12047f8091",
+            "_utils.js.map": "2d6b9d9baaf70675a7d4ae2026458376349d1be2034a61ca4fa4a18835f8c4de",
+            "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+            "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+            "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+            "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+            "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+            "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+          },
+          "inputs": {
+            "_utils.ts": "7005176bc69017956fefd25391eed392017d9d6539c19891060568ff6b3907cc",
+            "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+            "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+          },
+          "publicState": {
+            "sha256": "2fbcc5f0004dc0d91d99b099337eeb22dde72db0282dffc53d48348febada426",
+            "bytes": 12003
+          }
+        },
+        {
+          "stage": "dependency-added",
+          "command": {
+            "label": "native-dependency-added",
+            "command": [
+              "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+              "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+              "-p",
+              "tsconfig.json",
+              "--pretty",
+              "false"
+            ],
+            "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+            "exit": 0,
+            "stdout": "native-dependency-added.stdout",
+            "stderr": "native-dependency-added.stderr",
+            "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "artifacts": {
+            "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+            "_audit_dep.js": "60df6b614fa84ce8df5d90f2e272af292ca6e41a2ac22a916429c45f453558aa",
+            "_audit_dep.js.map": "f4a7455a9e980328ddf5a56559a2129192e7f9340f63f84446105925083c87dc",
+            "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+            "_utils.js": "4cc486cd3c48e17615c552554b8c2319d4f205663055efd1a847d7ff98cfe43c",
+            "_utils.js.map": "972514468e1e01198f7eb592c9601da00cc3eed5433aa5b113c172141f007baf",
+            "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+            "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+            "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+            "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+            "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+            "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+          },
+          "inputs": {
+            "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+            "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+            "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+            "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+          },
+          "publicState": {
+            "sha256": "525890a7c76476ee117a41fed86ede965a92f2a511f99f9383751305fdb1df4a",
+            "bytes": 12196
+          }
+        },
+        {
+          "stage": "dependency-missing",
+          "command": {
+            "label": "native-dependency-missing",
+            "command": [
+              "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+              "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+              "-p",
+              "tsconfig.json",
+              "--pretty",
+              "false"
+            ],
+            "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+            "exit": 1,
+            "stdout": "native-dependency-missing.stdout",
+            "stderr": "native-dependency-missing.stderr",
+            "stdoutSha256": "a0bcc1b3325d094bedeb1ecdb2b81cea08d6248d431161f7be870ce73bf65c5b",
+            "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "artifacts": {
+            "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+            "_audit_dep.js": "60df6b614fa84ce8df5d90f2e272af292ca6e41a2ac22a916429c45f453558aa",
+            "_audit_dep.js.map": "f4a7455a9e980328ddf5a56559a2129192e7f9340f63f84446105925083c87dc",
+            "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+            "_utils.js": "4cc486cd3c48e17615c552554b8c2319d4f205663055efd1a847d7ff98cfe43c",
+            "_utils.js.map": "972514468e1e01198f7eb592c9601da00cc3eed5433aa5b113c172141f007baf",
+            "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+            "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+            "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+            "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+            "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+            "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+          },
+          "inputs": {
+            "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+            "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+            "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+          },
+          "publicState": {
+            "sha256": "552fe39fb08027deabbc4d250004060540e73d149a333bee34bdf103d956cd02",
+            "bytes": 12213
+          }
+        },
+        {
+          "stage": "dependency-restored",
+          "command": {
+            "label": "native-dependency-restored",
+            "command": [
+              "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+              "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+              "-p",
+              "tsconfig.json",
+              "--pretty",
+              "false"
+            ],
+            "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+            "exit": 0,
+            "stdout": "native-dependency-restored.stdout",
+            "stderr": "native-dependency-restored.stderr",
+            "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "artifacts": {
+            "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+            "_audit_dep.js": "60df6b614fa84ce8df5d90f2e272af292ca6e41a2ac22a916429c45f453558aa",
+            "_audit_dep.js.map": "f4a7455a9e980328ddf5a56559a2129192e7f9340f63f84446105925083c87dc",
+            "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+            "_utils.js": "4cc486cd3c48e17615c552554b8c2319d4f205663055efd1a847d7ff98cfe43c",
+            "_utils.js.map": "972514468e1e01198f7eb592c9601da00cc3eed5433aa5b113c172141f007baf",
+            "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+            "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+            "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+            "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+            "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+            "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+          },
+          "inputs": {
+            "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+            "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+            "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+            "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+          },
+          "publicState": {
+            "sha256": "525890a7c76476ee117a41fed86ede965a92f2a511f99f9383751305fdb1df4a",
+            "bytes": 12196
+          }
+        },
+        {
+          "stage": "restored-warm",
+          "command": {
+            "label": "native-restored-warm",
+            "command": [
+              "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+              "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+              "-p",
+              "tsconfig.json",
+              "--pretty",
+              "false"
+            ],
+            "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+            "exit": 0,
+            "stdout": "native-restored-warm.stdout",
+            "stderr": "native-restored-warm.stderr",
+            "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "artifacts": {
+            "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+            "_audit_dep.js": "60df6b614fa84ce8df5d90f2e272af292ca6e41a2ac22a916429c45f453558aa",
+            "_audit_dep.js.map": "f4a7455a9e980328ddf5a56559a2129192e7f9340f63f84446105925083c87dc",
+            "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+            "_utils.js": "4cc486cd3c48e17615c552554b8c2319d4f205663055efd1a847d7ff98cfe43c",
+            "_utils.js.map": "972514468e1e01198f7eb592c9601da00cc3eed5433aa5b113c172141f007baf",
+            "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+            "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+            "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+            "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+            "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+            "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+          },
+          "inputs": {
+            "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+            "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+            "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+            "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+          },
+          "publicState": {
+            "sha256": "525890a7c76476ee117a41fed86ede965a92f2a511f99f9383751305fdb1df4a",
+            "bytes": 12196
+          }
+        }
+      ],
+      "cold": {
+        "label": "native-cold",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/native",
+        "exit": 0,
+        "stdout": "native-cold.stdout",
+        "stderr": "native-cold.stderr",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "runtime": {
+        "count": 12,
+        "passed": [
+          "priority-and-defaults",
+          "nullish-values",
+          "array-concatenation",
+          "nested-records",
+          "nonplain-values",
+          "custom-number-merger",
+          "namespace-forwarding",
+          "function-merger",
+          "array-function-merger",
+          "prototype-key-observations",
+          "cross-module-plain-object-helper",
+          "named-export-inventory"
+        ]
+      },
+      "consumers": {
+        "positive": true,
+        "negative": true,
+        "typeBefore": true
+      },
+      "typeAfterRejected": true,
+      "incremental": {
+        "warmUnchanged": true,
+        "implementationChanged": true,
+        "typeChanged": true,
+        "dependencyAdded": true,
+        "missingDependencyRejected": true,
+        "missingDependencyArtifactsUnchanged": true,
+        "restoredWarmUnchanged": true,
+        "matchesClean": true,
+        "runtime": true,
+        "publicStatePublished": true,
+        "cleanArtifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "60df6b614fa84ce8df5d90f2e272af292ca6e41a2ac22a916429c45f453558aa",
+          "_audit_dep.js.map": "f4a7455a9e980328ddf5a56559a2129192e7f9340f63f84446105925083c87dc",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "4cc486cd3c48e17615c552554b8c2319d4f205663055efd1a847d7ff98cfe43c",
+          "_utils.js.map": "972514468e1e01198f7eb592c9601da00cc3eed5433aa5b113c172141f007baf",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "publicStateExcludedFromArtifactComparison": "dist/project.tsbuildinfo; per-stage presence, bytes and SHA-256 retained separately",
+        "passed": true
+      }
+    },
+    "nativeBaselineValid": true,
+    "bluets": {
+      "stages": [
+        {
+          "stage": "cold",
+          "command": {
+            "label": "bluets-cold",
+            "command": [
+              "/private/tmp/bluets-publication-gates-20261110/native-cli",
+              "build",
+              "--config",
+              "tsconfig.json",
+              "--diagnostics-json"
+            ],
+            "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/bluets",
+            "exit": 1,
+            "stdout": "bluets-cold.stdout",
+            "stderr": "bluets-cold.stderr",
+            "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stderrSha256": "f597f0ea3773e98a81f2059bb2538b937c6ca3cbc86417de734459986b29c081"
+          },
+          "artifacts": {},
+          "inputs": {
+            "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+            "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+            "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+          },
+          "publicState": null
+        }
+      ],
+      "blockedAt": "cold",
+      "incremental": {
+        "passed": false
+      },
+      "cold": {
+        "label": "bluets-cold",
+        "command": [
+          "/private/tmp/bluets-publication-gates-20261110/native-cli",
+          "build",
+          "--config",
+          "tsconfig.json",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/defu-audit-v3/bluets",
+        "exit": 1,
+        "stdout": "bluets-cold.stdout",
+        "stderr": "bluets-cold.stderr",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderrSha256": "f597f0ea3773e98a81f2059bb2538b937c6ca3cbc86417de734459986b29c081"
+      },
+      "downstream": "Blocked by cold compilation; no declaration/runtime/consumer/incremental pass is credited."
+    },
+    "declarations": {
+      "native": {
+        "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+        "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+        "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb"
+      },
+      "bluets": {},
+      "equal": false
+    },
+    "compatible": false,
+    "conclusion": "blocked",
+    "finishedAt": "2026-11-10T01:03:29.005Z"
+  },
+  "reproductions": {
+    "schema": 1,
+    "recordedAt": "2026-11-10T01:01:42.945Z",
+    "sourceRevision": "backend-tree:3567e7e2748a08e22f3422a47709fb1cd7211ec0",
+    "sourceSnapshot": {
+      "sourceRevision": "backend-tree:3567e7e2748a08e22f3422a47709fb1cd7211ec0",
+      "baseCommit": "8852b24a97216a11190fe5910e879dd81fb7064e",
+      "verifiedFiles": 13982,
+      "mode": "committed-backend-tree"
+    },
+    "compilerSha256": "7d6bdef3de9ebf24b5b3f6a9999b5fb809f0b933509e9dca3d7531098928c0fe",
+    "scope": "Eight authored project-blocker controls; verdict comparison only, complete raw diagnostics retained. Separate from global compiler case counts.",
+    "cases": [
+      {
+        "id": "contextual-default-parameter",
+        "sourceSha256": "088ec9fc6455ade3da397a823b324987629a483971a507ad022c7c7074651d4a",
+        "native": {
+          "exit": 0,
+          "stdout": "",
+          "stderr": "",
+          "declarations": {
+            "main.d.ts": "export declare function read(namespace?: string): string;\n"
+          },
+          "command": [
+            "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+            "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+            "-p",
+            "tsconfig.json",
+            "--pretty",
+            "false"
+          ]
+        },
+        "bluets": {
+          "exit": 1,
+          "stdout": "",
+          "stderr": "{\"btsCode\":\"BTS1000\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"expected a parameter name\",\"severity\":\"error\",\"span\":{\"end\":234,\"module\":\"src/main.ts\",\"start\":225},\"typescript\":{\"arguments\":[],\"code\":1138,\"message\":\"Parameter declaration expected.\",\"messageTemplate\":\"Parameter declaration expected.\",\"position\":{\"column\":22,\"length\":9,\"line\":5},\"relatedInformation\":[],\"span\":{\"end\":234,\"module\":\"src/main.ts\",\"start\":225}}}\n{\"btsCode\":\"BTS1000\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"expected `)`\",\"severity\":\"error\",\"span\":{\"end\":234,\"module\":\"src/main.ts\",\"start\":225},\"typescript\":{\"arguments\":[\")\"],\"code\":1005,\"message\":\"')' expected.\",\"messageTemplate\":\"'{0}' expected.\",\"position\":{\"column\":22,\"length\":9,\"line\":5},\"relatedInformation\":[],\"span\":{\"end\":234,\"module\":\"src/main.ts\",\"start\":225}}}\n{\"btsCode\":\"BTS1000\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"expected a function body\",\"severity\":\"error\",\"span\":{\"end\":234,\"module\":\"src/main.ts\",\"start\":225},\"typescript\":{\"arguments\":[],\"code\":2391,\"message\":\"Function implementation is missing or not immediately following the declaration.\",\"messageTemplate\":\"Function implementation is missing or not immediately following the declaration.\",\"position\":{\"column\":22,\"length\":9,\"line\":5},\"relatedInformation\":[],\"span\":{\"end\":234,\"module\":\"src/main.ts\",\"start\":225}}}\n{\"btsCode\":\"BTS1001\",\"noTypeScriptCounterpart\":\"BlueTSC deliberately refuses a documented subset boundary.\",\"rawMessage\":\"`namespace` is not in the initial BlueTS matrix\",\"severity\":\"error\",\"span\":{\"end\":234,\"module\":\"src/main.ts\",\"start\":225},\"typescript\":null}\n",
+          "declarations": {},
+          "command": [
+            "/private/tmp/bluets-publication-gates-20261110/native-cli",
+            "build",
+            "--config",
+            "tsconfig.json",
+            "--diagnostics-json"
+          ]
+        },
+        "verdictAgreement": false
+      },
+      {
+        "id": "contextual-generic-function-type",
+        "sourceSha256": "ed97a4718b6897c6b0bbc569808d56669084d566791c1ba0a15ecfbabb4e5327",
+        "native": {
+          "exit": 0,
+          "stdout": "",
+          "stderr": "",
+          "declarations": {
+            "main.d.ts": "export type Merger = <T>(namespace: string, value: T) => T;\n"
+          },
+          "command": [
+            "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+            "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+            "-p",
+            "tsconfig.json",
+            "--pretty",
+            "false"
+          ]
+        },
+        "bluets": {
+          "exit": 1,
+          "stdout": "",
+          "stderr": "{\"btsCode\":\"BTS1000\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"expected a function type parameter name\",\"severity\":\"error\",\"span\":{\"end\":238,\"module\":\"src/main.ts\",\"start\":229},\"typescript\":null}\n{\"btsCode\":\"BTS1000\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"expected `:`\",\"severity\":\"error\",\"span\":{\"end\":238,\"module\":\"src/main.ts\",\"start\":229},\"typescript\":{\"arguments\":[\":\"],\"code\":1005,\"message\":\"':' expected.\",\"messageTemplate\":\"'{0}' expected.\",\"position\":{\"column\":26,\"length\":9,\"line\":5},\"relatedInformation\":[],\"span\":{\"end\":238,\"module\":\"src/main.ts\",\"start\":229}}}\n{\"btsCode\":\"BTS1000\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"expected `)`\",\"severity\":\"error\",\"span\":{\"end\":239,\"module\":\"src/main.ts\",\"start\":238},\"typescript\":{\"arguments\":[\")\"],\"code\":1005,\"message\":\"')' expected.\",\"messageTemplate\":\"'{0}' expected.\",\"position\":{\"column\":35,\"length\":1,\"line\":5},\"relatedInformation\":[],\"span\":{\"end\":239,\"module\":\"src/main.ts\",\"start\":238}}}\n{\"btsCode\":\"BTS1000\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"expected `=>`\",\"severity\":\"error\",\"span\":{\"end\":239,\"module\":\"src/main.ts\",\"start\":238},\"typescript\":{\"arguments\":[\"=>\"],\"code\":1005,\"message\":\"'=>' expected.\",\"messageTemplate\":\"'{0}' expected.\",\"position\":{\"column\":35,\"length\":1,\"line\":5},\"relatedInformation\":[],\"span\":{\"end\":239,\"module\":\"src/main.ts\",\"start\":238}}}\n{\"btsCode\":\"BTS1000\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"expected a type\",\"severity\":\"error\",\"span\":{\"end\":239,\"module\":\"src/main.ts\",\"start\":238},\"typescript\":{\"arguments\":[],\"code\":1110,\"message\":\"Type expected.\",\"messageTemplate\":\"Type expected.\",\"position\":{\"column\":35,\"length\":1,\"line\":5},\"relatedInformation\":[],\"span\":{\"end\":239,\"module\":\"src/main.ts\",\"start\":238}}}\n{\"btsCode\":\"BTS1000\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"expected a type\",\"severity\":\"error\",\"span\":{\"end\":239,\"module\":\"src/main.ts\",\"start\":238},\"typescript\":{\"arguments\":[],\"code\":1110,\"message\":\"Type expected.\",\"messageTemplate\":\"Type expected.\",\"position\":{\"column\":35,\"length\":1,\"line\":5},\"relatedInformation\":[],\"span\":{\"end\":239,\"module\":\"src/main.ts\",\"start\":238}}}\n{\"btsCode\":\"BTS1001\",\"noTypeScriptCounterpart\":\"BlueTSC deliberately refuses a documented subset boundary.\",\"rawMessage\":\"typed arrow parameters are not in the initial BlueTS matrix\",\"severity\":\"error\",\"span\":{\"end\":254,\"module\":\"src/main.ts\",\"start\":253},\"typescript\":null}\n",
+          "declarations": {},
+          "command": [
+            "/private/tmp/bluets-publication-gates-20261110/native-cli",
+            "build",
+            "--config",
+            "tsconfig.json",
+            "--diagnostics-json"
+          ]
+        },
+        "verdictAgreement": false
+      },
+      {
+        "id": "infer-tuple-rest",
+        "sourceSha256": "14985dcf824ff2d27bc625fc8cc4526200a425e378b1b7e20efc1133f863ca45",
+        "native": {
+          "exit": 0,
+          "stdout": "",
+          "stderr": "",
+          "declarations": {
+            "main.d.ts": "export type Tail<T extends unknown[]> = T extends [unknown, ...infer Rest] ? Rest : never;\n"
+          },
+          "command": [
+            "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+            "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+            "-p",
+            "tsconfig.json",
+            "--pretty",
+            "false"
+          ]
+        },
+        "bluets": {
+          "exit": 1,
+          "stdout": "",
+          "stderr": "{\"btsCode\":\"BTS1001\",\"noTypeScriptCounterpart\":\"BlueTSC deliberately refuses a documented subset boundary.\",\"rawMessage\":\"tuple rest element must have an array or named tuple annotation\",\"severity\":\"error\",\"span\":{\"end\":277,\"module\":\"src/main.ts\",\"start\":264},\"typescript\":null}\n",
+          "declarations": {},
+          "command": [
+            "/private/tmp/bluets-publication-gates-20261110/native-cli",
+            "build",
+            "--config",
+            "tsconfig.json",
+            "--diagnostics-json"
+          ]
+        },
+        "verdictAgreement": false
+      },
+      {
+        "id": "null-first-object-guard",
+        "sourceSha256": "3300ccee8d1e6768f915763aeebec5bbc190d54f55399e229fdfa1c691319bbe",
+        "native": {
+          "exit": 0,
+          "stdout": "",
+          "stderr": "",
+          "declarations": {
+            "main.d.ts": "export declare function has(value: unknown): boolean;\n"
+          },
+          "command": [
+            "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+            "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+            "-p",
+            "tsconfig.json",
+            "--pretty",
+            "false"
+          ]
+        },
+        "bluets": {
+          "exit": 1,
+          "stdout": "",
+          "stderr": "{\"btsCode\":\"BTS3003\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"`value` is possibly nullish\",\"severity\":\"error\",\"span\":{\"end\":349,\"module\":\"src/main.ts\",\"start\":344},\"typescript\":{\"arguments\":[\"value\"],\"code\":18047,\"message\":\"'value' is possibly 'null'.\",\"messageTemplate\":\"'{0}' is possibly 'null'.\",\"position\":{\"column\":141,\"length\":5,\"line\":5},\"relatedInformation\":[],\"span\":{\"end\":349,\"module\":\"src/main.ts\",\"start\":344}}}\n",
+          "declarations": {},
+          "command": [
+            "/private/tmp/bluets-publication-gates-20261110/native-cli",
+            "build",
+            "--config",
+            "tsconfig.json",
+            "--diagnostics-json"
+          ]
+        },
+        "verdictAgreement": false
+      },
+      {
+        "id": "typeof-first-object-guard",
+        "sourceSha256": "27ef1557828b5715fed5009bf99322495cd047f60a38104128c8bcbe933a7bad",
+        "native": {
+          "exit": 0,
+          "stdout": "",
+          "stderr": "",
+          "declarations": {
+            "main.d.ts": "export declare function has(value: unknown): boolean;\n"
+          },
+          "command": [
+            "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+            "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+            "-p",
+            "tsconfig.json",
+            "--pretty",
+            "false"
+          ]
+        },
+        "bluets": {
+          "exit": 0,
+          "stdout": "built 1 entry point(s), 1 module(s), fingerprint bts-project-5320e7c3c3f69620\n",
+          "stderr": "",
+          "declarations": {
+            "main.d.ts": "export declare function has(value: unknown): boolean;\n"
+          },
+          "command": [
+            "/private/tmp/bluets-publication-gates-20261110/native-cli",
+            "build",
+            "--config",
+            "tsconfig.json",
+            "--diagnostics-json"
+          ]
+        },
+        "verdictAgreement": true
+      },
+      {
+        "id": "nullable-object-guard",
+        "sourceSha256": "3068d1cbe9c9f33034df49e7236650b48d605d067a92f111844e8e7d5e48d9b4",
+        "native": {
+          "exit": 1,
+          "stdout": "src/main.ts(5,123): error TS18047: 'value' is possibly 'null'.\n",
+          "stderr": "",
+          "declarations": {},
+          "command": [
+            "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+            "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+            "-p",
+            "tsconfig.json",
+            "--pretty",
+            "false"
+          ]
+        },
+        "bluets": {
+          "exit": 1,
+          "stdout": "",
+          "stderr": "{\"btsCode\":\"BTS3003\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"`value` is possibly nullish\",\"severity\":\"error\",\"span\":{\"end\":331,\"module\":\"src/main.ts\",\"start\":326},\"typescript\":{\"arguments\":[\"value\"],\"code\":18047,\"message\":\"'value' is possibly 'null'.\",\"messageTemplate\":\"'{0}' is possibly 'null'.\",\"position\":{\"column\":123,\"length\":5,\"line\":5},\"relatedInformation\":[],\"span\":{\"end\":331,\"module\":\"src/main.ts\",\"start\":326}}}\n",
+          "declarations": {},
+          "command": [
+            "/private/tmp/bluets-publication-gates-20261110/native-cli",
+            "build",
+            "--config",
+            "tsconfig.json",
+            "--diagnostics-json"
+          ]
+        },
+        "verdictAgreement": true
+      },
+      {
+        "id": "reserved-parameter",
+        "sourceSha256": "485eb1b6ea46b95a0aaccea6ec3f6413ac7b930f05c2c17fe20dac71d2c02900",
+        "native": {
+          "exit": 1,
+          "stdout": "src/main.ts(5,17): error TS7010: 'read', which lacks return-type annotation, implicitly has an 'any' return type.\nsrc/main.ts(5,22): error TS1390: 'class' is not allowed as a parameter name.\nsrc/main.ts(5,27): error TS1005: '{' expected.\nsrc/main.ts(5,29): error TS1434: Unexpected keyword or identifier.\nsrc/main.ts(5,29): error TS2693: 'string' only refers to a type, but is being used as a value here.\nsrc/main.ts(5,35): error TS1128: Declaration or statement expected.\nsrc/main.ts(5,36): error TS1128: Declaration or statement expected.\nsrc/main.ts(5,38): error TS1434: Unexpected keyword or identifier.\nsrc/main.ts(5,38): error TS2693: 'string' only refers to a type, but is being used as a value here.\nsrc/main.ts(5,59): error TS1005: '{' expected.\n",
+          "stderr": "",
+          "declarations": {},
+          "command": [
+            "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+            "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+            "-p",
+            "tsconfig.json",
+            "--pretty",
+            "false"
+          ]
+        },
+        "bluets": {
+          "exit": 1,
+          "stdout": "",
+          "stderr": "{\"btsCode\":\"BTS1000\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"expected a parameter name\",\"severity\":\"error\",\"span\":{\"end\":230,\"module\":\"src/main.ts\",\"start\":225},\"typescript\":{\"arguments\":[],\"code\":1138,\"message\":\"Parameter declaration expected.\",\"messageTemplate\":\"Parameter declaration expected.\",\"position\":{\"column\":22,\"length\":5,\"line\":5},\"relatedInformation\":[],\"span\":{\"end\":230,\"module\":\"src/main.ts\",\"start\":225}}}\n{\"btsCode\":\"BTS1000\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"expected `)`\",\"severity\":\"error\",\"span\":{\"end\":230,\"module\":\"src/main.ts\",\"start\":225},\"typescript\":{\"arguments\":[\")\"],\"code\":1005,\"message\":\"')' expected.\",\"messageTemplate\":\"'{0}' expected.\",\"position\":{\"column\":22,\"length\":5,\"line\":5},\"relatedInformation\":[],\"span\":{\"end\":230,\"module\":\"src/main.ts\",\"start\":225}}}\n{\"btsCode\":\"BTS1000\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"expected a function body\",\"severity\":\"error\",\"span\":{\"end\":230,\"module\":\"src/main.ts\",\"start\":225},\"typescript\":{\"arguments\":[],\"code\":2391,\"message\":\"Function implementation is missing or not immediately following the declaration.\",\"messageTemplate\":\"Function implementation is missing or not immediately following the declaration.\",\"position\":{\"column\":22,\"length\":5,\"line\":5},\"relatedInformation\":[],\"span\":{\"end\":230,\"module\":\"src/main.ts\",\"start\":225}}}\n{\"btsCode\":\"BTS1000\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"expected a class name\",\"severity\":\"error\",\"span\":{\"end\":231,\"module\":\"src/main.ts\",\"start\":230},\"typescript\":{\"arguments\":[],\"code\":1211,\"message\":\"A class declaration without the 'default' modifier must have a name.\",\"messageTemplate\":\"A class declaration without the 'default' modifier must have a name.\",\"position\":{\"column\":27,\"length\":1,\"line\":5},\"relatedInformation\":[],\"span\":{\"end\":231,\"module\":\"src/main.ts\",\"start\":230}}}\n",
+          "declarations": {},
+          "command": [
+            "/private/tmp/bluets-publication-gates-20261110/native-cli",
+            "build",
+            "--config",
+            "tsconfig.json",
+            "--diagnostics-json"
+          ]
+        },
+        "verdictAgreement": true
+      },
+      {
+        "id": "infer-outside-conditional",
+        "sourceSha256": "af663e0e6dc3e46e3ec2dbd0b3834a8ca4a688e62b0206bf4e295661db1ebd65",
+        "native": {
+          "exit": 1,
+          "stdout": "src/main.ts(5,27): error TS1338: 'infer' declarations are only permitted in the 'extends' clause of a conditional type.\n",
+          "stderr": "",
+          "declarations": {},
+          "command": [
+            "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+            "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+            "-p",
+            "tsconfig.json",
+            "--pretty",
+            "false"
+          ]
+        },
+        "bluets": {
+          "exit": 1,
+          "stdout": "",
+          "stderr": "{\"btsCode\":\"BTS1001\",\"noTypeScriptCounterpart\":\"BlueTSC deliberately refuses a documented subset boundary.\",\"rawMessage\":\"tuple rest element must have an array or named tuple annotation\",\"severity\":\"error\",\"span\":{\"end\":240,\"module\":\"src/main.ts\",\"start\":227},\"typescript\":null}\n{\"btsCode\":\"BTS3003\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"inferred type parameters require a conditional extends pattern\",\"severity\":\"error\",\"span\":{\"end\":240,\"module\":\"src/main.ts\",\"start\":230},\"typescript\":{\"arguments\":[],\"code\":1338,\"message\":\"'infer' declarations are only permitted in the 'extends' clause of a conditional type.\",\"messageTemplate\":\"'infer' declarations are only permitted in the 'extends' clause of a conditional type.\",\"position\":{\"column\":27,\"length\":10,\"line\":5},\"relatedInformation\":[],\"span\":{\"end\":240,\"module\":\"src/main.ts\",\"start\":230}}}\n",
+          "declarations": {},
+          "command": [
+            "/private/tmp/bluets-publication-gates-20261110/native-cli",
+            "build",
+            "--config",
+            "tsconfig.json",
+            "--diagnostics-json"
+          ]
+        },
+        "verdictAgreement": true
+      }
+    ],
+    "verdictAgreements": 4,
+    "conclusion": "observed-differences"
+  },
+  "coldDiagnosticCount": 13,
+  "coldDiagnostics": [
+    {
+      "btsCode": "BTS3003",
+      "noTypeScriptCounterpart": null,
+      "rawMessage": "`value` is possibly nullish",
+      "severity": "error",
+      "span": {
+        "end": 489,
+        "module": "src/_utils.ts",
+        "start": 484
+      },
+      "typescript": {
+        "arguments": [
+          "value"
+        ],
+        "code": 18047,
+        "message": "'value' is possibly 'null'.",
+        "messageTemplate": "'{0}' is possibly 'null'.",
+        "position": {
+          "column": 26,
+          "length": 5,
+          "line": 17
+        },
+        "relatedInformation": [],
+        "span": {
+          "end": 489,
+          "module": "src/_utils.ts",
+          "start": 484
+        }
+      }
+    },
+    {
+      "btsCode": "BTS3003",
+      "noTypeScriptCounterpart": null,
+      "rawMessage": "`value` is possibly nullish",
+      "severity": "error",
+      "span": {
+        "end": 549,
+        "module": "src/_utils.ts",
+        "start": 544
+      },
+      "typescript": {
+        "arguments": [
+          "value"
+        ],
+        "code": 18047,
+        "message": "'value' is possibly 'null'.",
+        "messageTemplate": "'{0}' is possibly 'null'.",
+        "position": {
+          "column": 29,
+          "length": 5,
+          "line": 21
+        },
+        "relatedInformation": [],
+        "span": {
+          "end": 549,
+          "module": "src/_utils.ts",
+          "start": 544
+        }
+      }
+    },
+    {
+      "btsCode": "BTS1000",
+      "noTypeScriptCounterpart": null,
+      "rawMessage": "expected a parameter name",
+      "severity": "error",
+      "span": {
+        "end": 219,
+        "module": "src/defu.ts",
+        "start": 210
+      },
+      "typescript": {
+        "arguments": [],
+        "code": 1138,
+        "message": "Parameter declaration expected.",
+        "messageTemplate": "Parameter declaration expected.",
+        "position": {
+          "column": 3,
+          "length": 9,
+          "line": 8
+        },
+        "relatedInformation": [],
+        "span": {
+          "end": 219,
+          "module": "src/defu.ts",
+          "start": 210
+        }
+      }
+    },
+    {
+      "btsCode": "BTS1000",
+      "noTypeScriptCounterpart": null,
+      "rawMessage": "expected `)`",
+      "severity": "error",
+      "span": {
+        "end": 219,
+        "module": "src/defu.ts",
+        "start": 210
+      },
+      "typescript": {
+        "arguments": [
+          ")"
+        ],
+        "code": 1005,
+        "message": "')' expected.",
+        "messageTemplate": "'{0}' expected.",
+        "position": {
+          "column": 3,
+          "length": 9,
+          "line": 8
+        },
+        "relatedInformation": [],
+        "span": {
+          "end": 219,
+          "module": "src/defu.ts",
+          "start": 210
+        }
+      }
+    },
+    {
+      "btsCode": "BTS1000",
+      "noTypeScriptCounterpart": null,
+      "rawMessage": "expected a function body",
+      "severity": "error",
+      "span": {
+        "end": 219,
+        "module": "src/defu.ts",
+        "start": 210
+      },
+      "typescript": {
+        "arguments": [],
+        "code": 2391,
+        "message": "Function implementation is missing or not immediately following the declaration.",
+        "messageTemplate": "Function implementation is missing or not immediately following the declaration.",
+        "position": {
+          "column": 3,
+          "length": 9,
+          "line": 8
+        },
+        "relatedInformation": [],
+        "span": {
+          "end": 219,
+          "module": "src/defu.ts",
+          "start": 210
+        }
+      }
+    },
+    {
+      "btsCode": "BTS1001",
+      "noTypeScriptCounterpart": "BlueTSC deliberately refuses a documented subset boundary.",
+      "rawMessage": "`namespace` is not in the initial BlueTS matrix",
+      "severity": "error",
+      "span": {
+        "end": 219,
+        "module": "src/defu.ts",
+        "start": 210
+      },
+      "typescript": null
+    },
+    {
+      "btsCode": "BTS1000",
+      "noTypeScriptCounterpart": null,
+      "rawMessage": "expected a function type parameter name",
+      "severity": "error",
+      "span": {
+        "end": 281,
+        "module": "src/types.ts",
+        "start": 272
+      },
+      "typescript": null
+    },
+    {
+      "btsCode": "BTS1000",
+      "noTypeScriptCounterpart": null,
+      "rawMessage": "expected `:`",
+      "severity": "error",
+      "span": {
+        "end": 281,
+        "module": "src/types.ts",
+        "start": 272
+      },
+      "typescript": {
+        "arguments": [
+          ":"
+        ],
+        "code": 1005,
+        "message": "':' expected.",
+        "messageTemplate": "'{0}' expected.",
+        "position": {
+          "column": 3,
+          "length": 9,
+          "line": 14
+        },
+        "relatedInformation": [],
+        "span": {
+          "end": 281,
+          "module": "src/types.ts",
+          "start": 272
+        }
+      }
+    },
+    {
+      "btsCode": "BTS1000",
+      "noTypeScriptCounterpart": null,
+      "rawMessage": "expected `)`",
+      "severity": "error",
+      "span": {
+        "end": 282,
+        "module": "src/types.ts",
+        "start": 281
+      },
+      "typescript": {
+        "arguments": [
+          ")"
+        ],
+        "code": 1005,
+        "message": "')' expected.",
+        "messageTemplate": "'{0}' expected.",
+        "position": {
+          "column": 12,
+          "length": 1,
+          "line": 14
+        },
+        "relatedInformation": [],
+        "span": {
+          "end": 282,
+          "module": "src/types.ts",
+          "start": 281
+        }
+      }
+    },
+    {
+      "btsCode": "BTS1000",
+      "noTypeScriptCounterpart": null,
+      "rawMessage": "expected `=>`",
+      "severity": "error",
+      "span": {
+        "end": 282,
+        "module": "src/types.ts",
+        "start": 281
+      },
+      "typescript": {
+        "arguments": [
+          "=>"
+        ],
+        "code": 1005,
+        "message": "'=>' expected.",
+        "messageTemplate": "'{0}' expected.",
+        "position": {
+          "column": 12,
+          "length": 1,
+          "line": 14
+        },
+        "relatedInformation": [],
+        "span": {
+          "end": 282,
+          "module": "src/types.ts",
+          "start": 281
+        }
+      }
+    },
+    {
+      "btsCode": "BTS1000",
+      "noTypeScriptCounterpart": null,
+      "rawMessage": "expected a type",
+      "severity": "error",
+      "span": {
+        "end": 282,
+        "module": "src/types.ts",
+        "start": 281
+      },
+      "typescript": {
+        "arguments": [],
+        "code": 1110,
+        "message": "Type expected.",
+        "messageTemplate": "Type expected.",
+        "position": {
+          "column": 12,
+          "length": 1,
+          "line": 14
+        },
+        "relatedInformation": [],
+        "span": {
+          "end": 282,
+          "module": "src/types.ts",
+          "start": 281
+        }
+      }
+    },
+    {
+      "btsCode": "BTS1000",
+      "noTypeScriptCounterpart": null,
+      "rawMessage": "expected a type",
+      "severity": "error",
+      "span": {
+        "end": 282,
+        "module": "src/types.ts",
+        "start": 281
+      },
+      "typescript": {
+        "arguments": [],
+        "code": 1110,
+        "message": "Type expected.",
+        "messageTemplate": "Type expected.",
+        "position": {
+          "column": 12,
+          "length": 1,
+          "line": 14
+        },
+        "relatedInformation": [],
+        "span": {
+          "end": 282,
+          "module": "src/types.ts",
+          "start": 281
+        }
+      }
+    },
+    {
+      "btsCode": "BTS1001",
+      "noTypeScriptCounterpart": "BlueTSC deliberately refuses a documented subset boundary.",
+      "rawMessage": "tuple rest element must have an array or named tuple annotation",
+      "severity": "error",
+      "span": {
+        "end": 1088,
+        "module": "src/types.ts",
+        "start": 1075
+      },
+      "typescript": null
+    }
+  ],
+  "independentFamilies": [
+    "contextual parameter and function-type names",
+    "conditional tuple infer rest",
+    "unknown-object guard ordering"
+  ],
+  "checks": {
+    "recordedAt": "2026-11-10T01:06:56.237631+00:00",
+    "commands": [
+      {
+        "label": "node",
+        "command": [
+          "node",
+          "--test",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ci_inventory_checkout.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/collect_ge5_cohort_coverage.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/gc3_policy.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge2_observations.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge4_observations.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_accessor_ending_inventory.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_async_arrow_finally_controls.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_class_declaration_chain.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_class_declaration_endpoints.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_class_expression_assignment.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_class_field_holes.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_class_generated_bindings.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_class_method_holes.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_cohort_coverage.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_decorator_field_endpoints.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_decorator_helpers.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_decorator_member_endpoints.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_decorator_method_members.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_decorator_numeric_keys.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_erased_import_comments.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_helper_collision_frames.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_acquisitions.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_declaration_maps.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_declarations.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_envelope.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_execution.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_expression_maps.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_helpers.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_imports.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_module.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_references.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_source.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_maps.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_metadata_callable_capability.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_metadata_class_artifacts.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_metadata_class_graph.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_native_patch.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_preserved_class_endpoints.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_role_stream.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_safe_home_ir.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/gm2_state_paths.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/measure_compatibility_cases.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/oracle_shards.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/report_windows_symlink_tests.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/select_oracle_commands.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/backend/bluets/tests/fixtures/oracle_support/fixture_paths.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/backend/bluets/tests/fixtures/oracle_support/normalize_map_source.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/backend/bluets/tests/fixtures/oracle_support/redact_root.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/backend/bluets/tests/fixtures/oracle_support/resolve_package.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/audit.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-audit.test.cjs"
+        ],
+        "exit": 0,
+        "log": "audit-final-node.log",
+        "sha256": "3b6862cf8ac7286bdad1e6cc9fd7b994895d5935aa98315f260bf92af2cb189a"
+      },
+      {
+        "label": "python",
+        "command": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools",
+          "-p",
+          "test_*.py"
+        ],
+        "exit": 0,
+        "log": "audit-final-python.log",
+        "sha256": "0621009e627059dfd29180d65a681aabba52de793a5a9e80b743ee87339482eb"
+      },
+      {
+        "label": "source",
+        "command": [
+          "cargo",
+          "run",
+          "-p",
+          "blueice-bluets",
+          "--example",
+          "compatibility_inventory",
+          "--locked",
+          "--offline",
+          "--",
+          "--check"
+        ],
+        "exit": 0,
+        "log": "audit-final-source.log",
+        "sha256": "21c81db50f0127b889a7df3359a4385cf7daa8449631795334b6319fd5f9ddd8"
+      },
+      {
+        "label": "account",
+        "command": [
+          "python3",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/account_inventory_rows.py",
+          "--check"
+        ],
+        "exit": 0,
+        "log": "audit-final-account.log",
+        "sha256": "3eda3d0abc8c7e5eff1b7e96ef6ba4af3e89c510ee0ec68a01451f39447c6156"
+      },
+      {
+        "label": "status",
+        "command": [
+          "python3",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/check_compatibility_status.py",
+          "--check"
+        ],
+        "exit": 0,
+        "log": "audit-final-status.log",
+        "sha256": "15369a59ba9bc0f7c61fd1397430cd9f87b259b5c75842a14789c69200c43ef0"
+      },
+      {
+        "label": "diff",
+        "command": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "exit": 0,
+        "log": "audit-final-diff.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ],
+    "environment": {
+      "BLUEICE_BLUETSC_ORACLE": "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+      "BLUEICE_ACORN_ORACLE": "/private/tmp/gm3-oracles/node_modules/acorn/bin/acorn",
+      "FORCE_COLOR": "0"
+    },
+    "retainedInitialSetupFailure": "audit-final-node.log.missing-oracle-env",
+    "conclusion": "pass"
+  },
+  "productionRustChanged": false,
+  "freshFullWorkspaceOrWindowsRun": false,
+  "globalCompatibilityDenominatorChanged": false,
+  "fullTypeScriptParity": false,
+  "limits": [
+    "CommonJS/ES2022 strict production profile only; authored scenarios are not the upstream complete suite.",
+    "BlueTSC cold compilation is rejected; all dependent declaration/runtime/consumer/incremental acceptance is blocked.",
+    "Negative minimal controls compare verdicts and preserve raw diagnostics, without claiming full diagnostic parity.",
+    "Native multi-source incremental state interchange is a separate pending extension; safe owner-current fallback is intentional.",
+    "The initial runtime calibration and aggregate-tool environment initialization failure are retained and not credited as passing gates."
+  ]
+}

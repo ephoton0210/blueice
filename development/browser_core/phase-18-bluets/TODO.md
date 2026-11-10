@@ -143,6 +143,43 @@ passes**, both complete **8,407 × two** map checks, Windows **25 path checks +
 Native expectations were frozen before their corresponding implementations;
 all old case identities remain. [Acceptance and retained evidence](PROJECT_FOLLOWUP_ACCEPTANCE.md).
 
+### Multi-file project follow-up — 2026-11-10
+
+- [x] Freeze and execute the second independent real-project audit using all
+  three unchanged defu production sources at
+  `1b9fcab2c1479f0295a5f867c6ec36a01fda2dfb` (upstream tag `v6.1.4`, whose
+  original package metadata says `6.1.3`). Preserve source/license bytes and
+  Native expectations before compiler implementation. Compare all three exact
+  declarations, twelve authored runtime scenarios, positive/negative consumers,
+  exported-type dependent consumers, cold/initial/warm/imported implementation
+  and type edits, dependency addition/missing/restoration, and clean rebuilds.
+  Audit completion means reproducible measured results; BlueTSC project
+  compatibility requires every property to pass independently.
+  Native passes; BlueTSC's cold build is blocked by thirteen diagnostics in
+  three independently reproduced feature families. Its dependent checks remain
+  blocked. [Audit and explicit repair gates](DEFU_PROJECT_AUDIT.md).
+- [ ] **Repair the reproduced defu prerequisites — G-T1 / G-T2 / G-C1.**
+  Eight frozen minimal controls establish Native verdicts: contextual
+  `namespace` parameters/defaults and generic function-type parameter names;
+  conditional tuple `...infer Rest`; null-first versus typeof-first object
+  guards on `unknown`; and rejected nullable-object, reserved-keyword and
+  out-of-context-infer controls. Preserve their original source and Native
+  results. Remove the four reproduced false refusals while retaining the three
+  Native-rejected controls, strict checking, readonly authority and budgets.
+  Pass the full unchanged project and exact declarations/consumers/runtime,
+  then every frozen incremental phase. Keep later independent blockers visible;
+  this item stays open until the complete project and the normal fresh
+  Native/local/Windows-82 gates pass. Commit implementation and measurements
+  together only after this stated repair scope is complete.
+- [ ] **Evaluate multi-source incremental interchange — G-M1 / G-M2.**
+  After the project cold build passes, distinguish an actual resolver/state
+  defect from the existing intentional owner-current rebuild policy. Freeze
+  any extension matrix before implementation: both state directions, edited
+  imported implementations/types, added/missing/restored sources, exact public
+  artifacts and declaration consumers, corrupt/missing state and owner-path
+  rejection. Keep unsupported profiles rebuilding safely; no Native warm-no-op
+  or broader parity claim follows merely from successful state consumption.
+
 ## Completed baseline (condensed)
 
 The 89 checked entries in the pre-refresh worklist remain completed only

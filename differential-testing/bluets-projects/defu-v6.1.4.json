@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "project": "defu",
+  "upstreamTag": "v6.1.4",
+  "packageVersion": "6.1.3",
+  "versionNote": "The original package.json at this upstream tag says 6.1.3; preserve it verbatim and identify the audited source by its exact commit.",
+  "repository": "https://github.com/unjs/defu",
+  "revision": "1b9fcab2c1479f0295a5f867c6ec36a01fda2dfb",
+  "archive": "fixtures/defu-v6.1.4.tar.gz",
+  "archiveSha256": "0bc0d3affd378817bebbf46af78bcb9a972f8b28dec04a4357674b9423ceefe3",
+  "files": {
+    "LICENSE": "46231df5a7733c3f52f11b71f3df61813007745b62b09031acfb45fb42d75082",
+    "README.md": "73db219cb5d0737da0bf2281a99eaaacac3d3a6432cbb0449e31158b36454241",
+    "package.json": "e2e5bbb13dfc534b682c1b8cde4bd82da6910611619c8af8299b447554c34c18",
+    "tsconfig.json": "cef8c91e4c5b63cf2b85939fa72b72f2fb7f1c55b2504205250f164ea6c0d810",
+    "src/_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+    "src/defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+    "src/types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817",
+    "lib/defu.cjs": "5b1d7045d7e4d1810e102ce211df6f5b1d3ea0e17d14a75df5ef3c90e6b499ca"
+  },
+  "productionSources": [
+    "src/_utils.ts",
+    "src/defu.ts",
+    "src/types.ts"
+  ],
+  "profiles": [
+    {
+      "id": "commonjs-es2022",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node",
+        "strict": true,
+        "lib": [
+          "ES2022"
+        ],
+        "declaration": true,
+        "sourceMap": true,
+        "noEmitOnError": true,
+        "rootDir": "src",
+        "outDir": "dist"
+      },
+      "include": [
+        "src/**/*.ts"
+      ]
+    }
+  ],
+  "incrementalOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": "dist/project.tsbuildinfo"
+  },
+  "runtimeScenarios": [
+    "priority-and-defaults",
+    "nullish-values",
+    "array-concatenation",
+    "nested-records",
+    "nonplain-values",
+    "custom-number-merger",
+    "namespace-forwarding",
+    "function-merger",
+    "array-function-merger",
+    "prototype-key-observations",
+    "cross-module-plain-object-helper",
+    "named-export-inventory"
+  ],
+  "edits": {
+    "implementation": {
+      "path": "src/_utils.ts",
+      "from": "  return true;",
+      "to": "  return Boolean(true);"
+    },
+    "exportedType": {
+      "path": "src/types.ts",
+      "from": "  fn: DefuFn;",
+      "to": "  fn: string;"
+    },
+    "addedDependency": {
+      "path": "src/_audit_dep.ts",
+      "source": "// BlueIce authored dependency-addition probe.\nexport const auditTrue = true;\n",
+      "importPath": "src/_utils.ts",
+      "import": "import { auditTrue } from \"./_audit_dep\";\n",
+      "from": "  return Boolean(true);",
+      "to": "  return auditTrue;"
+    }
+  },
+  "acceptance": [
+    "All three unchanged production TypeScript sources compile with pinned TypeScript 5.9.3 and BlueTSC.",
+    "Compare complete declaration inventories and every byte; retain complete artifact inventories without silently filtering extra publications.",
+    "Both actual outputs pass all twelve frozen authored runtime scenarios; not the upstream full test suite.",
+    "Native consumers of each emitted declaration set accept positive controls and reject wrong types; the exported-type edit changes its independent dependent-consumer verdict.",
+    "Explicit incremental initial/warm, imported implementation/type edits, dependency addition/missing/restoration and edited-clean reconstruction are measured separately.",
+    "A refused cold build blocks dependent BlueTSC acceptance; all Native controls must pass before its baseline is valid."
+  ],
+  "policy": "Current owner input/state/publication confinement remains enforced. This project audit is separate from global compiler case counts; no full-parity claim."
+}
