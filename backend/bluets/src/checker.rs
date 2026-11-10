@@ -42,7 +42,7 @@ pub(crate) const CLASS_SURFACE_VERSION: &str = "class-surface-v5";
 pub(crate) const MODULE_EXPORTS_VERSION: &str = "module-exports-v9";
 pub(crate) const STRUCTURAL_BOUNDARIES_VERSION: &str = "bluets-structural-boundaries/3";
 pub(crate) const OVERLOAD_CHAINS_VERSION: &str = "bluets-overload-chains/1";
-pub(crate) const RETURN_CONTEXT_VERSION: &str = "bluets-return-context/4";
+pub(crate) const RETURN_CONTEXT_VERSION: &str = "bluets-return-context/5";
 mod computed_keys;
 pub(crate) mod tuple_compositions;
 mod type_operators;
@@ -754,7 +754,12 @@ fn split_call_arguments(tokens: &[Token]) -> Option<Vec<&[Token]>> {
             _ => {}
         }
     }
-    arguments.push(&tokens[start..close]);
+    // A final separator does not supply an argument. Keep the old invalid-hole
+    // representation when an earlier segment is empty; a trailing comma must
+    // not conceal a leading or middle missing argument.
+    if start < close || arguments.iter().any(|argument| argument.is_empty()) {
+        arguments.push(&tokens[start..close]);
+    }
     Some(arguments)
 }
 

@@ -639,6 +639,16 @@ impl<'a> ModuleChecker<'a> {
             }
             return;
         }
+        if strip_outer_parentheses(returned)
+            .first()
+            .is_some_and(|token| self.module.nested_functions.contains_key(&token.start))
+        {
+            if let Some(expected) = return_type {
+                // Establish a returned closure's parameter context before its
+                // body/implicit-any checks. Validation still uses its result.
+                let _ = self.infer_in_context(returned, scope, expected);
+            }
+        }
         self.check_direct_runtime_expression(returned, scope, function_span);
         let Some(return_type) = return_type else {
             return;

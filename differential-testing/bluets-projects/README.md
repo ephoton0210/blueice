@@ -92,9 +92,43 @@ The separate [minimal controls](defu-reproductions.json) and
 [Native observations](defu-reproductions.native.json) compare verdicts and retain
 complete raw diagnostics, without claiming diagnostic parity for rejected
 syntax. Both commands use fresh directories, record the actual compiler hash
-and verify committed backend source before and after execution. Exit 2 records
+and verify the selected immutable backend source before and after execution.
+Both accept `--source-tree <backend-tree-sha>` with the same source/build
+binding requirements as the first project audit. Exit 2 records
 observed incompatibility; exit 1 means an invalid audit/setup. A blocked cold
 build cannot supply downstream project successes.
 
 [The measured audit and repair gates](../../development/browser_core/phase-18-bluets/DEFU_PROJECT_AUDIT.md)
 keep the new project's result separate from mitt and the global case denominator.
+
+## Multi-source state evaluation
+
+The [frozen evaluation matrix](defu-interchange.json) covers both state
+directions with all three production sources selected as roots, and with one
+root whose imports supply the other two sources. It evaluates the current
+policy without expanding state authority or promising a Native warm no-op.
+
+```sh
+node --test differential-testing/bluets-projects/defu-interchange.test.cjs
+node differential-testing/bluets-projects/defu-interchange.cjs \
+  --compiler /absolute/path/bluetsc \
+  --typescript /absolute/path/node_modules/typescript/bin/tsc \
+  --output /absolute/path/new-empty-state-evaluation \
+  --source-tree <backend-tree-sha>
+```
+
+Each direction starts with a separate frozen Native baseline and fresh donor
+output. The handoff records whether the receiver retained every donor artifact
+or rebuilt its own complete clean inventory. Later implementation/type edits,
+added/missing/restored dependencies, corrupted/missing public state, dependent
+consumers, runtime and clean rebuilds must pass separately. External state paths
+and input/output collisions must be rejected without altering owner inputs or
+the outside sentinel. Public state bytes and hashes are recorded separately
+from artifact equality. Exit 2 records differences; exit 1 is an invalid setup.
+
+The prerequisite Native recorder preserves Windows diagnostic console streams
+under `BLUEICE_DEFU_NATIVE_OBSERVATIONS` (or a retained temporary directory).
+Only diagnostic console CRLF terminators are compared as LF. All declaration
+and runtime bytes retain exact comparisons.
+
+[Current repair acceptance](../../development/browser_core/phase-18-bluets/DEFU_REPAIR_ACCEPTANCE.md) and [finite state evaluation](../../development/browser_core/phase-18-bluets/DEFU_INTERCHANGE_ACCEPTANCE.md) retain the source-bound results and limits.

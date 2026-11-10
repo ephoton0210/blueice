@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:afe0fa1eb02894b7d618fc90edaad8af4bee46b4",
+  "artifacts": [
+    {
+      "path": "DEFU_REPAIR_COMPILERS.tar.gz",
+      "bytes": 19414078,
+      "sha256": "7f424a9bb89f69f2b27e76a1c36efab6c170e4d93690a0a693ece29d6ebec1a7"
+    },
+    {
+      "path": "DEFU_REPAIR_EVIDENCE.tar.gz",
+      "bytes": 81379917,
+      "sha256": "5a359e5cef023050279cf7f4db94bebd04a38f7f02c73318483804d93695e721"
+    },
+    {
+      "path": "DEFU_REPAIR_WINDOWS_EVIDENCE.tar.gz",
+      "bytes": 7576325,
+      "sha256": "bd6830f87f67b744a4c6c0810fab05448b7067eb7231ac625c0b324e0292c74c"
+    },
+    {
+      "path": "DEFU_REPAIR_WINDOWS_INITIAL_EVIDENCE.tar.gz",
+      "bytes": 7691373,
+      "sha256": "51eb5023be8c046b8baa5831dba1f3c23f1e004c72fc42ad501ee7cbc1238bf9"
+    }
+  ]
+}

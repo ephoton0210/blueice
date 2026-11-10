@@ -163,7 +163,16 @@ impl ModuleChecker<'_> {
             async_function: arrow.async_function,
             generator: arrow.generator,
             body_open: None,
-            type_parameters: arrow.type_parameters.clone(),
+            type_parameters: if arrow.type_parameters.is_empty() {
+                self.return_inference
+                    .generic_parameters
+                    .borrow()
+                    .get(&arrow.span.start)
+                    .cloned()
+                    .unwrap_or_default()
+            } else {
+                arrow.type_parameters.clone()
+            },
             parameters: arrow.parameters.clone(),
             return_type: arrow.return_type.clone(),
             body,
@@ -221,10 +230,21 @@ impl ModuleChecker<'_> {
         }
         let result = self.inferred_nested_result(arrow, scope);
         let parameters = self.return_parameters(&arrow.parameters, scope);
+        let contextual_parameters = self
+            .return_inference
+            .generic_parameters
+            .borrow()
+            .get(&arrow.span.start)
+            .cloned()
+            .unwrap_or_default();
         Some(declared_function_type(
             &parameters,
             result,
-            &arrow.type_parameters,
+            if arrow.type_parameters.is_empty() {
+                &contextual_parameters
+            } else {
+                &arrow.type_parameters
+            },
         ))
     }
 }

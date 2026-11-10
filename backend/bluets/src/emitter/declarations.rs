@@ -552,6 +552,22 @@ pub(super) fn emit_type_parameters(output: &mut String, parameters: &[TypeParame
 
 fn declaration_type_to_ts(value: &Type) -> String {
     match value {
+        Type::Conditional(_)
+        | Type::Infer(_)
+        | Type::TemplateLiteral(_)
+        | Type::Readonly(_)
+        | Type::IndexedRecord { .. } => value
+            .operator_text(declaration_type_to_ts)
+            .expect("operator type"),
+        Type::Union(parts) | Type::Intersection(parts) => parts
+            .iter()
+            .map(declaration_type_to_ts)
+            .collect::<Vec<_>>()
+            .join(if matches!(value, Type::Union(_)) {
+                " | "
+            } else {
+                " & "
+            }),
         Type::Mapped(_) => {
             let text = value
                 .operator_text(declaration_type_to_ts)

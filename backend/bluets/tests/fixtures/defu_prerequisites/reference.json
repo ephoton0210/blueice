@@ -1,0 +1,632 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "scope": "Eight unchanged project reproductions plus seven lexical-flow mutation/join/shadow/call controls; Native verdicts and accepted declarations are frozen before implementation. Rejected diagnostics remain complete raw observations rather than a diagnostic-parity claim. Eleven additional independently observed project blockers/negative controls freeze call commas, explicit-any versus unknown results, constrained aliases, conditional branches/infer bounds and quantified callback/return contexts before their implementation.",
+  "profile": {
+    "id": "commonjs-es2022",
+    "compilerOptions": {
+      "target": "ES2022",
+      "module": "CommonJS",
+      "moduleResolution": "Node",
+      "strict": true,
+      "lib": [
+        "ES2022"
+      ],
+      "declaration": true,
+      "sourceMap": true,
+      "noEmitOnError": true,
+      "rootDir": "src",
+      "outDir": "dist"
+    },
+    "include": [
+      "src/**/*.ts"
+    ]
+  },
+  "cases": [
+    {
+      "id": "contextual-default-parameter",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport function read(namespace = \".\"): string { return namespace; }\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "export declare function read(namespace?: string): string;\n"
+        }
+      }
+    },
+    {
+      "id": "contextual-generic-function-type",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport type Merger = <T>(namespace: string, value: T) => T;\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "export type Merger = <T>(namespace: string, value: T) => T;\n"
+        }
+      }
+    },
+    {
+      "id": "infer-tuple-rest",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport type Tail<T extends unknown[]> = T extends [unknown, ...infer Rest] ? Rest : never;\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "export type Tail<T extends unknown[]> = T extends [unknown, ...infer Rest] ? Rest : never;\n"
+        }
+      }
+    },
+    {
+      "id": "null-first-object-guard",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport function has(value: unknown): boolean { if (value === null || typeof value !== \"object\") { return false; } return Symbol.iterator in value; }\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "export declare function has(value: unknown): boolean;\n"
+        }
+      }
+    },
+    {
+      "id": "typeof-first-object-guard",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport function has(value: unknown): boolean { if (typeof value !== \"object\" || value === null) { return false; } return Symbol.iterator in value; }\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "export declare function has(value: unknown): boolean;\n"
+        }
+      }
+    },
+    {
+      "id": "nullable-object-guard",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport function has(value: unknown): boolean { if (typeof value !== \"object\") { return false; } return Symbol.iterator in value; }\n",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,123): error TS18047: 'value' is possibly 'null'.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "reserved-parameter",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport function read(class: string): string { return class; }\n",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,17): error TS7010: 'read', which lacks return-type annotation, implicitly has an 'any' return type.\nsrc/main.ts(5,22): error TS1390: 'class' is not allowed as a parameter name.\nsrc/main.ts(5,27): error TS1005: '{' expected.\nsrc/main.ts(5,29): error TS1434: Unexpected keyword or identifier.\nsrc/main.ts(5,29): error TS2693: 'string' only refers to a type, but is being used as a value here.\nsrc/main.ts(5,35): error TS1128: Declaration or statement expected.\nsrc/main.ts(5,36): error TS1128: Declaration or statement expected.\nsrc/main.ts(5,38): error TS1434: Unexpected keyword or identifier.\nsrc/main.ts(5,38): error TS2693: 'string' only refers to a type, but is being used as a value here.\nsrc/main.ts(5,59): error TS1005: '{' expected.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "infer-outside-conditional",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport type Outside = [...infer Rest];\n",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,27): error TS1338: 'infer' declarations are only permitted in the 'extends' clause of a conditional type.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "guarded-assignment-null",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport function has(value: unknown): boolean { if (value === null || typeof value !== \"object\") return false; value = null; return Symbol.iterator in value; }\n",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,151): error TS18046: 'value' is of type 'unknown'.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "guarded-join-with-null",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport function has(value: unknown, flag: boolean): boolean { if (value === null || typeof value !== \"object\") return false; if (flag) value = null; return Symbol.iterator in value; }\n",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,176): error TS18046: 'value' is of type 'unknown'.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "loose-null-object-guard",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport function has(value: unknown): boolean { if (value == null || typeof value !== \"object\") return false; return Symbol.iterator in value; }\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "export declare function has(value: unknown): boolean;\n"
+        }
+      }
+    },
+    {
+      "id": "and-object-guard",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport function has(value: unknown): boolean { if (value !== null && typeof value === \"object\") return Symbol.iterator in value; return false; }\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "export declare function has(value: unknown): boolean;\n"
+        }
+      }
+    },
+    {
+      "id": "shadowed-root-guard",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport function has(value: unknown): boolean { if (value === null || typeof value !== \"object\") return false; { const value: unknown = null; return Symbol.iterator in value; } }\n",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,168): error TS18046: 'value' is of type 'unknown'.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "null-guard-without-object",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport function has(value: unknown): boolean { if (value !== null) return Symbol.iterator in value; return false; }\n",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,94): error TS2638: Type '{} | undefined' may represent a primitive value, which is not permitted as the right operand of the 'in' operator.\nsrc/main.ts(5,94): error TS18048: 'value' is possibly 'undefined'.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "object-call-keeps-root-guard",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport function has(value: unknown): boolean { if (value === null || typeof value !== \"object\") return false; const prototype = Object.getPrototypeOf(value); return Symbol.iterator in value; }\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "export declare function has(value: unknown): boolean;\n"
+        }
+      }
+    },
+    {
+      "id": "trailing-call-comma",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nfunction sum(a: number, b: number): number { return a + b; } export const value = sum(1, 2,);\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "export declare const value: number;\n"
+        }
+      }
+    },
+    {
+      "id": "explicit-any-assignment-intersection",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport function copy<T>(value: any): T { return Object.assign({}, value); }\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "export declare function copy<T>(value: any): T;\n"
+        }
+      }
+    },
+    {
+      "id": "unknown-assignment-does-not-become-any",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport function copy<T>(value: unknown): T { return Object.assign({}, value); }\n",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,46): error TS2322: Type '{}' is not assignable to type 'T'.\n  'T' could be instantiated with an arbitrary type which could be unrelated to '{}'.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "generic-alias-bound",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype Input = Record<string | number | symbol, any>; type Keep<T extends Input> = T; export type Outer<S extends Input> = Keep<S>;\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "type Input = Record<string | number | symbol, any>;\ntype Keep<T extends Input> = T;\nexport type Outer<S extends Input> = Keep<S>;\nexport {};\n"
+        }
+      }
+    },
+    {
+      "id": "generic-key-intersection-bound",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype Input = Record<string | number | symbol, any>; export type Merge<A extends Input, B extends Input> = Omit<A, keyof A & keyof B>;\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "type Input = Record<string | number | symbol, any>;\nexport type Merge<A extends Input, B extends Input> = Omit<A, keyof A & keyof B>;\nexport {};\n"
+        }
+      }
+    },
+    {
+      "id": "conditional-branch-bound",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype Input = Record<string | number | symbol, any>; type Checked<T extends Input> = T; export type Refine<T> = T extends Input ? Checked<T> : never;\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "type Input = Record<string | number | symbol, any>;\ntype Checked<T extends Input> = T;\nexport type Refine<T> = T extends Input ? Checked<T> : never;\nexport {};\n"
+        }
+      }
+    },
+    {
+      "id": "conditional-rest-infer-bound",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype List<T extends unknown[]> = T; export type Tail<T> = T extends [unknown, ...infer Rest] ? List<Rest> : never;\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "type List<T extends unknown[]> = T;\nexport type Tail<T> = T extends [unknown, ...infer Rest] ? List<Rest> : never;\nexport {};\n"
+        }
+      }
+    },
+    {
+      "id": "contextual-quantified-callback",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype F = <T>(value: T) => T; function consume(fn: F): void {} export const value = consume(value => value);\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "export declare const value: void;\n"
+        }
+      }
+    },
+    {
+      "id": "contextual-quantified-return",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype F = <T>(value: T) => T; export function make(): F { return value => value; }\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "type F = <T>(value: T) => T;\nexport declare function make(): F;\nexport {};\n"
+        }
+      }
+    },
+    {
+      "id": "contextual-quantified-rest-return",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype F = <T, U extends unknown[]>(first: T, ...rest: U) => T; export function make(): F { return (...args) => args[0]; }\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "type F = <T, U extends unknown[]>(first: T, ...rest: U) => T;\nexport declare function make(): F;\nexport {};\n"
+        }
+      }
+    },
+    {
+      "id": "contextual-optional-quantified-callback",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype M = <T extends Record<string, any>>(object: T, key: keyof T) => any; function register(m?: M): void {} export const value = register((object, key) => object[key]);\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "export declare const value: void;\n"
+        }
+      }
+    },
+    {
+      "id": "trailing-comma-does-not-hide-middle-hole",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nfunction sum(a: number, b?: number): number { return a; } export const value = sum(1,,);\n",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,86): error TS1135: Argument expression expected.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "trailing-comma-does-not-hide-leading-hole",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nfunction sum(a: number, b: number): number { return a; } export const value = sum(,1,);\n",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,79): error TS2554: Expected 2 arguments, but got 1.\nsrc/main.ts(5,83): error TS1135: Argument expression expected.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "quantified-callback-wrong-result",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype F = <T>(value: T) => T; function consume(fn: F): void {} export const bad = consume(value => 1);\n",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,99): error TS2322: Type 'number' is not assignable to type 'T'.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'number'.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "quantified-return-wrong-result",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype F = <T>(value: T) => T; export function make(): F { return value => 1; }\n",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,74): error TS2322: Type 'number' is not assignable to type 'T'.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'number'.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "quantified-variable-wrong-result",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype F = <T>(value: T) => T; export const bad: F = value => 1;\n",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,61): error TS2322: Type 'number' is not assignable to type 'T'.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'number'.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "quantified-callback-readonly-bound",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype F = <T extends { readonly key: number }>(value: T) => void; function consume(fn: F): void {} export const bad = consume(value => { value.key = 1; });\n",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,143): error TS2540: Cannot assign to 'key' because it is a read-only property.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "quantified-return-readonly-bound",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype F = <T extends { readonly key: number }>(value: T) => void; export function make(): F { return value => { value.key = 1; }; }\n",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,118): error TS2540: Cannot assign to 'key' because it is a read-only property.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "contextual-quantified-separated-rest",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype F = <T, U extends unknown[]>(first: T, ...rest: U) => T; export const f: F = (first, ...rest) => first;\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "type F = <T, U extends unknown[]>(first: T, ...rest: U) => T;\nexport declare const f: F;\nexport {};\n"
+        }
+      }
+    },
+    {
+      "id": "contextual-quantified-rest-wrong-index",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype F = <T, U extends unknown[]>(first: T, ...rest: U) => T; export const f: F = (...args) => args[1];\n",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,96): error TS2322: Type 'U[number]' is not assignable to type 'T'.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'U[number]'.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "indexed-any-constraint",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype I = Record<string | number | symbol, any>; type Keep<T extends I> = T; export type Outer<T extends I, K extends keyof T> = Keep<T[K]>;\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "type I = Record<string | number | symbol, any>;\ntype Keep<T extends I> = T;\nexport type Outer<T extends I, K extends keyof T> = Keep<T[K]>;\nexport {};\n"
+        }
+      }
+    },
+    {
+      "id": "indexed-unknown-constraint",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype I = Record<string | number | symbol, unknown>; type Keep<T extends I> = T; export type Outer<T extends I, K extends keyof T> = Keep<T[K]>;\n",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,138): error TS2344: Type 'T[K]' does not satisfy the constraint 'I'.\n  Type 'T[keyof T]' is not assignable to type 'I'.\n    Type 'T[string] | T[number] | T[symbol]' is not assignable to type 'I'.\n      Type 'T[string]' is not assignable to type 'I'.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "recursive-infer-tail-refined",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype I = Record<string, any>; export type Fold<S extends I, D extends Array<I | null>> = D extends [infer F, ...infer Rest] ? F extends I ? Rest extends Array<I | null> ? Fold<S, Rest> : S : Rest extends Array<I | null> ? Fold<S, Rest> : S : S;\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "type I = Record<string, any>;\nexport type Fold<S extends I, D extends Array<I | null>> = D extends [infer F, ...infer Rest] ? F extends I ? Rest extends Array<I | null> ? Fold<S, Rest> : S : Rest extends Array<I | null> ? Fold<S, Rest> : S : S;\nexport {};\n"
+        }
+      }
+    },
+    {
+      "id": "infer-tail-unrefined",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype I = Record<string, any>; type Tail<T extends Array<I | null>> = T; export type Outer<D extends unknown[]> = D extends [infer F, ...infer Rest] ? Tail<Rest> : never;\n",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,156): error TS2344: Type 'Rest' does not satisfy the constraint '(I | null)[]'.\n  Type 'unknown[]' is not assignable to type '(I | null)[]'.\n    Type 'unknown' is not assignable to type 'I | null'.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "infer-tail-refinement-false-branch",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype I = Record<string, any>; type Tail<T extends Array<I | null>> = T; export type Outer<D extends unknown[]> = D extends [infer F, ...infer Rest] ? Rest extends Array<I | null> ? Rest : Tail<Rest> : never;\n",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,194): error TS2344: Type 'Rest' does not satisfy the constraint '(I | null)[]'.\n  Type 'unknown[]' is not assignable to type '(I | null)[]'.\n    Type 'unknown' is not assignable to type 'I | null'.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "mapped-intersection-key-any-bound",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype I = Record<string | number | symbol, any>; type Keep<T extends I> = T; export type Both<A extends I, B extends I> = { [K in keyof A & keyof B]: Keep<A[K]> };\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "type I = Record<string | number | symbol, any>;\ntype Keep<T extends I> = T;\nexport type Both<A extends I, B extends I> = {\n    [K in keyof A & keyof B]: Keep<A[K]>;\n};\nexport {};\n"
+        }
+      }
+    },
+    {
+      "id": "mapped-intersection-key-unknown-bound",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype I = Record<string | number | symbol, unknown>; type Keep<T extends I> = T; export type Both<A extends I, B extends I> = { [K in keyof A & keyof B]: Keep<A[K]> };\n",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,159): error TS2344: Type 'A[K]' does not satisfy the constraint 'I'.\n  Type 'A[keyof A & keyof B]' is not assignable to type 'I'.\n    Type 'A[string] | A[number] | A[symbol]' is not assignable to type 'I'.\n      Type 'A[string]' is not assignable to type 'I'.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "recursive-record-composition",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype I = Record<string | number | symbol, any>; type Mix<A extends I, B extends I> = Omit<A, keyof A & keyof B> & Omit<B, keyof A & keyof B> & { [K in keyof A & keyof B]: A[K] | B[K] }; export type Fold<S extends I, D extends Array<I | null>> = D extends [infer F, ...infer Rest] ? F extends I ? Rest extends Array<I | null> ? Fold<Mix<S, F>, Rest> : Mix<S, F> : S : S;\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "type I = Record<string | number | symbol, any>;\ntype Mix<A extends I, B extends I> = Omit<A, keyof A & keyof B> & Omit<B, keyof A & keyof B> & {\n    [K in keyof A & keyof B]: A[K] | B[K];\n};\nexport type Fold<S extends I, D extends Array<I | null>> = D extends [infer F, ...infer Rest] ? F extends I ? Rest extends Array<I | null> ? Fold<Mix<S, F>, Rest> : Mix<S, F> : S : S;\nexport {};\n"
+        }
+      }
+    },
+    {
+      "id": "record-any-nonhomomorphic-mapped",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype I = Record<string | number | symbol, any>; type Keep<T extends I> = T; export type Outer<A, B> = Keep<{ [K in keyof A & keyof B]: A[K] | B[K] }>;\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "type I = Record<string | number | symbol, any>;\ntype Keep<T extends I> = T;\nexport type Outer<A, B> = Keep<{\n    [K in keyof A & keyof B]: A[K] | B[K];\n}>;\nexport {};\n"
+        }
+      }
+    },
+    {
+      "id": "record-any-primitive-rejected",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype I = Record<string | number | symbol, any>; type Keep<T extends I> = T; export type Outer = Keep<string>;\n",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,102): error TS2344: Type 'string' does not satisfy the constraint 'I'.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "record-number-nonhomomorphic-mapped-rejected",
+      "nativeExpectedAccept": false,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\ntype I = Record<string | number | symbol, number>; type Keep<T extends I> = T; export type Outer<A, B> = Keep<{ [K in keyof A & keyof B]: string }>;\n",
+      "native": {
+        "exit": 1,
+        "stdout": "src/main.ts(5,111): error TS2344: Type '{ [K in keyof A & keyof B]: string; }' does not satisfy the constraint 'I'.\n  Type 'string' is not assignable to type 'number'.\n",
+        "stderr": "",
+        "declarations": {}
+      }
+    },
+    {
+      "id": "commonjs-default-exported-const",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport const value = 7; export default value;\n",
+      "runtimeProbe": "const m = require(\"./dist/main.js\"); console.log(JSON.stringify([m.value, m.default]));",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "export declare const value = 7;\nexport default value;\n"
+        },
+        "runtime": {
+          "exit": 0,
+          "stdout": "[7,7]\n",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "id": "commonjs-default-exported-mutable",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport let value = 7; export function bump() { value += 1; } export default value;\n",
+      "runtimeProbe": "const m = require(\"./dist/main.js\"); const before = [m.value, m.default]; m.bump(); console.log(JSON.stringify([before, m.value, m.default]));",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "export declare let value: number;\nexport declare function bump(): void;\nexport default value;\n"
+        },
+        "runtime": {
+          "exit": 0,
+          "stdout": "[[7,7],8,7]\n",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "id": "conditional-intersection-mapped-declaration",
+      "nativeExpectedAccept": true,
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\n\nexport type Mix<A, B> = A extends B ? A : Omit<A, keyof A & keyof B> & {\n  -readonly [K in keyof A & keyof B]: A[K] | B[K];\n};\n",
+      "native": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": "",
+        "declarations": {
+          "main.d.ts": "export type Mix<A, B> = A extends B ? A : Omit<A, keyof A & keyof B> & {\n    -readonly [K in keyof A & keyof B]: A[K] | B[K];\n};\n"
+        }
+      }
+    }
+  ]
+}

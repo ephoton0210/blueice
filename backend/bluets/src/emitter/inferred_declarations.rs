@@ -159,7 +159,12 @@ impl<'a> Context<'a> {
         for (declaration, _) in super::runtime_declarations(&module.declarations) {
             match declaration {
                 Declaration::TypeAlias(alias) if alias.exported => {
-                    context.references(&alias.value);
+                    context.references(&Type::GenericFunction {
+                        type_parameters: alias.type_parameters.clone(),
+                        parameters: Vec::new(),
+                        result: Box::new(alias.value.clone()),
+                        span: alias.span.clone(),
+                    });
                 }
                 Declaration::TypeExport(export) if export.specifier.is_none() => {
                     for binding in &export.bindings {
@@ -364,7 +369,12 @@ impl<'a> Context<'a> {
                         && context.used_imports.contains(&alias.name)
                         && !context.private_aliases.contains_key(&alias.name)
                     {
-                        context.references(&alias.value);
+                        context.references(&Type::GenericFunction {
+                            type_parameters: alias.type_parameters.clone(),
+                            parameters: Vec::new(),
+                            result: Box::new(alias.value.clone()),
+                            span: alias.span.clone(),
+                        });
                         let rendered = context.render(&alias.value, 0, &alias.span)?;
                         context.private_aliases.insert(alias.name.clone(), rendered);
                     }

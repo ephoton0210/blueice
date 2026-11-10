@@ -30,6 +30,7 @@ pub(in crate::checker) fn normalized(
         Type::Union(parts) if parts.contains(&Type::Any) => Some(Type::Any),
         Type::Union(parts) if parts.contains(&Type::StrictUnknown) => Some(Type::StrictUnknown),
         Type::Intersection(parts) if parts.contains(&Type::Never) => Some(Type::Never),
+        Type::Intersection(parts) if parts.contains(&Type::Any) => Some(Type::Any),
         Type::Intersection(parts) if parts.contains(&Type::StrictUnknown) => {
             let mut parts = parts
                 .iter()
@@ -53,6 +54,37 @@ pub(super) fn assignable(
     visited: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> Option<bool> {
+    // A non-homomorphic mapped type has an object shape without enumerating
+    // its symbolic keys or recursively computing every property. A target
+    // containing only broad, explicit-any index signatures imposes no value
+    // restriction on that shape. Keep homomorphic `keyof T` mappings on the
+    // ordinary path: they can preserve a primitive instantiation of T.
+    let mapped_object = |value: &Type| {
+        let Type::Mapped(mapped) = value else {
+            return false;
+        };
+        matches!(&mapped.parameter.constraint, Some(Type::Intersection(parts))
+            if parts.len() > 1 && parts.iter().all(|part| matches!(part, Type::KeyOf(_))))
+    };
+    if (mapped_object(actual)
+        || matches!(actual, Type::Intersection(parts) if parts.iter().any(mapped_object)))
+        && matches!(expected, Type::Named { .. } | Type::IndexedRecord { .. })
+    {
+        let target = crate::checker::type_operators::expanded(
+            expected,
+            aliases,
+            &mut visited.clone(),
+            budget,
+        );
+        if matches!(&target, Type::IndexedRecord { object, indices }
+            if matches!(object.as_ref(), Type::Record(fields) if fields.is_empty())
+                && !indices.is_empty()
+                && indices.iter().all(|index| matches!(index.key, Type::String | Type::Number | Type::Symbol)
+                    && index.value == Type::Any))
+        {
+            return Some(true);
+        }
+    }
     if matches!(expected, Type::Named {name, arguments} if name == "object" && arguments.is_empty())
         && aliases.get("object").is_some_and(|definition| {
             definition.kind == TypeDefinitionKind::Alias

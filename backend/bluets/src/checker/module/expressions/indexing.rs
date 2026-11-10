@@ -98,6 +98,16 @@ pub(in crate::checker::module) fn indexed_value_type(
             }
         }
         Type::Tuple(values) => {
+            // A fixed prefix does not depend on the length or element types
+            // of a later symbolic tail. Avoid expanding U in [first: T, ...U]
+            // just to read position zero; retain optional/unchecked rules.
+            if let (Some(index), Some(rest)) =
+                (index, values.iter().position(|element| element.rest))
+            {
+                if index < rest {
+                    return tuple_read_type(values, Some(index), budget.checking);
+                }
+            }
             if values.iter().any(|element| {
                 element.rest && matches!(element.annotation, Type::Named { .. } | Type::Tuple(_))
             }) {

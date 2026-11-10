@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "scope": "Evaluate current multi-source state cross-use without extending compiler eligibility or claiming Native warm no-op parity.",
+  "projectRevision": "1b9fcab2c1479f0295a5f867c6ec36a01fda2dfb",
+  "profiles": [
+    {"id": "all-production-roots", "include": ["src/**/*.ts"]},
+    {"id": "one-root-with-transitive-imports", "files": ["src/defu.ts"]}
+  ],
+  "directions": ["native-to-bluets", "bluets-to-native"],
+  "requiredChecks": [
+    "nativeBaseline", "donorAccepted", "donorDeclarations", "donorRuntime", "handoffAccepted", "handoffArtifactsAccounted",
+    "exactDeclarations", "runtime", "positiveConsumer", "negativeConsumer",
+    "typeBeforeAccepted", "warmUnchanged", "implementationEdit",
+    "exportedTypeEdit", "typeAfterRejected", "dependencyAdded",
+    "missingDependencyRejected", "missingDependencyArtifactsUnchanged",
+    "restoredDependency", "editedCleanEqual", "corruptStateRecovery",
+    "missingStateRecovery", "restoredWarmUnchanged"
+  ],
+  "ownerChecks": ["external-state-path", "input-state-collision", "output-state-collision"],
+  "policy": "A handoff may retain verified donor artifacts or rebuild exact receiver artifacts; record which occurred. Every later edited build must match a clean receiver build. Configured state paths cannot replace owner inputs/outputs or write outside the project. Public state has separate hashes and is excluded from artifact byte equality."
+}

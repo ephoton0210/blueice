@@ -6,6 +6,7 @@
 
 use super::*;
 mod compatibility;
+mod conditions;
 mod more_types;
 mod operators;
 
@@ -130,6 +131,9 @@ impl ModuleChecker<'_> {
     pub(in crate::checker::module) fn check_type(&mut self, value: &Type, span: &SourceSpan) {
         self.check_additional_type(value, span);
         self.check_operator(value);
+        if self.check_condition_scope(value, span) {
+            return;
+        }
         if let Some(children) = value.operator_children() {
             let previous = self.type_parameters.clone();
             if let Type::Mapped(value) = value {
@@ -265,19 +269,15 @@ impl ModuleChecker<'_> {
                 result,
                 ..
             } => {
-                let previous = self.type_parameters.clone();
-                for parameter in type_parameters {
-                    self.type_parameters.remove(&parameter.name);
-                }
-                self.check_type_parameters(type_parameters);
-                self.check_type(
-                    &Type::Function {
-                        parameters: parameters.clone(),
-                        result: result.clone(),
-                    },
-                    span,
-                );
-                self.type_parameters = previous;
+                self.with_lexical_type_scope(type_parameters, |checker| {
+                    checker.check_type(
+                        &Type::Function {
+                            parameters: parameters.clone(),
+                            result: result.clone(),
+                        },
+                        span,
+                    );
+                });
             }
             Type::Function { parameters, result } => {
                 for parameter in parameters {
@@ -407,15 +407,10 @@ impl ModuleChecker<'_> {
                 .get(&parameter.name)
                 .expect("completed generic arguments contain every parameter");
             let expected = substitute_type(constraint, &substitutions);
-            let actual_bound = match actual {
-                Type::Named { name, arguments } if arguments.is_empty() => self
-                    .allowed_tuple_spread_parameters
-                    .get(name)
-                    .cloned()
-                    .unwrap_or_else(|| actual.clone()),
-                _ => actual.clone(),
-            };
-            if !self.is_assignable_bounded(&actual_bound, &expected, span) {
+            // Lexical definitions include the current conditional branch's
+            // proven bounds. Substituting the original spread constraint here
+            // would erase those refinements before comparing the argument.
+            if !self.is_assignable_bounded(actual, &expected, span) {
                 let expected_text =
                     crate::diagnostic::type_text::render_in(&expected, self.project);
                 self.typescript_type_error(

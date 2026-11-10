@@ -16,12 +16,16 @@ mod predicates;
 mod properties;
 pub(in crate::checker) use predicates::truthy_type;
 
-pub(crate) const VERSION: &str = "lexical-flow-v13";
+pub(crate) const VERSION: &str = "lexical-flow-v14";
 #[derive(Clone, Debug, PartialEq)]
 struct State {
     reachable: bool,
     bindings: BTreeMap<BindingId, Type>,
     properties: BTreeMap<(BindingId, Vec<String>), Type>,
+    // Negative null tests on unknown cannot be encoded in its value type.
+    // Keep two bounded bits per lexical root so later typeof refinement cannot
+    // reintroduce null/undefined. Writes clear them; joins retain common bits.
+    nullish_exclusions: BTreeMap<BindingId, u8>,
 }
 
 impl Default for State {
@@ -30,6 +34,7 @@ impl Default for State {
             reachable: true,
             bindings: BTreeMap::new(),
             properties: BTreeMap::new(),
+            nullish_exclusions: BTreeMap::new(),
         }
     }
 }
@@ -41,6 +46,22 @@ impl State {
 
     fn invalidate(&mut self, id: &BindingId) {
         self.properties.retain(|(owner, _), _| owner != id);
+        self.nullish_exclusions.remove(id);
+    }
+
+    fn exclude_null(&mut self, id: &BindingId, loose: bool) {
+        *self.nullish_exclusions.entry(id.clone()).or_default() |= if loose { 3 } else { 1 };
+    }
+
+    fn retains_refinement(&self, id: &BindingId, value: &Type) -> bool {
+        let bit = match value {
+            Type::Null => 1,
+            Type::Undefined | Type::Void => 2,
+            _ => 0,
+        };
+        self.nullish_exclusions
+            .get(id)
+            .is_none_or(|excluded| excluded & bit == 0)
     }
 }
 
@@ -272,6 +293,14 @@ fn join(scopes: &ScopeModel<'_>, left: &State, right: &State) -> State {
         reachable: true,
         bindings,
         properties,
+        nullish_exclusions: left
+            .nullish_exclusions
+            .iter()
+            .filter_map(|(id, left)| {
+                let common = left & right.nullish_exclusions.get(id).copied().unwrap_or(0);
+                (common != 0).then(|| (id.clone(), common))
+            })
+            .collect(),
     }
 }
 

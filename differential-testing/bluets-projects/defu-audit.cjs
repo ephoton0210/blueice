@@ -33,11 +33,11 @@ function verifyReference(manifest, reference, native, declarationTexts, typescri
   assert.deepEqual(observableStages(native), observableStages(reference.nativeAcceptance), 'changed Native edit observations');
   assert.equal(assess(native, native, {equal: true}, manifest), true, 'invalid Native acceptance');
 }
-function audit({compiler, typescript, output, nativeOnly = false}) {
+function audit({compiler, typescript, output, nativeOnly = false, sourceTree}) {
   const manifest = require('./defu-v6.1.4.json');
   compiler = fs.realpathSync(compiler); typescript = fs.realpathSync(typescript);
   output = path.resolve(output); fs.mkdirSync(output);
-  const repo = path.resolve(__dirname, '../..'), source = sourceSnapshot(repo);
+  const repo = path.resolve(__dirname, '../..'), source = sourceSnapshot(repo, sourceTree);
   const tsLibrary = path.resolve(path.dirname(typescript), '../lib/typescript.js');
   assert.equal(require(tsLibrary).version, '5.9.3');
   const report = {schema: 1, startedAt: new Date().toISOString(), project: manifest,
@@ -172,7 +172,7 @@ function audit({compiler, typescript, output, nativeOnly = false}) {
     }
     assert.equal(hash(fs.readFileSync(compiler)), report.compilerSha256);
     assert.equal(hash(fs.readFileSync(tsLibrary)), report.typescript.implementationSha256);
-    assert.equal(sourceSnapshot(repo).sourceRevision, report.sourceRevision);
+    assert.equal(sourceSnapshot(repo, sourceTree).sourceRevision, report.sourceRevision);
     report.conclusion = nativeOnly ? 'native-baseline-valid' : report.compatible ? 'compatible-with-frozen-profile' : 'blocked';
     report.finishedAt = new Date().toISOString(); delete report.active; save(); return report;
   } catch (error) {
@@ -182,9 +182,15 @@ function audit({compiler, typescript, output, nativeOnly = false}) {
 if (require.main === module) {
   try {
     const args = process.argv.slice(2);
-    assert([6, 7].includes(args.length) && args[0] === '--compiler' && args[2] === '--typescript' && args[4] === '--output' &&
-      (args.length === 6 || args[6] === '--native-only'), 'usage: --compiler <bluetsc> --typescript <tsc> --output <new-directory> [--native-only]');
-    const report = audit({compiler: args[1], typescript: args[3], output: args[5], nativeOnly: args[6] === '--native-only'});
+    assert(args[0] === '--compiler' && args[2] === '--typescript' && args[4] === '--output',
+      'usage: --compiler <bluetsc> --typescript <tsc> --output <new-directory> [--native-only] [--source-tree <backend-tree-sha>]');
+    const options = {compiler: args[1], typescript: args[3], output: args[5]};
+    for (let index = 6; index < args.length; index++) {
+      if (args[index] === '--native-only' && !options.nativeOnly) options.nativeOnly = true;
+      else if (args[index] === '--source-tree' && !options.sourceTree && args[index + 1]) options.sourceTree = args[++index];
+      else throw Error('invalid or repeated audit option: ' + args[index]);
+    }
+    const report = audit(options);
     console.log(JSON.stringify({conclusion: report.conclusion, compatible: report.compatible, nativeBaselineValid: report.nativeBaselineValid}));
     process.exitCode = report.conclusion === 'blocked' ? 2 : 0;
   } catch (error) { console.error(error); process.exitCode = 1; }

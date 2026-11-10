@@ -76,6 +76,13 @@ fn narrow_at(
                     )
                 {
                     if let Some((id, path)) = reference(scopes, subject, depth + 1) {
+                        if path.is_empty() && literal.is("null") && !equality {
+                            let mut next = state.clone();
+                            next.exclude_null(&id, loose);
+                            return filter(scopes, &next, id, &path, |value| {
+                                equality_filter(value, literal, equality, loose)
+                            });
+                        }
                         return filter(scopes, state, id, &path, |value| {
                             equality_filter(value, literal, equality, loose)
                         });
@@ -286,7 +293,15 @@ pub(super) fn filter(
     let base = current(scopes, state, &id);
     let narrowed = union(parts(scopes, &base).iter().filter_map(|value| {
         if path.is_empty() {
-            return apply(value);
+            return apply(value).map(|value| match value {
+                Type::Union(values) => union(
+                    values
+                        .into_iter()
+                        .filter(|part| state.retains_refinement(&id, part)),
+                ),
+                value if state.retains_refinement(&id, &value) => value,
+                _ => Type::Never,
+            });
         }
         let property = properties::project(scopes, value, path)?;
         parts(scopes, &property)

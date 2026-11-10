@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:afe0fa1eb02894b7d618fc90edaad8af4bee46b4",
+  "compilerBytes": "DEFU_REPAIR_COMPILERS.tar.gz",
+  "artifacts": [
+    {
+      "path": "DEFU_INTERCHANGE_EVIDENCE.tar.gz",
+      "bytes": 405784,
+      "sha256": "b5f61f5dbfa8d5c2b78ac85a4e3fbc88dad7b663009a1a3b3de0cf3e331812eb"
+    }
+  ]
+}

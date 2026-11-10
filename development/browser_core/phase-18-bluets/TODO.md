@@ -8,24 +8,24 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-11-09).**
+**Current BlueTS / BlueTSC compatibility status (2026-11-10).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 39,512 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 39,561 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 38,670/38,676 (99.9845%); 3 open, 3 refused observations |
+| Direct agreement | 38,719/38,725 (99.9845%); 3 open, 3 refused observations |
 | Separate controls | 633 native-reference + 203 BlueTS owner = 836; excluded from direct agreement |
-| Case labels | 39,506 scoped closed (including controls), 3 open, 3 refused |
-| Suite inventory | 181 suites / 386 ignored Rust functions; not a case denominator |
-| Suite labels | 177 scoped closed, 1 open, 3 refused |
+| Case labels | 39,555 scoped closed (including controls), 3 open, 3 refused |
+| Suite inventory | 182 suites / 387 ignored Rust functions; not a case denominator |
+| Suite labels | 178 scoped closed, 1 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 227 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 39,512 recorded case expectations pass; expected differences/refusals are not
+All 39,561 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,8 +33,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:3567e7e2748a08e22f3422a47709fb1cd7211ec0`.
-Input graph SHA-256: `13244e77c85baedb8041c0c933ba35643010e6ec61abad64b90b73d0a4c7745d`.
+Compiler/oracle source: `backend-tree:afe0fa1eb02894b7d618fc90edaad8af4bee46b4`.
+Input graph SHA-256: `3a8f4751afa59a6f6ba8068f5862b0409e360f1ec0448313300d92d56f89014b`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -60,12 +60,13 @@ broader G-C1 inventory row remains open for unmeasured CLI/recovery coverage;
 the finite checklist does not claim full parity. See the
 [acceptance record](PLAN.md#phase-l--g-c1-implementation).
 
-**Current follow-up:** follow the requested G-T1 → G-C1 → G-M2 order.
-G-T1's two frozen stages were revalidated before implementation. The real-project
-flow, generic-method/diagnostic and explicit incremental repairs pass the fresh
-complete gates. [Current acceptance](PROJECT_FOLLOWUP_ACCEPTANCE.md) records
-the immutable source, measurements and remaining scope limits. The original
-[blocked audit](REAL_PROJECT_AUDIT.md) remains historical evidence.
+**Latest completed follow-up:** the frozen three-file defu project now passes
+exact declarations, consumers, runtime and every incremental edit/recovery
+stage. The current multi-source state policy passes both measured directions
+under both source-discovery profiles. [Repair acceptance](DEFU_REPAIR_ACCEPTANCE.md)
+and [state evaluation](DEFU_INTERCHANGE_ACCEPTANCE.md) retain the exact source,
+fresh gates and scope limits. Earlier mitt results retain their original source
+in [its acceptance](PROJECT_FOLLOWUP_ACCEPTANCE.md).
 
 ## Maintenance and real-project follow-up — 2026-11-09
 
@@ -145,40 +146,37 @@ all old case identities remain. [Acceptance and retained evidence](PROJECT_FOLLO
 
 ### Multi-file project follow-up — 2026-11-10
 
-- [x] Freeze and execute the second independent real-project audit using all
-  three unchanged defu production sources at
-  `1b9fcab2c1479f0295a5f867c6ec36a01fda2dfb` (upstream tag `v6.1.4`, whose
-  original package metadata says `6.1.3`). Preserve source/license bytes and
-  Native expectations before compiler implementation. Compare all three exact
-  declarations, twelve authored runtime scenarios, positive/negative consumers,
-  exported-type dependent consumers, cold/initial/warm/imported implementation
-  and type edits, dependency addition/missing/restoration, and clean rebuilds.
-  Audit completion means reproducible measured results; BlueTSC project
-  compatibility requires every property to pass independently.
-  Native passes; BlueTSC's cold build is blocked by thirteen diagnostics in
-  three independently reproduced feature families. Its dependent checks remain
-  blocked. [Audit and explicit repair gates](DEFU_PROJECT_AUDIT.md).
-- [ ] **Repair the reproduced defu prerequisites — G-T1 / G-T2 / G-C1.**
-  Eight frozen minimal controls establish Native verdicts: contextual
-  `namespace` parameters/defaults and generic function-type parameter names;
-  conditional tuple `...infer Rest`; null-first versus typeof-first object
-  guards on `unknown`; and rejected nullable-object, reserved-keyword and
-  out-of-context-infer controls. Preserve their original source and Native
-  results. Remove the four reproduced false refusals while retaining the three
-  Native-rejected controls, strict checking, readonly authority and budgets.
-  Pass the full unchanged project and exact declarations/consumers/runtime,
-  then every frozen incremental phase. Keep later independent blockers visible;
-  this item stays open until the complete project and the normal fresh
-  Native/local/Windows-82 gates pass. Commit implementation and measurements
-  together only after this stated repair scope is complete.
-- [ ] **Evaluate multi-source incremental interchange — G-M1 / G-M2.**
-  After the project cold build passes, distinguish an actual resolver/state
-  defect from the existing intentional owner-current rebuild policy. Freeze
-  any extension matrix before implementation: both state directions, edited
-  imported implementations/types, added/missing/restored sources, exact public
-  artifacts and declaration consumers, corrupt/missing state and owner-path
-  rejection. Keep unsupported profiles rebuilding safely; no Native warm-no-op
-  or broader parity claim follows merely from successful state consumption.
+- [x] Freeze and execute the second independent project audit using all three
+  unchanged defu sources at 1b9fcab2c1479f0295a5f867c6ec36a01fda2dfb
+  (tag v6.1.4, original package metadata 6.1.3). Original licenses,
+  Native expectations, the thirteen-diagnostic blocked result and its exact
+  compiler binding remain in [the historical audit](DEFU_PROJECT_AUDIT.md).
+- [x] **Repair the reproduced defu prerequisites — G-T1 / G-T2 / G-C1.**
+  All 49 independently frozen Native controls pass their recorded verdict and
+  accepted-declaration comparisons, including readonly/wrong-result/budget
+  boundaries and two emitted-runtime controls. The complete unchanged project
+  passes all three byte-exact declarations, twelve authored runtime scenarios,
+  positive/negative and dependent consumers, incremental initial/warm builds,
+  imported implementation/type edits, dependency addition/missing/restoration
+  and exact edited-clean inventories. Fresh gates: 182 Native suites /
+  1,042 functions, 7,839 local workspace passes, complete
+  8,407 × two map reports for both actual compilers, Windows 82 core oracles +
+  25 path checks + four regression cohorts, formatting and warnings-denied
+  all-target Clippy. Original failed attempts and Windows console CRLF are
+  retained, including the complete workspace's RegExp wall-clock and sandbox
+  socket failures, both permission probes and successful unchanged complete-target
+  replays; declaration/runtime byte comparisons remain exact.
+  [Implementation, measurements and limits](DEFU_REPAIR_ACCEPTANCE.md).
+- [x] **Evaluate multi-source incremental interchange — G-M1 / G-M2.**
+  The frozen two-profile/two-direction matrix passes 92 required checks and
+  three owner-path rejection checks. Three admitted production roots can
+  preserve verified Native artifacts; a single root with transitive imports
+  rebuilds from current owner inputs. Native reverse consumption rebuilds in
+  both profiles. Implementation/type/dependency edits, consumers, runtime,
+  clean artifacts and corrupt/missing-state recovery pass separately.
+  The current policy required no compiler eligibility/authority extension.
+  Native warm no-op and unmeasured profiles remain outside this result.
+  [Finite evaluation and raw evidence](DEFU_INTERCHANGE_ACCEPTANCE.md).
 
 ## Completed baseline (condensed)
 

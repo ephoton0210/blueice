@@ -243,12 +243,27 @@ pub(super) fn indexed(
             if let Some(value) = indexed(object, &index, aliases, &mut visited.clone(), budget) {
                 return Some(value);
             }
-            indices
+            let direct = indices
                 .iter()
                 .find(|entry| {
                     is_assignable(&index, &entry.key, aliases, &mut visited.clone(), budget)
                 })
-                .map(|entry| entry.value.clone())
+                .map(|entry| entry.value.clone());
+            if direct.is_some() {
+                return direct;
+            }
+            // A symbolic key can span several index signatures. Their union
+            // must cover the complete key domain before their values provide
+            // an upper bound; an unresolved key never gains an any fallback.
+            let domain = union(indices.iter().map(|entry| entry.key.clone()));
+            if !indices.is_empty()
+                && budget.consume()
+                && is_assignable(&index, &domain, aliases, &mut visited.clone(), budget)
+            {
+                Some(union(indices.iter().map(|entry| entry.value.clone())))
+            } else {
+                None
+            }
         }
         Type::Array(item)
             if index == Type::Number

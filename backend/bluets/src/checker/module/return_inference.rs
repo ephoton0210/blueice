@@ -21,6 +21,7 @@ pub(super) struct ReturnInference {
     pub(super) receivers: RefCell<BTreeMap<usize, Type>>,
     pub(super) fields: RefCell<BTreeMap<usize, Type>>,
     pub(super) contexts: RefCell<BTreeMap<usize, Type>>,
+    pub(super) generic_parameters: RefCell<BTreeMap<usize, Vec<TypeParameter>>>,
     pub(super) fresh_results: RefCell<BTreeSet<usize>>,
     active: RefCell<Vec<Frame>>,
     failures: RefCell<BTreeMap<usize, (SourceSpan, bool)>>,

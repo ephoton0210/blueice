@@ -126,6 +126,45 @@ impl<'a> ModuleChecker<'a> {
             }
         }
         match &contextual {
+            Type::GenericFunction {
+                type_parameters,
+                parameters,
+                result,
+                ..
+            } => {
+                if let Some(function) = tokens
+                    .first()
+                    .and_then(|token| self.module.nested_functions.get(&token.start))
+                    .filter(|function| {
+                        function.type_parameters.is_empty()
+                            && tokens
+                                .last()
+                                .is_some_and(|token| token.end == function.span.end)
+                    })
+                {
+                    // Read the closure under a fresh plain parameter context,
+                    // then retain the contextual quantifiers on its inferred
+                    // function type. A later non-generic candidate must not
+                    // inherit this candidate's binders.
+                    self.return_inference
+                        .generic_parameters
+                        .borrow_mut()
+                        .remove(&function.span.start);
+                    let _ = self.infer_in_context(
+                        tokens,
+                        scope,
+                        &Type::Function {
+                            parameters: parameters.clone(),
+                            result: result.clone(),
+                        },
+                    );
+                    self.return_inference
+                        .generic_parameters
+                        .borrow_mut()
+                        .insert(function.span.start, type_parameters.clone());
+                    return self.infer_expression(tokens, scope);
+                }
+            }
             Type::Function { parameters, result } => {
                 let tokens = strip_outer_parentheses(tokens);
                 if let Some(function) = tokens
@@ -133,6 +172,18 @@ impl<'a> ModuleChecker<'a> {
                     .and_then(|t| self.module.nested_functions.get(&t.start))
                     .filter(|f| tokens.last().is_some_and(|t| t.end == f.span.end))
                 {
+                    self.return_inference
+                        .generic_parameters
+                        .borrow_mut()
+                        .remove(&function.span.start);
+                    for parameter in &function.parameters {
+                        if parameter.annotation.is_none() {
+                            self.return_inference
+                                .parameters
+                                .borrow_mut()
+                                .remove(&parameter.span.start);
+                        }
+                    }
                     if let Some(receiver) = parameters
                         .iter()
                         .find(|parameter| parameter.name == "this")
@@ -143,13 +194,37 @@ impl<'a> ModuleChecker<'a> {
                             .borrow_mut()
                             .insert(function.span.start, receiver.clone());
                     }
-                    for (actual, expected) in function.parameters.iter().zip(parameters) {
+                    for (index, actual) in function.parameters.iter().enumerate() {
                         if actual.annotation.is_none() {
-                            if let Some(annotation) = &expected.annotation {
+                            let annotation = if actual.rest {
+                                parameters.get(index..).and_then(|tail| {
+                                    if let [only] = tail {
+                                        if only.rest {
+                                            return only.annotation.clone();
+                                        }
+                                    }
+                                    tail.iter()
+                                        .map(|parameter| {
+                                            Some(crate::parser::TupleTypeElement {
+                                                annotation: parameter.annotation.clone()?,
+                                                rest: parameter.rest,
+                                                optional: parameter.optional,
+                                                label: Some(parameter.name.clone()),
+                                            })
+                                        })
+                                        .collect::<Option<Vec<_>>>()
+                                        .map(Type::Tuple)
+                                })
+                            } else {
+                                parameters
+                                    .get(index)
+                                    .and_then(|parameter| parameter.annotation.clone())
+                            };
+                            if let Some(annotation) = annotation {
                                 self.return_inference
                                     .parameters
                                     .borrow_mut()
-                                    .insert(actual.span.start, annotation.clone());
+                                    .insert(actual.span.start, annotation);
                             }
                         }
                     }

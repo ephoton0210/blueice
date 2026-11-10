@@ -23,6 +23,9 @@ pub(super) fn build(
                 for (id, value) in captured.iter() {
                     if scopes.flow_capture_allowed(id, graph.creation, graph.hoisted) {
                         seed.insert(id.clone(), value.clone());
+                        if let Some(excluded) = captured.nullish_exclusions.get(id) {
+                            seed.nullish_exclusions.insert(id.clone(), *excluded);
+                        }
                     }
                 }
             }
@@ -60,6 +63,7 @@ fn run_graph(
                 state
                     .len()
                     .saturating_add(state.properties.len())
+                    .saturating_add(state.nullish_exclusions.len())
                     .saturating_add(1),
             );
         if *remaining < cost {

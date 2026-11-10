@@ -125,6 +125,10 @@ impl ModuleChecker<'_> {
                     .borrow_mut()
                     .remove(&function.span.start);
                 self.return_inference
+                    .generic_parameters
+                    .borrow_mut()
+                    .remove(&function.span.start);
+                self.return_inference
                     .receivers
                     .borrow_mut()
                     .remove(&function.span.start);

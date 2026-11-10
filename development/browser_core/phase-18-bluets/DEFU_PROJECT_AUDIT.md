@@ -1,5 +1,10 @@
 # Second real-project audit — defu
 
+The later [completed compiler repair](DEFU_REPAIR_ACCEPTANCE.md) and
+[multi-source state evaluation](DEFU_INTERCHANGE_ACCEPTANCE.md) supersede the
+project blockage below. This dated audit retains its original source, failed
+observations and acceptance criteria.
+
 This completed investigation is **blocked for BlueTSC compatibility**. It does
 not count a failed cold build or unexecuted dependent checks as a project pass.
 [Measurement](DEFU_PROJECT_MEASUREMENT.json) ·

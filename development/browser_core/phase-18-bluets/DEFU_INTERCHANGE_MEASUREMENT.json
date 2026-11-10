@@ -1,0 +1,3298 @@
+{
+  "schema": 1,
+  "recordedAt": "2026-11-10T07:38:00.962382+00:00",
+  "conclusion": "current-policy-verified",
+  "compilerAcceptance": "DEFU_REPAIR_MEASUREMENT.json",
+  "audit": {
+    "schema": 1,
+    "startedAt": "2026-11-10T02:36:56.641Z",
+    "matrix": {
+      "schema": 1,
+      "scope": "Evaluate current multi-source state cross-use without extending compiler eligibility or claiming Native warm no-op parity.",
+      "projectRevision": "1b9fcab2c1479f0295a5f867c6ec36a01fda2dfb",
+      "profiles": [
+        {
+          "id": "all-production-roots",
+          "include": [
+            "src/**/*.ts"
+          ]
+        },
+        {
+          "id": "one-root-with-transitive-imports",
+          "files": [
+            "src/defu.ts"
+          ]
+        }
+      ],
+      "directions": [
+        "native-to-bluets",
+        "bluets-to-native"
+      ],
+      "requiredChecks": [
+        "nativeBaseline",
+        "donorAccepted",
+        "donorDeclarations",
+        "donorRuntime",
+        "handoffAccepted",
+        "handoffArtifactsAccounted",
+        "exactDeclarations",
+        "runtime",
+        "positiveConsumer",
+        "negativeConsumer",
+        "typeBeforeAccepted",
+        "warmUnchanged",
+        "implementationEdit",
+        "exportedTypeEdit",
+        "typeAfterRejected",
+        "dependencyAdded",
+        "missingDependencyRejected",
+        "missingDependencyArtifactsUnchanged",
+        "restoredDependency",
+        "editedCleanEqual",
+        "corruptStateRecovery",
+        "missingStateRecovery",
+        "restoredWarmUnchanged"
+      ],
+      "ownerChecks": [
+        "external-state-path",
+        "input-state-collision",
+        "output-state-collision"
+      ],
+      "policy": "A handoff may retain verified donor artifacts or rebuild exact receiver artifacts; record which occurred. Every later edited build must match a clean receiver build. Configured state paths cannot replace owner inputs/outputs or write outside the project. Public state has separate hashes and is excluded from artifact byte equality."
+    },
+    "sourceSnapshot": {
+      "sourceRevision": "backend-tree:afe0fa1eb02894b7d618fc90edaad8af4bee46b4",
+      "baseCommit": "d6eea2bb5df99fde1c8f420f267303cb065e8873",
+      "verifiedFiles": 13987,
+      "mode": "explicit-immutable-backend-tree"
+    },
+    "sourceRevision": "backend-tree:afe0fa1eb02894b7d618fc90edaad8af4bee46b4",
+    "node": "v26.7.0",
+    "typescript": {
+      "version": "5.9.3",
+      "executableSha256": "8d5fa5bd883fec0979fc2004f1fe1d99aef40570155d550eadc0b03b55513bf0",
+      "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+      "libraries": {
+        "lib.decorators.d.ts": "8e7f8264d0fb4c5339605a15daadb037bf238c10b654bb3eee14208f860a32ea",
+        "lib.decorators.legacy.d.ts": "782dec38049b92d4e85c1585fbea5474a219c6984a35b004963b00beb1aab538",
+        "lib.dom.asynciterable.d.ts": "d7a3c8b952931daebdfc7a2897c53c0a1c73624593fa070e46bd537e64dcd20a",
+        "lib.dom.d.ts": "080941d9f9ff9307f7e27a83bcd888b7c8270716c39af943532438932ec1d0b9",
+        "lib.dom.iterable.d.ts": "2e80ee7a49e8ac312cc11b77f1475804bee36b3b2bc896bead8b6e1266befb43",
+        "lib.es2015.collection.d.ts": "dc2df20b1bcdc8c2d34af4926e2c3ab15ffe1160a63e58b7e09833f616efff44",
+        "lib.es2015.core.d.ts": "c57796738e7f83dbc4b8e65132f11a377649c00dd3eee333f672b8f0a6bea671",
+        "lib.es2015.d.ts": "45b7ab580deca34ae9729e97c13cfd999df04416a79116c3bfb483804f85ded4",
+        "lib.es2015.generator.d.ts": "515d0b7b9bea2e31ea4ec968e9edd2c39d3eebf4a2d5cbd04e88639819ae3b71",
+        "lib.es2015.iterable.d.ts": "0559b1f683ac7505ae451f9a96ce4c3c92bdc71411651ca6ddb0e88baaaad6a3",
+        "lib.es2015.promise.d.ts": "0dc1e7ceda9b8b9b455c3a2d67b0412feab00bd2f66656cd8850e8831b08b537",
+        "lib.es2015.proxy.d.ts": "ce691fb9e5c64efb9547083e4a34091bcbe5bdb41027e310ebba8f7d96a98671",
+        "lib.es2015.reflect.d.ts": "8d697a2a929a5fcb38b7a65594020fcef05ec1630804a33748829c5ff53640d0",
+        "lib.es2015.symbol.d.ts": "4ff2a353abf8a80ee399af572debb8faab2d33ad38c4b4474cff7f26e7653b8d",
+        "lib.es2015.symbol.wellknown.d.ts": "fb0f136d372979348d59b3f5020b4cdb81b5504192b1cacff5d1fbba29378aa1",
+        "lib.es2016.array.include.d.ts": "d15bea3d62cbbdb9797079416b8ac375ae99162a7fba5de2c6c505446486ac0a",
+        "lib.es2016.d.ts": "3facaf05f0c5fc569c5649dd359892c98a85557e3e0c847964caeb67076f4d75",
+        "lib.es2016.full.d.ts": "807e0e0bdc67605dd28efe18f20ab5fcd75d944ef95936120702335f9379094b",
+        "lib.es2016.intl.d.ts": "68d18b664c9d32a7336a70235958b8997ebc1c3b8505f4f1ae2b7e7753b87618",
+        "lib.es2017.arraybuffer.d.ts": "eb3d66c8327153d8fa7dd03f9c58d351107fe824c79e9b56b462935176cdf12a",
+        "lib.es2017.d.ts": "e44bb8bbac7f10ecc786703fe0a6a4b952189f908707980ba8f3c8975a760962",
+        "lib.es2017.date.d.ts": "38f0219c9e23c915ef9790ab1d680440d95419ad264816fa15009a8851e79119",
+        "lib.es2017.full.d.ts": "1d242d5c24cf285c88bc4fb93c5ff903de8319064e282986edeb6247ba028d5e",
+        "lib.es2017.intl.d.ts": "4de680d5bb41c17f7f68e0419412ca23c98d5749dcaaea1896172f06435891fc",
+        "lib.es2017.object.d.ts": "69ab18c3b76cd9b1be3d188eaf8bba06112ebbe2f47f6c322b5105a6fbc45a2e",
+        "lib.es2017.sharedmemory.d.ts": "a680117f487a4d2f30ea46f1b4b7f58bef1480456e18ba53ee85c2746eeca012",
+        "lib.es2017.string.d.ts": "2f11ff796926e0832f9ae148008138ad583bd181899ab7dd768a2666700b1893",
+        "lib.es2017.typedarrays.d.ts": "954296b30da6d508a104a3a0b5d96b76495c709785c1d11610908e63481ee667",
+        "lib.es2018.asyncgenerator.d.ts": "ac9538681b19688c8eae65811b329d3744af679e0bdfa5d842d0e32524c73e1c",
+        "lib.es2018.asynciterable.d.ts": "0a969edff4bd52585473d24995c5ef223f6652d6ef46193309b3921d65dd4376",
+        "lib.es2018.d.ts": "5e1c4c362065a6b95ff952c0eab010f04dcd2c3494e813b493ecfd4fcb9fc0d8",
+        "lib.es2018.full.d.ts": "95f1023b824c2c511c48f1201e2d1188bcb0ca1138a309a870b956d2e92e44ab",
+        "lib.es2018.intl.d.ts": "9e9fbd7030c440b33d021da145d3232984c8bb7916f277e8ffd3dc2e3eae2bdb",
+        "lib.es2018.promise.d.ts": "811ec78f7fefcabbda4bfa93b3eb67d9ae166ef95f9bff989d964061cbf81a0c",
+        "lib.es2018.regexp.d.ts": "717937616a17072082152a2ef351cb51f98802fb4b2fdabd32399843875974ca",
+        "lib.es2019.array.d.ts": "d7e7d9b7b50e5f22c915b525acc5a49a7a6584cf8f62d0569e557c5cfc4b2ac2",
+        "lib.es2019.d.ts": "68d73b4a11549f9c0b7d352d10e91e5dca8faa3322bfb77b661839c42b1ddec7",
+        "lib.es2019.full.d.ts": "08f6861df84fba9719c14d5adc3ba40be9f0c687639e6c4df3c05b9301b8ff94",
+        "lib.es2019.intl.d.ts": "74f7fa2d027d5b33eb0471c8e82a6c87216223181ec31247c357a3e8e2fddc5b",
+        "lib.es2019.object.d.ts": "71c37f4c9543f31dfced6c7840e068c5a5aacb7b89111a4364b1d5276b852557",
+        "lib.es2019.string.d.ts": "576711e016cf4f1804676043e6a0a5414252560eb57de9faceee34d79798c850",
+        "lib.es2019.symbol.d.ts": "89c1b1281ba7b8a96efc676b11b264de7a8374c5ea1e6617f11880a13fc56dc6",
+        "lib.es2020.bigint.d.ts": "d6d7ae4d1f1f3772e2a3cde568ed08991a8ae34a080ff1151af28b7f798e22ca",
+        "lib.es2020.d.ts": "5efce4fc3c29ea84e8928f97adec086e3dc876365e0982cc8479a07954a3efd4",
+        "lib.es2020.date.d.ts": "063600664504610fe3e99b717a1223f8b1900087fab0b4cad1496a114744f8df",
+        "lib.es2020.full.d.ts": "1305d1e76ca44e30fb8b2b8075fa522b83f60c0bcf5d4326a9d2cf79b53724f8",
+        "lib.es2020.intl.d.ts": "639e512c0dfc3fad96a84caad71b8834d66329a1f28dc95e3946c9b58176c73a",
+        "lib.es2020.number.d.ts": "368af93f74c9c932edd84c58883e736c9e3d53cec1fe24c0b0ff451f529ceab1",
+        "lib.es2020.promise.d.ts": "934019d7e3c81950f9a8426d093458b65d5aff2c7c1511233c0fd5b941e608ab",
+        "lib.es2020.sharedmemory.d.ts": "52ada8e0b6e0482b728070b7639ee42e83a9b1c22d205992756fe020fd9f4a47",
+        "lib.es2020.string.d.ts": "3bdefe1bfd4d6dee0e26f928f93ccc128f1b64d5d501ff4a8cf3c6371200e5e6",
+        "lib.es2020.symbol.wellknown.d.ts": "59fb2c069260b4ba00b5643b907ef5d5341b167e7d1dbf58dfd895658bda2867",
+        "lib.es2021.d.ts": "feecb1be483ed332fad555aff858affd90a48ab19ba7272ee084704eb7167569",
+        "lib.es2021.full.d.ts": "4a66df3ab5de5cfcda11538cffddd67ff6a174e003788e270914c1e0248483cf",
+        "lib.es2021.intl.d.ts": "965f36eae237dd74e6cca203a43e9ca801ce38824ead814728a2807b1910117d",
+        "lib.es2021.promise.d.ts": "af3dd424cf267428f30ccfc376f47a2c0114546b55c44d8c0f1d57d841e28d74",
+        "lib.es2021.string.d.ts": "995c005ab91a498455ea8dfb63aa9f83fa2ea793c3d8aa344be4a1678d06d399",
+        "lib.es2021.weakref.d.ts": "959d36cddf5e7d572a65045b876f2956c973a586da58e5d26cde519184fd9b8a",
+        "lib.es2022.array.d.ts": "3925a6c820dcb1a06506c90b1577db1fdbf7705d65b62b99dce4be75c637e26b",
+        "lib.es2022.d.ts": "ee7bad0c15b58988daa84371e0b89d313b762ab83cb5b31b8a2d1162e8eb41c2",
+        "lib.es2022.error.d.ts": "0a3d63ef2b853447ec4f749d3f368ce642264246e02911fcb1590d8c161b8005",
+        "lib.es2022.full.d.ts": "3cbad9a1ba4453443026ed38e4b8be018abb26565fa7c944376463ad9df07c41",
+        "lib.es2022.intl.d.ts": "8cdf8847677ac7d20486e54dd3fcf09eda95812ac8ace44b4418da1bbbab6eb8",
+        "lib.es2022.object.d.ts": "8444af78980e3b20b49324f4a16ba35024fef3ee069a0eb67616ea6ca821c47a",
+        "lib.es2022.regexp.d.ts": "b4b67b1a91182421f5df999988c690f14d813b9850b40acd06ed44691f6727ad",
+        "lib.es2022.string.d.ts": "3287d9d085fbd618c3971944b65b4be57859f5415f495b33a6adc994edd2f004",
+        "lib.es2023.array.d.ts": "df83c2a6c73228b625b0beb6669c7ee2a09c914637e2d35170723ad49c0f5cd4",
+        "lib.es2023.collection.d.ts": "436aaf437562f276ec2ddbee2f2cdedac7664c1e4c1d2c36839ddd582eeb3d0a",
+        "lib.es2023.d.ts": "27bdc30a0e32783366a5abeda841bc22757c1797de8681bbe81fbc735eeb1c10",
+        "lib.es2023.full.d.ts": "785921608325fa246b450f05b238f4b3ed659f1099af278ce9ebbc9416a13f1d",
+        "lib.es2023.intl.d.ts": "8e3c06ea092138bf9fa5e874a1fdbc9d54805d074bee1de31b99a11e2fec239d",
+        "lib.es2024.arraybuffer.d.ts": "87dc0f382502f5bbce5129bdc0aea21e19a3abbc19259e0b43ae038a9fc4e326",
+        "lib.es2024.collection.d.ts": "b1cb28af0c891c8c96b2d6b7be76bd394fddcfdb4709a20ba05a7c1605eea0f9",
+        "lib.es2024.d.ts": "8fd575e12870e9944c7e1d62e1f5a73fcf23dd8d3a321f2a2c74c20d022283fe",
+        "lib.es2024.full.d.ts": "b3e9cef4eed59f8a2249ed834ba4aabe9d0d4e9037d4679487fa17dad99004a3",
+        "lib.es2024.object.d.ts": "2fef54945a13095fdb9b84f705f2b5994597640c46afeb2ce78352fab4cb3279",
+        "lib.es2024.promise.d.ts": "ac77cb3e8c6d3565793eb90a8373ee8033146315a3dbead3bde8db5eaf5e5ec6",
+        "lib.es2024.regexp.d.ts": "56e4ed5aab5f5920980066a9409bfaf53e6d21d3f8d020c17e4de584d29600ad",
+        "lib.es2024.sharedmemory.d.ts": "4ece9f17b3866cc077099c73f4983bddbcb1dc7ddb943227f1ec070f529dedd1",
+        "lib.es2024.string.d.ts": "0a6282c8827e4b9a95f4bf4f5c205673ada31b982f50572d27103df8ceb8013c",
+        "lib.es5.d.ts": "c430d44666289dae81f30fa7b2edebf186ecc91a2d4c71266ea6ae76388792e1",
+        "lib.es6.d.ts": "df039a67536fe2acc3affdcbfb645892f842db36fe599e8e652e2f0c640a90d1",
+        "lib.esnext.array.d.ts": "1c9319a09485199c1f7b0498f2988d6d2249793ef67edda49d1e584746be9032",
+        "lib.esnext.collection.d.ts": "e3a2a0cee0f03ffdde24d89660eba2685bfbdeae955a6c67e8c4c9fd28928eeb",
+        "lib.esnext.d.ts": "2ab096661c711e4a81cc464fa1e6feb929a54f5340b46b0a07ac6bbf857471f0",
+        "lib.esnext.decorators.d.ts": "d4b1d2c51d058fc21ec2629fff7a76249dec2e36e12960ea056e3ef89174080f",
+        "lib.esnext.disposable.d.ts": "51ad4c928303041605b4d7ae32e0c1ee387d43a24cd6f1ebf4a2699e1076d4fa",
+        "lib.esnext.error.d.ts": "73f78680d4c08509933daf80947902f6ff41b6230f94dd002ae372620adb0f60",
+        "lib.esnext.float16.d.ts": "196cb558a13d4533a5163286f30b0509ce0210e4b316c56c38d4c0fd2fb38405",
+        "lib.esnext.full.d.ts": "bde31fd423cd93b0eff97197a3f66df7c93e8c0c335cbeb113b7ff1ac35c23f4",
+        "lib.esnext.intl.d.ts": "811c71eee4aa0ac5f7adf713323a5c41b0cf6c4e17367a34fbce379e12bbf0a4",
+        "lib.esnext.iterator.d.ts": "22adec94ef7047a6c9d1af3cb96be87a335908bf9ef386ae9fd50eeb37f44c47",
+        "lib.esnext.promise.d.ts": "60037901da1a425516449b9a20073aa03386cce92f7a1fd902d7602be3a7c2e9",
+        "lib.esnext.sharedmemory.d.ts": "c5239f5c01bcfa9cd32f37c496cf19c61d69d37e48be9de612b541aac915805b",
+        "lib.scripthost.d.ts": "cd034f499c6cdca722b60c04b5b1b78e058487a7085a8e0d6fb50809947ee573",
+        "lib.webworker.asynciterable.d.ts": "ca417afee74054e99d5a8252b35bef26ca6e2942d67d343fce6b42fc9f432993",
+        "lib.webworker.d.ts": "6d08cde2bfb6ff909efbf7cb7d6d55be412cf4b9f48fd0430185986973fa91f5",
+        "lib.webworker.importscripts.d.ts": "80e18897e5884b6723488d4f5652167e7bb5024f946743134ecc4aa4ee731f89",
+        "lib.webworker.iterable.d.ts": "d6c6331ce67c41b2ad5bfb0c8c022403980b479a377a44da8f16b61120418f66"
+      }
+    },
+    "compilerSha256": "474b9499791c49cc8ca29572503b5d14dc619edea66d936286f71d50543ab1fd",
+    "tools": {
+      "audit.cjs": "cf61421f2d2e7ca144535d5e6025d14653ff16f87666668673bf69d6018bd73f",
+      "audit.test.cjs": "5dbead8ac12314cca1b1da23d14a38d2f5bfdfced65d2c798fec17df39de4efd",
+      "defu-audit.cjs": "cf2b2522f997fb54a4993a8c274060d9122e1c15963fe2be2ed4b3f0b304c77b",
+      "defu-audit.test.cjs": "d4792defaf14939ece0ea3fae08c4a7546f3ce8b200e766cd6a18d8df4554e6d",
+      "defu-consumers.cjs": "495a11bdeb9e6a24f3d487b7c86941fba20500203c59e6b8ed95a852c240e2bc",
+      "defu-interchange.cjs": "2a2d9b247b1dadba5dffc9a402a6075ef1043165b16ff50388f4ed9e0606ae51",
+      "defu-interchange.test.cjs": "f99551cba144268bae2d0127fdc96883ac83110549499f7bb47b06ed80977d57",
+      "defu-reproduce.cjs": "67db82087b9332c6c98fd56b17549517aa96cdfeb79cb6dd9d4761866da30528",
+      "defu-runtime.cjs": "b7c9ec246f0b940a8a8d0bb9156dcb9e6c83013576af3bd8b3fc01bf648ed2ae",
+      "smoke.cjs": "67d41a714c902199f3fb1c84d4f8888dcecbec621c8f7e48216b349be29e1d97"
+    },
+    "commands": [
+      {
+        "label": "all-production-roots-native-to-bluets-native-control",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets-native-control",
+        "exit": 0,
+        "stdout": "all-production-roots-native-to-bluets-native-control.stdout",
+        "stdoutSha256": "5fe46ff38a5e0ce6e83ae71ff48978222c59f37c052cdf5ffcc85865afcef07e",
+        "stderr": "all-production-roots-native-to-bluets-native-control.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "61247d4e1510e0bc286b330e04825598d37329fe1936391c6f32055179a5f19c",
+          "_utils.js.map": "d0154862244411699a2900523e122cb578254537391d3b5819acb25c807b9d03",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "756f074b1df8d605b630a0c0519d815806d6d72db8dca789596ef2b21035cfac",
+          "bytes": 12003
+        }
+      },
+      {
+        "label": "all-production-roots-native-to-bluets-donor",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets",
+        "exit": 0,
+        "stdout": "all-production-roots-native-to-bluets-donor.stdout",
+        "stdoutSha256": "3cc7882b524b957e0ccb1eefa99b3f3c91c822a5c6e6e53b166e97fb72e5cc94",
+        "stderr": "all-production-roots-native-to-bluets-donor.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "61247d4e1510e0bc286b330e04825598d37329fe1936391c6f32055179a5f19c",
+          "_utils.js.map": "d0154862244411699a2900523e122cb578254537391d3b5819acb25c807b9d03",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "756f074b1df8d605b630a0c0519d815806d6d72db8dca789596ef2b21035cfac",
+          "bytes": 12003
+        }
+      },
+      {
+        "label": "all-production-roots-native-to-bluets-donor-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets",
+        "exit": 0,
+        "stdout": "all-production-roots-native-to-bluets-donor-runtime.stdout",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderr": "all-production-roots-native-to-bluets-donor-runtime.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "all-production-roots-native-to-bluets-handoff",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets",
+        "exit": 0,
+        "stdout": "all-production-roots-native-to-bluets-handoff.stdout",
+        "stdoutSha256": "80c3e245f4b4eaa69da7c3945f1ce0969bc4e0a0a3b5eb27dcf69ce15587479b",
+        "stderr": "all-production-roots-native-to-bluets-handoff.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "61247d4e1510e0bc286b330e04825598d37329fe1936391c6f32055179a5f19c",
+          "_utils.js.map": "d0154862244411699a2900523e122cb578254537391d3b5819acb25c807b9d03",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "756f074b1df8d605b630a0c0519d815806d6d72db8dca789596ef2b21035cfac",
+          "bytes": 12003
+        }
+      },
+      {
+        "label": "all-production-roots-native-to-bluets-initial-clean",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets-initial-clean",
+        "exit": 0,
+        "stdout": "all-production-roots-native-to-bluets-initial-clean.stdout",
+        "stdoutSha256": "b9a5232526000b0c78d267fca18e3ea48296e95d98c57fdba6ec4791a141b3b1",
+        "stderr": "all-production-roots-native-to-bluets-initial-clean.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "7bd5dbefd393f151860e41f87a91a4b3f256d3ef1846825418cf5d328a22d642",
+          "_utils.js.map": "97426000ebd494d9dd9a5af6bd32560f11f4b4c1ba716ea2b26349428944e2c1",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "327dabab9fe45f7606959a06a59069593fdb94b0f8097c2c9b5ae12d0f4b00aa",
+          "bytes": 978
+        }
+      },
+      {
+        "label": "all-production-roots-native-to-bluets-handoff-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets",
+        "exit": 0,
+        "stdout": "all-production-roots-native-to-bluets-handoff-runtime.stdout",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderr": "all-production-roots-native-to-bluets-handoff-runtime.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "all-production-roots-native-to-bluets-positive",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "consumer.ts",
+          "--noEmit",
+          "--strict",
+          "--target",
+          "ES2022",
+          "--module",
+          "CommonJS",
+          "--moduleResolution",
+          "Node",
+          "--lib",
+          "ES2022",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets",
+        "exit": 0,
+        "stdout": "all-production-roots-native-to-bluets-positive.stdout",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr": "all-production-roots-native-to-bluets-positive.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "all-production-roots-native-to-bluets-negative",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "consumer.ts",
+          "--noEmit",
+          "--strict",
+          "--target",
+          "ES2022",
+          "--module",
+          "CommonJS",
+          "--moduleResolution",
+          "Node",
+          "--lib",
+          "ES2022",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets",
+        "exit": 2,
+        "stdout": "all-production-roots-native-to-bluets-negative.stdout",
+        "stdoutSha256": "02950431164cdbac716c41f786d0ef44a5917f28d4331179ee92b09bb2e6ba01",
+        "stderr": "all-production-roots-native-to-bluets-negative.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "all-production-roots-native-to-bluets-type-before",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "consumer.ts",
+          "--noEmit",
+          "--strict",
+          "--target",
+          "ES2022",
+          "--module",
+          "CommonJS",
+          "--moduleResolution",
+          "Node",
+          "--lib",
+          "ES2022",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets",
+        "exit": 0,
+        "stdout": "all-production-roots-native-to-bluets-type-before.stdout",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr": "all-production-roots-native-to-bluets-type-before.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "all-production-roots-native-to-bluets-warm",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets",
+        "exit": 0,
+        "stdout": "all-production-roots-native-to-bluets-warm.stdout",
+        "stdoutSha256": "80c3e245f4b4eaa69da7c3945f1ce0969bc4e0a0a3b5eb27dcf69ce15587479b",
+        "stderr": "all-production-roots-native-to-bluets-warm.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "61247d4e1510e0bc286b330e04825598d37329fe1936391c6f32055179a5f19c",
+          "_utils.js.map": "d0154862244411699a2900523e122cb578254537391d3b5819acb25c807b9d03",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "756f074b1df8d605b630a0c0519d815806d6d72db8dca789596ef2b21035cfac",
+          "bytes": 12003
+        }
+      },
+      {
+        "label": "all-production-roots-native-to-bluets-implementation",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets",
+        "exit": 0,
+        "stdout": "all-production-roots-native-to-bluets-implementation.stdout",
+        "stdoutSha256": "b9a5232526000b0c78d267fca18e3ea48296e95d98c57fdba6ec4791a141b3b1",
+        "stderr": "all-production-roots-native-to-bluets-implementation.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "4b7bad115c26c650cab90ceed8a74202e81ec5ae31609d7427f9c8851e58a8c0",
+          "_utils.js.map": "fd76fd9f3c7d5efa4eeef8108ff8f210db33a2b38a096e86af1c7b3645388974",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_utils.ts": "7005176bc69017956fefd25391eed392017d9d6539c19891060568ff6b3907cc",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "46b7f781472d6095a802bc4dec95e500f2dc0d42b5cae6f186a03f3c1eed9aea",
+          "bytes": 978
+        }
+      },
+      {
+        "label": "all-production-roots-native-to-bluets-implementation-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets",
+        "exit": 0,
+        "stdout": "all-production-roots-native-to-bluets-implementation-runtime.stdout",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderr": "all-production-roots-native-to-bluets-implementation-runtime.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "all-production-roots-native-to-bluets-type",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets",
+        "exit": 0,
+        "stdout": "all-production-roots-native-to-bluets-type.stdout",
+        "stdoutSha256": "b9a5232526000b0c78d267fca18e3ea48296e95d98c57fdba6ec4791a141b3b1",
+        "stderr": "all-production-roots-native-to-bluets-type.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "4b7bad115c26c650cab90ceed8a74202e81ec5ae31609d7427f9c8851e58a8c0",
+          "_utils.js.map": "fd76fd9f3c7d5efa4eeef8108ff8f210db33a2b38a096e86af1c7b3645388974",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_utils.ts": "7005176bc69017956fefd25391eed392017d9d6539c19891060568ff6b3907cc",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "3befde56fec5600cd158ab14a13466a86c14966cafd63f07bf9a6c0882f6e10b",
+          "bytes": 978
+        }
+      },
+      {
+        "label": "all-production-roots-native-to-bluets-type-after",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "consumer.ts",
+          "--noEmit",
+          "--strict",
+          "--target",
+          "ES2022",
+          "--module",
+          "CommonJS",
+          "--moduleResolution",
+          "Node",
+          "--lib",
+          "ES2022",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets",
+        "exit": 2,
+        "stdout": "all-production-roots-native-to-bluets-type-after.stdout",
+        "stdoutSha256": "b92cbcfe7ccec2289f856e37e6326094399f23f8c804448c983c136c78cd1fc9",
+        "stderr": "all-production-roots-native-to-bluets-type-after.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "all-production-roots-native-to-bluets-dependency-added",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets",
+        "exit": 0,
+        "stdout": "all-production-roots-native-to-bluets-dependency-added.stdout",
+        "stdoutSha256": "b9a5232526000b0c78d267fca18e3ea48296e95d98c57fdba6ec4791a141b3b1",
+        "stderr": "all-production-roots-native-to-bluets-dependency-added.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "8552a4208413f03664507eb7b1ae225466f63f425d4e56555a168176f3c7ca7e",
+          "_audit_dep.js.map": "2b633e26b176c64e3b0349c21f7ead819ef1bf8f372676806c9112e68f9fde55",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "9ee48c6c1f9ad6c7280911831004c8c30e726424a9d85fe89f4d03fae0b427dc",
+          "_utils.js.map": "085dd6822a9e573d84d6f680868d50e29e6661c25fc05042879945b617403d63",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "69c7daf8ce78a2fa78f9304a16a83676728cea21e94ca56cf67e77f54e07482a",
+          "bytes": 1161
+        }
+      },
+      {
+        "label": "all-production-roots-native-to-bluets-added-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets",
+        "exit": 0,
+        "stdout": "all-production-roots-native-to-bluets-added-runtime.stdout",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderr": "all-production-roots-native-to-bluets-added-runtime.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "all-production-roots-native-to-bluets-dependency-missing",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets",
+        "exit": 1,
+        "stdout": "all-production-roots-native-to-bluets-dependency-missing.stdout",
+        "stdoutSha256": "b9a5232526000b0c78d267fca18e3ea48296e95d98c57fdba6ec4791a141b3b1",
+        "stderr": "all-production-roots-native-to-bluets-dependency-missing.stderr",
+        "stderrSha256": "aed32fda7c517901e1da695206e5d1907607e20c2460cbee9fb353318362d731",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "8552a4208413f03664507eb7b1ae225466f63f425d4e56555a168176f3c7ca7e",
+          "_audit_dep.js.map": "2b633e26b176c64e3b0349c21f7ead819ef1bf8f372676806c9112e68f9fde55",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "9ee48c6c1f9ad6c7280911831004c8c30e726424a9d85fe89f4d03fae0b427dc",
+          "_utils.js.map": "085dd6822a9e573d84d6f680868d50e29e6661c25fc05042879945b617403d63",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "c05ba06a861fd16d13c7a2e296c06a4a85279caacc3e7957e911765927e83b81",
+          "bytes": 771
+        }
+      },
+      {
+        "label": "all-production-roots-native-to-bluets-dependency-restored",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets",
+        "exit": 0,
+        "stdout": "all-production-roots-native-to-bluets-dependency-restored.stdout",
+        "stdoutSha256": "b9a5232526000b0c78d267fca18e3ea48296e95d98c57fdba6ec4791a141b3b1",
+        "stderr": "all-production-roots-native-to-bluets-dependency-restored.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "8552a4208413f03664507eb7b1ae225466f63f425d4e56555a168176f3c7ca7e",
+          "_audit_dep.js.map": "2b633e26b176c64e3b0349c21f7ead819ef1bf8f372676806c9112e68f9fde55",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "9ee48c6c1f9ad6c7280911831004c8c30e726424a9d85fe89f4d03fae0b427dc",
+          "_utils.js.map": "085dd6822a9e573d84d6f680868d50e29e6661c25fc05042879945b617403d63",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "69c7daf8ce78a2fa78f9304a16a83676728cea21e94ca56cf67e77f54e07482a",
+          "bytes": 1161
+        }
+      },
+      {
+        "label": "all-production-roots-native-to-bluets-restored-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets",
+        "exit": 0,
+        "stdout": "all-production-roots-native-to-bluets-restored-runtime.stdout",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderr": "all-production-roots-native-to-bluets-restored-runtime.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "all-production-roots-native-to-bluets-edited-clean",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets-edited-clean",
+        "exit": 0,
+        "stdout": "all-production-roots-native-to-bluets-edited-clean.stdout",
+        "stdoutSha256": "b9a5232526000b0c78d267fca18e3ea48296e95d98c57fdba6ec4791a141b3b1",
+        "stderr": "all-production-roots-native-to-bluets-edited-clean.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "8552a4208413f03664507eb7b1ae225466f63f425d4e56555a168176f3c7ca7e",
+          "_audit_dep.js.map": "2b633e26b176c64e3b0349c21f7ead819ef1bf8f372676806c9112e68f9fde55",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "9ee48c6c1f9ad6c7280911831004c8c30e726424a9d85fe89f4d03fae0b427dc",
+          "_utils.js.map": "085dd6822a9e573d84d6f680868d50e29e6661c25fc05042879945b617403d63",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "b138ca3db9cfaf76369f45cdb35405884715e7897e352ee377a051f70be9de32",
+          "bytes": 1161
+        }
+      },
+      {
+        "label": "all-production-roots-native-to-bluets-corrupt-state",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets",
+        "exit": 0,
+        "stdout": "all-production-roots-native-to-bluets-corrupt-state.stdout",
+        "stdoutSha256": "b9a5232526000b0c78d267fca18e3ea48296e95d98c57fdba6ec4791a141b3b1",
+        "stderr": "all-production-roots-native-to-bluets-corrupt-state.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "8552a4208413f03664507eb7b1ae225466f63f425d4e56555a168176f3c7ca7e",
+          "_audit_dep.js.map": "2b633e26b176c64e3b0349c21f7ead819ef1bf8f372676806c9112e68f9fde55",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "9ee48c6c1f9ad6c7280911831004c8c30e726424a9d85fe89f4d03fae0b427dc",
+          "_utils.js.map": "085dd6822a9e573d84d6f680868d50e29e6661c25fc05042879945b617403d63",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "69c7daf8ce78a2fa78f9304a16a83676728cea21e94ca56cf67e77f54e07482a",
+          "bytes": 1161
+        }
+      },
+      {
+        "label": "all-production-roots-native-to-bluets-missing-state",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets",
+        "exit": 0,
+        "stdout": "all-production-roots-native-to-bluets-missing-state.stdout",
+        "stdoutSha256": "b9a5232526000b0c78d267fca18e3ea48296e95d98c57fdba6ec4791a141b3b1",
+        "stderr": "all-production-roots-native-to-bluets-missing-state.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "8552a4208413f03664507eb7b1ae225466f63f425d4e56555a168176f3c7ca7e",
+          "_audit_dep.js.map": "2b633e26b176c64e3b0349c21f7ead819ef1bf8f372676806c9112e68f9fde55",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "9ee48c6c1f9ad6c7280911831004c8c30e726424a9d85fe89f4d03fae0b427dc",
+          "_utils.js.map": "085dd6822a9e573d84d6f680868d50e29e6661c25fc05042879945b617403d63",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "69c7daf8ce78a2fa78f9304a16a83676728cea21e94ca56cf67e77f54e07482a",
+          "bytes": 1161
+        }
+      },
+      {
+        "label": "all-production-roots-native-to-bluets-restored-warm",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-native-to-bluets",
+        "exit": 0,
+        "stdout": "all-production-roots-native-to-bluets-restored-warm.stdout",
+        "stdoutSha256": "80c3e245f4b4eaa69da7c3945f1ce0969bc4e0a0a3b5eb27dcf69ce15587479b",
+        "stderr": "all-production-roots-native-to-bluets-restored-warm.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "8552a4208413f03664507eb7b1ae225466f63f425d4e56555a168176f3c7ca7e",
+          "_audit_dep.js.map": "2b633e26b176c64e3b0349c21f7ead819ef1bf8f372676806c9112e68f9fde55",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "9ee48c6c1f9ad6c7280911831004c8c30e726424a9d85fe89f4d03fae0b427dc",
+          "_utils.js.map": "085dd6822a9e573d84d6f680868d50e29e6661c25fc05042879945b617403d63",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "69c7daf8ce78a2fa78f9304a16a83676728cea21e94ca56cf67e77f54e07482a",
+          "bytes": 1161
+        }
+      },
+      {
+        "label": "all-production-roots-bluets-to-native-native-control",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native-native-control",
+        "exit": 0,
+        "stdout": "all-production-roots-bluets-to-native-native-control.stdout",
+        "stdoutSha256": "525ae01504511cb51089c21188e0a68e42b6cb1223932f8cc4e1a70c5f6630ac",
+        "stderr": "all-production-roots-bluets-to-native-native-control.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "61247d4e1510e0bc286b330e04825598d37329fe1936391c6f32055179a5f19c",
+          "_utils.js.map": "d0154862244411699a2900523e122cb578254537391d3b5819acb25c807b9d03",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "756f074b1df8d605b630a0c0519d815806d6d72db8dca789596ef2b21035cfac",
+          "bytes": 12003
+        }
+      },
+      {
+        "label": "all-production-roots-bluets-to-native-donor",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native",
+        "exit": 0,
+        "stdout": "all-production-roots-bluets-to-native-donor.stdout",
+        "stdoutSha256": "b9a5232526000b0c78d267fca18e3ea48296e95d98c57fdba6ec4791a141b3b1",
+        "stderr": "all-production-roots-bluets-to-native-donor.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "7bd5dbefd393f151860e41f87a91a4b3f256d3ef1846825418cf5d328a22d642",
+          "_utils.js.map": "97426000ebd494d9dd9a5af6bd32560f11f4b4c1ba716ea2b26349428944e2c1",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "e2cfa46179c54c25b227a6f85570f99c18feec5ba88a75158d75b7abcf7280f5",
+          "bytes": 978
+        }
+      },
+      {
+        "label": "all-production-roots-bluets-to-native-donor-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native",
+        "exit": 0,
+        "stdout": "all-production-roots-bluets-to-native-donor-runtime.stdout",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderr": "all-production-roots-bluets-to-native-donor-runtime.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "all-production-roots-bluets-to-native-handoff",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native",
+        "exit": 0,
+        "stdout": "all-production-roots-bluets-to-native-handoff.stdout",
+        "stdoutSha256": "421d7888ea0bda4c8470133fee9c69d628e110ce904ff40ab45414f75c9fda32",
+        "stderr": "all-production-roots-bluets-to-native-handoff.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "61247d4e1510e0bc286b330e04825598d37329fe1936391c6f32055179a5f19c",
+          "_utils.js.map": "d0154862244411699a2900523e122cb578254537391d3b5819acb25c807b9d03",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "756f074b1df8d605b630a0c0519d815806d6d72db8dca789596ef2b21035cfac",
+          "bytes": 12003
+        }
+      },
+      {
+        "label": "all-production-roots-bluets-to-native-initial-clean",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native-initial-clean",
+        "exit": 0,
+        "stdout": "all-production-roots-bluets-to-native-initial-clean.stdout",
+        "stdoutSha256": "25e4698f0765794ae8d777d671964210c2da1965241142b9acae42fc24233742",
+        "stderr": "all-production-roots-bluets-to-native-initial-clean.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "61247d4e1510e0bc286b330e04825598d37329fe1936391c6f32055179a5f19c",
+          "_utils.js.map": "d0154862244411699a2900523e122cb578254537391d3b5819acb25c807b9d03",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "756f074b1df8d605b630a0c0519d815806d6d72db8dca789596ef2b21035cfac",
+          "bytes": 12003
+        }
+      },
+      {
+        "label": "all-production-roots-bluets-to-native-handoff-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native",
+        "exit": 0,
+        "stdout": "all-production-roots-bluets-to-native-handoff-runtime.stdout",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderr": "all-production-roots-bluets-to-native-handoff-runtime.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "all-production-roots-bluets-to-native-positive",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "consumer.ts",
+          "--noEmit",
+          "--strict",
+          "--target",
+          "ES2022",
+          "--module",
+          "CommonJS",
+          "--moduleResolution",
+          "Node",
+          "--lib",
+          "ES2022",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native",
+        "exit": 0,
+        "stdout": "all-production-roots-bluets-to-native-positive.stdout",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr": "all-production-roots-bluets-to-native-positive.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "all-production-roots-bluets-to-native-negative",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "consumer.ts",
+          "--noEmit",
+          "--strict",
+          "--target",
+          "ES2022",
+          "--module",
+          "CommonJS",
+          "--moduleResolution",
+          "Node",
+          "--lib",
+          "ES2022",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native",
+        "exit": 2,
+        "stdout": "all-production-roots-bluets-to-native-negative.stdout",
+        "stdoutSha256": "02950431164cdbac716c41f786d0ef44a5917f28d4331179ee92b09bb2e6ba01",
+        "stderr": "all-production-roots-bluets-to-native-negative.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "all-production-roots-bluets-to-native-type-before",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "consumer.ts",
+          "--noEmit",
+          "--strict",
+          "--target",
+          "ES2022",
+          "--module",
+          "CommonJS",
+          "--moduleResolution",
+          "Node",
+          "--lib",
+          "ES2022",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native",
+        "exit": 0,
+        "stdout": "all-production-roots-bluets-to-native-type-before.stdout",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr": "all-production-roots-bluets-to-native-type-before.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "all-production-roots-bluets-to-native-warm",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native",
+        "exit": 0,
+        "stdout": "all-production-roots-bluets-to-native-warm.stdout",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr": "all-production-roots-bluets-to-native-warm.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "61247d4e1510e0bc286b330e04825598d37329fe1936391c6f32055179a5f19c",
+          "_utils.js.map": "d0154862244411699a2900523e122cb578254537391d3b5819acb25c807b9d03",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "756f074b1df8d605b630a0c0519d815806d6d72db8dca789596ef2b21035cfac",
+          "bytes": 12003
+        }
+      },
+      {
+        "label": "all-production-roots-bluets-to-native-implementation",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native",
+        "exit": 0,
+        "stdout": "all-production-roots-bluets-to-native-implementation.stdout",
+        "stdoutSha256": "99e9dc61ee44cca8b39190a11e5dc6489ccd9f76ff92babffdddb2b8abebea9b",
+        "stderr": "all-production-roots-bluets-to-native-implementation.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "cf51dc4a79ed475582fc6650e444d75c4ffc6b48b0c909f25bbe5c12047f8091",
+          "_utils.js.map": "2d6b9d9baaf70675a7d4ae2026458376349d1be2034a61ca4fa4a18835f8c4de",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_utils.ts": "7005176bc69017956fefd25391eed392017d9d6539c19891060568ff6b3907cc",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "462e1f8347e21e3253ff82017835a1bad379d14a23ee116b67ca669ba1ebdc41",
+          "bytes": 12003
+        }
+      },
+      {
+        "label": "all-production-roots-bluets-to-native-implementation-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native",
+        "exit": 0,
+        "stdout": "all-production-roots-bluets-to-native-implementation-runtime.stdout",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderr": "all-production-roots-bluets-to-native-implementation-runtime.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "all-production-roots-bluets-to-native-type",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native",
+        "exit": 0,
+        "stdout": "all-production-roots-bluets-to-native-type.stdout",
+        "stdoutSha256": "9f736ccf5fa76626441bc50006c95ff3172d6f570dd74301bfb7ce15f5517e7f",
+        "stderr": "all-production-roots-bluets-to-native-type.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "cf51dc4a79ed475582fc6650e444d75c4ffc6b48b0c909f25bbe5c12047f8091",
+          "_utils.js.map": "2d6b9d9baaf70675a7d4ae2026458376349d1be2034a61ca4fa4a18835f8c4de",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_utils.ts": "7005176bc69017956fefd25391eed392017d9d6539c19891060568ff6b3907cc",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "2fbcc5f0004dc0d91d99b099337eeb22dde72db0282dffc53d48348febada426",
+          "bytes": 12003
+        }
+      },
+      {
+        "label": "all-production-roots-bluets-to-native-type-after",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "consumer.ts",
+          "--noEmit",
+          "--strict",
+          "--target",
+          "ES2022",
+          "--module",
+          "CommonJS",
+          "--moduleResolution",
+          "Node",
+          "--lib",
+          "ES2022",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native",
+        "exit": 2,
+        "stdout": "all-production-roots-bluets-to-native-type-after.stdout",
+        "stdoutSha256": "b92cbcfe7ccec2289f856e37e6326094399f23f8c804448c983c136c78cd1fc9",
+        "stderr": "all-production-roots-bluets-to-native-type-after.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "all-production-roots-bluets-to-native-dependency-added",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native",
+        "exit": 0,
+        "stdout": "all-production-roots-bluets-to-native-dependency-added.stdout",
+        "stdoutSha256": "648bd9042dbfdc742fefb7afa5dcc0ca045cb76e604ec7a9d10c60d7204d30d2",
+        "stderr": "all-production-roots-bluets-to-native-dependency-added.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "60df6b614fa84ce8df5d90f2e272af292ca6e41a2ac22a916429c45f453558aa",
+          "_audit_dep.js.map": "f4a7455a9e980328ddf5a56559a2129192e7f9340f63f84446105925083c87dc",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "4cc486cd3c48e17615c552554b8c2319d4f205663055efd1a847d7ff98cfe43c",
+          "_utils.js.map": "972514468e1e01198f7eb592c9601da00cc3eed5433aa5b113c172141f007baf",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "525890a7c76476ee117a41fed86ede965a92f2a511f99f9383751305fdb1df4a",
+          "bytes": 12196
+        }
+      },
+      {
+        "label": "all-production-roots-bluets-to-native-added-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native",
+        "exit": 0,
+        "stdout": "all-production-roots-bluets-to-native-added-runtime.stdout",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderr": "all-production-roots-bluets-to-native-added-runtime.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "all-production-roots-bluets-to-native-dependency-missing",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native",
+        "exit": 1,
+        "stdout": "all-production-roots-bluets-to-native-dependency-missing.stdout",
+        "stdoutSha256": "d83c493bc1a9234493743857a66fc239f9c356c369bb14fc5bbb30ef131646d3",
+        "stderr": "all-production-roots-bluets-to-native-dependency-missing.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "60df6b614fa84ce8df5d90f2e272af292ca6e41a2ac22a916429c45f453558aa",
+          "_audit_dep.js.map": "f4a7455a9e980328ddf5a56559a2129192e7f9340f63f84446105925083c87dc",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "4cc486cd3c48e17615c552554b8c2319d4f205663055efd1a847d7ff98cfe43c",
+          "_utils.js.map": "972514468e1e01198f7eb592c9601da00cc3eed5433aa5b113c172141f007baf",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "552fe39fb08027deabbc4d250004060540e73d149a333bee34bdf103d956cd02",
+          "bytes": 12213
+        }
+      },
+      {
+        "label": "all-production-roots-bluets-to-native-dependency-restored",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native",
+        "exit": 0,
+        "stdout": "all-production-roots-bluets-to-native-dependency-restored.stdout",
+        "stdoutSha256": "67de8ce830c7de6dacfc1f57f7727686fe72c114875d10f4770ecd4c0e4a4f7b",
+        "stderr": "all-production-roots-bluets-to-native-dependency-restored.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "60df6b614fa84ce8df5d90f2e272af292ca6e41a2ac22a916429c45f453558aa",
+          "_audit_dep.js.map": "f4a7455a9e980328ddf5a56559a2129192e7f9340f63f84446105925083c87dc",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "4cc486cd3c48e17615c552554b8c2319d4f205663055efd1a847d7ff98cfe43c",
+          "_utils.js.map": "972514468e1e01198f7eb592c9601da00cc3eed5433aa5b113c172141f007baf",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "525890a7c76476ee117a41fed86ede965a92f2a511f99f9383751305fdb1df4a",
+          "bytes": 12196
+        }
+      },
+      {
+        "label": "all-production-roots-bluets-to-native-restored-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native",
+        "exit": 0,
+        "stdout": "all-production-roots-bluets-to-native-restored-runtime.stdout",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderr": "all-production-roots-bluets-to-native-restored-runtime.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "all-production-roots-bluets-to-native-edited-clean",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native-edited-clean",
+        "exit": 0,
+        "stdout": "all-production-roots-bluets-to-native-edited-clean.stdout",
+        "stdoutSha256": "77164e33f4b9399ddb7bc562c9ccd5bf4760d74a97a2dea687e201cf0632fb5a",
+        "stderr": "all-production-roots-bluets-to-native-edited-clean.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "60df6b614fa84ce8df5d90f2e272af292ca6e41a2ac22a916429c45f453558aa",
+          "_audit_dep.js.map": "f4a7455a9e980328ddf5a56559a2129192e7f9340f63f84446105925083c87dc",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "4cc486cd3c48e17615c552554b8c2319d4f205663055efd1a847d7ff98cfe43c",
+          "_utils.js.map": "972514468e1e01198f7eb592c9601da00cc3eed5433aa5b113c172141f007baf",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "525890a7c76476ee117a41fed86ede965a92f2a511f99f9383751305fdb1df4a",
+          "bytes": 12196
+        }
+      },
+      {
+        "label": "all-production-roots-bluets-to-native-corrupt-state",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native",
+        "exit": 0,
+        "stdout": "all-production-roots-bluets-to-native-corrupt-state.stdout",
+        "stdoutSha256": "45a85bbde3375985ec933ed5195ee676a950c0eed5873777975ace74794882f1",
+        "stderr": "all-production-roots-bluets-to-native-corrupt-state.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "60df6b614fa84ce8df5d90f2e272af292ca6e41a2ac22a916429c45f453558aa",
+          "_audit_dep.js.map": "f4a7455a9e980328ddf5a56559a2129192e7f9340f63f84446105925083c87dc",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "4cc486cd3c48e17615c552554b8c2319d4f205663055efd1a847d7ff98cfe43c",
+          "_utils.js.map": "972514468e1e01198f7eb592c9601da00cc3eed5433aa5b113c172141f007baf",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "525890a7c76476ee117a41fed86ede965a92f2a511f99f9383751305fdb1df4a",
+          "bytes": 12196
+        }
+      },
+      {
+        "label": "all-production-roots-bluets-to-native-missing-state",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native",
+        "exit": 0,
+        "stdout": "all-production-roots-bluets-to-native-missing-state.stdout",
+        "stdoutSha256": "45a85bbde3375985ec933ed5195ee676a950c0eed5873777975ace74794882f1",
+        "stderr": "all-production-roots-bluets-to-native-missing-state.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "60df6b614fa84ce8df5d90f2e272af292ca6e41a2ac22a916429c45f453558aa",
+          "_audit_dep.js.map": "f4a7455a9e980328ddf5a56559a2129192e7f9340f63f84446105925083c87dc",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "4cc486cd3c48e17615c552554b8c2319d4f205663055efd1a847d7ff98cfe43c",
+          "_utils.js.map": "972514468e1e01198f7eb592c9601da00cc3eed5433aa5b113c172141f007baf",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "525890a7c76476ee117a41fed86ede965a92f2a511f99f9383751305fdb1df4a",
+          "bytes": 12196
+        }
+      },
+      {
+        "label": "all-production-roots-bluets-to-native-restored-warm",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native",
+        "exit": 0,
+        "stdout": "all-production-roots-bluets-to-native-restored-warm.stdout",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr": "all-production-roots-bluets-to-native-restored-warm.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "60df6b614fa84ce8df5d90f2e272af292ca6e41a2ac22a916429c45f453558aa",
+          "_audit_dep.js.map": "f4a7455a9e980328ddf5a56559a2129192e7f9340f63f84446105925083c87dc",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "4cc486cd3c48e17615c552554b8c2319d4f205663055efd1a847d7ff98cfe43c",
+          "_utils.js.map": "972514468e1e01198f7eb592c9601da00cc3eed5433aa5b113c172141f007baf",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "525890a7c76476ee117a41fed86ede965a92f2a511f99f9383751305fdb1df4a",
+          "bytes": 12196
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-native-to-bluets-native-control",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets-native-control",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-native-to-bluets-native-control.stdout",
+        "stdoutSha256": "c1e892a86f0d2f1c6ba12836441bf261e6f8b067bf7c944f13dd01c43f2f6582",
+        "stderr": "one-root-with-transitive-imports-native-to-bluets-native-control.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "61247d4e1510e0bc286b330e04825598d37329fe1936391c6f32055179a5f19c",
+          "_utils.js.map": "d0154862244411699a2900523e122cb578254537391d3b5819acb25c807b9d03",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "f2c15f85a0f6f6c0fa8c31c58d836c7e323a3fdb696a02cd142201674788c111",
+          "bytes": 11998
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-native-to-bluets-donor",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-native-to-bluets-donor.stdout",
+        "stdoutSha256": "56ada19df0001ec7cb1d93c2ed41c4bd26178658679277bdc432b15043cb5b80",
+        "stderr": "one-root-with-transitive-imports-native-to-bluets-donor.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "61247d4e1510e0bc286b330e04825598d37329fe1936391c6f32055179a5f19c",
+          "_utils.js.map": "d0154862244411699a2900523e122cb578254537391d3b5819acb25c807b9d03",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "f2c15f85a0f6f6c0fa8c31c58d836c7e323a3fdb696a02cd142201674788c111",
+          "bytes": 11998
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-native-to-bluets-donor-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-native-to-bluets-donor-runtime.stdout",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderr": "one-root-with-transitive-imports-native-to-bluets-donor-runtime.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "one-root-with-transitive-imports-native-to-bluets-handoff",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-native-to-bluets-handoff.stdout",
+        "stdoutSha256": "b9a5232526000b0c78d267fca18e3ea48296e95d98c57fdba6ec4791a141b3b1",
+        "stderr": "one-root-with-transitive-imports-native-to-bluets-handoff.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "7bd5dbefd393f151860e41f87a91a4b3f256d3ef1846825418cf5d328a22d642",
+          "_utils.js.map": "97426000ebd494d9dd9a5af6bd32560f11f4b4c1ba716ea2b26349428944e2c1",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "5164520bc3621efdf84f147317549ea40ad25e7b2e2cf4cb1bf1912068cfdb94",
+          "bytes": 974
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-native-to-bluets-initial-clean",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets-initial-clean",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-native-to-bluets-initial-clean.stdout",
+        "stdoutSha256": "b9a5232526000b0c78d267fca18e3ea48296e95d98c57fdba6ec4791a141b3b1",
+        "stderr": "one-root-with-transitive-imports-native-to-bluets-initial-clean.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "7bd5dbefd393f151860e41f87a91a4b3f256d3ef1846825418cf5d328a22d642",
+          "_utils.js.map": "97426000ebd494d9dd9a5af6bd32560f11f4b4c1ba716ea2b26349428944e2c1",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "0e1c54fc33c8b82883b6b41d12b6859864b447015ac5574fe0c9f1442d4560f6",
+          "bytes": 974
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-native-to-bluets-handoff-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-native-to-bluets-handoff-runtime.stdout",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderr": "one-root-with-transitive-imports-native-to-bluets-handoff-runtime.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "one-root-with-transitive-imports-native-to-bluets-positive",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "consumer.ts",
+          "--noEmit",
+          "--strict",
+          "--target",
+          "ES2022",
+          "--module",
+          "CommonJS",
+          "--moduleResolution",
+          "Node",
+          "--lib",
+          "ES2022",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-native-to-bluets-positive.stdout",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr": "one-root-with-transitive-imports-native-to-bluets-positive.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "one-root-with-transitive-imports-native-to-bluets-negative",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "consumer.ts",
+          "--noEmit",
+          "--strict",
+          "--target",
+          "ES2022",
+          "--module",
+          "CommonJS",
+          "--moduleResolution",
+          "Node",
+          "--lib",
+          "ES2022",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets",
+        "exit": 2,
+        "stdout": "one-root-with-transitive-imports-native-to-bluets-negative.stdout",
+        "stdoutSha256": "02950431164cdbac716c41f786d0ef44a5917f28d4331179ee92b09bb2e6ba01",
+        "stderr": "one-root-with-transitive-imports-native-to-bluets-negative.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "one-root-with-transitive-imports-native-to-bluets-type-before",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "consumer.ts",
+          "--noEmit",
+          "--strict",
+          "--target",
+          "ES2022",
+          "--module",
+          "CommonJS",
+          "--moduleResolution",
+          "Node",
+          "--lib",
+          "ES2022",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-native-to-bluets-type-before.stdout",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr": "one-root-with-transitive-imports-native-to-bluets-type-before.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "one-root-with-transitive-imports-native-to-bluets-warm",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-native-to-bluets-warm.stdout",
+        "stdoutSha256": "80c3e245f4b4eaa69da7c3945f1ce0969bc4e0a0a3b5eb27dcf69ce15587479b",
+        "stderr": "one-root-with-transitive-imports-native-to-bluets-warm.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "7bd5dbefd393f151860e41f87a91a4b3f256d3ef1846825418cf5d328a22d642",
+          "_utils.js.map": "97426000ebd494d9dd9a5af6bd32560f11f4b4c1ba716ea2b26349428944e2c1",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "5164520bc3621efdf84f147317549ea40ad25e7b2e2cf4cb1bf1912068cfdb94",
+          "bytes": 974
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-native-to-bluets-implementation",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-native-to-bluets-implementation.stdout",
+        "stdoutSha256": "b9a5232526000b0c78d267fca18e3ea48296e95d98c57fdba6ec4791a141b3b1",
+        "stderr": "one-root-with-transitive-imports-native-to-bluets-implementation.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "4b7bad115c26c650cab90ceed8a74202e81ec5ae31609d7427f9c8851e58a8c0",
+          "_utils.js.map": "fd76fd9f3c7d5efa4eeef8108ff8f210db33a2b38a096e86af1c7b3645388974",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_utils.ts": "7005176bc69017956fefd25391eed392017d9d6539c19891060568ff6b3907cc",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "5e0d8953161da4a0389225be04b431b11e42495ee1aa560984e051d16de7efd1",
+          "bytes": 974
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-native-to-bluets-implementation-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-native-to-bluets-implementation-runtime.stdout",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderr": "one-root-with-transitive-imports-native-to-bluets-implementation-runtime.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "one-root-with-transitive-imports-native-to-bluets-type",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-native-to-bluets-type.stdout",
+        "stdoutSha256": "b9a5232526000b0c78d267fca18e3ea48296e95d98c57fdba6ec4791a141b3b1",
+        "stderr": "one-root-with-transitive-imports-native-to-bluets-type.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "4b7bad115c26c650cab90ceed8a74202e81ec5ae31609d7427f9c8851e58a8c0",
+          "_utils.js.map": "fd76fd9f3c7d5efa4eeef8108ff8f210db33a2b38a096e86af1c7b3645388974",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_utils.ts": "7005176bc69017956fefd25391eed392017d9d6539c19891060568ff6b3907cc",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "26c0e5a3b1ac3354b537e95ccdc3f6f941e24ea6db7cc20eac47ad18ca96560b",
+          "bytes": 974
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-native-to-bluets-type-after",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "consumer.ts",
+          "--noEmit",
+          "--strict",
+          "--target",
+          "ES2022",
+          "--module",
+          "CommonJS",
+          "--moduleResolution",
+          "Node",
+          "--lib",
+          "ES2022",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets",
+        "exit": 2,
+        "stdout": "one-root-with-transitive-imports-native-to-bluets-type-after.stdout",
+        "stdoutSha256": "b92cbcfe7ccec2289f856e37e6326094399f23f8c804448c983c136c78cd1fc9",
+        "stderr": "one-root-with-transitive-imports-native-to-bluets-type-after.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "one-root-with-transitive-imports-native-to-bluets-dependency-added",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-native-to-bluets-dependency-added.stdout",
+        "stdoutSha256": "b9a5232526000b0c78d267fca18e3ea48296e95d98c57fdba6ec4791a141b3b1",
+        "stderr": "one-root-with-transitive-imports-native-to-bluets-dependency-added.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "8552a4208413f03664507eb7b1ae225466f63f425d4e56555a168176f3c7ca7e",
+          "_audit_dep.js.map": "2b633e26b176c64e3b0349c21f7ead819ef1bf8f372676806c9112e68f9fde55",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "9ee48c6c1f9ad6c7280911831004c8c30e726424a9d85fe89f4d03fae0b427dc",
+          "_utils.js.map": "085dd6822a9e573d84d6f680868d50e29e6661c25fc05042879945b617403d63",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "df0ac31ca3fdee3694a95f639da9437e83c353b3e9218e141a54b456b825f886",
+          "bytes": 1155
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-native-to-bluets-added-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-native-to-bluets-added-runtime.stdout",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderr": "one-root-with-transitive-imports-native-to-bluets-added-runtime.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "one-root-with-transitive-imports-native-to-bluets-dependency-missing",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets",
+        "exit": 1,
+        "stdout": "one-root-with-transitive-imports-native-to-bluets-dependency-missing.stdout",
+        "stdoutSha256": "b9a5232526000b0c78d267fca18e3ea48296e95d98c57fdba6ec4791a141b3b1",
+        "stderr": "one-root-with-transitive-imports-native-to-bluets-dependency-missing.stderr",
+        "stderrSha256": "f0aee0fdcee4f8b818995314adbda6a85c86561a581bb1f99dadb091fd4f160e",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "8552a4208413f03664507eb7b1ae225466f63f425d4e56555a168176f3c7ca7e",
+          "_audit_dep.js.map": "2b633e26b176c64e3b0349c21f7ead819ef1bf8f372676806c9112e68f9fde55",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "9ee48c6c1f9ad6c7280911831004c8c30e726424a9d85fe89f4d03fae0b427dc",
+          "_utils.js.map": "085dd6822a9e573d84d6f680868d50e29e6661c25fc05042879945b617403d63",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "a099496214a321d221754f47b2538d81207f1ff55c398e19b8df84abf8e7a53f",
+          "bytes": 767
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-native-to-bluets-dependency-restored",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-native-to-bluets-dependency-restored.stdout",
+        "stdoutSha256": "b9a5232526000b0c78d267fca18e3ea48296e95d98c57fdba6ec4791a141b3b1",
+        "stderr": "one-root-with-transitive-imports-native-to-bluets-dependency-restored.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "8552a4208413f03664507eb7b1ae225466f63f425d4e56555a168176f3c7ca7e",
+          "_audit_dep.js.map": "2b633e26b176c64e3b0349c21f7ead819ef1bf8f372676806c9112e68f9fde55",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "9ee48c6c1f9ad6c7280911831004c8c30e726424a9d85fe89f4d03fae0b427dc",
+          "_utils.js.map": "085dd6822a9e573d84d6f680868d50e29e6661c25fc05042879945b617403d63",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "df0ac31ca3fdee3694a95f639da9437e83c353b3e9218e141a54b456b825f886",
+          "bytes": 1155
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-native-to-bluets-restored-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-native-to-bluets-restored-runtime.stdout",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderr": "one-root-with-transitive-imports-native-to-bluets-restored-runtime.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "one-root-with-transitive-imports-native-to-bluets-edited-clean",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets-edited-clean",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-native-to-bluets-edited-clean.stdout",
+        "stdoutSha256": "b9a5232526000b0c78d267fca18e3ea48296e95d98c57fdba6ec4791a141b3b1",
+        "stderr": "one-root-with-transitive-imports-native-to-bluets-edited-clean.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "8552a4208413f03664507eb7b1ae225466f63f425d4e56555a168176f3c7ca7e",
+          "_audit_dep.js.map": "2b633e26b176c64e3b0349c21f7ead819ef1bf8f372676806c9112e68f9fde55",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "9ee48c6c1f9ad6c7280911831004c8c30e726424a9d85fe89f4d03fae0b427dc",
+          "_utils.js.map": "085dd6822a9e573d84d6f680868d50e29e6661c25fc05042879945b617403d63",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "7a8f19c52e79a8b069bdec7d69284909cfa48ded3ff67f1bd6d04c4f55e5f6c3",
+          "bytes": 1155
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-native-to-bluets-corrupt-state",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-native-to-bluets-corrupt-state.stdout",
+        "stdoutSha256": "b9a5232526000b0c78d267fca18e3ea48296e95d98c57fdba6ec4791a141b3b1",
+        "stderr": "one-root-with-transitive-imports-native-to-bluets-corrupt-state.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "8552a4208413f03664507eb7b1ae225466f63f425d4e56555a168176f3c7ca7e",
+          "_audit_dep.js.map": "2b633e26b176c64e3b0349c21f7ead819ef1bf8f372676806c9112e68f9fde55",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "9ee48c6c1f9ad6c7280911831004c8c30e726424a9d85fe89f4d03fae0b427dc",
+          "_utils.js.map": "085dd6822a9e573d84d6f680868d50e29e6661c25fc05042879945b617403d63",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "df0ac31ca3fdee3694a95f639da9437e83c353b3e9218e141a54b456b825f886",
+          "bytes": 1155
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-native-to-bluets-missing-state",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-native-to-bluets-missing-state.stdout",
+        "stdoutSha256": "b9a5232526000b0c78d267fca18e3ea48296e95d98c57fdba6ec4791a141b3b1",
+        "stderr": "one-root-with-transitive-imports-native-to-bluets-missing-state.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "8552a4208413f03664507eb7b1ae225466f63f425d4e56555a168176f3c7ca7e",
+          "_audit_dep.js.map": "2b633e26b176c64e3b0349c21f7ead819ef1bf8f372676806c9112e68f9fde55",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "9ee48c6c1f9ad6c7280911831004c8c30e726424a9d85fe89f4d03fae0b427dc",
+          "_utils.js.map": "085dd6822a9e573d84d6f680868d50e29e6661c25fc05042879945b617403d63",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "df0ac31ca3fdee3694a95f639da9437e83c353b3e9218e141a54b456b825f886",
+          "bytes": 1155
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-native-to-bluets-restored-warm",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-native-to-bluets",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-native-to-bluets-restored-warm.stdout",
+        "stdoutSha256": "80c3e245f4b4eaa69da7c3945f1ce0969bc4e0a0a3b5eb27dcf69ce15587479b",
+        "stderr": "one-root-with-transitive-imports-native-to-bluets-restored-warm.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "8552a4208413f03664507eb7b1ae225466f63f425d4e56555a168176f3c7ca7e",
+          "_audit_dep.js.map": "2b633e26b176c64e3b0349c21f7ead819ef1bf8f372676806c9112e68f9fde55",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "9ee48c6c1f9ad6c7280911831004c8c30e726424a9d85fe89f4d03fae0b427dc",
+          "_utils.js.map": "085dd6822a9e573d84d6f680868d50e29e6661c25fc05042879945b617403d63",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "df0ac31ca3fdee3694a95f639da9437e83c353b3e9218e141a54b456b825f886",
+          "bytes": 1155
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-bluets-to-native-native-control",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native-native-control",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-bluets-to-native-native-control.stdout",
+        "stdoutSha256": "ad8d489a303526ef99cc4cedcf076208982b761fa378bf9203351de0a3a8b381",
+        "stderr": "one-root-with-transitive-imports-bluets-to-native-native-control.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "61247d4e1510e0bc286b330e04825598d37329fe1936391c6f32055179a5f19c",
+          "_utils.js.map": "d0154862244411699a2900523e122cb578254537391d3b5819acb25c807b9d03",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "f2c15f85a0f6f6c0fa8c31c58d836c7e323a3fdb696a02cd142201674788c111",
+          "bytes": 11998
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-bluets-to-native-donor",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-bluets-to-native-donor.stdout",
+        "stdoutSha256": "b9a5232526000b0c78d267fca18e3ea48296e95d98c57fdba6ec4791a141b3b1",
+        "stderr": "one-root-with-transitive-imports-bluets-to-native-donor.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "7bd5dbefd393f151860e41f87a91a4b3f256d3ef1846825418cf5d328a22d642",
+          "_utils.js.map": "97426000ebd494d9dd9a5af6bd32560f11f4b4c1ba716ea2b26349428944e2c1",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "719ed9863b0f800e272f7e65d24f2c12a318fdf338043949b354d993c3d49609",
+          "defu.js.map": "ec1aed67cb4cc484243555c3d8fd458defab14be8aab7feb4253625255f41c38",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "53a531370a7a75c247c51fdcb480f4fc8cd8e10ac2709645c589938e574d7840",
+          "types.js.map": "11f8ab76283452d0181299628add0fcf1f3ae32995a65aa379ef08cbe2e965ed"
+        },
+        "inputs": {
+          "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "cd575ecd12d84809af145aa57779c8edb1c514632e7c2bae33095e6e1c9b626c",
+          "bytes": 974
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-bluets-to-native-donor-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-bluets-to-native-donor-runtime.stdout",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderr": "one-root-with-transitive-imports-bluets-to-native-donor-runtime.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "one-root-with-transitive-imports-bluets-to-native-handoff",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-bluets-to-native-handoff.stdout",
+        "stdoutSha256": "ce1be3703afa9b14e2d64697b545f76ecdc57425163efc34780705cadf07a5fd",
+        "stderr": "one-root-with-transitive-imports-bluets-to-native-handoff.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "61247d4e1510e0bc286b330e04825598d37329fe1936391c6f32055179a5f19c",
+          "_utils.js.map": "d0154862244411699a2900523e122cb578254537391d3b5819acb25c807b9d03",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "f2c15f85a0f6f6c0fa8c31c58d836c7e323a3fdb696a02cd142201674788c111",
+          "bytes": 11998
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-bluets-to-native-initial-clean",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native-initial-clean",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-bluets-to-native-initial-clean.stdout",
+        "stdoutSha256": "1441a6f856e47d07d0b147054a89fbee8a4b53e2bff36ee54a842381bde55b5f",
+        "stderr": "one-root-with-transitive-imports-bluets-to-native-initial-clean.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "61247d4e1510e0bc286b330e04825598d37329fe1936391c6f32055179a5f19c",
+          "_utils.js.map": "d0154862244411699a2900523e122cb578254537391d3b5819acb25c807b9d03",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "f2c15f85a0f6f6c0fa8c31c58d836c7e323a3fdb696a02cd142201674788c111",
+          "bytes": 11998
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-bluets-to-native-handoff-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-bluets-to-native-handoff-runtime.stdout",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderr": "one-root-with-transitive-imports-bluets-to-native-handoff-runtime.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "one-root-with-transitive-imports-bluets-to-native-positive",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "consumer.ts",
+          "--noEmit",
+          "--strict",
+          "--target",
+          "ES2022",
+          "--module",
+          "CommonJS",
+          "--moduleResolution",
+          "Node",
+          "--lib",
+          "ES2022",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-bluets-to-native-positive.stdout",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr": "one-root-with-transitive-imports-bluets-to-native-positive.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "one-root-with-transitive-imports-bluets-to-native-negative",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "consumer.ts",
+          "--noEmit",
+          "--strict",
+          "--target",
+          "ES2022",
+          "--module",
+          "CommonJS",
+          "--moduleResolution",
+          "Node",
+          "--lib",
+          "ES2022",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native",
+        "exit": 2,
+        "stdout": "one-root-with-transitive-imports-bluets-to-native-negative.stdout",
+        "stdoutSha256": "02950431164cdbac716c41f786d0ef44a5917f28d4331179ee92b09bb2e6ba01",
+        "stderr": "one-root-with-transitive-imports-bluets-to-native-negative.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "one-root-with-transitive-imports-bluets-to-native-type-before",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "consumer.ts",
+          "--noEmit",
+          "--strict",
+          "--target",
+          "ES2022",
+          "--module",
+          "CommonJS",
+          "--moduleResolution",
+          "Node",
+          "--lib",
+          "ES2022",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-bluets-to-native-type-before.stdout",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr": "one-root-with-transitive-imports-bluets-to-native-type-before.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "one-root-with-transitive-imports-bluets-to-native-warm",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-bluets-to-native-warm.stdout",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr": "one-root-with-transitive-imports-bluets-to-native-warm.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "61247d4e1510e0bc286b330e04825598d37329fe1936391c6f32055179a5f19c",
+          "_utils.js.map": "d0154862244411699a2900523e122cb578254537391d3b5819acb25c807b9d03",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "f2c15f85a0f6f6c0fa8c31c58d836c7e323a3fdb696a02cd142201674788c111",
+          "bytes": 11998
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-bluets-to-native-implementation",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-bluets-to-native-implementation.stdout",
+        "stdoutSha256": "ff6bb8b6a8c3c113e73f64b5e92ff7cae936a047a39d6d06feb9cfa65abd1ca8",
+        "stderr": "one-root-with-transitive-imports-bluets-to-native-implementation.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "cf51dc4a79ed475582fc6650e444d75c4ffc6b48b0c909f25bbe5c12047f8091",
+          "_utils.js.map": "2d6b9d9baaf70675a7d4ae2026458376349d1be2034a61ca4fa4a18835f8c4de",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "47db26e6904aec1f7dce4bef727c3b7df6e62dbf5cd092c66f7be0dde1ebb5cb",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_utils.ts": "7005176bc69017956fefd25391eed392017d9d6539c19891060568ff6b3907cc",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": {
+          "sha256": "2dc47a913940b4bad4d5dffc708edaf225e519f6a54b43d405f6602e691233a9",
+          "bytes": 11998
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-bluets-to-native-implementation-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-bluets-to-native-implementation-runtime.stdout",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderr": "one-root-with-transitive-imports-bluets-to-native-implementation-runtime.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "one-root-with-transitive-imports-bluets-to-native-type",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-bluets-to-native-type.stdout",
+        "stdoutSha256": "48381fc9de87e6d9be796c90f6c71159b3a7cf320d9a5c8a440b09acd2cc9bc5",
+        "stderr": "one-root-with-transitive-imports-bluets-to-native-type.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "cf51dc4a79ed475582fc6650e444d75c4ffc6b48b0c909f25bbe5c12047f8091",
+          "_utils.js.map": "2d6b9d9baaf70675a7d4ae2026458376349d1be2034a61ca4fa4a18835f8c4de",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_utils.ts": "7005176bc69017956fefd25391eed392017d9d6539c19891060568ff6b3907cc",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "e4fd9f1fd70be6d47128ef2fe8a0bef3bb8782cfa49a60160199b1fd1487b210",
+          "bytes": 11998
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-bluets-to-native-type-after",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "consumer.ts",
+          "--noEmit",
+          "--strict",
+          "--target",
+          "ES2022",
+          "--module",
+          "CommonJS",
+          "--moduleResolution",
+          "Node",
+          "--lib",
+          "ES2022",
+          "--pretty",
+          "false"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native",
+        "exit": 2,
+        "stdout": "one-root-with-transitive-imports-bluets-to-native-type-after.stdout",
+        "stdoutSha256": "b92cbcfe7ccec2289f856e37e6326094399f23f8c804448c983c136c78cd1fc9",
+        "stderr": "one-root-with-transitive-imports-bluets-to-native-type-after.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "one-root-with-transitive-imports-bluets-to-native-dependency-added",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-bluets-to-native-dependency-added.stdout",
+        "stdoutSha256": "18bd5c359555f248a13c3c254c945048976d342133ead9a593ecdea87afac954",
+        "stderr": "one-root-with-transitive-imports-bluets-to-native-dependency-added.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "60df6b614fa84ce8df5d90f2e272af292ca6e41a2ac22a916429c45f453558aa",
+          "_audit_dep.js.map": "f4a7455a9e980328ddf5a56559a2129192e7f9340f63f84446105925083c87dc",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "4cc486cd3c48e17615c552554b8c2319d4f205663055efd1a847d7ff98cfe43c",
+          "_utils.js.map": "972514468e1e01198f7eb592c9601da00cc3eed5433aa5b113c172141f007baf",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "5c5675f0353d9008ffe8d4e86ad2f0e78d26245f1a6e1e5c40e7e713e9a3ad98",
+          "bytes": 12191
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-bluets-to-native-added-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-bluets-to-native-added-runtime.stdout",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderr": "one-root-with-transitive-imports-bluets-to-native-added-runtime.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "one-root-with-transitive-imports-bluets-to-native-dependency-missing",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native",
+        "exit": 1,
+        "stdout": "one-root-with-transitive-imports-bluets-to-native-dependency-missing.stdout",
+        "stdoutSha256": "e89f142b4f5d899226c589b40efc10458bf6361060d8a3dbe382de3df69679f6",
+        "stderr": "one-root-with-transitive-imports-bluets-to-native-dependency-missing.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "60df6b614fa84ce8df5d90f2e272af292ca6e41a2ac22a916429c45f453558aa",
+          "_audit_dep.js.map": "f4a7455a9e980328ddf5a56559a2129192e7f9340f63f84446105925083c87dc",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "4cc486cd3c48e17615c552554b8c2319d4f205663055efd1a847d7ff98cfe43c",
+          "_utils.js.map": "972514468e1e01198f7eb592c9601da00cc3eed5433aa5b113c172141f007baf",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "0ca515311efc4c16a6899ed39de3a8f791e13c07a8f37a0406604705f11f6f51",
+          "bytes": 12208
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-bluets-to-native-dependency-restored",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-bluets-to-native-dependency-restored.stdout",
+        "stdoutSha256": "d9cbbfc13f7c44b824b4e336e0a0d63b628cbc9b27931f34b60e237af5b52cc7",
+        "stderr": "one-root-with-transitive-imports-bluets-to-native-dependency-restored.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "60df6b614fa84ce8df5d90f2e272af292ca6e41a2ac22a916429c45f453558aa",
+          "_audit_dep.js.map": "f4a7455a9e980328ddf5a56559a2129192e7f9340f63f84446105925083c87dc",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "4cc486cd3c48e17615c552554b8c2319d4f205663055efd1a847d7ff98cfe43c",
+          "_utils.js.map": "972514468e1e01198f7eb592c9601da00cc3eed5433aa5b113c172141f007baf",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "5c5675f0353d9008ffe8d4e86ad2f0e78d26245f1a6e1e5c40e7e713e9a3ad98",
+          "bytes": 12191
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-bluets-to-native-restored-runtime",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-runtime.cjs",
+          "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native/dist"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-bluets-to-native-restored-runtime.stdout",
+        "stdoutSha256": "6c95b3e3f4646a821a7c8cd1cf8e041ef08e3cbfadac20ed931a3d73dcd6ae78",
+        "stderr": "one-root-with-transitive-imports-bluets-to-native-restored-runtime.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "one-root-with-transitive-imports-bluets-to-native-edited-clean",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native-edited-clean",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-bluets-to-native-edited-clean.stdout",
+        "stdoutSha256": "91e1d87d32dcf9349e4b737c6d65fe98e0a52e98575358bb9d6327f3d17c5819",
+        "stderr": "one-root-with-transitive-imports-bluets-to-native-edited-clean.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "60df6b614fa84ce8df5d90f2e272af292ca6e41a2ac22a916429c45f453558aa",
+          "_audit_dep.js.map": "f4a7455a9e980328ddf5a56559a2129192e7f9340f63f84446105925083c87dc",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "4cc486cd3c48e17615c552554b8c2319d4f205663055efd1a847d7ff98cfe43c",
+          "_utils.js.map": "972514468e1e01198f7eb592c9601da00cc3eed5433aa5b113c172141f007baf",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "5c5675f0353d9008ffe8d4e86ad2f0e78d26245f1a6e1e5c40e7e713e9a3ad98",
+          "bytes": 12191
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-bluets-to-native-corrupt-state",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-bluets-to-native-corrupt-state.stdout",
+        "stdoutSha256": "42bcb8dd7d6edabb2d45148afc1a2c90cd61840bea2d5a70e3e435ac3e5c5802",
+        "stderr": "one-root-with-transitive-imports-bluets-to-native-corrupt-state.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "60df6b614fa84ce8df5d90f2e272af292ca6e41a2ac22a916429c45f453558aa",
+          "_audit_dep.js.map": "f4a7455a9e980328ddf5a56559a2129192e7f9340f63f84446105925083c87dc",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "4cc486cd3c48e17615c552554b8c2319d4f205663055efd1a847d7ff98cfe43c",
+          "_utils.js.map": "972514468e1e01198f7eb592c9601da00cc3eed5433aa5b113c172141f007baf",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "5c5675f0353d9008ffe8d4e86ad2f0e78d26245f1a6e1e5c40e7e713e9a3ad98",
+          "bytes": 12191
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-bluets-to-native-missing-state",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-bluets-to-native-missing-state.stdout",
+        "stdoutSha256": "42bcb8dd7d6edabb2d45148afc1a2c90cd61840bea2d5a70e3e435ac3e5c5802",
+        "stderr": "one-root-with-transitive-imports-bluets-to-native-missing-state.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "60df6b614fa84ce8df5d90f2e272af292ca6e41a2ac22a916429c45f453558aa",
+          "_audit_dep.js.map": "f4a7455a9e980328ddf5a56559a2129192e7f9340f63f84446105925083c87dc",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "4cc486cd3c48e17615c552554b8c2319d4f205663055efd1a847d7ff98cfe43c",
+          "_utils.js.map": "972514468e1e01198f7eb592c9601da00cc3eed5433aa5b113c172141f007baf",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "5c5675f0353d9008ffe8d4e86ad2f0e78d26245f1a6e1e5c40e7e713e9a3ad98",
+          "bytes": 12191
+        }
+      },
+      {
+        "label": "one-root-with-transitive-imports-bluets-to-native-restored-warm",
+        "command": [
+          "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+          "/private/tmp/gm3-oracles/node_modules/typescript/bin/tsc",
+          "-p",
+          "tsconfig.json",
+          "--pretty",
+          "false",
+          "--listEmittedFiles"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native",
+        "exit": 0,
+        "stdout": "one-root-with-transitive-imports-bluets-to-native-restored-warm.stdout",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr": "one-root-with-transitive-imports-bluets-to-native-restored-warm.stderr",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "artifacts": {
+          "_audit_dep.d.ts": "7e26b7671238aed87553a2bb413ee526d38bf150ebd677f9f6149be6abb35933",
+          "_audit_dep.js": "60df6b614fa84ce8df5d90f2e272af292ca6e41a2ac22a916429c45f453558aa",
+          "_audit_dep.js.map": "f4a7455a9e980328ddf5a56559a2129192e7f9340f63f84446105925083c87dc",
+          "_utils.d.ts": "75ec582eb24fda4ccade5fb0662d164445b7655f551b183805bc6725f5b69461",
+          "_utils.js": "4cc486cd3c48e17615c552554b8c2319d4f205663055efd1a847d7ff98cfe43c",
+          "_utils.js.map": "972514468e1e01198f7eb592c9601da00cc3eed5433aa5b113c172141f007baf",
+          "defu.d.ts": "1fb114dc99cdcc100205ade3ce17b2de1350bf0813e93bca4137ba2ca2c579d4",
+          "defu.js": "b60cf8f3bb0b863961c5864c228bc4ec06cbcd25381f728e8beb43447d9b15da",
+          "defu.js.map": "85febbbfa315cb1166f02751b491db1f3328a0256467a37bfeb401c9f3b0f9b9",
+          "types.d.ts": "f601e39ef70b099c70891234677d60fa13c50f29926907f70a76988cb5339b73",
+          "types.js": "b0d2bc4142d0c62d43f996aaeb64f22c4889ac853f8a3765758b505d972d0149",
+          "types.js.map": "a7de897b48fe57bf54d6f84169135ff2e89e2fc95ea0a0a815761cc29a41efee"
+        },
+        "inputs": {
+          "_audit_dep.ts": "85000b3d77f6faa8a7102a59911173af6d7d41bae5ce339498922266d458cc89",
+          "_utils.ts": "6addadf823ad005dbd22cd1f3da9ba11aafcfb6c354942ed4087b5d83418fd14",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "488fbaeb843424be2cb369146c270a2f42bfe93445034b06bfd7360bf85c87a5"
+        },
+        "publicState": {
+          "sha256": "5c5675f0353d9008ffe8d4e86ad2f0e78d26245f1a6e1e5c40e7e713e9a3ad98",
+          "bytes": 12191
+        }
+      },
+      {
+        "label": "external-state-path",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/external-state-path",
+        "exit": 1,
+        "stdout": "external-state-path.stdout",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr": "external-state-path.stderr",
+        "stderrSha256": "3f6dd63f2206de2661b7b49159720f27ddaa359c27a5f62d928389421784f9ef",
+        "artifacts": {},
+        "inputs": {
+          "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": null
+      },
+      {
+        "label": "input-state-collision",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/input-state-collision",
+        "exit": 1,
+        "stdout": "input-state-collision.stdout",
+        "stdoutSha256": "7efb7753b822cea6fb3f7d1ec19b4223ef39d3fd7a94c776dbfe64ccee720b38",
+        "stderr": "input-state-collision.stderr",
+        "stderrSha256": "f711d5979153f41e74e039e6bba97bdcc563bcfce0523da1e5bd228d0fb926f8",
+        "artifacts": {},
+        "inputs": {
+          "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": null
+      },
+      {
+        "label": "output-state-collision",
+        "command": [
+          "/private/tmp/bluets-next-project-20261110/repair-native-cli",
+          "--build",
+          "tsconfig.json",
+          "--verbose",
+          "--diagnostics-json"
+        ],
+        "cwd": "/private/tmp/bluets-next-project-20261110/repair-interchange-final/output-state-collision",
+        "exit": 1,
+        "stdout": "output-state-collision.stdout",
+        "stdoutSha256": "7efb7753b822cea6fb3f7d1ec19b4223ef39d3fd7a94c776dbfe64ccee720b38",
+        "stderr": "output-state-collision.stderr",
+        "stderrSha256": "3dd23b14200b70eccf2eb8785d16322ea35dced08aecc242ffdf7be9aa3b2515",
+        "artifacts": {},
+        "inputs": {
+          "_utils.ts": "8b52fa19c1f1b29a8c26b5d13e979f8042b8a817e4481f9249785805916e15c4",
+          "defu.ts": "e5588855dede7d0c7882193e5147ffd505c4c3c75979013c2463d7d1ac08c660",
+          "types.ts": "2d7e3f13b9e36255b3bad8d626b2c3a54cf754a77de8e505c666a8d0aaa54817"
+        },
+        "publicState": null
+      }
+    ],
+    "workflows": [
+      {
+        "id": "all-production-roots-native-to-bluets",
+        "profile": "all-production-roots",
+        "direction": "native-to-bluets",
+        "checks": {
+          "nativeBaseline": true,
+          "donorAccepted": true,
+          "donorDeclarations": true,
+          "donorRuntime": true,
+          "handoffAccepted": true,
+          "handoffArtifactsAccounted": true,
+          "exactDeclarations": true,
+          "runtime": true,
+          "positiveConsumer": true,
+          "negativeConsumer": true,
+          "typeBeforeAccepted": true,
+          "warmUnchanged": true,
+          "implementationEdit": true,
+          "exportedTypeEdit": true,
+          "typeAfterRejected": true,
+          "dependencyAdded": true,
+          "missingDependencyRejected": true,
+          "missingDependencyArtifactsUnchanged": true,
+          "restoredDependency": true,
+          "editedCleanEqual": true,
+          "corruptStateRecovery": true,
+          "missingStateRecovery": true,
+          "restoredWarmUnchanged": true
+        },
+        "handoff": {
+          "retainedExactDonorArtifacts": true,
+          "equalsExactReceiverClean": false,
+          "receiverTrace": "Projects in this build:\n    * tsconfig.json\nProject tsconfig.json is up to date\n"
+        }
+      },
+      {
+        "id": "all-production-roots-bluets-to-native",
+        "profile": "all-production-roots",
+        "direction": "bluets-to-native",
+        "checks": {
+          "nativeBaseline": true,
+          "donorAccepted": true,
+          "donorDeclarations": true,
+          "donorRuntime": true,
+          "handoffAccepted": true,
+          "handoffArtifactsAccounted": true,
+          "exactDeclarations": true,
+          "runtime": true,
+          "positiveConsumer": true,
+          "negativeConsumer": true,
+          "typeBeforeAccepted": true,
+          "warmUnchanged": true,
+          "implementationEdit": true,
+          "exportedTypeEdit": true,
+          "typeAfterRejected": true,
+          "dependencyAdded": true,
+          "missingDependencyRejected": true,
+          "missingDependencyArtifactsUnchanged": true,
+          "restoredDependency": true,
+          "editedCleanEqual": true,
+          "corruptStateRecovery": true,
+          "missingStateRecovery": true,
+          "restoredWarmUnchanged": true
+        },
+        "handoff": {
+          "retainedExactDonorArtifacts": false,
+          "equalsExactReceiverClean": true,
+          "receiverTrace": "TSFILE: /private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native/dist/_utils.js\nTSFILE: /private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native/dist/_utils.js.map\nTSFILE: /private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native/dist/_utils.d.ts\nTSFILE: /private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native/dist/types.js\nTSFILE: /private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native/dist/types.js.map\nTSFILE: /private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native/dist/types.d.ts\nTSFILE: /private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native/dist/defu.js\nTSFILE: /private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native/dist/defu.js.map\nTSFILE: /private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native/dist/defu.d.ts\nTSFILE: /private/tmp/bluets-next-project-20261110/repair-interchange-final/all-production-roots-bluets-to-native/dist/project.tsbuildinfo\n"
+        }
+      },
+      {
+        "id": "one-root-with-transitive-imports-native-to-bluets",
+        "profile": "one-root-with-transitive-imports",
+        "direction": "native-to-bluets",
+        "checks": {
+          "nativeBaseline": true,
+          "donorAccepted": true,
+          "donorDeclarations": true,
+          "donorRuntime": true,
+          "handoffAccepted": true,
+          "handoffArtifactsAccounted": true,
+          "exactDeclarations": true,
+          "runtime": true,
+          "positiveConsumer": true,
+          "negativeConsumer": true,
+          "typeBeforeAccepted": true,
+          "warmUnchanged": true,
+          "implementationEdit": true,
+          "exportedTypeEdit": true,
+          "typeAfterRejected": true,
+          "dependencyAdded": true,
+          "missingDependencyRejected": true,
+          "missingDependencyArtifactsUnchanged": true,
+          "restoredDependency": true,
+          "editedCleanEqual": true,
+          "corruptStateRecovery": true,
+          "missingStateRecovery": true,
+          "restoredWarmUnchanged": true
+        },
+        "handoff": {
+          "retainedExactDonorArtifacts": false,
+          "equalsExactReceiverClean": true,
+          "receiverTrace": "Projects in this build:\n    * tsconfig.json\nBuilding project: tsconfig.json\n"
+        }
+      },
+      {
+        "id": "one-root-with-transitive-imports-bluets-to-native",
+        "profile": "one-root-with-transitive-imports",
+        "direction": "bluets-to-native",
+        "checks": {
+          "nativeBaseline": true,
+          "donorAccepted": true,
+          "donorDeclarations": true,
+          "donorRuntime": true,
+          "handoffAccepted": true,
+          "handoffArtifactsAccounted": true,
+          "exactDeclarations": true,
+          "runtime": true,
+          "positiveConsumer": true,
+          "negativeConsumer": true,
+          "typeBeforeAccepted": true,
+          "warmUnchanged": true,
+          "implementationEdit": true,
+          "exportedTypeEdit": true,
+          "typeAfterRejected": true,
+          "dependencyAdded": true,
+          "missingDependencyRejected": true,
+          "missingDependencyArtifactsUnchanged": true,
+          "restoredDependency": true,
+          "editedCleanEqual": true,
+          "corruptStateRecovery": true,
+          "missingStateRecovery": true,
+          "restoredWarmUnchanged": true
+        },
+        "handoff": {
+          "retainedExactDonorArtifacts": false,
+          "equalsExactReceiverClean": true,
+          "receiverTrace": "TSFILE: /private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native/dist/_utils.js\nTSFILE: /private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native/dist/_utils.js.map\nTSFILE: /private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native/dist/_utils.d.ts\nTSFILE: /private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native/dist/types.js\nTSFILE: /private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native/dist/types.js.map\nTSFILE: /private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native/dist/types.d.ts\nTSFILE: /private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native/dist/defu.js\nTSFILE: /private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native/dist/defu.js.map\nTSFILE: /private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native/dist/defu.d.ts\nTSFILE: /private/tmp/bluets-next-project-20261110/repair-interchange-final/one-root-with-transitive-imports-bluets-to-native/dist/project.tsbuildinfo\n"
+        }
+      }
+    ],
+    "ownerChecks": {
+      "external-state-path": true,
+      "input-state-collision": true,
+      "output-state-collision": true
+    },
+    "conclusion": "current-policy-verified",
+    "finishedAt": "2026-11-10T02:37:28.758Z"
+  },
+  "implementationExtensionRequired": false,
+  "fullTypeScriptParity": false,
+  "artifact": {
+    "path": "DEFU_INTERCHANGE_EVIDENCE.tar.gz",
+    "bytes": 405784,
+    "sha256": "b5f61f5dbfa8d5c2b78ac85a4e3fbc88dad7b663009a1a3b3de0cf3e331812eb"
+  }
+}

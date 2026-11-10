@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const cp = require('node:child_process');
 const {hash, sourceSnapshot} = require('./audit.cjs');
-function reproduce({compiler, typescript, output}) {
+function reproduce({compiler, typescript, output, sourceTree}) {
   const manifest = require('./defu-reproductions.json');
   const reference = require('./defu-reproductions.native.json');
   compiler = fs.realpathSync(compiler); typescript = fs.realpathSync(typescript);
@@ -15,7 +15,7 @@ function reproduce({compiler, typescript, output}) {
   assert.equal(require(implementation).version, '5.9.3');
   assert.equal(hash(fs.readFileSync(implementation)), reference.implementationSha256);
   output = path.resolve(output); fs.mkdirSync(output);
-  const repo = path.resolve(__dirname, '../..'), source = sourceSnapshot(repo);
+  const repo = path.resolve(__dirname, '../..'), source = sourceSnapshot(repo, sourceTree);
   const report = {schema: 1, recordedAt: new Date().toISOString(), sourceRevision: source.sourceRevision,
     sourceSnapshot: source, compilerSha256: hash(fs.readFileSync(compiler)),
     scope: 'Eight authored project-blocker controls; verdict comparison only, complete raw diagnostics retained. Separate from global compiler case counts.', cases: []};
@@ -49,7 +49,7 @@ function reproduce({compiler, typescript, output}) {
     report.cases.push(row); save();
   }
   assert.equal(hash(fs.readFileSync(compiler)), report.compilerSha256);
-  assert.equal(sourceSnapshot(repo).sourceRevision, report.sourceRevision);
+  assert.equal(sourceSnapshot(repo, sourceTree).sourceRevision, report.sourceRevision);
   report.verdictAgreements = report.cases.filter(row => row.verdictAgreement).length;
   report.conclusion = report.verdictAgreements === report.cases.length ? 'all-verdicts-agree' : 'observed-differences';
   save(); return report;
@@ -57,8 +57,10 @@ function reproduce({compiler, typescript, output}) {
 if (require.main === module) {
   try {
     const args = process.argv.slice(2);
-    assert(args.length === 6 && args[0] === '--compiler' && args[2] === '--typescript' && args[4] === '--output');
-    const report = reproduce({compiler: args[1], typescript: args[3], output: args[5]});
+    assert([6, 8].includes(args.length) && args[0] === '--compiler' && args[2] === '--typescript' && args[4] === '--output' &&
+      (args.length === 6 || args[6] === '--source-tree'),
+      'usage: --compiler <bluetsc> --typescript <tsc> --output <new-directory> [--source-tree <backend-tree-sha>]');
+    const report = reproduce({compiler: args[1], typescript: args[3], output: args[5], sourceTree: args[7]});
     console.log(JSON.stringify({conclusion: report.conclusion, verdictAgreements: report.verdictAgreements, cases: report.cases.length}));
     process.exitCode = report.conclusion === 'observed-differences' ? 2 : 0;
   } catch (error) { console.error(error); process.exitCode = 1; }

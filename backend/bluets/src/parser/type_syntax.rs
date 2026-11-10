@@ -37,7 +37,7 @@ impl Parser {
             "this".to_string()
         } else if self.consume("object") {
             "object".to_string()
-        } else if matches!(self.current().text.as_str(), "from" | "async") {
+        } else if matches!(self.current().text.as_str(), "from" | "async" | "namespace") {
             let name = self.current().text.clone();
             self.bump();
             name
@@ -387,7 +387,12 @@ impl Parser {
                         );
                     }
                 }
-                if rest && !matches!(annotation, Type::Array(_) | Type::Named { .. }) {
+                if rest
+                    && !matches!(
+                        annotation,
+                        Type::Array(_) | Type::Named { .. } | Type::Infer(_)
+                    )
+                {
                     self.unsupported(
                         SourceSpan::new(&self.id, start, end),
                         "tuple rest element must have an array or named tuple annotation",

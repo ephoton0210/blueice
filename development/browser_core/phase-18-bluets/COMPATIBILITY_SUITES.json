@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "typescript": "5.9.3",
-  "source_revision": "backend-tree:3567e7e2748a08e22f3422a47709fb1cd7211ec0",
-  "source_graph_sha256": "13244e77c85baedb8041c0c933ba35643010e6ec61abad64b90b73d0a4c7745d",
+  "source_revision": "backend-tree:afe0fa1eb02894b7d618fc90edaad8af4bee46b4",
+  "source_graph_sha256": "3a8f4751afa59a6f6ba8068f5862b0409e360f1ec0448313300d92d56f89014b",
   "fixture_directories": 3392,
   "diagnostic_programs": 3182,
   "diagnostic_templates": 221,
@@ -393,6 +393,17 @@
         "backend/bluets/tests/fixtures/default_generators/dep-sync.ts": "23ff77c744381292a75e19a358040a371e94a49d",
         "backend/bluets/tests/fixtures/default_generators/main-async.ts": "a9e09ca4682e7ac9af9bb9e0554457837bdeb031",
         "backend/bluets/tests/fixtures/default_generators/main-sync.ts": "b9ff39df34002840c871773e0ac171dfb99c07f4"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/defu_prerequisites.rs",
+      "ignored_tests": [
+        "native_prerequisite_controls_remain_reproducible"
+      ],
+      "inputs": {
+        "backend/bluets/tests/defu_prerequisites.rs": "a01d4eeeee50a7176eac1cc1c22eb6c5210ecb37",
+        "backend/bluets/tests/fixtures/defu_prerequisites/cases.json": "d0acaa949a0ff00d4574b0e3170f2d03c203785b",
+        "backend/bluets/tests/fixtures/defu_prerequisites/reference.json": "e2b07bd0318dab56f8f3c6ed8aa4d4bd11a1cf9f"
       }
     },
     {

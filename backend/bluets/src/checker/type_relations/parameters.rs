@@ -298,9 +298,20 @@ fn expanded(
         let mut annotation = parameter.annotation.clone().unwrap_or(Type::Unknown);
         if parameter.rest {
             let mut visited = HashSet::new();
-            while let Some(value) =
-                instantiate_named(&annotation, aliases, &mut visited, budget, "rest relation")
-            {
+            loop {
+                // A quantified tuple tail denotes the caller's exact tuple,
+                // not its array constraint. Preserve it on both sides while
+                // expanding surrounding aliases and concrete tuple prefixes.
+                if matches!(&annotation, Type::Named { name, .. } if aliases.get(name)
+                    .is_some_and(|definition| definition.kind == TypeDefinitionKind::Parameter))
+                {
+                    break;
+                }
+                let Some(value) =
+                    instantiate_named(&annotation, aliases, &mut visited, budget, "rest relation")
+                else {
+                    break;
+                };
                 annotation = value;
             }
             if let Type::Tuple(values) = annotation {

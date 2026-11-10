@@ -113,6 +113,7 @@ pub(super) fn lower_commonjs(
     let mut used_names: BTreeMap<String, usize> = BTreeMap::new();
     let mut references: BTreeMap<String, Replacement> = BTreeMap::new();
     let mut exported_variables: BTreeSet<String> = BTreeSet::new();
+    let mut default_names = Vec::new();
     let mut chain: Vec<String> = Vec::new();
     let mut export_members = BTreeMap::new();
     let mut hoisted: Vec<(String, SourceSpan)> = Vec::new();
@@ -345,12 +346,7 @@ pub(super) fn lower_commonjs(
                     continue;
                 }
                 chain.push("default".to_string());
-                push(
-                    edits,
-                    export.span.start,
-                    export.span.end,
-                    format!("exports.default = {};", export.name),
-                );
+                default_names.push(export);
             }
             Declaration::TypeExport(_) => es_syntax = true,
             Declaration::Variable(variable) if variable.exported && !variable.declared => {
@@ -600,6 +596,21 @@ pub(super) fn lower_commonjs(
                 wrap_calls: false,
                 anchor_each_token: system_wrapper,
             },
+        );
+    }
+    // Whole-export edits are excluded from the lexical reference scan below.
+    // Resolve their value after every import and exported-variable storage
+    // decision is known, including declarations that appear later in source.
+    for export in default_names {
+        let name = references
+            .get(&export.name)
+            .map(|replacement| replacement.text.as_str())
+            .unwrap_or(&export.name);
+        push(
+            edits,
+            export.span.start,
+            export.span.end,
+            format!("exports.default = {name};"),
         );
     }
 

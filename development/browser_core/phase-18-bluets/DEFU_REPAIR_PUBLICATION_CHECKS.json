@@ -1,0 +1,116 @@
+{
+  "startedAt": "2026-11-10T07:38:54.592272+00:00",
+  "sourceRevision": "backend-tree:afe0fa1eb02894b7d618fc90edaad8af4bee46b4",
+  "checks": [
+    {
+      "label": "account-write",
+      "command": [
+        "python3",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/account_inventory_rows.py",
+        "--write"
+      ],
+      "exit": 0,
+      "log": "post-account-write.log",
+      "sha256": "5508ad789f2770bd8468ded832685f10bd24cc2c68365595818b3a4820263bd1",
+      "outputUtf8": "Accounted 39561 cases: 39555 closed (scoped), 3 open, 3 refused; 23 feature rows and direct profile checked\n"
+    },
+    {
+      "label": "status-write",
+      "command": [
+        "python3",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/check_compatibility_status.py",
+        "--write"
+      ],
+      "exit": 0,
+      "log": "post-status-write.log",
+      "sha256": "15369a59ba9bc0f7c61fd1397430cd9f87b259b5c75842a14789c69200c43ef0",
+      "outputUtf8": "Current BlueTS status matches validated case/suite/measurement evidence in all 4 documents\n"
+    },
+    {
+      "label": "source",
+      "command": [
+        "cargo",
+        "run",
+        "-p",
+        "blueice-bluets",
+        "--example",
+        "compatibility_inventory",
+        "--locked",
+        "--offline",
+        "--",
+        "--check-staged"
+      ],
+      "exit": 0,
+      "log": "post-source.log",
+      "sha256": "aaaf5627a2a580092b4a5c81bfe12c801c28f4a98dbe9ca72dabbf43f796646b",
+      "outputUtf8": "    Finished `dev` profile [unoptimized] target(s) in 0.42s\n     Running `target/debug/examples/compatibility_inventory --check-staged`\nSuite inventory and input graph agree (182 suites)\n"
+    },
+    {
+      "label": "cases",
+      "command": [
+        "cargo",
+        "run",
+        "-p",
+        "blueice-bluets",
+        "--example",
+        "compatibility_inventory",
+        "--locked",
+        "--offline",
+        "--",
+        "--check-cases-staged"
+      ],
+      "exit": 0,
+      "log": "post-cases.log",
+      "sha256": "fe0c4bedbc9f04b511f6650a8d450feaffa76deb90e04077b08385343dade096",
+      "outputUtf8": "    Finished `dev` profile [unoptimized] target(s) in 0.25s\n     Running `target/debug/examples/compatibility_inventory --check-cases-staged`\nCase inventory and measurement agree (39561 cases, 182 suites)\n"
+    },
+    {
+      "label": "account",
+      "command": [
+        "python3",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/account_inventory_rows.py",
+        "--check"
+      ],
+      "exit": 0,
+      "log": "post-account.log",
+      "sha256": "5508ad789f2770bd8468ded832685f10bd24cc2c68365595818b3a4820263bd1",
+      "outputUtf8": "Accounted 39561 cases: 39555 closed (scoped), 3 open, 3 refused; 23 feature rows and direct profile checked\n"
+    },
+    {
+      "label": "status",
+      "command": [
+        "python3",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/check_compatibility_status.py",
+        "--check"
+      ],
+      "exit": 0,
+      "log": "post-status.log",
+      "sha256": "15369a59ba9bc0f7c61fd1397430cd9f87b259b5c75842a14789c69200c43ef0",
+      "outputUtf8": "Current BlueTS status matches validated case/suite/measurement evidence in all 4 documents\n"
+    },
+    {
+      "label": "diff",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit": 0,
+      "log": "post-diff.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "outputUtf8": ""
+    }
+  ],
+  "conclusion": "pass",
+  "finishedAt": "2026-11-10T07:39:22.073480+00:00",
+  "artifactsVerified": 5,
+  "allOldCaseClassificationsPreserved": true,
+  "broaderFeatureRowsOpen": 22,
+  "independentPrecommitCaseComparison": {
+    "previous": 39512,
+    "current": 39561,
+    "added": 49,
+    "allPreviousIdentitiesAndClassificationsUnchanged": true
+  },
+  "scope": "Post-publication source/case/account/status and raw artifact checks; original command outputs retained inline."
+}

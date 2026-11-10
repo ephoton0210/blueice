@@ -86,6 +86,27 @@ impl ModuleChecker<'_> {
         for pair in tokens.windows(2) {
             if pair[0].is("in") && pair[1].kind == TokenKind::Identifier {
                 let value = self.infer_expression(&pair[1..], scope);
+                let parts = match &value {
+                    Type::Union(parts) => parts.as_slice(),
+                    value => std::slice::from_ref(value),
+                };
+                let explicit_unknown = self
+                    .scopes
+                    .as_ref()
+                    .is_some_and(|scopes| scopes.flow_explicit_unknown(&pair[1]));
+                if self.explicit_checking
+                    && (parts.contains(&Type::StrictUnknown)
+                        || explicit_unknown && parts.contains(&Type::Unknown))
+                {
+                    self.typescript_type_error(
+                        &pair[1].span(&self.module.id),
+                        "unknown in-operator subject requires an object guard".into(),
+                        DiagnosticCode::TypeMismatch,
+                        18046,
+                        vec![pair[1].text.clone()],
+                    );
+                    continue;
+                }
                 self.flow_nullish_error(&pair[1], &value);
             }
         }

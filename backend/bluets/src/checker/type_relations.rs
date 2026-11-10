@@ -173,6 +173,16 @@ fn assignable_inner(
     if actual == expected {
         return true;
     }
+    // Explicit any constituents retain their TypeScript union/intersection
+    // meaning even against a rigid parameter. Normalize that existing evidence
+    // before rigidity; unresolved/unknown types never acquire any here.
+    let compound_normalization = match actual {
+        Type::Union(_) | Type::Intersection(_) => more_types::normalized(actual, aliases),
+        _ => None,
+    };
+    if let Some(value @ (Type::Any | Type::Never)) = compound_normalization {
+        return is_assignable(&value, expected, aliases, visited, budget);
+    }
     if let Type::Conditional(value) = actual {
         if (matches!(value.when_true, Type::Never) || matches!(value.when_false, Type::Never))
             && matches!(expected, Type::Named { name, arguments } if arguments.is_empty()
@@ -234,7 +244,8 @@ fn assignable_inner(
     }
     // Every symbolic keyof result is a property key, even before its operand
     // can be instantiated. Concrete, narrower comparisons still use expansion.
-    if matches!(actual, Type::KeyOf(_))
+    if (matches!(actual, Type::KeyOf(_))
+        || matches!(actual, Type::Intersection(parts) if parts.iter().any(|part| matches!(part, Type::KeyOf(_)))))
         && is_assignable(
             &Type::Union(vec![Type::String, Type::Number, Type::Symbol]),
             expected,
