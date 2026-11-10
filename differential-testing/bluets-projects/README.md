@@ -50,7 +50,9 @@ The five authored minimal programs distinguish generic object methods from
 ordinary object methods, generic class methods and a scalar configuration
 control. Their diagnostics and the separate incremental-option comparison are
 retained even when the full project is blocked. These observations are separate
-from the 39,426-case compatibility denominator and from upstream's full test suite.
+from the versioned compatibility denominator and from upstream's full test suite.
 
 The measured blockers and repair gates are recorded in the Phase 18
 [real-project audit](../../development/browser_core/phase-18-bluets/REAL_PROJECT_AUDIT.md).
+
+The [completed mitt follow-up](../../development/browser_core/phase-18-bluets/PROJECT_FOLLOWUP_ACCEPTANCE.md) retains the repaired project result and the earlier blocked audit separately. Broad unmeasured project combinations remain open.

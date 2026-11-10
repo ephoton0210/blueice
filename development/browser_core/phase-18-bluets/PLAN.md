@@ -18827,3 +18827,7 @@ bind the accepted modularization source and actual Native-build CLI hash.
 The next implementation is existing G-T2/G-C1 generic object methods, followed
 by G-M2 explicit incremental configuration, with frozen negative controls and
 the existing complete acceptance gates.
+
+## Post-mitt inventory reconciliation — 2026-11-10
+
+The current inventory descriptions now link the completed G-T1/G-C1/G-M2 project repairs and complete map checks to [their accepted source and measurements](PROJECT_FOLLOWUP_ACCEPTANCE.md). The source symlink inventory contains 26 cases; the frozen Windows matrix still measures 25, and the added Unix-only incremental control is not a Windows pass. This documentation-only update preserves the 39,512 case identities/classifications, all 22 broad open areas and the original runtime evidence. [Recorded consistency checks](INVENTORY_FOLLOWUP_CHECKS.json) are not a new compiler or VM run.

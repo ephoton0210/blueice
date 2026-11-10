@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "recordedAt": "2026-11-10T00:43:46.462610+00:00",
+  "scope": "Documentation-only reconciliation; existing runtime/VM results retain their recorded sources and are not rerun.",
+  "baseCommit": "c9023241a3177906cda438595b4bf47fa0748ce3",
+  "backendTree": "3567e7e2748a08e22f3422a47709fb1cd7211ec0",
+  "commands": [
+    {
+      "command": [
+        "python3",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/account_inventory_rows.py",
+        "--check"
+      ],
+      "exit": 0,
+      "output": "Accounted 39512 cases: 39506 closed (scoped), 3 open, 3 refused; 23 feature rows and direct profile checked\n"
+    },
+    {
+      "command": [
+        "python3",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/check_compatibility_status.py",
+        "--check"
+      ],
+      "exit": 0,
+      "output": "Current BlueTS status matches validated case/suite/measurement evidence in all 4 documents\n"
+    },
+    {
+      "command": [
+        "cargo",
+        "run",
+        "-p",
+        "blueice-bluets",
+        "--example",
+        "compatibility_inventory",
+        "--locked",
+        "--offline",
+        "--",
+        "--check"
+      ],
+      "exit": 0,
+      "output": "    Finished `dev` profile [unoptimized] target(s) in 0.34s\n     Running `target/debug/examples/compatibility_inventory --check`\nSuite inventory and input graph agree (181 suites)\n"
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit": 0,
+      "output": ""
+    }
+  ],
+  "files": {
+    "development/browser_core/phase-18-bluets/COMPATIBILITY_INVENTORY.md": "a43f96f777e2b27db3f10db990e58a9e1979cbd6c68aa609d025b527da791aa6",
+    "development/browser_core/phase-18-bluets/TODO.md": "2e2b6b84e57c88bc3d9eef8a5f61b4af253886b709b1f0e4dcc4f51807749bd4",
+    "development/browser_core/phase-18-bluets/PLAN.md": "2a101e606bcc0007cc5ca769e5732cedda54491696775022becb6585b3582f83",
+    "differential-testing/bluets-projects/README.md": "114841360cc5b219d649108ef695b5d3667ca5c0a988e60159cffdd0a496e8d5"
+  },
+  "conclusion": "pass"
+}

@@ -71,6 +71,8 @@ the immutable source, measurements and remaining scope limits. The original
 
 User-authorized follow-up to the completed finite Phase L packages:
 
+- [x] Reconcile inventory descriptions with the completed mitt follow-up: generic methods, flow, diagnostics, explicit incremental configuration, complete map evidence and the 26-source/25-Windows symlink distinction. Preserve all case identities/counts, broad open rows and original source/platform bindings. [Documentation-only checks](INVENTORY_FOLLOWUP_CHECKS.json).
+
 - [x] Split `page_runtime.rs` by test responsibility and extract the decorator
   class-lowering module. Preserve all 51 original page-runtime test bodies,
   helper identity, emitted output and owner boundaries. Accept only with the
