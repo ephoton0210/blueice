@@ -853,8 +853,7 @@ declared last first, then the next web family, up to a system or generic family 
 measured and drawn by the first member whose range covers it and that has a glyph for it, else the bundled
 fonts; line metrics come from the member covering Latin. Not built: variable-font axes (a variable
 face draws at its default instance), synthetic bold/italic for a missing weight, `local()` sources,
-`@font-face` inside `@media`, canvas `ctx.font`, and font fallback for native form controls (they keep
-the bundled fonts).
+`@font-face` inside `@media`, canvas `ctx.font` (since built, below). Native form controls' text (input value, select label and options) is drawn in the element's page face (`face_of(style)`).
 
 `FontFace` and `document.fonts` really load (2026-11-09): `new FontFace(family, "url(..) [format(..)], url(..)" |
 ArrayBuffer | view, descriptors)` has `status`/`loaded`/`load()`; a URL is fetched as a CORS font request

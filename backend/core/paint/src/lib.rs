@@ -1121,7 +1121,7 @@ fn paint_native_form(
                     font_size_px: style.font_size_px,
                     bold: style.is_bold(),
                     italic: style.is_italic(),
-                    face: None,
+                    face: face_of(style),
                 });
             }
             return;
@@ -1167,7 +1167,7 @@ fn paint_native_form(
         font_size_px: style.font_size_px,
         bold: style.is_bold(),
         italic: style.is_italic(),
-        face: None,
+        face: face_of(style),
     });
 }
 
@@ -1862,6 +1862,25 @@ mod tests {
         let dump = dump_frame(&frame);
         assert!(dump.contains("\"web\" #000000 16.0 normal normal face=7"), "{dump}");
         assert!(dump.contains("\"plain\" #000000 16.0 normal normal\n"), "{dump}");
+    }
+
+    #[test]
+    fn text_in_native_controls_is_drawn_in_the_page_font_too() {
+        let frame = paint_html(
+            "<input value=typed><select><option selected>pick</option></select>",
+            "input, select { -blueice-web-font: 7; }",
+            300.0,
+        );
+        let faces: Vec<(String, Option<u32>)> = frame
+            .commands
+            .iter()
+            .filter_map(|c| match c {
+                PaintCommand::Text { text, face, .. } => Some((text.clone(), *face)),
+                _ => None,
+            })
+            .collect();
+        assert!(faces.iter().any(|(t, _)| t == "typed"), "{faces:?}");
+        assert!(faces.iter().all(|(_, f)| *f == Some(7)), "{faces:?}");
     }
 
     #[test]
