@@ -673,6 +673,8 @@ pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(St
             | "animation"
             | "transform"
             | "translate"
+            | "font-variation-settings"
+            | "font-style"
     ) {
         let trimmed = trim_ws(value_tokens);
         if !matches!(trimmed, [Token::Ident(_)]) || property.ends_with("areas") {

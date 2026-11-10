@@ -5,6 +5,7 @@
 //! Fonts a page brings with it: WOFF2, WOFF and plain sfnt files decode into faces that
 //! text can be measured and drawn with, next to the bundled ones.
 
+use blueice_font::Variation;
 use blueice_font::web::{self, MAX_FONT_BYTES};
 use blueice_font::{
     Glyphs,
@@ -162,7 +163,7 @@ const INTER_VAR: &[u8] = include_bytes!("data/inter-latin-var.woff2");
 
 fn varied(weight: u16) -> blueice_font::web::WebFontId {
     let face = web::register(INTER_VAR).unwrap();
-    web::register_set_weighted(&[(face, vec![], weight)]).unwrap()
+    web::register_set_varied(&[(face, vec![], Variation { wght: Some(weight), ..Variation::NONE })]).unwrap()
 }
 
 #[test]
@@ -185,7 +186,7 @@ fn weights_outside_the_axis_are_clamped_and_equal_sets_are_one() {
     assert_eq!(varied(400), varied(400));
     // A static face has no weights: the same set whatever weight it is asked for.
     let roboto = web::register(WOFF2).unwrap();
-    let at = |w| web::register_set_weighted(&[(roboto, vec![], w)]).unwrap();
+    let at = |w| web::register_set_varied(&[(roboto, vec![], Variation { wght: Some(w), ..Variation::NONE })]).unwrap();
     assert_eq!(at(100), at(900));
 }
 
@@ -200,4 +201,93 @@ fn a_variable_glyphs_metrics_agree_with_the_bitmap() {
     let (asc, desc) = ascent_descent_in(40.0, false, false, Some(id));
     assert!(asc > 25.0 && desc > 5.0);
     assert!(face.has_glyph('g') && !face.has_glyph('\u{4e00}'));
+}
+
+#[test]
+fn bundled_fonts_answer_to_the_names_a_local_source_uses() {
+    let regular = blueice_font::bundled_font_bytes("DejaVu Sans").unwrap();
+    assert_eq!(blueice_font::bundled_font_bytes("dejavusans"), Some(regular));
+    assert_eq!(blueice_font::bundled_font_bytes("DejaVuSans"), Some(regular));
+    let bold = blueice_font::bundled_font_bytes("DejaVu Sans Bold").unwrap();
+    assert_ne!(bold, regular);
+    assert_eq!(blueice_font::bundled_font_bytes("DejaVuSans-Bold"), Some(bold));
+    assert!(blueice_font::bundled_font_bytes("Noto Sans TC").is_some());
+    assert!(blueice_font::bundled_font_bytes("Arial").is_none());
+    assert!(blueice_font::web::register(bold).is_some(), "a bundled file decodes as a page face");
+}
+
+const INTER_OPSZ: &[u8] = include_bytes!("data/inter-latin-opsz.woff2");
+const OPEN_SANS_WDTH: &[u8] = include_bytes!("data/opensans-latin-wdth.woff2");
+
+fn axis_of(file: &[u8], tag: &[u8; 4]) -> Option<web::Axis> {
+    web::axes_of(web::register(file).unwrap()).into_iter().find(|a| &a.tag == tag)
+}
+
+fn axis(tag: &[u8; 4]) -> Option<web::Axis> {
+    axis_of(INTER_VAR, tag)
+}
+
+#[test]
+fn a_variable_faces_axes_are_listed() {
+    let wght = axis(b"wght").expect("Inter has a weight axis");
+    assert!(wght.min <= 100.0 && wght.max >= 900.0 && wght.min <= wght.default && wght.default <= wght.max);
+    assert!(web::axes_of(web::register(WOFF2).unwrap()).is_empty(), "a static face has none");
+}
+
+#[test]
+fn an_optical_size_axis_changes_the_drawing_and_unknown_axes_are_ignored() {
+    let opsz = axis_of(INTER_OPSZ, b"opsz").expect("the fixture has an optical size axis");
+    let face = web::register(INTER_OPSZ).unwrap();
+    let at = |v: Variation| web::register_set_varied(&[(face, vec![], v)]).unwrap();
+    let (small, large) = (
+        at(Variation { opsz: Some((opsz.min * 10.0) as u16), ..Variation::NONE }),
+        at(Variation { opsz: Some((opsz.max * 10.0) as u16), ..Variation::NONE }),
+    );
+    assert_ne!(small, large);
+    let width = |id| measure_text_width_in("Hamburgefonstiv", 32.0, false, false, Some(id));
+    assert!((width(small) - width(large)).abs() > 0.5, "a display cut is drawn with other widths");
+    // The font has no slant or width axis: asking for them changes nothing.
+    let plain = at(Variation::NONE);
+    let skewed = at(Variation { slnt: Some(-100), wdth: Some(750), ital: Some(true), ..Variation::NONE });
+    assert_eq!(plain, skewed, "axes the face does not have are dropped from the request");
+}
+
+#[test]
+fn a_width_axis_condenses_the_text() {
+    let wdth = axis_of(OPEN_SANS_WDTH, b"wdth").expect("the fixture has a width axis");
+    assert!(wdth.min < wdth.default);
+    let face = web::register(OPEN_SANS_WDTH).unwrap();
+    let at = |tenths: u16| {
+        web::register_set_varied(&[(face, vec![], Variation { wdth: Some(tenths), ..Variation::NONE })]).unwrap()
+    };
+    let (narrow, normal) = (at((wdth.min * 10.0) as u16), at((wdth.default * 10.0) as u16));
+    let width = |id| measure_text_width_in("Hamburgefonstiv", 32.0, false, false, Some(id));
+    assert!(width(narrow) < width(normal) * 0.9, "{} vs {}", width(narrow), width(normal));
+    // Below the axis is its minimum.
+    assert_eq!(at(10), narrow);
+}
+
+#[test]
+fn a_request_is_clamped_to_each_axis_and_an_italic_axis_replaces_a_slant() {
+    let axes = [
+        web::Axis { tag: *b"wght", min: 100.0, default: 400.0, max: 900.0 },
+        web::Axis { tag: *b"wdth", min: 75.0, default: 100.0, max: 125.0 },
+        web::Axis { tag: *b"slnt", min: -12.0, default: 0.0, max: 0.0 },
+        web::Axis { tag: *b"opsz", min: 8.0, default: 14.0, max: 144.0 },
+    ];
+    let r = Variation { wght: Some(2000), wdth: Some(500), slnt: Some(-300), opsz: Some(40), ital: Some(true) }.resolve(&axes);
+    assert_eq!(r, Variation { wght: Some(900), wdth: Some(750), slnt: Some(-120), opsz: Some(80), ital: None });
+    let r = Variation { wght: Some(1), wdth: Some(10), slnt: Some(50), opsz: Some(5000), ital: None }.resolve(&axes);
+    assert_eq!(r, Variation { wght: Some(100), wdth: Some(750), slnt: Some(0), opsz: Some(1440), ital: None });
+    // With an `ital` axis the italic switch is used, and the slant is left alone.
+    let with_ital = [web::Axis { tag: *b"ital", min: 0.0, default: 0.0, max: 1.0 }, axes[2]];
+    let r = Variation { slnt: Some(-140), ital: Some(true), ..Variation::NONE }.resolve(&with_ital);
+    assert_eq!(r, Variation { ital: Some(true), ..Variation::NONE });
+    assert_eq!(Variation::NONE.resolve(&axes), Variation::NONE);
+}
+
+#[test]
+fn a_face_can_tell_whether_it_slants_by_axis() {
+    assert!(!web::slants_by_axis(web::register(INTER_VAR).unwrap()));
+    assert!(!web::slants_by_axis(web::register(WOFF2).unwrap()));
 }

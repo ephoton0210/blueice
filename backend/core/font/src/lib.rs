@@ -47,7 +47,7 @@
 
 pub mod web;
 mod variable;
-pub use variable::VarInstance;
+pub use variable::{Axis, VarInstance, Variation};
 
 use std::sync::OnceLock;
 
@@ -97,6 +97,25 @@ fn cjk_fallback() -> &'static fontdue::Font {
 /// [`font_for_char`] when a specific character's glyph coverage
 /// matters (i.e. whenever the text might not be pure Latin/Cyrillic/
 /// Greek, DejaVu Sans's actual coverage).
+/// The file of a font BlueIce itself carries, named the way a stylesheet's `local()` names an
+/// installed font (the full name or the PostScript name, in any case). The engine has no other
+/// fonts to offer a page.
+pub fn bundled_font_bytes(name: &str) -> Option<&'static [u8]> {
+    let key: String = name
+        .chars()
+        .filter(|c| !c.is_whitespace() && !matches!(c, '-' | '_'))
+        .flat_map(char::to_lowercase)
+        .collect();
+    Some(match key.as_str() {
+        "dejavusans" | "dejavusansbook" | "dejavusansregular" => FONT_REGULAR,
+        "dejavusansbold" => FONT_BOLD,
+        "dejavusansoblique" | "dejavusansitalic" => FONT_ITALIC,
+        "dejavusansboldoblique" | "dejavusansbolditalic" => FONT_BOLD_ITALIC,
+        "notosanstc" | "notosanstcregular" => FONT_CJK_FALLBACK,
+        _ => return None,
+    })
+}
+
 pub fn font_for(bold: bool, italic: bool) -> &'static fontdue::Font {
     let set = fonts();
     let (slot, bytes) = match (bold, italic) {

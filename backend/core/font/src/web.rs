@@ -15,7 +15,8 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Mutex;
 
-use crate::variable::{weight_axis, VarInstance};
+pub use crate::variable::Axis;
+use crate::variable::{axes, VarInstance, Variation};
 use crate::Glyphs;
 
 /// The largest font file taken from a page, as sent.
@@ -50,15 +51,15 @@ impl WebFontId {
 struct Member {
     face: u32,
     ranges: Vec<(u32, u32)>,
-    /// The weight a variable face is drawn at (0: its default; always 0 for a static face).
-    wght: u16,
+    /// How a variable face is drawn (already resolved against its axes; none for a static face).
+    var: Variation,
 }
 
-/// A variable face's file and its `wght` axis `(minimum, default, maximum)`.
-type VariableFile = (&'static [u8], (f32, f32, f32));
+/// A variable face's file and its axes.
+type VariableFile = (&'static [u8], &'static [Axis]);
 
-/// One member of a weighted set: a face, the code points it covers, and its weight.
-pub type WeightedMember = (WebFontId, Vec<(u32, u32)>, u16);
+/// One member of a varied set: a face, the code points it covers, and how it is drawn.
+pub type VariedMember = (WebFontId, Vec<(u32, u32)>, Variation);
 
 /// A registered face. A variable one keeps its file, to be drawn at any weight of its axis.
 struct FaceEntry {
@@ -78,7 +79,7 @@ struct Registry {
     by_content: HashMap<u64, u32>,
     faces: Vec<FaceEntry>,
     /// Variable faces at a weight, made when first drawn.
-    instances: HashMap<(u32, u16), &'static VarInstance>,
+    instances: HashMap<(u32, Variation), &'static VarInstance>,
     sets: Vec<Vec<Member>>,
     by_members: HashMap<Vec<Member>, u32>,
     bytes: usize,
@@ -127,8 +128,10 @@ fn register_unguarded(bytes: &[u8]) -> Option<WebFontId> {
     }
     // Parsed outside the lock: it is the slow part.
     let size = sfnt.len();
-    let axis = weight_axis(&sfnt);
-    let variable = axis.map(|axis| (&*Box::leak(sfnt.clone().into_boxed_slice()), axis));
+    let found = axes(&sfnt);
+    let variable = (!found.is_empty()).then(|| {
+        (&*Box::leak(sfnt.clone().into_boxed_slice()), &*Box::leak(found.into_boxed_slice()))
+    });
     let font = fontdue::Font::from_bytes(sfnt, fontdue::FontSettings::default()).ok()?;
     let mut known = registry().lock().ok()?;
     if let Some(&id) = known.by_content.get(&key) {
@@ -139,7 +142,7 @@ fn register_unguarded(bytes: &[u8]) -> Option<WebFontId> {
     }
     let face = u32::try_from(known.faces.len()).ok()?;
     known.faces.push(FaceEntry { font: Box::leak(Box::new(font)), variable });
-    let members = vec![Member { face, ranges: Vec::new(), wght: 0 }];
+    let members = vec![Member { face, ranges: Vec::new(), var: Variation::NONE }];
     let id = u32::try_from(known.sets.len()).ok()?;
     known.sets.push(members.clone());
     known.by_members.insert(members, id);
@@ -156,31 +159,31 @@ const MAX_SETS: usize = 4096;
 /// covers, none meaning all. Equal sets are one set; a set of one member with no range is that
 /// member's own id. `None` for no members or past the bound.
 pub fn register_set(members: &[(WebFontId, Vec<(u32, u32)>)]) -> Option<WebFontId> {
-    let weighted: Vec<_> = members.iter().map(|(id, r)| (*id, r.clone(), 0)).collect();
-    register_set_weighted(&weighted)
+    let varied: Vec<_> = members.iter().map(|(id, r)| (*id, r.clone(), Variation::NONE)).collect();
+    register_set_varied(&varied)
 }
 
-/// [`register_set`] with the weight each member is drawn at when it is a variable face (clamped
-/// to the face's `wght` axis; 0 or a static face: the default).
-pub fn register_set_weighted(members: &[WeightedMember]) -> Option<WebFontId> {
+/// [`register_set`] with how each member is drawn when it is a variable face (clamped to the
+/// face's axes; axes it lacks, and every axis of a static face, are ignored).
+pub fn register_set_varied(members: &[VariedMember]) -> Option<WebFontId> {
     if members.is_empty() {
         return None;
     }
     let mut known = registry().lock().ok()?;
     let mut resolved = Vec::with_capacity(members.len());
-    for (id, ranges, weight) in members {
+    for (id, ranges, asked) in members {
         // A member is a face; if the id given is itself a set, its first member is the face.
         let face = known.sets.get(id.0 as usize)?.first()?.face;
         let mut ranges = ranges.clone();
         ranges.sort_unstable();
-        let wght = match (known.faces.get(face as usize)?.variable, *weight) {
-            (Some((_, (min, _, max))), w) if w > 0 => f32::from(w).clamp(min, max).round() as u16,
-            _ => 0,
+        let var = match known.faces.get(face as usize)?.variable {
+            Some((_, found)) => asked.resolve(found),
+            None => Variation::NONE,
         };
-        resolved.push(Member { face, ranges, wght });
+        resolved.push(Member { face, ranges, var });
     }
     if let [only] = resolved.as_slice() {
-        if only.ranges.is_empty() && only.wght == 0 {
+        if only.ranges.is_empty() && only.var.is_none() {
             return known
                 .by_members
                 .get(&resolved)
@@ -205,14 +208,17 @@ fn glyphs_of(known: &mut Registry, member: &Member) -> Option<Glyphs> {
     let entry = known.faces.get(member.face as usize)?;
     let (font, variable) = (entry.font, entry.variable);
     match variable {
-        Some((data, _)) if member.wght > 0 => {
-            if let Some(&instance) = known.instances.get(&(member.face, member.wght)) {
+        Some((data, _)) if !member.var.is_none() => {
+            if let Some(&instance) = known.instances.get(&(member.face, member.var)) {
                 return Some(Glyphs::Variable(instance));
             }
-            match VarInstance::new(data, f32::from(member.wght)) {
+            if known.instances.len() >= MAX_INSTANCES {
+                return Some(Glyphs::Static(font));
+            }
+            match VarInstance::new(data, &member.var) {
                 Some(instance) => {
                     let instance: &'static VarInstance = Box::leak(Box::new(instance));
-                    known.instances.insert((member.face, member.wght), instance);
+                    known.instances.insert((member.face, member.var), instance);
                     Some(Glyphs::Variable(instance))
                 }
                 None => Some(Glyphs::Static(font)),
@@ -220,6 +226,26 @@ fn glyphs_of(known: &mut Registry, member: &Member) -> Option<Glyphs> {
         }
         _ => Some(Glyphs::Static(font)),
     }
+}
+
+/// Variable faces at one setting, made over the life of the process.
+const MAX_INSTANCES: usize = 512;
+
+/// The driven axes of a registered face (`id` being a face or a set: the first member's face).
+pub fn axes_of(id: WebFontId) -> Vec<Axis> {
+    let Ok(known) = registry().lock() else { return Vec::new() };
+    known
+        .sets
+        .get(id.0 as usize)
+        .and_then(|m| m.first())
+        .and_then(|m| known.faces.get(m.face as usize))
+        .and_then(|f| f.variable)
+        .map_or(Vec::new(), |(_, found)| found.to_vec())
+}
+
+/// Whether the face leans by an axis (`slnt` or `ital`), so a page's italic needs no drawing trick.
+pub fn slants_by_axis(id: WebFontId) -> bool {
+    axes_of(id).iter().any(|a| &a.tag == b"slnt" || &a.tag == b"ital")
 }
 
 /// The face a set is measured by for line metrics: the first member that covers ordinary Latin

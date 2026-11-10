@@ -330,6 +330,14 @@ impl DomState {
                     None => Reply::Null,
                 }
             }
+            // Whether a CSS colour parses: "ok" or null.
+            "colorValid" => {
+                if blueice_css::parse_css_color(&text(0)).is_some() {
+                    Reply::Text("ok".into())
+                } else {
+                    Reply::Null
+                }
+            }
             // The faces the stylesheets declared, one per line: family, weight range, style
             // (0/1), unicode ranges as `lo-hi` hex pairs joined by commas.
             "fontList" => {

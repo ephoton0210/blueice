@@ -35,6 +35,9 @@ struct CatalogFace {
     weight_min: u16,
     weight_max: u16,
     italic: bool,
+    /// The widths it covers, as `font-stretch` percentages in tenths.
+    stretch_min: u16,
+    stretch_max: u16,
     ranges: Vec<(u32, u32)>,
     id: WebFontId,
     /// The font file, kept so the scripts' process can decode its own copy.
@@ -96,34 +99,44 @@ impl FontCatalog {
     /// and weight, those declared last first; the families after the first join the set so they
     /// cover what the earlier ones do not. A system or generic family ends the list (the system
     /// font draws the rest), and a list the page has no face for is `None`.
+    #[cfg(test)]
     pub(crate) fn face_for(&self, families: &str, weight: u16, italic: bool) -> Option<WebFontId> {
         self.face_and_synthesis(families, weight, italic).0
     }
 
-    /// [`face_for`](Self::face_for), and which of bold (1) and italic (2) the page's primary
-    /// face lacks, so the text is made bold or slanted by drawing instead.
+    /// The face and synthesis for a weight and style alone.
+    #[cfg(test)]
     pub(crate) fn face_and_synthesis(
         &self,
         families: &str,
         weight: u16,
         italic: bool,
     ) -> (Option<WebFontId>, u8) {
+        self.face_for_request(families, &FaceRequest::new(weight, italic))
+    }
+
+    /// [`face_for`](Self::face_for), and which of bold (1) and italic (2) the page's primary
+    /// face lacks, so the text is made bold or slanted by drawing instead.
+    pub(crate) fn face_for_request(&self, families: &str, req: &FaceRequest) -> (Option<WebFontId>, u8) {
+        let (weight, italic) = (req.weight, req.slant != Slant::Upright);
         let mut synthesis = None;
-        let mut members: Vec<blueice_font::web::WeightedMember> = Vec::new();
+        let mut members: Vec<blueice_font::web::VariedMember> = Vec::new();
         for family in families.split(',') {
             let family = family.trim();
             if let Some(faces) = self.families.get(family) {
                 if synthesis.is_none() {
                     synthesis = best_of(faces, weight, italic).map(|best| {
-                        u8::from(weight >= 600 && best.weight_max < 600) | (u8::from(italic && !best.italic) << 1)
+                        let leans = blueice_font::web::slants_by_axis(best.id);
+                        u8::from(weight >= 600 && best.weight_max < 600)
+                            | (u8::from(italic && !best.italic && !leans) << 1)
                     });
                 }
-                members.extend(best_faces(faces, weight, italic));
+                members.extend(best_faces(faces, req));
             } else if SYSTEM_FAMILIES.contains(&family) {
                 break;
             }
         }
-        (blueice_font::web::register_set_weighted(&members), synthesis.unwrap_or(0))
+        (blueice_font::web::register_set_varied(&members), synthesis.unwrap_or(0))
     }
 
     /// Adds a face a script supplied. False when it does not decode, or the page already has as
@@ -144,6 +157,8 @@ impl FontCatalog {
                 weight_min: font.weight_min,
                 weight_max: font.weight_max,
                 italic: font.italic,
+                stretch_min: 1000,
+                stretch_max: 1000,
                 ranges: font.ranges.clone(),
                 id,
                 bytes,
@@ -212,16 +227,86 @@ fn best_of(faces: &[CatalogFace], weight: u16, italic: bool) -> Option<&CatalogF
     })
 }
 
-fn best_faces(faces: &[CatalogFace], weight: u16, italic: bool) -> Vec<blueice_font::web::WeightedMember> {
-    let Some(best) = best_of(faces, weight, italic) else {
+fn best_faces(faces: &[CatalogFace], req: &FaceRequest) -> Vec<blueice_font::web::VariedMember> {
+    let Some(best) = best_of(faces, req.weight, req.slant != Slant::Upright) else {
         return Vec::new();
     };
     faces
         .iter()
         .rev()
         .filter(|f| (f.italic, f.weight_min, f.weight_max) == (best.italic, best.weight_min, best.weight_max))
-        .map(|f| (f.id, f.ranges.clone(), weight.clamp(f.weight_min, f.weight_max)))
+        .map(|f| (f.id, f.ranges.clone(), req.variation((f.weight_min, f.weight_max), (f.stretch_min, f.stretch_max))))
         .collect()
+}
+
+/// How a face leans.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum Slant {
+    Upright,
+    /// `font-style: italic`.
+    Italic,
+    /// `font-style: oblique <angle>`: the angle in tenths of a degree (leaning right is positive).
+    Oblique(i16),
+}
+
+/// What a text asks of the face it is drawn in: everything that can move a variable face's axes.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct FaceRequest {
+    pub weight: u16,
+    pub slant: Slant,
+    /// `font-stretch` as a percentage in tenths.
+    pub stretch: u16,
+    /// The font size in tenths of a pixel, for the optical size.
+    pub size: u16,
+    /// Whether the optical size follows the font size (`font-optical-sizing: auto`).
+    pub optical: bool,
+    /// `font-variation-settings`: axis tag and value in thousandths.
+    pub settings: Vec<(String, i64)>,
+}
+
+impl FaceRequest {
+    pub(crate) fn new(weight: u16, italic: bool) -> FaceRequest {
+        FaceRequest {
+            weight,
+            slant: if italic { Slant::Italic } else { Slant::Upright },
+            stretch: 1000,
+            size: 0,
+            optical: false,
+            settings: Vec::new(),
+        }
+    }
+
+    /// The axis values this asks of a face whose `@font-face` declares these weights and widths.
+    pub(crate) fn variation(&self, weights: (u16, u16), stretches: (u16, u16)) -> blueice_font::Variation {
+        let mut v = blueice_font::Variation {
+            wght: Some(self.weight.clamp(weights.0, weights.1)),
+            wdth: Some(self.stretch.clamp(stretches.0, stretches.1)),
+            ..blueice_font::Variation::NONE
+        };
+        match self.slant {
+            Slant::Upright => {}
+            Slant::Italic => {
+                v.ital = Some(true);
+                v.slnt = Some(-140);
+            }
+            Slant::Oblique(angle) => v.slnt = Some(-angle),
+        }
+        if self.optical && self.size > 0 {
+            v.opsz = Some(self.size);
+        }
+        for (tag, value) in &self.settings {
+            let tenths = (*value as f64 / 100.0).round();
+            match tag.as_str() {
+                "wght" => v.wght = Some((*value as f64 / 1000.0).round().clamp(1.0, 1000.0) as u16),
+                "wdth" => v.wdth = Some(tenths.clamp(1.0, 10000.0) as u16),
+                "slnt" => v.slnt = Some(tenths.clamp(-900.0, 900.0) as i16),
+                "opsz" => v.opsz = Some(tenths.clamp(1.0, 10000.0) as u16),
+                "ital" => v.ital = Some(*value >= 500),
+                _ => {}
+            }
+        }
+        v
+    }
 }
 
 /// The stylesheet texts of a page with the address each resolves its `url()`s against.
@@ -302,6 +387,15 @@ fn load(
     redirects: usize,
 ) -> Option<(WebFontId, std::sync::Arc<Vec<u8>>)> {
     for source in face.sources.iter().filter(|s| usable_format(s)) {
+        if let Some(name) = &source.local {
+            // A font the page asks for by its installed name: the ones BlueIce carries.
+            if let Some(bytes) = blueice_font::bundled_font_bytes(name) {
+                if let Some(id) = blueice_font::web::register(bytes) {
+                    return Some((id, std::sync::Arc::new(bytes.to_vec())));
+                }
+            }
+            continue;
+        }
         let url = if source.url.trim().starts_with("data:") {
             source.url.trim().to_string()
         } else {
@@ -367,6 +461,8 @@ pub(crate) fn fetch_linked_fonts(
                 weight_min: face.weight_min,
                 weight_max: face.weight_max,
                 italic: face.italic,
+                stretch_min: face.stretch_min,
+                stretch_max: face.stretch_max,
                 ranges: face.unicode_ranges,
                 id,
                 bytes,
@@ -387,6 +483,59 @@ fn weight_of(style: &blueice_css::ComputedStyle) -> u16 {
     }
 }
 
+/// `font-stretch` as a percentage in tenths.
+fn stretch_of(style: &blueice_css::ComputedStyle) -> u16 {
+    use blueice_css::Value;
+    let percent = match style.other.get("font-stretch") {
+        Some(Value::Percentage(p)) => *p,
+        Some(Value::Keyword(k)) => match k.as_str() {
+            "ultra-condensed" => 50.0,
+            "extra-condensed" => 62.5,
+            "condensed" => 75.0,
+            "semi-condensed" => 87.5,
+            "semi-expanded" => 112.5,
+            "expanded" => 125.0,
+            "extra-expanded" => 150.0,
+            "ultra-expanded" => 200.0,
+            _ => 100.0,
+        },
+        _ => 100.0,
+    };
+    (percent * 10.0).round().clamp(10.0, 10000.0) as u16
+}
+
+/// What a computed style asks of its face.
+fn request_of(style: &blueice_css::ComputedStyle) -> FaceRequest {
+    use blueice_css::{Token, Value};
+    let mut req = FaceRequest::new(weight_of(style), false);
+    req.slant = match (style.font_style.as_deref(), style.other.get("-blueice-oblique-angle")) {
+        (Some("oblique"), Some(Value::Number(a))) => Slant::Oblique((a * 10.0).round().clamp(-900.0, 900.0) as i16),
+        (Some("oblique"), _) => Slant::Oblique(140),
+        (Some("italic"), _) => Slant::Italic,
+        _ => Slant::Upright,
+    };
+    req.stretch = stretch_of(style);
+    req.size = (style.font_size_px * 10.0).round().clamp(1.0, 10000.0) as u16;
+    req.optical = !matches!(style.other.get("font-optical-sizing"), Some(Value::Keyword(k)) if k == "none");
+    if let Some(Value::Unparsed(tokens)) = style.other.get("font-variation-settings") {
+        let mut tag: Option<String> = None;
+        for token in tokens {
+            match (token, &tag) {
+                (Token::QuotedString(t), None) if t.len() == 4 => tag = Some(t.clone()),
+                (Token::Number(n), Some(t)) => {
+                    req.settings.push((t.clone(), (n * 1000.0).round() as i64));
+                    tag = None;
+                }
+                (Token::Whitespace, _) => {}
+                (Token::Comma, _) => tag = None,
+                _ => {}
+            }
+        }
+        req.settings.truncate(16);
+    }
+    req
+}
+
 /// Sets, on every styled element whose `font-family` the page has a face for, the face its text
 /// is drawn with (`-blueice-web-font`: layout and paint read it), and clears it where there is
 /// none. The elements are those of `styles`; `catalog` is the page's.
@@ -398,17 +547,17 @@ pub(crate) fn assign_faces(
     if catalog.is_empty() {
         return;
     }
-    let mut chosen: HashMap<(String, u16, bool), (Option<WebFontId>, u8)> = HashMap::new();
+    let mut chosen: HashMap<(String, FaceRequest), (Option<WebFontId>, u8)> = HashMap::new();
     for style in styles.values_mut() {
         let Some(families) = style.font_family.as_deref() else {
             style.other.remove("-blueice-web-font");
             style.other.remove("-blueice-web-synth");
             continue;
         };
-        let key = (families.to_string(), weight_of(style), style.is_italic());
+        let key = (families.to_string(), request_of(style));
         let (face, synthesis) = *chosen
             .entry(key.clone())
-            .or_insert_with(|| catalog.face_and_synthesis(&key.0, key.1, key.2));
+            .or_insert_with(|| catalog.face_for_request(&key.0, &key.1));
         match face {
             Some(id) => {
                 style
@@ -495,6 +644,22 @@ mod tests {
         assert_eq!(c.face_for("system-ui,web test", 400, false), None);
         assert_eq!(c.face_for("sans-serif", 400, false), None);
         assert_eq!(c.face_for("nope", 400, false), None);
+    }
+
+    #[test]
+    fn a_local_source_is_a_bundled_font_by_name_and_other_names_fall_through() {
+        let html = format!(
+            "<style>@font-face {{ font-family: Loc; src: local('Arial'), local('DejaVu Sans Bold'); }}\
+             @font-face {{ font-family: Pick; src: local('Missing Font'), url({}) format('woff2'); }}\
+             @font-face {{ font-family: None; src: local('Missing Font'); }}</style>",
+            data_url(REGULAR, "font/woff2")
+        );
+        let c = catalog(&html);
+        let loc = c.face_for("loc", 400, false).expect("local() of a bundled font loads");
+        let bold = blueice_font::web::register(blueice_font::bundled_font_bytes("DejaVuSans-Bold").unwrap()).unwrap();
+        assert_eq!(font_of(loc), font_of(bold), "the same file");
+        assert!(c.face_for("pick", 400, false).is_some(), "an unknown local() name falls to the url");
+        assert!(c.face_for("none", 400, false).is_none(), "nothing to load");
     }
 
     #[test]
@@ -902,6 +1067,116 @@ mod tests {
         assert!(log.contains("EV error 1"), "a face that fails fires loadingerror: {log}");
         let at = |needle: &str| log.find(needle).unwrap_or(usize::MAX);
         assert!(at("EV loading") < at("EV done") && at("EV done") < at("READY1"), "{log}");
+    }
+
+    const OPEN_SANS: &[u8] = include_bytes!("../../font/tests/data/opensans-latin-wdth.woff2");
+    const INTER_OPSZ: &[u8] = include_bytes!("../../font/tests/data/inter-latin-opsz.woff2");
+
+    fn run_width(css_face: &str, family_css: &str, file: &[u8]) -> f64 {
+        let html = format!(
+            "<style>@font-face {{ font-family: V; src: url({}) format('woff2'); font-weight: 100 900; {css_face} }}\
+             body {{ margin: 0 }} p {{ margin: 0; font-family: V; {family_css} }}</style><body><p>Hamburgefonstiv<span>|</span></p></body>",
+            data_url(file, "font/woff2")
+        );
+        // The second run starts where the first ends.
+        runs(&page_with_fonts(&html))[1].2
+    }
+
+    #[test]
+    fn font_stretch_moves_a_width_axis_within_the_range_the_face_declares() {
+        let wide = run_width("font-stretch: 75% 100%", "font-stretch: 100%", OPEN_SANS);
+        let narrow = run_width("font-stretch: 75% 100%", "font-stretch: 75%", OPEN_SANS);
+        assert!(narrow < wide * 0.9, "{narrow} vs {wide}");
+        let keyword = run_width("font-stretch: 75% 100%", "font-stretch: condensed", OPEN_SANS);
+        assert!((keyword - narrow).abs() < 0.01, "condensed is 75%");
+        let undeclared = run_width("", "font-stretch: 75%", OPEN_SANS);
+        assert!((undeclared - wide).abs() < 0.01, "a face that declares no range stays at its normal width");
+        let clamped = run_width("font-stretch: 75% 100%", "font-stretch: 50%", OPEN_SANS);
+        assert!((clamped - narrow).abs() < 0.01, "past the declared range is its end");
+    }
+
+    #[test]
+    fn font_variation_settings_reach_the_axes_and_win_over_the_properties() {
+        let base = run_width("font-stretch: 75% 100%", "", OPEN_SANS);
+        let set = run_width("font-stretch: 75% 100%", "font-variation-settings: 'wdth' 75", OPEN_SANS);
+        assert!(set < base * 0.9, "{set} vs {base}");
+        let beats = run_width("font-stretch: 75% 100%", "font-stretch: 100%; font-variation-settings: \"wdth\" 75", OPEN_SANS);
+        assert!((beats - set).abs() < 0.01);
+        let weight = run_width("", "font-variation-settings: \"wght\" 900", OPEN_SANS);
+        let regular = run_width("", "", OPEN_SANS);
+        assert!(weight > regular, "the weight axis too: {weight} vs {regular}");
+        let unknown = run_width("", "font-variation-settings: \"ZZZZ\" 5", OPEN_SANS);
+        assert!((unknown - regular).abs() < 0.01, "an axis the face lacks does nothing");
+    }
+
+    #[test]
+    fn optical_size_follows_the_font_size_unless_it_is_switched_off() {
+        let at = |css: &str| run_width("", css, INTER_OPSZ);
+        // Same text at two sizes: the ratio of widths differs from the ratio of sizes only
+        // because the face is drawn with another optical size.
+        let (small, large) = (at("font-size: 14px"), at("font-size: 28px"));
+        let (small_off, large_off) = (
+            at("font-size: 14px; font-optical-sizing: none"),
+            at("font-size: 28px; font-optical-sizing: none"),
+        );
+        assert!((large_off / small_off - 2.0).abs() < 0.01, "off: widths scale with size");
+        assert!((large / small - 2.0).abs() > 0.01, "on: a large size takes the display cut");
+    }
+
+    #[test]
+    fn a_text_request_becomes_the_variation_the_face_is_drawn_with() {
+        use blueice_font::Variation;
+        let mut req = FaceRequest::new(650, false);
+        req.stretch = 875;
+        req.size = 160;
+        req.optical = true;
+        let v = req.variation((600, 700), (750, 1000));
+        assert_eq!(v, Variation { wght: Some(650), wdth: Some(875), opsz: Some(160), ..Variation::NONE });
+        req.optical = false;
+        req.stretch = 1250;
+        assert_eq!(req.variation((600, 700), (750, 1000)).wdth, Some(1000), "clamped to the declared range");
+        assert_eq!(req.variation((600, 700), (750, 1000)).opsz, None);
+        // Slants: an angle leans the other way on the axis; the italic keyword also asks the
+        // italic switch, with the usual 14 degrees if the face only slants.
+        req.slant = Slant::Oblique(100);
+        let v = req.variation((400, 400), (1000, 1000));
+        assert_eq!((v.slnt, v.ital), (Some(-100), None));
+        req.slant = Slant::Italic;
+        let v = req.variation((400, 400), (1000, 1000));
+        assert_eq!((v.slnt, v.ital), (Some(-140), Some(true)));
+        req.slant = Slant::Upright;
+        let v = req.variation((400, 400), (1000, 1000));
+        assert_eq!((v.slnt, v.ital), (None, None));
+        // The page's settings come last and are not held to the declared ranges.
+        req.settings = vec![("wdth".into(), 60_000), ("slnt".into(), -5_000), ("ital".into(), 1_000), ("wght".into(), 905_400)];
+        let v = req.variation((400, 400), (1000, 1000));
+        assert_eq!((v.wdth, v.slnt, v.ital, v.wght), (Some(600), Some(-50), Some(true), Some(905)));
+    }
+
+    #[test]
+    fn a_script_paints_canvas_text_with_gradients_and_outlines() {
+        let html = "<body><canvas id=c width=120 height=60></canvas><script>\
+             const g = document.getElementById('c').getContext('2d');\
+             const grad = g.createLinearGradient(0, 0, 120, 0);\
+             grad.addColorStop(0, '#ff0000'); grad.addColorStop(1, '#0000ff');\
+             let bad = ''; try { grad.addColorStop(2, 'red'); } catch (e) { bad += e.name + ' '; }\
+             try { grad.addColorStop(0.5, 'not a colour'); } catch (e) { bad += e.name; }\
+             g.font = '40px sans-serif'; g.fillStyle = grad; g.fillText('HHHH', 0, 45);\
+             const row = g.getImageData(0, 0, 120, 60).data;\
+             let first = null, last = null;\
+             for (let x = 0; x < 120; x++) for (let y = 0; y < 60; y++) { const i = (y * 120 + x) * 4;\
+               if (row[i + 3] === 255) { if (!first) first = [row[i], row[i + 2]]; last = [row[i], row[i + 2]]; } }\
+             console.log('GRAD ' + (first[0] > first[1]) + ' ' + (last[1] > last[0]) + ' ' + bad + ' ' + (g.fillStyle === grad));\
+             g.clearRect(0, 0, 120, 60); g.strokeStyle = '#00ff00'; g.lineWidth = 3; g.strokeText('O', 10, 50);\
+             const d = g.getImageData(0, 0, 120, 60).data; let green = 0;\
+             for (let i = 0; i < d.length; i += 4) if (d[i + 1] === 255 && d[i + 3] === 255) green++;\
+             console.log('STROKE ' + (green > 20));\
+             </script></body>";
+        let mut page = script_page(html);
+        run_scripts(&mut page);
+        let log = page.web_console().join("\n");
+        assert!(log.contains("GRAD true true IndexSizeError SyntaxError true"), "{log}");
+        assert!(log.contains("STROKE true"), "{log}");
     }
 
     #[test]

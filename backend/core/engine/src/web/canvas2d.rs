@@ -80,6 +80,116 @@ fn over(dst: &mut [u8], src: [u8; 4], alpha: f64) {
     dst[3] = (out_a * 255.0).round().clamp(0.0, 255.0) as u8;
 }
 
+/// One glyph's coverage bitmap and where its top-left lies in user space.
+struct Placed {
+    x: f64,
+    y: f64,
+    w: usize,
+    h: usize,
+    coverage: Vec<u8>,
+}
+
+/// The widest half-line `strokeText` draws, so a huge `lineWidth` stays cheap.
+const MAX_STROKE_RADIUS: f64 = 16.0;
+
+/// What a fill or stroke paints with: a colour or a gradient, in the context's user space.
+enum Paint {
+    Solid([u8; 4]),
+    Linear { p: [f64; 4], stops: Vec<(f64, [u8; 4])> },
+    Radial { p: [f64; 6], stops: Vec<(f64, [u8; 4])> },
+}
+
+impl Paint {
+    /// A CSS colour, or `grad:` and the JSON a script's gradient object describes itself with.
+    fn parse(text: &str) -> Paint {
+        let Some(json) = text.strip_prefix("grad:") else {
+            return Paint::Solid(
+                blueice_css::parse_css_color(text).map_or([0, 0, 0, 255], |(r, g, b, a)| [r, g, b, a]),
+            );
+        };
+        let transparent = Paint::Solid([0, 0, 0, 0]);
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(json) else { return transparent };
+        let nums: Vec<f64> =
+            v["p"].as_array().map_or(Vec::new(), |a| a.iter().filter_map(|n| n.as_f64()).collect());
+        let mut stops: Vec<(f64, [u8; 4])> = v["s"]
+            .as_array()
+            .map_or(Vec::new(), |a| a.iter().filter_map(Self::stop).collect());
+        stops.sort_by(|a, b| a.0.total_cmp(&b.0));
+        match (v["t"].as_str(), nums.len()) {
+            (Some("linear"), 4) => Paint::Linear { p: [nums[0], nums[1], nums[2], nums[3]], stops },
+            (Some("radial"), 6) => {
+                Paint::Radial { p: [nums[0], nums[1], nums[2], nums[3], nums[4], nums[5]], stops }
+            }
+            _ => transparent,
+        }
+    }
+
+    fn stop(v: &serde_json::Value) -> Option<(f64, [u8; 4])> {
+        let pair = v.as_array()?;
+        let offset = pair.first()?.as_f64()?.clamp(0.0, 1.0);
+        let (r, g, b, a) = blueice_css::parse_css_color(pair.get(1)?.as_str()?)?;
+        Some((offset, [r, g, b, a]))
+    }
+
+    fn ramp(stops: &[(f64, [u8; 4])], t: f64) -> [u8; 4] {
+        let (Some(first), Some(last)) = (stops.first(), stops.last()) else { return [0, 0, 0, 0] };
+        if t <= first.0 {
+            return first.1;
+        }
+        if t >= last.0 {
+            return last.1;
+        }
+        for pair in stops.windows(2) {
+            let ((t0, c0), (t1, c1)) = (pair[0], pair[1]);
+            if t >= t0 && t <= t1 {
+                let k = if t1 > t0 { (t - t0) / (t1 - t0) } else { 1.0 };
+                let mix = |i: usize| (f64::from(c0[i]) + (f64::from(c1[i]) - f64::from(c0[i])) * k).round() as u8;
+                return [mix(0), mix(1), mix(2), mix(3)];
+            }
+        }
+        last.1
+    }
+
+    /// The colour at the user-space point `(x, y)`.
+    fn at(&self, x: f64, y: f64) -> [u8; 4] {
+        match self {
+            Paint::Solid(c) => *c,
+            Paint::Linear { p, stops } => {
+                let (dx, dy) = (p[2] - p[0], p[3] - p[1]);
+                let len2 = dx * dx + dy * dy;
+                if len2 == 0.0 {
+                    return [0, 0, 0, 0];
+                }
+                Self::ramp(stops, ((x - p[0]) * dx + (y - p[1]) * dy) / len2)
+            }
+            Paint::Radial { p, stops } => {
+                // The largest s whose circle (centre and radius moving from the first circle to
+                // the second) passes through the point and has a radius of at least 0.
+                let (cx, cy, dr) = (p[3] - p[0], p[4] - p[1], p[5] - p[2]);
+                let (dx, dy) = (x - p[0], y - p[1]);
+                let a = cx * cx + cy * cy - dr * dr;
+                let b = dx * cx + dy * cy + p[2] * dr;
+                let c = dx * dx + dy * dy - p[2] * p[2];
+                let valid = |s: f64| p[2] + s * dr >= 0.0;
+                let s = if a.abs() < 1e-12 {
+                    if b.abs() < 1e-12 { None } else { Some(c / (2.0 * b)).filter(|s| valid(*s)) }
+                } else {
+                    let disc = b * b - a * c;
+                    if disc < 0.0 {
+                        None
+                    } else {
+                        let root = disc.sqrt();
+                        let (r1, r2) = ((b + root) / a, (b - root) / a);
+                        let (hi, lo) = (r1.max(r2), r1.min(r2));
+                        if valid(hi) { Some(hi) } else if valid(lo) { Some(lo) } else { None }
+                    }
+                };
+                s.map_or([0, 0, 0, 0], |s| Self::ramp(stops, s))
+            }
+        }
+    }
+}
+
 /// A canvas `font` string, resolved.
 struct CanvasFont {
     size: f64,
@@ -134,7 +244,15 @@ impl CanvasFont {
             size: size.min(1000.0),
             bold: weight >= 600,
             italic,
-            face: if families.is_empty() { None } else { fonts.face_for(&families.join(","), weight, italic) },
+            face: if families.is_empty() {
+                None
+            } else {
+                // A canvas follows the optical size of its font size, like `font-optical-sizing: auto`.
+                let mut req = crate::fonts::FaceRequest::new(weight, italic);
+                req.size = (size * 10.0).round().clamp(1.0, 10000.0) as u16;
+                req.optical = true;
+                fonts.face_for_request(&families.join(","), &req).0
+            },
         }
     }
 
@@ -144,18 +262,17 @@ impl CanvasFont {
 }
 
 impl Canvas2d {
+    /// The glyphs of `text` placed in user space (top-left of each bitmap), and the matrix to
+    /// draw them with (squeezed when `max_width` is smaller than the text).
     #[allow(clippy::too_many_arguments)]
-    fn fill_text(
-        &mut self,
+    fn place_text(
         text: &str,
         (x, y): (f64, f64),
         font: &CanvasFont,
-        color: [u8; 4],
-        alpha: f64,
         m: &Affine,
         (align, baseline): (&str, &str),
         max_width: f64,
-    ) {
+    ) -> (Vec<Placed>, Affine) {
         let width = font.width(text);
         let (ascent, descent) =
             blueice_font::ascent_descent_in(font.size, font.bold, font.italic, font.face);
@@ -173,10 +290,9 @@ impl Canvas2d {
                 m[1] * squeeze[4] + m[5],
             ];
         }
-        let drawn_width = width;
         let left = match align {
-            "center" => x - drawn_width / 2.0,
-            "right" | "end" => x - drawn_width,
+            "center" => x - width / 2.0,
+            "right" | "end" => x - width,
             _ => x,
         };
         let base = match baseline {
@@ -186,33 +302,122 @@ impl Canvas2d {
             "bottom" | "ideographic" => y - descent,
             _ => y,
         };
-        let Some(inv) = invert(&m) else { return };
         let mut pen = left;
+        let mut out = Vec::new();
         for ch in text.chars() {
             let face = blueice_font::font_for_char_in(ch, font.bold, font.italic, font.face);
             let (metrics, bitmap) = face.rasterize(ch, font.size as f32);
             let (gx, gy) = (pen + f64::from(metrics.xmin), base - f64::from(metrics.ymin) - metrics.height as f64);
             pen += f64::from(metrics.advance_width);
-            if metrics.width == 0 || metrics.height == 0 {
-                continue;
+            if metrics.width > 0 && metrics.height > 0 {
+                out.push(Placed { x: gx, y: gy, w: metrics.width, h: metrics.height, coverage: bitmap });
             }
-            let (x0, y0, x1, y1) = self.bounds(&m, gx, gy, metrics.width as f64, metrics.height as f64);
-            for py in y0..y1 {
-                for px in x0..x1 {
-                    let (u, v) = apply(&inv, px as f64 + 0.5, py as f64 + 0.5);
-                    let (cx, cy) = ((u - gx).floor(), (v - gy).floor());
-                    if cx < 0.0 || cy < 0.0 || cx >= metrics.width as f64 || cy >= metrics.height as f64 {
-                        continue;
-                    }
-                    let coverage = f64::from(bitmap[cy as usize * metrics.width + cx as usize]) / 255.0;
-                    if coverage > 0.0 {
-                        let i = ((py as u32 * self.w + px as u32) * 4) as usize;
-                        over(&mut self.rgba[i..i + 4], color, alpha * coverage);
-                    }
+        }
+        (out, m)
+    }
+
+    /// Paints `coverage` (a `w` by `h` mask whose top-left is the user-space point `at`) with
+    /// `paint` through the matrix `m`.
+    fn paint_mask(&mut self, m: &Affine, at: (f64, f64), (w, h): (usize, usize), coverage: &[u8], paint: &Paint, alpha: f64) {
+        let Some(inv) = invert(m) else { return };
+        let (x0, y0, x1, y1) = self.bounds(m, at.0, at.1, w as f64, h as f64);
+        for py in y0..y1 {
+            for px in x0..x1 {
+                let (u, v) = apply(&inv, px as f64 + 0.5, py as f64 + 0.5);
+                let (cx, cy) = ((u - at.0).floor(), (v - at.1).floor());
+                if cx < 0.0 || cy < 0.0 || cx >= w as f64 || cy >= h as f64 {
+                    continue;
+                }
+                let c = f64::from(coverage[cy as usize * w + cx as usize]) / 255.0;
+                if c > 0.0 {
+                    let i = ((py as u32 * self.w + px as u32) * 4) as usize;
+                    over(&mut self.rgba[i..i + 4], paint.at(u, v), alpha * c);
                 }
             }
         }
         self.dirty = true;
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn fill_text(
+        &mut self,
+        text: &str,
+        at: (f64, f64),
+        font: &CanvasFont,
+        paint: &Paint,
+        alpha: f64,
+        m: &Affine,
+        place: (&str, &str),
+        max_width: f64,
+    ) {
+        let (glyphs, m) = Self::place_text(text, at, font, m, place, max_width);
+        for g in &glyphs {
+            self.paint_mask(&m, (g.x, g.y), (g.w, g.h), &g.coverage, paint, alpha);
+        }
+    }
+
+    /// The outline of the text, `line_width` wide and centred on the glyph edges: what lies
+    /// within half a line of the edge, found by growing and shrinking the glyph coverage.
+    #[allow(clippy::too_many_arguments)]
+    fn stroke_text(
+        &mut self,
+        text: &str,
+        at: (f64, f64),
+        font: &CanvasFont,
+        paint: &Paint,
+        alpha: f64,
+        m: &Affine,
+        place: (&str, &str),
+        max_width: f64,
+        line_width: f64,
+    ) {
+        let (glyphs, m) = Self::place_text(text, at, font, m, place, max_width);
+        let radius = (line_width / 2.0).clamp(0.0, MAX_STROKE_RADIUS);
+        if glyphs.is_empty() || radius <= 0.0 {
+            return;
+        }
+        let pad = radius.ceil() as i64 + 1;
+        let left = glyphs.iter().map(|g| g.x).fold(f64::INFINITY, f64::min).floor() as i64 - pad;
+        let top = glyphs.iter().map(|g| g.y).fold(f64::INFINITY, f64::min).floor() as i64 - pad;
+        let right = glyphs.iter().map(|g| g.x + g.w as f64).fold(f64::NEG_INFINITY, f64::max).ceil() as i64 + pad;
+        let bottom = glyphs.iter().map(|g| g.y + g.h as f64).fold(f64::NEG_INFINITY, f64::max).ceil() as i64 + pad;
+        let (w, h) = ((right - left) as usize, (bottom - top) as usize);
+        if w * h > 4_000_000 {
+            return;
+        }
+        let mut shape = vec![0u8; w * h];
+        for g in &glyphs {
+            let (ox, oy) = (g.x.round() as i64 - left, g.y.round() as i64 - top);
+            for row in 0..g.h {
+                for col in 0..g.w {
+                    let i = (oy as usize + row) * w + ox as usize + col;
+                    shape[i] = shape[i].max(g.coverage[row * g.w + col]);
+                }
+            }
+        }
+        let r = radius.ceil() as i64;
+        let offsets: Vec<(i64, i64)> = (-r..=r)
+            .flat_map(|dy| (-r..=r).map(move |dx| (dx, dy)))
+            .filter(|&(dx, dy)| ((dx * dx + dy * dy) as f64) <= radius * radius + 0.25)
+            .collect();
+        let mut band = vec![0u8; w * h];
+        for y in 0..h as i64 {
+            for x in 0..w as i64 {
+                let (mut grown, mut shrunk) = (0u8, 255u8);
+                for &(dx, dy) in &offsets {
+                    let (sx, sy) = (x + dx, y + dy);
+                    let v = if sx < 0 || sy < 0 || sx >= w as i64 || sy >= h as i64 {
+                        0
+                    } else {
+                        shape[sy as usize * w + sx as usize]
+                    };
+                    grown = grown.max(v);
+                    shrunk = shrunk.min(v);
+                }
+                band[y as usize * w + x as usize] = grown.min(255 - shrunk);
+            }
+        }
+        self.paint_mask(&m, (left as f64, top as f64), (w, h), &band, paint, alpha);
     }
 
     pub fn new(canvas: blueice_dom::NodeId, w: u32, h: u32) -> Option<Canvas2d> {
@@ -252,7 +457,7 @@ impl Canvas2d {
         &mut self,
         m: &Affine,
         (x, y, w, h): (f64, f64, f64, f64),
-        color: [u8; 4],
+        paint: &Paint,
         alpha: f64,
         clear: bool,
     ) {
@@ -268,7 +473,7 @@ impl Canvas2d {
                 if clear {
                     self.rgba[i..i + 4].copy_from_slice(&[0, 0, 0, 0]);
                 } else {
-                    over(&mut self.rgba[i..i + 4], color, alpha);
+                    over(&mut self.rgba[i..i + 4], paint.at(u, v), alpha);
                 }
             }
         }
@@ -425,22 +630,19 @@ impl Canvas2d {
         fonts: &crate::fonts::FontCatalog,
     ) -> Result<Reply, String> {
         Ok(match op {
-            "fillText" => {
-                // text, x, y, font, colour, alpha, matrix, align, baseline, maxWidth (<0: none)
+            "fillText" | "strokeText" => {
+                // text, x, y, font, paint, alpha, matrix, align, baseline, maxWidth (<0: none),
+                // lineWidth (strokeText)
                 let font = CanvasFont::parse(text(a, 3), fonts);
-                let color = blueice_css::parse_css_color(text(a, 4))
-                    .map_or([0, 0, 0, 255], |(r, g, b, al)| [r, g, b, al]);
+                let paint = Paint::parse(text(a, 4));
                 let max = if a.get(9).is_some() { num(a, 9) } else { -1.0 };
-                self.fill_text(
-                    text(a, 0),
-                    (num(a, 1), num(a, 2)),
-                    &font,
-                    color,
-                    num(a, 5).clamp(0.0, 1.0),
-                    &affine(a, 6),
-                    (text(a, 7), text(a, 8)),
-                    max,
-                );
+                let (at, alpha, m) = ((num(a, 1), num(a, 2)), num(a, 5).clamp(0.0, 1.0), affine(a, 6));
+                let place = (text(a, 7), text(a, 8));
+                if op == "fillText" {
+                    self.fill_text(text(a, 0), at, &font, &paint, alpha, &m, place, max);
+                } else {
+                    self.stroke_text(text(a, 0), at, &font, &paint, alpha, &m, place, max, num(a, 10));
+                }
                 Reply::Undefined
             }
             "measureText" => {
@@ -448,8 +650,7 @@ impl Canvas2d {
                 Reply::Number(font.width(text(a, 0)))
             }
             "fillRect" | "clearRect" => {
-                let color = blueice_css::parse_css_color(text(a, 4))
-                    .map_or([0, 0, 0, 255], |(r, g, b, al)| [r, g, b, al]);
+                let paint = Paint::parse(text(a, 4));
                 let alpha = if a.get(5).is_some() {
                     num(a, 5).clamp(0.0, 1.0)
                 } else {
@@ -459,7 +660,7 @@ impl Canvas2d {
                 self.fill_rect(
                     &m,
                     (num(a, 0), num(a, 1), num(a, 2), num(a, 3)),
-                    color,
+                    &paint,
                     alpha,
                     op == "clearRect",
                 );
@@ -782,5 +983,95 @@ mod tests {
         let own = blueice_font::measure_text_width_in("Hello", 16.0, false, false, catalog.face_for("dyn", 400, false));
         assert!((w("16px \"Dyn\", serif") - own).abs() < 0.01);
         assert!((w("16px sans-serif") - own).abs() > 0.5);
+    }
+
+    const RED_TO_BLUE: &str =
+        r##"grad:{"t":"linear","p":[0,0,100,0],"s":[[0,"#ff0000"],[1,"#0000ff"]]}"##;
+
+    #[test]
+    fn a_linear_gradient_fills_a_rectangle_with_colours_along_its_line() {
+        let mut c = canvas(100, 4);
+        c.call(
+            "fillRect",
+            &[n(0.0), n(0.0), n(100.0), n(4.0), t(RED_TO_BLUE), n(1.0), t("[1,0,0,1,0,0]")],
+        )
+        .unwrap();
+        let (left, mid, right) = (px(&c, 2, 1), px(&c, 50, 1), px(&c, 97, 1));
+        assert!(left[0] > 240 && left[2] < 15, "{left:?}");
+        assert!((120..136).contains(&mid[0]) && (120..136).contains(&mid[2]), "{mid:?}");
+        assert!(right[0] < 15 && right[2] > 240, "{right:?}");
+        assert_eq!(left[3], 255);
+    }
+
+    #[test]
+    fn a_radial_gradient_runs_from_its_inner_to_its_outer_circle() {
+        let spec = r##"grad:{"t":"radial","p":[20,20,0,20,20,20],"s":[[0,"#ffffff"],[1,"#000000"]]}"##;
+        let mut c = canvas(40, 40);
+        c.call("fillRect", &[n(0.0), n(0.0), n(40.0), n(40.0), t(spec), n(1.0), t("[1,0,0,1,0,0]")]).unwrap();
+        assert!(px(&c, 20, 20)[0] > 245, "{:?}", px(&c, 20, 20));
+        let mid = px(&c, 30, 20)[0];
+        assert!((110..145).contains(&mid), "{mid}");
+        assert!(px(&c, 1, 20)[0] < 25, "{:?}", px(&c, 1, 20));
+        assert_eq!(px(&c, 39, 39)[0], 0, "beyond the outer circle the last stop holds");
+    }
+
+    #[test]
+    fn text_filled_with_a_gradient_takes_the_colour_under_each_pixel() {
+        let mut c = canvas(100, 40);
+        let none = crate::fonts::FontCatalog::default();
+        let mut args = text_args("HHHHH", 0.0, 30.0, "30px sans-serif", "start");
+        args[4] = t(RED_TO_BLUE);
+        fill_text(&mut c, &args, &none);
+        let ink = ink(&c);
+        let (first, last) = (ink.iter().min_by_key(|p| p.0).unwrap(), ink.iter().max_by_key(|p| p.0).unwrap());
+        let (a, b) = (px(&c, first.0, first.1), px(&c, last.0, last.1));
+        assert!(a[0] > a[2] + 100, "left of the text is red: {a:?}");
+        assert!(b[2] > b[0] + 50, "right of the text is blue: {b:?}");
+    }
+
+    #[test]
+    fn stroked_text_draws_the_outline_and_leaves_the_inside_alone() {
+        let none = crate::fonts::FontCatalog::default();
+        let mut filled = canvas(80, 100);
+        fill_text(&mut filled, &text_args("I", 20.0, 90.0, "90px sans-serif", "start"), &none);
+        let stroke = |width: f64| {
+            let mut c = canvas(80, 100);
+            let mut args = text_args("I", 20.0, 90.0, "90px sans-serif", "start");
+            args.push(n(width));
+            c.call_with_fonts("strokeText", &args, &none).unwrap();
+            c
+        };
+        let thin = stroke(2.0);
+        let thick = stroke(6.0);
+        let (fa, ta, ha) = (ink(&filled), ink(&thin), ink(&thick));
+        assert!(!ta.is_empty());
+        assert!(ta.len() * 10 < fa.len() * 8, "an outline is lighter than the fill: {} vs {}", ta.len(), fa.len());
+        assert!(ha.len() > ta.len(), "a wider line covers more");
+        // The middle of the stem is solid in the fill and empty in the thin outline.
+        let (cx, cy) = {
+            let xs: Vec<u32> = fa.iter().map(|p| p.0).collect();
+            ((xs.iter().min().unwrap() + xs.iter().max().unwrap()) / 2, 60)
+        };
+        assert_eq!(px(&filled, cx, cy)[3], 255);
+        assert_eq!(px(&thin, cx, cy)[3], 0, "the inside of a thin outline is not painted");
+        // The outline lies on the glyph's edge: it reaches just outside the filled ink too.
+        let left_fill = fa.iter().map(|p| p.0).min().unwrap();
+        assert!(ta.iter().map(|p| p.0).min().unwrap() < left_fill, "half the line is outside");
+    }
+
+    #[test]
+    fn canvas_text_in_a_variable_face_follows_the_optical_size_of_its_font_size() {
+        let bytes = include_bytes!("../../../font/tests/data/inter-latin-opsz.woff2");
+        let mut catalog = crate::fonts::FontCatalog::default();
+        assert!(catalog.add_script_font(&crate::fonts::ScriptFont {
+            family: "Opt".into(), weight_min: 100, weight_max: 900, italic: false, ranges: vec![], bytes: bytes.to_vec(),
+        }));
+        let mut c = canvas(10, 10);
+        let mut w = |font: &str| match c.call_with_fonts("measureText", &[t("Hamburgefonstiv"), t(font)], &catalog).unwrap() {
+            Reply::Number(w) => w,
+            other => panic!("{other:?}"),
+        };
+        let (small, large) = (w("14px Opt"), w("28px Opt"));
+        assert!((large / small - 2.0).abs() > 0.01, "{small} {large}: the large size is drawn in the display cut");
     }
 }

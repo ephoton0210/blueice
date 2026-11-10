@@ -2476,6 +2476,28 @@
     }
     return null;
   };
+  // A gradient a canvas paints with; it describes itself to the canvas as `grad:` and JSON.
+  class CanvasGradient {
+    constructor(kind, points) {
+      const nums = points.map(Number);
+      if (!nums.every(Number.isFinite)) throw new TypeError('The provided double value is non-finite.');
+      if (kind === 'radial' && (nums[2] < 0 || nums[5] < 0)) throw new DOMException('The radius provided is negative.', 'IndexSizeError');
+      this._kind = kind;
+      this._points = nums;
+      this._stops = [];
+    }
+    addColorStop(offset, color) {
+      offset = Number(offset);
+      if (!(offset >= 0 && offset <= 1)) throw new DOMException('The provided value is outside the range (0.0, 1.0).', 'IndexSizeError');
+      color = String(color);
+      if (bi('colorValid', color) === null) throw new DOMException('The value provided could not be parsed as a color.', 'SyntaxError');
+      this._stops.push([offset, color]);
+    }
+    _spec() {
+      return 'grad:' + JSON.stringify({ t: this._kind, p: this._points, s: this._stops });
+    }
+  }
+  const paintOf = (style) => (typeof style === 'string' ? style : style._spec());
   class CanvasRenderingContext2D {
     constructor(canvas) {
       this.canvas = canvas;
@@ -2487,9 +2509,9 @@
       return bi('c2d', this._id, op, ...args);
     }
     get fillStyle() { return this._state.fillStyle; }
-    set fillStyle(v) { if (typeof v === 'string') this._state.fillStyle = v; }
+    set fillStyle(v) { if (typeof v === 'string' || v instanceof CanvasGradient) this._state.fillStyle = v; }
     get strokeStyle() { return this._state.strokeStyle; }
-    set strokeStyle(v) { if (typeof v === 'string') this._state.strokeStyle = v; }
+    set strokeStyle(v) { if (typeof v === 'string' || v instanceof CanvasGradient) this._state.strokeStyle = v; }
     get globalAlpha() { return this._state.globalAlpha; }
     set globalAlpha(v) { v = Number(v); if (v >= 0 && v <= 1) this._state.globalAlpha = v; }
     get font() { return this._state.font; }
@@ -2515,7 +2537,7 @@
     translate(x, y) { this.transform(1, 0, 0, 1, x, y); }
     scale(x, y) { this.transform(x, 0, 0, y, 0, 0); }
     rotate(a) { const c = Math.cos(a), s = Math.sin(a); this.transform(c, s, -s, c, 0, 0); }
-    fillRect(x, y, w, h) { this._c('fillRect', x, y, w, h, this._state.fillStyle, this._state.globalAlpha, JSON.stringify(this._state.m)); }
+    fillRect(x, y, w, h) { this._c('fillRect', x, y, w, h, paintOf(this._state.fillStyle), this._state.globalAlpha, JSON.stringify(this._state.m)); }
     clearRect(x, y, w, h) { this._c('clearRect', x, y, w, h, '#000', 1, JSON.stringify(this._state.m)); }
     strokeRect() {}
     drawImage(source, a, b, c, d, e, f, g, h) {
@@ -2559,10 +2581,16 @@
       x = Number(x); y = Number(y);
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
       const st = this._state;
-      this._c('fillText', String(text), x, y, st.font, st.fillStyle, st.globalAlpha, JSON.stringify(st.m), st.textAlign,
+      this._c('fillText', String(text), x, y, st.font, paintOf(st.fillStyle), st.globalAlpha, JSON.stringify(st.m), st.textAlign,
         st.textBaseline, maxWidth === undefined || !(maxWidth >= 0) ? -1 : Number(maxWidth));
     }
-    strokeText() {}
+    strokeText(text, x, y, maxWidth) {
+      x = Number(x); y = Number(y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      const st = this._state;
+      this._c('strokeText', String(text), x, y, st.font, paintOf(st.strokeStyle), st.globalAlpha, JSON.stringify(st.m), st.textAlign,
+        st.textBaseline, maxWidth === undefined || !(maxWidth >= 0) ? -1 : Number(maxWidth), st.lineWidth);
+    }
     measureText(text) {
       const font = this._state.font;
       const width = this._c('measureText', String(text), font);
@@ -2572,8 +2600,8 @@
     }
     setLineDash() {}
     getLineDash() { return []; }
-    createLinearGradient() { return { addColorStop() {} }; }
-    createRadialGradient() { return { addColorStop() {} }; }
+    createLinearGradient(x0, y0, x1, y1) { return new CanvasGradient('linear', [x0, y0, x1, y1]); }
+    createRadialGradient(x0, y0, r0, x1, y1, r1) { return new CanvasGradient('radial', [x0, y0, r0, x1, y1, r1]); }
     createPattern() { return null; }
     isPointInPath() { return false; }
     getContextAttributes() { return { alpha: true, desynchronized: false, colorSpace: 'srgb', willReadFrequently: false }; }
@@ -4802,7 +4830,7 @@
     HTMLAreaElement, HTMLMapElement, HTMLDataElement, HTMLTimeElement, HTMLModElement, HTMLParamElement,
     HTMLTrackElement, HTMLOptGroupElement, HTMLDataListElement, HTMLMeterElement, HTMLTableColElement,
     DOMParser, XMLSerializer, IntersectionObserver, ResizeObserver, PerformanceObserver, MessageChannel, BroadcastChannel,
-    URL, URLSearchParams, TextEncoder, TextDecoder, FontFace,
+    URL, URLSearchParams, TextEncoder, TextDecoder, FontFace, CanvasGradient,
     // values
     document, customElements, navigator: navigatorApi, screen: screenApi, location: locationApi, history: historyApi,
     performance, crypto, localStorage: makeStorage(), sessionStorage: makeStorage(),

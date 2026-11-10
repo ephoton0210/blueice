@@ -23,6 +23,7 @@ fn a_font_face_names_its_family_files_weight_and_style() {
         face.sources,
         [FontSource {
             url: "/fonts/Kunst%20Grotesk%20Regular.woff2".to_string(),
+            local: None,
             format: Some("woff2".to_string()),
         }]
     );
@@ -32,26 +33,29 @@ fn a_font_face_names_its_family_files_weight_and_style() {
 }
 
 #[test]
-fn sources_come_in_order_with_their_formats_and_local_sources_are_left_out() {
+fn sources_come_in_order_with_their_formats_and_local_names() {
     let face = one(
         "@font-face { font-family: 'Inter'; src: local('Inter'), local(Inter-Regular), \
          url('a.woff2') format('woff2') tech(variations), url(b.woff) format('woff'), url(\"c.ttf\"), \
          url(d.eot?#iefix) format('embedded-opentype'); }",
     );
-    let got: Vec<(&str, Option<&str>)> = face
+    let got: Vec<(&str, Option<&str>, Option<&str>)> = face
         .sources
         .iter()
-        .map(|s| (s.url.as_str(), s.format.as_deref()))
+        .map(|s| (s.url.as_str(), s.local.as_deref(), s.format.as_deref()))
         .collect();
     assert_eq!(
         got,
         [
-            ("a.woff2", Some("woff2")),
-            ("b.woff", Some("woff")),
-            ("c.ttf", None),
-            ("d.eot?#iefix", Some("embedded-opentype")),
+            ("", Some("Inter"), None),
+            ("", Some("Inter-Regular"), None),
+            ("a.woff2", None, Some("woff2")),
+            ("b.woff", None, Some("woff")),
+            ("c.ttf", None, None),
+            ("d.eot?#iefix", None, Some("embedded-opentype")),
         ]
     );
+    assert_eq!(one("@font-face { font-family: L; src: local(\"Arial Bold\"); }").sources[0].local.as_deref(), Some("Arial Bold"));
     assert_eq!(face.family, "inter");
 }
 
@@ -90,8 +94,8 @@ fn rules_without_a_family_or_a_usable_source_are_dropped_and_others_survive() {
          @font-face { font-family: d; src: url(d.woff2); }\
          p { color: red }",
     );
-    assert_eq!(faces.len(), 1);
-    assert_eq!(faces[0].family, "d");
+    let names: Vec<&str> = faces.iter().map(|f| f.family.as_str()).collect();
+    assert_eq!(names, ["c", "d"], "a rule with only local() sources is kept for the engine to try");
 }
 
 #[test]
@@ -148,4 +152,18 @@ fn descriptors_given_as_text_parse_like_those_of_a_rule() {
     assert!(d.unicode_ranges.is_empty());
     let d = face_descriptors("", "", "");
     assert_eq!((d.weight_min, d.weight_max), (400, 400));
+}
+
+#[test]
+fn the_stretch_descriptor_is_a_percentage_range_in_tenths() {
+    let stretch = |decl: &str| {
+        let f = one(&format!("@font-face {{ font-family: a; src: url(a.woff2); {decl} }}"));
+        (f.stretch_min, f.stretch_max)
+    };
+    assert_eq!(stretch(""), (1000, 1000), "normal is 100%");
+    assert_eq!(stretch("font-stretch: 75% 125%"), (750, 1250));
+    assert_eq!(stretch("font-stretch: 62.5%"), (625, 625));
+    assert_eq!(stretch("font-stretch: condensed"), (750, 750));
+    assert_eq!(stretch("font-stretch: condensed expanded"), (750, 1250));
+    assert_eq!(stretch("font-stretch: 150% 50%"), (500, 1500), "the ends are put in order");
 }

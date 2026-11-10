@@ -12,8 +12,10 @@
 /// One file a face can be loaded from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FontSource {
-    /// As written in the stylesheet (relative to it).
+    /// As written in the stylesheet (relative to it); empty for a `local()` source.
     pub url: String,
+    /// The name inside `local(...)`, unquoted: a font installed on the system, not a file.
+    pub local: Option<String>,
     /// The `format()` hint, lowercased (`woff2`, `woff`, `truetype`, `opentype`...).
     pub format: Option<String>,
 }
@@ -28,6 +30,10 @@ pub struct FontFaceRule {
     pub weight_min: u16,
     pub weight_max: u16,
     pub italic: bool,
+    /// The widths it covers, as a percentage in tenths (`font-stretch: 75% 125%` is
+    /// `750..=1250`; the initial `normal` is 100%, `1000`).
+    pub stretch_min: u16,
+    pub stretch_max: u16,
     /// Code point ranges it covers; empty means all.
     pub unicode_ranges: Vec<(u32, u32)>,
 }
@@ -258,9 +264,13 @@ fn parse_sources(value: &str) -> Vec<FontSource> {
     split_top(value, ',')
         .into_iter()
         .filter_map(|entry| {
-            let url = call_args(entry, "url")?;
+            let Some(url) = call_args(entry, "url") else {
+                let name = unquote(call_args(entry, "local")?);
+                return (!name.is_empty()).then_some(FontSource { url: String::new(), local: Some(name), format: None });
+            };
             Some(FontSource {
                 url: unquote(url),
+                local: None,
                 format: call_args(entry, "format").map(|f| unquote(f).to_ascii_lowercase()),
             })
         })
@@ -303,6 +313,34 @@ fn parse_weight(value: &str) -> (u16, u16) {
     }
 }
 
+/// A `font-stretch` value or range in tenths of a percent.
+fn parse_stretch(value: &str) -> (u16, u16) {
+    let numbers: Vec<u16> = value
+        .split_whitespace()
+        .filter_map(|word| {
+            let word = word.to_ascii_lowercase();
+            let percent = match word.as_str() {
+                "ultra-condensed" => 50.0,
+                "extra-condensed" => 62.5,
+                "condensed" => 75.0,
+                "semi-condensed" => 87.5,
+                "normal" => 100.0,
+                "semi-expanded" => 112.5,
+                "expanded" => 125.0,
+                "extra-expanded" => 150.0,
+                "ultra-expanded" => 200.0,
+                other => other.strip_suffix('%')?.parse::<f64>().ok()?,
+            };
+            Some((percent * 10.0).round().clamp(10.0, 10000.0) as u16)
+        })
+        .collect();
+    match numbers.as_slice() {
+        [] => (1000, 1000),
+        [one] => (*one, *one),
+        [a, b, ..] => (*a.min(b), *a.max(b)),
+    }
+}
+
 fn parse_ranges(value: &str) -> Vec<(u32, u32)> {
     split_top(value, ',')
         .into_iter()
@@ -328,6 +366,7 @@ fn parse_face(body: &str) -> Option<FontFaceRule> {
     let mut sources = Vec::new();
     let mut weight = (400, 400);
     let mut italic = false;
+    let mut stretch = (1000, 1000);
     let mut unicode_ranges = Vec::new();
     for declaration in split_top(body, ';') {
         let Some((name, value)) = declaration.split_once(':') else { continue };
@@ -351,6 +390,7 @@ fn parse_face(body: &str) -> Option<FontFaceRule> {
                 let v = value.to_ascii_lowercase();
                 italic = v.starts_with("italic") || v.starts_with("oblique");
             }
+            "font-stretch" => stretch = parse_stretch(value),
             "unicode-range" => unicode_ranges = parse_ranges(value),
             _ => {}
         }
@@ -364,6 +404,8 @@ fn parse_face(body: &str) -> Option<FontFaceRule> {
         weight_min: weight.0,
         weight_max: weight.1,
         italic,
+        stretch_min: stretch.0,
+        stretch_max: stretch.1,
         unicode_ranges,
     })
 }

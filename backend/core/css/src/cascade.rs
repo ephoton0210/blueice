@@ -75,7 +75,7 @@ impl ComputedStyle {
     }
 
     pub fn is_italic(&self) -> bool {
-        self.font_style.as_deref() == Some("italic")
+        matches!(self.font_style.as_deref(), Some("italic" | "oblique"))
     }
 
     /// `opacity`, clamped to CSS's own `[0.0, 1.0]` range -- added for
@@ -128,6 +128,9 @@ const OTHER_INHERITED_PROPERTIES: &[&str] = &[
     "font-weight",
     "font-variant",
     "font-stretch",
+    "font-variation-settings",
+    "font-optical-sizing",
+    "-blueice-oblique-angle",
     "letter-spacing",
     "word-spacing",
     "text-transform",
@@ -645,6 +648,18 @@ fn compute_style_for(
     };
     style.font_family = inherited_keyword("font-family", &parent.font_family);
     style.font_style = inherited_keyword("font-style", &parent.font_style);
+    // `oblique <angle>` is more than a keyword: the angle goes on in `other`.
+    let oblique_angle = match winners.get("font-style") {
+        Some(Value::Unparsed(tokens)) => {
+            let angle = oblique_angle(tokens);
+            if angle.is_some() {
+                style.font_style = Some("oblique".to_string());
+            }
+            Some(angle)
+        }
+        Some(_) => Some(None),
+        None => None,
+    };
     style.text_align = inherited_keyword("text-align", &parent.text_align);
 
     style.line_height = winners
@@ -675,7 +690,35 @@ fn compute_style_for(
         }
     }
 
+    match oblique_angle {
+        Some(Some(angle)) => {
+            style.other.insert("-blueice-oblique-angle".to_string(), Value::Number(angle));
+        }
+        Some(None) => {
+            style.other.remove("-blueice-oblique-angle");
+        }
+        None => {}
+    }
     Some(style)
+}
+
+/// The angle in degrees of `oblique <angle>` (tokens of a `font-style` value).
+fn oblique_angle(tokens: &[crate::tokenizer::Token]) -> Option<f64> {
+    use crate::tokenizer::Token;
+    let words: Vec<&Token> = tokens.iter().filter(|t| !matches!(t, Token::Whitespace)).collect();
+    match words.as_slice() {
+        [Token::Ident(word), Token::Dimension(n, unit)] if word.eq_ignore_ascii_case("oblique") => {
+            let degrees = match unit.to_ascii_lowercase().as_str() {
+                "deg" => *n,
+                "grad" => n * 0.9,
+                "rad" => n.to_degrees(),
+                "turn" => n * 360.0,
+                _ => return None,
+            };
+            Some(degrees.clamp(-90.0, 90.0))
+        }
+        _ => None,
+    }
 }
 
 /// The id under which a node's generated `::before` / `::after` box is
@@ -1284,6 +1327,34 @@ mod tests {
             .min_by_key(|n| n.as_u64())
             .unwrap();
         styles[&node].clone()
+    }
+
+    #[test]
+    fn an_oblique_font_style_keeps_its_angle_and_is_slanted() {
+        let angle = |css: &str| {
+            let s = style_of("<p>x</p><span>y</span>", css, "p");
+            (s.font_style.clone(), s.is_italic(), s.other.get("-blueice-oblique-angle").cloned())
+        };
+        assert_eq!(angle("p { font-style: oblique 10deg }"), (Some("oblique".into()), true, Some(Value::Number(10.0))));
+        assert_eq!(angle("p { font-style: oblique -20deg }").2, Some(Value::Number(-20.0)));
+        assert_eq!(angle("p { font-style: oblique }"), (Some("oblique".into()), true, None));
+        assert_eq!(angle("p { font-style: italic }").2, None);
+        // Inherited from a parent, and replaced by a later keyword.
+        let child = |css: &str| style_of("<div><p>x</p></div>", css, "p").other.get("-blueice-oblique-angle").cloned();
+        assert_eq!(child("div { font-style: oblique 8deg }"), Some(Value::Number(8.0)));
+        assert_eq!(child("div { font-style: oblique 8deg } p { font-style: italic }"), None);
+    }
+
+    #[test]
+    fn font_variation_settings_and_optical_sizing_are_kept_and_inherited() {
+        let p = style_of(
+            "<div><p>x</p></div>",
+            "div { font-variation-settings: \"wght\" 650, \"wdth\" 80; font-optical-sizing: none; font-stretch: 75% }",
+            "p",
+        );
+        assert!(matches!(p.other.get("font-variation-settings"), Some(Value::Unparsed(t)) if t.contains(&crate::tokenizer::Token::QuotedString("wdth".into()))));
+        assert_eq!(p.other.get("font-optical-sizing"), Some(&Value::Keyword("none".into())));
+        assert_eq!(p.other.get("font-stretch"), Some(&Value::Percentage(75.0)));
     }
     fn px(n: f64) -> Value {
         Value::Length(Length::Px(n))

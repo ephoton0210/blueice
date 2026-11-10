@@ -10,13 +10,76 @@ use ab_glyph_rasterizer::{point, Point, Rasterizer};
 use fontdue::{LineMetrics, Metrics, OutlineBounds};
 use ttf_parser::{Face, Tag};
 
-/// The `wght` axis of a font file: `(minimum, default, maximum)`, or `None` if it has none.
-pub(crate) fn weight_axis(data: &[u8]) -> Option<(f32, f32, f32)> {
-    let face = Face::parse(data, 0).ok()?;
+/// One variation axis of a font file, in the axis's own units.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Axis {
+    pub tag: [u8; 4],
+    pub min: f32,
+    pub default: f32,
+    pub max: f32,
+}
+
+/// The axes this engine drives: weight, width, slant, optical size and italic.
+const DRIVEN: [&[u8; 4]; 5] = [b"wght", b"wdth", b"slnt", b"opsz", b"ital"];
+
+/// The driven axes of a font file (none for a static font).
+pub(crate) fn axes(data: &[u8]) -> Vec<Axis> {
+    let Ok(face) = Face::parse(data, 0) else { return Vec::new() };
     face.variation_axes()
         .into_iter()
-        .find(|a| a.tag == Tag::from_bytes(b"wght"))
-        .map(|a| (a.min_value, a.def_value, a.max_value))
+        .filter_map(|a| {
+            let tag = a.tag.to_bytes();
+            DRIVEN.contains(&&tag).then_some(Axis { tag, min: a.min_value, default: a.def_value, max: a.max_value })
+        })
+        .collect()
+}
+
+/// What a text asks of a variable face's axes. Each is `None` when the text does not ask (the
+/// face's default is used). Weight is the CSS number; width is a percentage, slant a angle in
+/// degrees (negative leans right, as `slnt` does) and optical size a size in points, all three
+/// in tenths; `ital` switches an `ital` axis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct Variation {
+    pub wght: Option<u16>,
+    pub wdth: Option<u16>,
+    pub slnt: Option<i16>,
+    pub opsz: Option<u16>,
+    pub ital: Option<bool>,
+}
+
+impl Variation {
+    pub const NONE: Variation = Variation { wght: None, wdth: None, slnt: None, opsz: None, ital: None };
+
+    pub(crate) fn is_none(&self) -> bool {
+        *self == Self::NONE
+    }
+
+    /// The request as `axes` can meet it: an axis the face lacks is dropped, a value is
+    /// clamped to the axis's range, and an italic switch stands in for a slant.
+    pub fn resolve(&self, axes: &[Axis]) -> Variation {
+        let find = |tag: &[u8; 4]| axes.iter().find(|a| &a.tag == tag);
+        let tenths = |a: &Axis, v: f32| (v.clamp(a.min * 10.0, a.max * 10.0)).round();
+        let mut out = Variation::NONE;
+        if let (Some(a), Some(w)) = (find(b"wght"), self.wght) {
+            out.wght = Some(f32::from(w).clamp(a.min, a.max).round() as u16);
+        }
+        if let (Some(a), Some(v)) = (find(b"wdth"), self.wdth) {
+            out.wdth = Some(tenths(a, f32::from(v)) as u16);
+        }
+        if let (Some(a), Some(v)) = (find(b"slnt"), self.slnt) {
+            out.slnt = Some(tenths(a, f32::from(v)) as i16);
+        }
+        if let (Some(a), Some(v)) = (find(b"opsz"), self.opsz) {
+            out.opsz = Some(tenths(a, f32::from(v)) as u16);
+        }
+        if let (Some(_), Some(on)) = (find(b"ital"), self.ital) {
+            out.ital = Some(on);
+            if on {
+                out.slnt = None;
+            }
+        }
+        out
+    }
 }
 
 pub struct VarInstance {
@@ -66,10 +129,19 @@ impl ttf_parser::OutlineBuilder for Outline {
 }
 
 impl VarInstance {
-    /// `data` at weight `wght`. `None` if the file does not parse or has no such axis.
-    pub(crate) fn new(data: &'static [u8], wght: f32) -> Option<VarInstance> {
+    /// `data` with `v` (already [resolved](Variation::resolve) against its axes) applied. `None`
+    /// if the file does not parse or an axis cannot be set.
+    pub(crate) fn new(data: &'static [u8], v: &Variation) -> Option<VarInstance> {
         let mut face = Face::parse(data, 0).ok()?;
-        face.set_variation(Tag::from_bytes(b"wght"), wght)?;
+        let mut set = |tag: &[u8; 4], value: Option<f32>| match value {
+            Some(value) => face.set_variation(Tag::from_bytes(tag), value).map(|_| ()),
+            None => Some(()),
+        };
+        set(b"wght", v.wght.map(f32::from))?;
+        set(b"wdth", v.wdth.map(|x| f32::from(x) / 10.0))?;
+        set(b"slnt", v.slnt.map(|x| f32::from(x) / 10.0))?;
+        set(b"opsz", v.opsz.map(|x| f32::from(x) / 10.0))?;
+        set(b"ital", v.ital.map(|on| if on { 1.0 } else { 0.0 }))?;
         let upem = f32::from(face.units_per_em());
         (upem > 0.0).then(|| VarInstance { face, scale_per_px: 1.0 / upem })
     }
