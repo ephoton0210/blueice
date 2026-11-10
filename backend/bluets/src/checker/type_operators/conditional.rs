@@ -5,6 +5,8 @@
 //! Conditional matching binds inferred types before selecting the true branch.
 use super::*;
 
+mod callables;
+
 pub(super) fn resolve(
     value: &ConditionalType,
     aliases: &BTreeMap<String, TypeDefinition>,
@@ -64,6 +66,19 @@ pub(super) fn matches(
             }
         }
     }
+    if let Type::Infer(parameter) = pattern {
+        if parameter.constraint.as_ref().is_some_and(|constraint| {
+            !is_assignable(actual, constraint, aliases, &mut HashSet::new(), budget)
+        }) {
+            return false;
+        }
+        let value = match bindings.get(&parameter.name) {
+            Some(previous) => union([previous.clone(), actual.clone()]),
+            None => actual.clone(),
+        };
+        bindings.insert(parameter.name.clone(), value);
+        return true;
+    }
     if let (
         Type::Named { name, arguments },
         Type::Named {
@@ -98,6 +113,14 @@ pub(super) fn matches(
         }
     }
     let actual = expanded(actual, aliases, &mut HashSet::new(), budget);
+    if let Some(matched) = callables::constructor(&actual, pattern, bindings, aliases, budget) {
+        return matched;
+    }
+    if actual == Type::Any {
+        if let Some(matched) = callables::any_signature(pattern, bindings, aliases, budget) {
+            return matched;
+        }
+    }
     let callable = match &actual {
         Type::CallableRecord { signatures, .. } => signatures
             .iter()
@@ -121,10 +144,7 @@ pub(super) fn matches(
             parameters,
             result,
             ..
-        } if type_parameters.is_empty() => Some(Type::Function {
-            parameters: parameters.clone(),
-            result: result.clone(),
-        }),
+        } => callables::erase(type_parameters, parameters, result, budget),
         _ => None,
     };
     if matches!(
@@ -135,19 +155,7 @@ pub(super) fn matches(
             return matches(&callable, pattern, bindings, aliases, budget);
         }
     }
-    if let Type::Infer(parameter) = pattern {
-        if parameter.constraint.as_ref().is_some_and(|constraint| {
-            !is_assignable(&actual, constraint, aliases, &mut HashSet::new(), budget)
-        }) {
-            return false;
-        }
-        let value = match bindings.get(&parameter.name) {
-            Some(previous) => union([previous.clone(), actual]),
-            None => actual,
-        };
-        bindings.insert(parameter.name.clone(), value);
-        return true;
-    }
+
     match (&actual, pattern) {
         (_, Type::TemplateLiteral(template)) => {
             templates::matches(&actual, template, bindings, aliases, budget)

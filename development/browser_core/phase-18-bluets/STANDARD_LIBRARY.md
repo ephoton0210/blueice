@@ -90,6 +90,14 @@ not native agreement. The manifest is finite, not a claim that every combination
 of the declarations above matches TypeScript. Completion and source-frozen
 measurement are tracked separately in TODO.md and PLAN.md.
 
+The [callable utility follow-up](CALLABLE_UTILITY_ACCEPTANCE.md) adds original
+Parameters, ConstructorParameters and InstanceType declarations to the same
+content-hashed core layer in every selected edition. General conditional/infer
+matching, including constructor signatures and generic operand bounds, supplies
+their types; their names acquire no runtime binding. Its 52-form/three-profile
+matrix requires all diagnostics, exact declarations, isolated consumers and
+execution. Other utility names and unmeasured compositions remain open.
+
 Broader generic inference, structural protocols, overloads, index signatures
 and declaration precision remain K.4/K.8 and the compatibility inventory.
 Each additional form needs a pinned oracle before the minimum set expands.

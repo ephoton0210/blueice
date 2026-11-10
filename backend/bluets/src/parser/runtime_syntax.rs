@@ -410,6 +410,7 @@ pub(super) fn matching_angle_bracket(
     for (index, token) in tokens.iter().enumerate().take(limit).skip(start) {
         match token.text.as_str() {
             "<" => depth += 1,
+            "<<" => depth += 2,
             ">" => {
                 depth = depth.checked_sub(1)?;
                 if depth == 0 {

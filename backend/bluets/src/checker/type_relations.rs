@@ -168,7 +168,7 @@ fn assignable_inner(
     budget: &mut TypeExpansionBudget,
 ) -> bool {
     if *expected == Type::Never {
-        return *actual == Type::Never;
+        return type_operators::expanded(actual, aliases, visited, budget) == Type::Never;
     }
     if actual == expected {
         return true;

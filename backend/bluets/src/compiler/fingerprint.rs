@@ -20,7 +20,7 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     add(crate::diagnostic::DIAGNOSTICS_VERSION);
     add(super::isolated_declarations::VERSION);
     add(crate::emitter::DECLARATION_MAP_VERSION);
-    add("bluets-javascript-provenance/45");
+    add("bluets-javascript-provenance/46");
     add(crate::checker::FLOW_VERSION);
     add(crate::checker::inference::VERSION);
     add(crate::symbol_keys::VERSION);

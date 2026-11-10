@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "typescript": "5.9.3",
-  "source_revision": "backend-tree:afe0fa1eb02894b7d618fc90edaad8af4bee46b4",
-  "source_graph_sha256": "3a8f4751afa59a6f6ba8068f5862b0409e360f1ec0448313300d92d56f89014b",
+  "source_revision": "backend-tree:8325633e249e34109b7622acbdd5a19f6f194992",
+  "source_graph_sha256": "9d1e0ddaba3d64579095a552803cfad11ff07886074d146716b6fe47ac6f5ee5",
   "fixture_directories": 3392,
   "diagnostic_programs": 3182,
   "diagnostic_templates": 221,
@@ -181,6 +181,17 @@
       "inputs": {
         "backend/bluets/tests/async_generator_context.rs": "147ba7255292d516a245021aafac03d182ba3498",
         "backend/bluets/tests/fixtures/async-generator-context-reference.json": "d74d19dd8cdf4bc3fda12c0def8da4bd99dd7a4c"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/callable_utilities.rs",
+      "ignored_tests": [
+        "utility_native_observations_consumers_syntax_and_runtime_are_reproducible"
+      ],
+      "inputs": {
+        "backend/bluets/tests/callable_utilities.rs": "b62ca78f2728487544360a0eff9730737d78948f",
+        "backend/bluets/tests/fixtures/callable_utilities/cases.json": "852aeec04bef16e6c21f47c3d3fafe87b3c2dbf2",
+        "backend/bluets/tests/fixtures/callable_utilities/reference.json": "65d31e9f81e6e89bd43d8d51f5799d1b2ab44c2f"
       }
     },
     {

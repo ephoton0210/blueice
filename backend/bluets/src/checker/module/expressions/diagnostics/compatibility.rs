@@ -7,7 +7,7 @@ use super::*;
 use crate::parser::Variance;
 
 impl ModuleChecker<'_> {
-    pub(super) fn compatibility_shape(&self, value: &Type) -> Type {
+    pub(in crate::checker::module) fn compatibility_shape(&self, value: &Type) -> Type {
         let mut value = value.clone();
         let mut visited = HashSet::new();
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);

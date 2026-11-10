@@ -34,10 +34,40 @@ pub(super) fn finish(
             }
         }
         Type::Named { name, arguments } => {
-            if aliases.get(&name).is_some_and(|definition| matches!(&definition.value, Type::Conditional(value) if value.span.module.starts_with("<builtin:"))) {
-                let value = Type::Named {name, arguments};
-                let expanded = instantiate_named(&value, aliases, &mut HashSet::new(), budget, "inferred library conditional").unwrap_or_else(|| value.clone());
-                return if expanded == value || budget.exhausted {value} else {finish(expanded, aliases, budget)};
+            if aliases
+                .get(&name)
+                .is_some_and(|definition| matches!(&definition.value, Type::Conditional(_)))
+            {
+                let parameters = aliases
+                    .iter()
+                    .filter(|(_, definition)| definition.kind == TypeDefinitionKind::Parameter)
+                    .map(|(name, _)| name.clone())
+                    .collect();
+                let open = arguments.iter().any(|argument| {
+                    super::dependencies::contains(
+                        argument,
+                        &parameters,
+                        aliases,
+                        &mut HashSet::new(),
+                        budget,
+                    )
+                });
+                if !open {
+                    let value = Type::Named { name, arguments };
+                    let expanded = instantiate_named(
+                        &value,
+                        aliases,
+                        &mut HashSet::new(),
+                        budget,
+                        "inferred closed conditional",
+                    )
+                    .unwrap_or_else(|| value.clone());
+                    return if expanded == value || budget.exhausted {
+                        value
+                    } else {
+                        finish(expanded, aliases, budget)
+                    };
+                }
             }
             let mut arguments: Vec<_> = arguments
                 .into_iter()

@@ -13,7 +13,7 @@ mod mapped;
 mod results;
 mod surfaces;
 
-pub(crate) const VERSION: &str = "bluets-generic-inference/5";
+pub(crate) const VERSION: &str = "bluets-generic-inference/6";
 
 pub(super) fn symbolic_indexed_access(
     value: &Type,

@@ -98,6 +98,28 @@ impl Parser {
         }
     }
 
+    /// A nested generic function type can share a lexical `<<` token with
+    /// its containing argument. Split only after entering the type grammar.
+    fn consume_type_open(&mut self) -> bool {
+        if self.peek("<<") {
+            let token = self.current().clone();
+            self.tokens[self.index] = Token {
+                text: "<".into(),
+                end: token.start + 1,
+                ..token.clone()
+            };
+            self.tokens.insert(
+                self.index + 1,
+                Token {
+                    text: "<".into(),
+                    start: token.start + 1,
+                    ..token
+                },
+            );
+        }
+        self.consume("<")
+    }
+
     pub(super) fn parse_type_parameters(&mut self) -> Vec<TypeParameter> {
         self.parse_type_parameters_in_context(false)
     }
@@ -550,7 +572,7 @@ impl Parser {
                 });
             }
             let mut arguments = Vec::new();
-            if self.consume("<") {
+            if self.consume_type_open() {
                 while !self.at_eof() && !self.consume(">") {
                     arguments.push(self.parse_type_until(&[",", ">"]));
                     if !self.consume(",") {

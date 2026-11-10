@@ -429,6 +429,7 @@ impl ModuleChecker<'_> {
                     ],
                 );
                 self.point_last_type_argument(span, Some(index));
+                self.explain_missing_constraint_signature(actual, &expected);
                 if let Type::Named { name, arguments } = actual {
                     if let Some(parameter) = self
                         .bound_parameters

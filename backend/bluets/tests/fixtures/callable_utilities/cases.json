@@ -1,0 +1,407 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "scope": "G-T7/G-T2 callable and constructor utilities: complete frozen forms, full diagnostics, exact declarations, independently authored consumers and two runtime forms; broader library/type compositions remain open.",
+  "options": {
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "lf"
+  },
+  "profiles": [
+    {
+      "id": "es5-commonjs",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "lib": [
+          "ES5"
+        ]
+      }
+    },
+    {
+      "id": "es2022-commonjs",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES2022"
+        ]
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "lib": [
+          "ES5"
+        ]
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "function-fixed-accept",
+      "source": "declare const console: { log(value: string): void };\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<Parameters<(item: number) => string>>([1]);\nconsole.log(JSON.stringify(inferred));\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: [number] = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst value: [string] = inferred;\n"
+      },
+      "runtime": "console.log(JSON.stringify(inferred));\n"
+    },
+    {
+      "id": "function-fixed-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<Parameters<(item: number) => string>>([\"bad\"]);\n",
+      "accepts": false
+    },
+    {
+      "id": "function-optional-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<Parameters<(item?: number) => void>>([]);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: [number?] = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst value: [string?] = inferred;\n"
+      }
+    },
+    {
+      "id": "function-optional-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<Parameters<(item?: number) => void>>([\"bad\"]);\n",
+      "accepts": false
+    },
+    {
+      "id": "function-rest-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<Parameters<(item: number, ...tail: string[]) => void>>([1, \"ok\"]);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: [number, ...string[]] = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst value: [number, ...number[]] = inferred;\n"
+      }
+    },
+    {
+      "id": "function-rest-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<Parameters<(item: number, ...tail: string[]) => void>>([1, 2]);\n",
+      "accepts": false
+    },
+    {
+      "id": "function-this-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<Parameters<(this: {id: number}, item: string) => void>>([\"ok\"]);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: [string] = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst value: [number] = inferred;\n"
+      }
+    },
+    {
+      "id": "function-this-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<Parameters<(this: {id: number}, item: string) => void>>([1]);\n",
+      "accepts": false
+    },
+    {
+      "id": "function-overload-accept",
+      "source": "interface F { (item: string): string; (item: number, flag?: boolean): number; }\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<Parameters<F>>([1, true]);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: [number, boolean?] = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst value: [string] = inferred;\n"
+      }
+    },
+    {
+      "id": "function-overload-reject",
+      "source": "interface F { (item: string): string; (item: number, flag?: boolean): number; }\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<Parameters<F>>([\"wrong\"]);\n",
+      "accepts": false
+    },
+    {
+      "id": "function-generic-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<Parameters<<T>(item: T) => T>>([1]);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: [unknown] = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst value: [number] = inferred;\n"
+      }
+    },
+    {
+      "id": "function-generic-reject",
+      "source": "declare const args: Parameters<<T>(item: T) => T>;\nexport const inferred: number = args[0];\n",
+      "accepts": false
+    },
+    {
+      "id": "function-bound-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<Parameters<<T extends {id: number}>(item: T) => T>>([{id: 1}]);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: [{id: number}] = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst value: [{id: string}] = inferred;\n"
+      }
+    },
+    {
+      "id": "function-bound-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<Parameters<<T extends {id: number}>(item: T) => T>>([{id: \"bad\"}]);\n",
+      "accepts": false
+    },
+    {
+      "id": "function-any-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<Parameters<any>>([1, \"ok\"]);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: unknown[] = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst value: number[] = inferred;\n"
+      }
+    },
+    {
+      "id": "function-any-reject",
+      "source": "declare const args: Parameters<any>;\nexport const inferred: number = args[0];\n",
+      "accepts": false
+    },
+    {
+      "id": "function-never",
+      "source": "export function inferred(value: Parameters<never>): never { return value; }\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: (item: never) => never = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\ninferred(1);\n"
+      }
+    },
+    {
+      "id": "function-string-constraint",
+      "source": "export type Result = Parameters<string>;\n",
+      "accepts": false
+    },
+    {
+      "id": "function-constructor-constraint",
+      "source": "export type Result = Parameters<new () => {id: number}>;\n",
+      "accepts": false
+    },
+    {
+      "id": "constructor-fixed-accept",
+      "source": "declare const console: { log(value: string): void };\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<ConstructorParameters<new (item: number) => {id: number}>>([1]);\nconsole.log(JSON.stringify(inferred));\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: [number] = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst value: [string] = inferred;\n"
+      },
+      "runtime": "console.log(JSON.stringify(inferred));\n"
+    },
+    {
+      "id": "constructor-fixed-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<ConstructorParameters<new (item: number) => {id: number}>>([\"bad\"]);\n",
+      "accepts": false
+    },
+    {
+      "id": "constructor-rest-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<ConstructorParameters<new (item?: number, ...tail: string[]) => {id: number}>>([1, \"ok\"]);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: [number?, ...string[]] = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst value: [string?, ...number[]] = inferred;\n"
+      }
+    },
+    {
+      "id": "constructor-rest-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<ConstructorParameters<new (item?: number, ...tail: string[]) => {id: number}>>([1, 2]);\n",
+      "accepts": false
+    },
+    {
+      "id": "constructor-overload-accept",
+      "source": "interface C { new (item: string): {value: string}; new (item: number): {value: number}; }\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<ConstructorParameters<C>>([1]);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: [number] = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst value: [string] = inferred;\n"
+      }
+    },
+    {
+      "id": "constructor-overload-reject",
+      "source": "interface C { new (item: string): {value: string}; new (item: number): {value: number}; }\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<ConstructorParameters<C>>([\"wrong\"]);\n",
+      "accepts": false
+    },
+    {
+      "id": "constructor-generic-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<ConstructorParameters<new <T>(item: T) => {value: T}>>([1]);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: [unknown] = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst value: [number] = inferred;\n"
+      }
+    },
+    {
+      "id": "constructor-generic-reject",
+      "source": "declare const args: ConstructorParameters<new <T>(item: T) => {value: T}>;\nexport const inferred: number = args[0];\n",
+      "accepts": false
+    },
+    {
+      "id": "constructor-abstract-accept",
+      "source": "abstract class Base { constructor(public value: number) {} }\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<ConstructorParameters<typeof Base>>([1]);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: [number] = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst value: [string] = inferred;\n"
+      }
+    },
+    {
+      "id": "constructor-abstract-reject",
+      "source": "abstract class Base { constructor(public value: number) {} }\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<ConstructorParameters<typeof Base>>([\"bad\"]);\n",
+      "accepts": false
+    },
+    {
+      "id": "constructor-any-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<ConstructorParameters<any>>([1, \"ok\"]);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: unknown[] = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst value: number[] = inferred;\n"
+      }
+    },
+    {
+      "id": "constructor-any-reject",
+      "source": "declare const args: ConstructorParameters<any>;\nexport const inferred: number = args[0];\n",
+      "accepts": false
+    },
+    {
+      "id": "constructor-never",
+      "source": "export function inferred(value: ConstructorParameters<never>): never { return value; }\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: (item: never) => never = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\ninferred(1);\n"
+      }
+    },
+    {
+      "id": "constructor-string-constraint",
+      "source": "export type Result = ConstructorParameters<string>;\n",
+      "accepts": false
+    },
+    {
+      "id": "constructor-function-constraint",
+      "source": "export type Result = ConstructorParameters<() => number>;\n",
+      "accepts": false
+    },
+    {
+      "id": "instance-fixed-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<InstanceType<new (item: number) => {value: number}>>({value: 1});\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: {value: number} = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst value: {value: string} = inferred;\n"
+      }
+    },
+    {
+      "id": "instance-fixed-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<InstanceType<new (item: number) => {value: number}>>({value: \"bad\"});\n",
+      "accepts": false
+    },
+    {
+      "id": "instance-overload-accept",
+      "source": "interface C { new (item: string): {value: string}; new (item: number): {value: number}; }\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<InstanceType<C>>({value: 1});\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: {value: number} = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst value: {value: string} = inferred;\n"
+      }
+    },
+    {
+      "id": "instance-overload-reject",
+      "source": "interface C { new (item: string): {value: string}; new (item: number): {value: number}; }\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<InstanceType<C>>({value: \"bad\"});\n",
+      "accepts": false
+    },
+    {
+      "id": "instance-generic-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<InstanceType<new <T>(item: T) => {value: T}>>({value: 1});\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: {value: unknown} = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst value: {value: number} = inferred;\n"
+      }
+    },
+    {
+      "id": "instance-generic-reject",
+      "source": "declare const value: InstanceType<new <T>(item: T) => {value: T}>;\nexport const inferred: number = value.value;\n",
+      "accepts": false
+    },
+    {
+      "id": "instance-abstract-accept",
+      "source": "abstract class Base { constructor(public value: number) {} }\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<InstanceType<typeof Base>>({value: 1});\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: {value: number} = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst value: {value: string} = inferred;\n"
+      }
+    },
+    {
+      "id": "instance-abstract-reject",
+      "source": "abstract class Base { constructor(public value: number) {} }\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<InstanceType<typeof Base>>({value: \"bad\"});\n",
+      "accepts": false
+    },
+    {
+      "id": "instance-any",
+      "source": "export const inferred: InstanceType<any> = 1;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: string = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst value: never = inferred;\n"
+      }
+    },
+    {
+      "id": "instance-never",
+      "source": "export function inferred(value: InstanceType<never>): never { return value; }\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: (item: never) => never = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\ninferred(1);\n"
+      }
+    },
+    {
+      "id": "instance-string-constraint",
+      "source": "export type Result = InstanceType<string>;\n",
+      "accepts": false
+    },
+    {
+      "id": "instance-function-constraint",
+      "source": "export type Result = InstanceType<() => number>;\n",
+      "accepts": false
+    },
+    {
+      "id": "local-function-accept",
+      "source": "type Args<F extends (...args: any) => any> = F extends (...args: infer A) => any ? A : never;\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<Args<(item: number) => string>>([1]);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: [number] = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst value: [string] = inferred;\n"
+      }
+    },
+    {
+      "id": "local-function-reject",
+      "source": "type Args<F extends (...args: any) => any> = F extends (...args: infer A) => any ? A : never;\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<Args<(item: number) => string>>([\"bad\"]);\n",
+      "accepts": false
+    },
+    {
+      "id": "local-constructor-accept",
+      "source": "type Args<F extends abstract new (...args: any) => any> = F extends abstract new (...args: infer A) => any ? A : never;\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<Args<new (item: number) => {value: number}>>([1]);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: [number] = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst value: [string] = inferred;\n"
+      }
+    },
+    {
+      "id": "local-constructor-reject",
+      "source": "type Args<F extends abstract new (...args: any) => any> = F extends abstract new (...args: infer A) => any ? A : never;\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<Args<new (item: number) => {value: number}>>([\"bad\"]);\n",
+      "accepts": false
+    },
+    {
+      "id": "local-instance-accept",
+      "source": "type Item<F extends abstract new (...args: any) => any> = F extends abstract new (...args: any) => infer I ? I : never;\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<Item<new (item: number) => {value: number}>>({value: 1});\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst value: {value: number} = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst value: {value: string} = inferred;\n"
+      }
+    },
+    {
+      "id": "local-instance-reject",
+      "source": "// 🧊\r\ntype Item<F extends abstract new (...args: any) => any> = F extends abstract new (...args: any) => infer I ? I : never;\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<Item<new (item: number) => {value: number}>>({value: \"bad\"});\n",
+      "accepts": false
+    }
+  ]
+}

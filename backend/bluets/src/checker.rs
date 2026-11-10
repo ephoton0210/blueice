@@ -707,6 +707,7 @@ fn matching_call_angle_bracket(tokens: &[Token], start: usize) -> Option<usize> 
     for (index, token) in tokens.iter().enumerate().skip(start) {
         match token.text.as_str() {
             "<" => depth += 1,
+            "<<" => depth += 2,
             ">" => {
                 depth = depth.checked_sub(1)?;
                 if depth == 0 {

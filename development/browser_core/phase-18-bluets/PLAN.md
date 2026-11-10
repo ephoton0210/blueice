@@ -12,21 +12,21 @@
 **Current BlueTS / BlueTSC compatibility status (2026-11-10).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 39,561 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 39,717 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 38,719/38,725 (99.9845%); 3 open, 3 refused observations |
+| Direct agreement | 38,875/38,881 (99.9846%); 3 open, 3 refused observations |
 | Separate controls | 633 native-reference + 203 BlueTS owner = 836; excluded from direct agreement |
-| Case labels | 39,555 scoped closed (including controls), 3 open, 3 refused |
-| Suite inventory | 182 suites / 387 ignored Rust functions; not a case denominator |
-| Suite labels | 178 scoped closed, 1 open, 3 refused |
+| Case labels | 39,711 scoped closed (including controls), 3 open, 3 refused |
+| Suite inventory | 183 suites / 388 ignored Rust functions; not a case denominator |
+| Suite labels | 179 scoped closed, 1 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 227 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 39,561 recorded case expectations pass; expected differences/refusals are not
+All 39,717 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -34,8 +34,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:afe0fa1eb02894b7d618fc90edaad8af4bee46b4`.
-Input graph SHA-256: `3a8f4751afa59a6f6ba8068f5862b0409e360f1ec0448313300d92d56f89014b`.
+Compiler/oracle source: `backend-tree:8325633e249e34109b7622acbdd5a19f6f194992`.
+Input graph SHA-256: `9d1e0ddaba3d64579095a552803cfad11ff07886074d146716b6fe47ac6f5ee5`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -18845,3 +18845,15 @@ with [source-bound measurements](DEFU_PROJECT_MEASUREMENT.json), not completed
 compiler compatibility. The TODO lists finite G-T1/G-T2/G-C1 prerequisite repair
 and subsequent G-M1/G-M2 evaluation separately. Existing 39,512 case identities,
 policy differences and broad feature statuses remain unchanged.
+
+## Callable utility follow-up — G-T7 / G-T2 (2026-11-11)
+
+The [frozen package](CALLABLE_UTILITY_FOLLOWUP.md) supplies Parameters,
+ConstructorParameters and InstanceType through the ordinary static library and
+conditional/infer engine. All 156 verdict/full-diagnostic observations and 75
+accepted declaration inventories agree with pinned TypeScript. Isolated Native
+consumers, selected-edition syntax, runtime and separate owner controls pass.
+[Current acceptance](CALLABLE_UTILITY_ACCEPTANCE.md) retains complete source-bound
+Native/local/Windows commands, actual compiler/map bindings, immutable baseline
+replay and raw evidence. The source/code and its corresponding measurements are
+accepted together; broad rows remain open and full parity stays OFF.

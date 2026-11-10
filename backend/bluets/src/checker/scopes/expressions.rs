@@ -260,7 +260,7 @@ impl ScopeModel<'_> {
                 );
                 statement_scopes.insert(current);
             }
-            if token.is("{") {
+            if token.is("{") && !self.erased(token) {
                 let end = matching_end(tokens, index, "{", "}")
                     .map_or(self.scopes[current].span.end, |end| tokens[end].end);
                 stack.push(current);
@@ -270,7 +270,7 @@ impl ScopeModel<'_> {
                     false,
                     false,
                 );
-            } else if token.is("}") {
+            } else if token.is("}") && !self.erased(token) {
                 current = stack.pop().unwrap_or(scope);
                 while statement_scopes.contains(&current)
                     && token.end >= self.scopes[current].span.end

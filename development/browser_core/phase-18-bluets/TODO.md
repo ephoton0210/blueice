@@ -11,21 +11,21 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 **Current BlueTS / BlueTSC compatibility status (2026-11-10).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 39,561 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 39,717 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 38,719/38,725 (99.9845%); 3 open, 3 refused observations |
+| Direct agreement | 38,875/38,881 (99.9846%); 3 open, 3 refused observations |
 | Separate controls | 633 native-reference + 203 BlueTS owner = 836; excluded from direct agreement |
-| Case labels | 39,555 scoped closed (including controls), 3 open, 3 refused |
-| Suite inventory | 182 suites / 387 ignored Rust functions; not a case denominator |
-| Suite labels | 178 scoped closed, 1 open, 3 refused |
+| Case labels | 39,711 scoped closed (including controls), 3 open, 3 refused |
+| Suite inventory | 183 suites / 388 ignored Rust functions; not a case denominator |
+| Suite labels | 179 scoped closed, 1 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 227 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 39,561 recorded case expectations pass; expected differences/refusals are not
+All 39,717 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,8 +33,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:afe0fa1eb02894b7d618fc90edaad8af4bee46b4`.
-Input graph SHA-256: `3a8f4751afa59a6f6ba8068f5862b0409e360f1ec0448313300d92d56f89014b`.
+Compiler/oracle source: `backend-tree:8325633e249e34109b7622acbdd5a19f6f194992`.
+Input graph SHA-256: `9d1e0ddaba3d64579095a552803cfad11ff07886074d146716b6fe47ac6f5ee5`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -60,13 +60,12 @@ broader G-C1 inventory row remains open for unmeasured CLI/recovery coverage;
 the finite checklist does not claim full parity. See the
 [acceptance record](PLAN.md#phase-l--g-c1-implementation).
 
-**Latest completed follow-up:** the frozen three-file defu project now passes
-exact declarations, consumers, runtime and every incremental edit/recovery
-stage. The current multi-source state policy passes both measured directions
-under both source-discovery profiles. [Repair acceptance](DEFU_REPAIR_ACCEPTANCE.md)
-and [state evaluation](DEFU_INTERCHANGE_ACCEPTANCE.md) retain the exact source,
-fresh gates and scope limits. Earlier mitt results retain their original source
-in [its acceptance](PROJECT_FOLLOWUP_ACCEPTANCE.md).
+**Latest completed follow-up:** G-T7/G-T2 now supplies the frozen callable and
+constructor utilities with full diagnostics, byte-exact declarations and isolated
+consumers. [Current acceptance](CALLABLE_UTILITY_ACCEPTANCE.md) binds implementation,
+complete gates and raw evidence to the same source. The earlier complete mitt,
+defu and multi-source state evaluations remain dated evidence and also pass this
+source's project regression checks. The 22 broader rows remain open.
 
 ## Maintenance and real-project follow-up — 2026-11-09
 
@@ -177,6 +176,37 @@ all old case identities remain. [Acceptance and retained evidence](PROJECT_FOLLO
   The current policy required no compiler eligibility/authority extension.
   Native warm no-op and unmeasured profiles remain outside this result.
   [Finite evaluation and raw evidence](DEFU_INTERCHANGE_ACCEPTANCE.md).
+
+### G-T7 / G-T2 — callable utility follow-up
+
+[Fixed scope and acceptance](CALLABLE_UTILITY_FOLLOWUP.md).
+
+- [x] Supply `Parameters`, `ConstructorParameters` and `InstanceType` through
+  original static library declarations and the ordinary conditional/infer
+  engine. The frozen input contains **52 forms × three profiles = 156
+  observations**: ES5/CommonJS/ES5 library, ES2022/CommonJS/ES2022 library and
+  ES2022/ESNext/ES5 library. Accepted/rejected controls cover fixed, optional,
+  rest, receiver, overload, generic/bounded, `any`, `never`, abstract constructor
+  and wrong-callable constraints, plus equivalent owner-defined aliases.
+- [x] Require full primary/related diagnostics and UTF-16 positions for all
+  156 observations, all 75 accepted declaration inventories byte-exact,
+  independently authored positive/negative consumers of only emitted `.d.ts`
+  files, selected-edition syntax and six actual runtime observations. Preserve
+  the frozen Native result and original failing BlueTS replay. No built-in-name
+  shortcuts, unknown widening, changed budget or omitted rejection may replace
+  the declared behavior.
+- [x] Complete the source-bound Native/local workspace/all-target Clippy and
+  existing Windows 82-oracle gates, keep owner/library precedence and runtime
+  authority unchanged, and update measured inventory facts. Commit the finished
+  implementation and corresponding measurements together, then push. This finite
+  package leaves broader G-T7/G-T2 compositions open.
+
+Accepted on `backend-tree:8325633e249e34109b7622acbdd5a19f6f194992`: **183 Native suites / 1,045
+tests**, **7,841 local workspace passes**, both complete **8,407 ×
+two** map reports, and Windows **82 core oracles + 25 paths + five complete
+regression cohorts**. All previous 39,561 case identities/classifications remain;
+156 new direct observations bring the generated inventory to 39,717. Nine owner
+checks remain outside the direct denominator. [Measurements and scope limits](CALLABLE_UTILITY_ACCEPTANCE.md).
 
 ## Completed baseline (condensed)
 

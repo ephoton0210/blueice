@@ -140,7 +140,12 @@ impl Type {
                     if let Some(value) = &field.accessor_write_type {
                         value.collect_infer(into);
                     }
-                })
+                });
+                if let Self::CallableRecord { signatures, .. } = self {
+                    for signature in signatures {
+                        signature.function_type().collect_infer(into);
+                    }
+                }
             }
             Self::Function { parameters, result }
             | Self::GenericFunction {

@@ -32,6 +32,87 @@ fn diagnostic_expected(actual: &Type, expected: &Type) -> Type {
 }
 
 impl ModuleChecker<'_> {
+    pub(in crate::checker::module) fn related_contextual_property(
+        &mut self,
+        field: &TypeField,
+        parent: &Type,
+    ) {
+        if !self.project.modules.contains_key(&field.span.module) {
+            return;
+        }
+        let class = matches!(parent, Type::Named {name, ..} if self.types.get(name).is_some_and(|definition| definition.kind == TypeDefinitionKind::Class));
+        let origin = if class {
+            fn modifiers_start(declarations: &[Declaration], field: &TypeField) -> Option<usize> {
+                for declaration in declarations {
+                    match declaration {
+                        Declaration::Class(class) => {
+                            for member in &class.members {
+                                if let Some(constructor) = &member.constructor {
+                                    for property in &constructor.parameter_properties {
+                                        let parameter =
+                                            &constructor.parameters[property.parameter_index];
+                                        if parameter.name == field.name
+                                            && parameter.span == field.span
+                                        {
+                                            return Some(property.modifiers_start);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Declaration::Namespace(namespace) => {
+                            if let Some(start) = modifiers_start(&namespace.body, field) {
+                                return Some(start);
+                            }
+                        }
+                        Declaration::Ambient(ambient) => {
+                            if let Some(start) = modifiers_start(&ambient.body, field) {
+                                return Some(start);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                None
+            }
+            let source = &self.project.modules[&field.span.module];
+            let start = modifiers_start(&source.declarations, field).unwrap_or(field.span.start);
+            SourceSpan::new(&field.span.module, start, field.span.end)
+        } else {
+            // JSDoc fields retain a complete tag span; their property name is
+            // inside a comment rather than a source token.
+            self.project
+                .source(&field.span.module)
+                .and_then(|source| crate::syntax::lex(&field.span.module, source).ok())
+                .and_then(|tokens| {
+                    tokens.into_iter().find(|token| {
+                        token.start >= field.span.start
+                            && token.end <= field.span.end
+                            && token.is(&field.name)
+                    })
+                })
+                .map(|token| token.span(&field.span.module))
+                .unwrap_or_else(|| field.span.clone())
+        };
+        let related = crate::TypeScriptRelatedInformation {
+            code: 6500,
+            message: format!(
+                "The expected type comes from property '{}' which is declared here on type '{}'",
+                field.name,
+                crate::diagnostic::type_text::render_in(parent, self.project)
+            ),
+            span: origin,
+            position: None,
+        };
+        if let Some(counterpart) = self
+            .diagnostics
+            .last_mut()
+            .and_then(|diagnostic| diagnostic.typescript.as_mut())
+        {
+            counterpart.related_information.push(related);
+        }
+    }
+
     pub(in crate::checker::module) fn call_argument_error(
         &mut self,
         span: &SourceSpan,
@@ -41,6 +122,27 @@ impl ModuleChecker<'_> {
         argument: &[Token],
         overloaded: bool,
     ) {
+        let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+        budget.checking = self.checking;
+        // A closed conditional alias computes its diagnostic shape. Other
+        // operators retain their native source spelling (such as keyof Events).
+        let resolved = if matches!(expected, Type::Named {name, ..}
+            if self.types.get(name).is_some_and(|definition| matches!(definition.value, Type::Conditional(_))))
+        {
+            crate::checker::inference::result_type(
+                expected,
+                &BTreeMap::new(),
+                &self.types,
+                &mut budget,
+            )
+        } else {
+            expected.clone()
+        };
+        let resolved = crate::checker::tuple_compositions::display_type(&resolved, self.checking);
+        if resolved != *expected && !budget.exhausted {
+            self.call_argument_error(span, message, actual, &resolved, argument, overloaded);
+            return;
+        }
         if overloaded {
             self.typescript_type_error(
                 span,
@@ -82,7 +184,7 @@ impl ModuleChecker<'_> {
             };
             if let (Some(expected_fields), false) = self.expanded_record_fields(expected.clone()) {
                 for field in actual_fields {
-                    let Some(expected) = expected_fields
+                    let Some(expected_field) = expected_fields
                         .iter()
                         .find(|expected| expected.name == field.name)
                     else {
@@ -92,7 +194,7 @@ impl ModuleChecker<'_> {
                     budget.checking = self.checking;
                     if !is_assignable(
                         &field.value,
-                        &expected.value,
+                        &expected_field.value,
                         &self.types,
                         &mut HashSet::new(),
                         &mut budget,
@@ -106,7 +208,7 @@ impl ModuleChecker<'_> {
                             vec![
                                 crate::diagnostic::type_text::render_in(&field.value, self.project),
                                 crate::diagnostic::type_text::render_in(
-                                    &diagnostic_expected(&field.value, &expected.value),
+                                    &diagnostic_expected(&field.value, &expected_field.value),
                                     self.project,
                                 ),
                             ],
@@ -114,6 +216,7 @@ impl ModuleChecker<'_> {
                         if let Some(token) = argument.iter().find(|token| token.is(&field.name)) {
                             self.point_last_typescript(std::slice::from_ref(token));
                         }
+                        self.related_contextual_property(expected_field, expected);
                         return;
                     }
                 }

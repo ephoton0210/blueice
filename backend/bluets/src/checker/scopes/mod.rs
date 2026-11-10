@@ -236,6 +236,21 @@ impl<'a> ScopeModel<'a> {
         }
         model.declarations(&module.declarations, 0);
         model.index_scopes();
+        for (start, arguments) in &module.generic_call_type_arguments {
+            let scope = model.scope_at(*start);
+            let end = module
+                .edits
+                .iter()
+                .filter(|edit| edit.replacement.is_empty() && edit.start > *start)
+                .map(|edit| edit.end)
+                .min()
+                .unwrap_or(*start);
+            let span = SourceSpan::new(&module.id, *start, end);
+            for argument in arguments {
+                model.type_scopes(argument, &span, scope);
+            }
+        }
+        model.index_scopes();
         // The parser records type names even inside assertions that disappear
         // during emit. Scope spans attach them to the same lexical identities.
         for reference in &module.type_references {
@@ -316,6 +331,7 @@ impl<'a> ScopeModel<'a> {
     }
 
     fn index_scopes(&mut self) {
+        self.scope_ranges.clear();
         let mut events: BTreeMap<usize, Vec<(bool, ScopeId)>> = BTreeMap::new();
         for (id, scope) in self.scopes.iter().enumerate() {
             if scope.span.start < scope.span.end {

@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:8325633e249e34109b7622acbdd5a19f6f194992",
+  "artifacts": [
+    {
+      "path": "CALLABLE_UTILITY_COMPILERS.tar.gz",
+      "bytes": 19443925,
+      "sha256": "194b397f230a6e572a3e86dfde8189ce37c7970a92e3a0b1021eb7befc44d2d6"
+    },
+    {
+      "path": "CALLABLE_UTILITY_EVIDENCE.tar.gz",
+      "bytes": 60611365,
+      "sha256": "1eb275482412a279d953e593188e2c41db0555ceb21f411345577544243c7200"
+    },
+    {
+      "path": "CALLABLE_UTILITY_WINDOWS_EVIDENCE.tar.gz",
+      "bytes": 7734778,
+      "sha256": "004ff4d886f01254307dfbc709b1abb6427d103744216f8e8f6fda3633a01b0c"
+    },
+    {
+      "path": "CALLABLE_UTILITY_RETIRED_A94.tar.gz",
+      "bytes": 19479173,
+      "sha256": "5c7cadbc261056608841bdbeaed4a541d81ff26627f2215146c0144d71c082f9"
+    },
+    {
+      "path": "CALLABLE_UTILITY_RETIRED_7B406.tar.gz",
+      "bytes": 81349734,
+      "sha256": "ec62f0db13e95e27ccfddc991531d948a48cb6898a215daea4bf412eabbc98c8"
+    }
+  ]
+}

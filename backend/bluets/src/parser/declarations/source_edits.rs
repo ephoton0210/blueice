@@ -427,6 +427,7 @@ impl Parser {
             );
         }
         self.diagnostics.append(&mut parser.diagnostics);
+        self.type_references.append(&mut parser.type_references);
         values
     }
 

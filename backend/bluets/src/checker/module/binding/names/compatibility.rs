@@ -186,3 +186,60 @@ fn variance_method_detail(
     }
     None
 }
+
+impl ModuleChecker<'_> {
+    pub(super) fn explain_missing_constraint_signature(&mut self, actual: &Type, expected: &Type) {
+        let source = self.compatibility_shape(actual);
+        let target = self.compatibility_shape(expected);
+        let (construct, parameters, result) = match &target {
+            Type::Function { parameters, result } => (false, parameters, result.as_ref()),
+            Type::GenericFunction {
+                type_parameters,
+                parameters,
+                result,
+                ..
+            } if type_parameters.is_empty() => (false, parameters, result.as_ref()),
+            Type::CallableRecord { signatures, .. } if signatures.len() == 1 => {
+                let signature = &signatures[0];
+                if !signature.type_parameters.is_empty() {
+                    return;
+                }
+                (
+                    signature.construct,
+                    &signature.parameters,
+                    &signature.result,
+                )
+            }
+            _ => return,
+        };
+        let opposite = match &source {
+            Type::Function { .. } | Type::GenericFunction { .. } => construct,
+            Type::CallableRecord { signatures, .. } => {
+                !signatures.is_empty()
+                    && signatures
+                        .iter()
+                        .all(|signature| signature.construct != construct)
+            }
+            _ => false,
+        };
+        if !opposite {
+            return;
+        }
+        let signature = format!(
+            "{}({}): {}",
+            if construct { "new " } else { "" },
+            crate::diagnostic::type_text::parameter_list_in(parameters, Some(self.project)),
+            crate::diagnostic::type_text::render_in(result, self.project)
+        );
+        let actual = crate::diagnostic::type_text::render_in(actual, self.project);
+        if let Some(counterpart) = self
+            .diagnostics
+            .last_mut()
+            .and_then(|diagnostic| diagnostic.typescript.as_mut())
+        {
+            counterpart.message.push_str(&format!(
+                "\n  Type '{actual}' provides no match for the signature '{signature}'."
+            ));
+        }
+    }
+}

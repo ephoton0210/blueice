@@ -29,48 +29,80 @@ impl ModuleChecker<'_> {
         ) {
             expected = value;
         }
-        let Type::Array(expected) = expected else {
-            return false;
+        let contexts: Vec<_> = match expected {
+            Type::Array(value) => elements
+                .into_iter()
+                .map(|tokens| (tokens, (*value).clone()))
+                .collect(),
+            Type::Tuple(values) => elements
+                .into_iter()
+                .zip(values)
+                .take_while(|(_, value)| !value.rest)
+                .map(|(tokens, value)| (tokens, value.annotation))
+                .collect(),
+            _ => return false,
         };
-        let mut expected = *expected;
-        visited.clear();
-        while let Some(value) = instantiate_named(
-            &expected,
-            &self.types,
-            &mut visited,
-            &mut budget,
-            "array element assignment",
-        ) {
-            expected = value;
-        }
-        if !matches!(expected, Type::Number | Type::String | Type::Boolean) {
-            return false;
-        }
-        for element in elements {
+        for (element, expected) in contexts {
             let (Some(first), Some(last)) = (element.first(), element.last()) else {
                 continue;
             };
-            let actual = match crate::checker::module::return_inference::widen(
-                self.infer_in_context(element, scope, &expected),
-            ) {
-                value @ (Type::Number | Type::String | Type::Boolean) => value,
-                _ => continue,
-            };
             let span = SourceSpan::new(&self.module.id, first.start, last.end);
-            if !self.is_assignable_bounded(&actual, &expected, &span) {
-                self.assignment_error(
+            let expected = crate::checker::inference::result_type(
+                &expected,
+                &BTreeMap::new(),
+                &self.types,
+                &mut budget,
+            );
+            let expected = crate::checker::type_operators::diagnostic_type(
+                &expected,
+                &self.types,
+                &mut budget,
+            );
+            let actual = crate::checker::module::return_inference::widen(
+                self.infer_in_context(element, scope, &expected),
+            );
+            if self.is_assignable_bounded(&actual, &expected, &span) {
+                continue;
+            }
+            if matches!(expected, Type::Record(_) | Type::Named { .. })
+                && element.first().is_some_and(|token| token.is("{"))
+            {
+                self.call_argument_error(
                     &span,
-                    format!(
-                        "initializer has type `{}`, which is not assignable to `{}`",
-                        type_label(inferred),
-                        type_label(annotation)
-                    ),
-                    DiagnosticCode::TypeMismatch,
+                    "tuple element does not satisfy its contextual type".into(),
                     &actual,
                     &expected,
+                    element,
+                    false,
                 );
                 return true;
             }
+            let expected = if let Type::Union(parts) = expected {
+                crate::checker::type_operators::union(
+                    parts
+                        .into_iter()
+                        .filter(|part| !matches!(part, Type::Null | Type::Undefined)),
+                )
+            } else {
+                expected
+            };
+            if !matches!(expected, Type::Number | Type::String | Type::Boolean)
+                || !matches!(actual, Type::Number | Type::String | Type::Boolean)
+            {
+                continue;
+            }
+            self.assignment_error(
+                &span,
+                format!(
+                    "initializer has type `{}`, which is not assignable to `{}`",
+                    type_label(inferred),
+                    type_label(annotation)
+                ),
+                DiagnosticCode::TypeMismatch,
+                &actual,
+                &expected,
+            );
+            return true;
         }
         false
     }
