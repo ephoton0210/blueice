@@ -1054,7 +1054,11 @@ pub(crate) fn layout_run_around(
         .and_then(|s| s.text_align.as_deref())
         .unwrap_or("start")
         .to_string();
-    let side = align_side(&text_align, rtl_paragraph);
+    // `text-align-last` places the last line of the run and every line a `<br>` ends.
+    let align_last = cstyle
+        .keyword("text-align-last")
+        .filter(|v| *v != "auto")
+        .map(str::to_string);
     let indent = if first_in_block {
         cstyle.px("text-indent", content_width).unwrap_or(0.0)
     } else {
@@ -1141,8 +1145,14 @@ pub(crate) fn layout_run_around(
         let baseline = max_above;
 
         // ---- horizontal placement and fragments ----
+        let last_line = line.forced_end || line_index + 1 == line_count;
+        let line_align = match (&align_last, last_line) {
+            (Some(last), true) => last.as_str(),
+            _ => text_align.as_str(),
+        };
+        let side = align_side(line_align, rtl_paragraph);
         let extra_per_space =
-            if text_align == "justify" && !line.forced_end && line_index + 1 < line_count {
+            if line_align == "justify" && (!last_line || align_last.is_some()) {
                 let spaces = line
                     .items
                     .iter()
@@ -1621,6 +1631,32 @@ mod tests {
         assert_eq!(only_line(&ltr).x, 30.0);
         let rtl = body("<p>hi</p>", "p { direction: rtl; text-indent: 30px }", w);
         assert!((only_line(&rtl).x - (w - 30.0 - hi)).abs() < 0.01);
+    }
+
+    #[test]
+    fn text_align_last_places_the_last_line_and_the_lines_a_break_ends() {
+        let w = 200.0;
+        let hi = word_width("hi");
+        let x = |css: &str| {
+            let f = body("<p>hi</p>", css, w);
+            only_line(&f).x
+        };
+        assert!((x("p { text-align-last: right }") - (w - hi)).abs() < 0.01);
+        assert!((x("p { text-align: right; text-align-last: left }")).abs() < 0.01);
+        assert!((x("p { text-align-last: center }") - (w - hi) / 2.0).abs() < 0.01);
+        assert!((x("p { direction: rtl; text-align: left; text-align-last: end }")).abs() < 0.01);
+        assert!((x("p { text-align: center; text-align-last: auto }") - (w - hi) / 2.0).abs() < 0.01);
+        // only the last line: an earlier line still follows text-align
+        let f = body(
+            "<p>aaa bbb ccc ddd eee fff ggg hhh</p>",
+            "p { text-align: left; text-align-last: right }",
+            80.0,
+        );
+        let lines = &f.children[0].children;
+        assert!(lines.len() > 1);
+        assert_eq!(lines[0].x, 0.0);
+        let last = lines.last().unwrap();
+        assert!((last.x + last.width - 80.0).abs() < 0.01);
     }
 
     #[test]

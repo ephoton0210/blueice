@@ -226,6 +226,31 @@ mod tests {
     }
 
     #[test]
+    fn inline_start_and_end_floats_and_clears_follow_the_containers_direction() {
+        let x = |float: &str, container: &str| {
+            let f = layout::body(
+                &format!("<div class=f style='float:{float};width:80px'></div><p>x</p>"),
+                container,
+                400.0,
+            );
+            f.children[0].x
+        };
+        assert_eq!(x("inline-start", ""), 0.0);
+        assert_eq!(x("inline-end", ""), 320.0);
+        assert_eq!(x("inline-start", "body { direction: rtl }"), 320.0);
+        assert_eq!(x("inline-end", "body { direction: rtl }"), 0.0);
+        // physical sides stay put
+        assert_eq!(x("left", "body { direction: rtl }"), 0.0);
+        // `clear: inline-start` in a right-to-left container clears right floats
+        let f = layout::body(
+            "<div class=f style='float:right;width:80px'></div><div class=f style='clear:inline-start'></div>",
+            "body { direction: rtl }",
+            400.0,
+        );
+        assert_eq!(f.children[1].y, 30.0, "cleared below the right float");
+    }
+
+    #[test]
     fn text_returns_to_the_edge_below_the_float() {
         let text = "word ".repeat(60);
         let f = layout::body(

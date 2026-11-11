@@ -349,17 +349,31 @@ impl<'a> Style<'a> {
         if self.is_out_of_flow() {
             return None;
         }
+        let rtl = self.container_is_rtl();
         match self.keyword("float") {
-            Some("left" | "inline-start") => Some(Side::Left),
-            Some("right" | "inline-end") => Some(Side::Right),
+            Some("left") => Some(Side::Left),
+            Some("right") => Some(Side::Right),
+            Some("inline-start") => Some(if rtl { Side::Right } else { Side::Left }),
+            Some("inline-end") => Some(if rtl { Side::Left } else { Side::Right }),
             _ => None,
         }
     }
 
+    /// The containing block runs right to left: the direction `inline-start` and `inline-end`
+    /// floats and clears are relative to.
+    fn container_is_rtl(&self) -> bool {
+        self.ctx
+            .parent(self.node)
+            .is_some_and(|parent| self.ctx.style(parent).is_rtl())
+    }
+
     pub fn clear(&self) -> Clear {
+        let rtl = self.container_is_rtl();
         match self.keyword("clear") {
-            Some("left" | "inline-start") => Clear::Left,
-            Some("right" | "inline-end") => Clear::Right,
+            Some("left") => Clear::Left,
+            Some("right") => Clear::Right,
+            Some("inline-start") => if rtl { Clear::Right } else { Clear::Left },
+            Some("inline-end") => if rtl { Clear::Left } else { Clear::Right },
             Some("both") => Clear::Both,
             _ => Clear::None,
         }

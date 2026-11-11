@@ -138,6 +138,7 @@ const OTHER_INHERITED_PROPERTIES: &[&str] = &[
     "word-spacing",
     "text-transform",
     "text-indent",
+    "text-align-last",
     "text-shadow",
     "text-rendering",
     "white-space",
