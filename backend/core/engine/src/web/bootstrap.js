@@ -2905,19 +2905,19 @@
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
       const st = this._state;
       this._c('fillText', String(text), x, y, st.font, paintOf(st.fillStyle), st.globalAlpha, JSON.stringify(st.m), this._align(),
-        st.textBaseline, maxWidth === undefined || !(maxWidth >= 0) ? -1 : Number(maxWidth));
+        st.textBaseline, maxWidth === undefined || !(maxWidth >= 0) ? -1 : Number(maxWidth), 0, st.direction);
     }
     strokeText(text, x, y, maxWidth) {
       x = Number(x); y = Number(y);
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
       const st = this._state;
       this._c('strokeText', String(text), x, y, st.font, paintOf(st.strokeStyle), st.globalAlpha, JSON.stringify(st.m), this._align(),
-        st.textBaseline, maxWidth === undefined || !(maxWidth >= 0) ? -1 : Number(maxWidth), st.lineWidth);
+        st.textBaseline, maxWidth === undefined || !(maxWidth >= 0) ? -1 : Number(maxWidth), st.lineWidth, st.direction);
     }
     measureText(text) {
       const font = this._state.font;
       const [width, left, right, ascent, descent, fontAscent, fontDescent] =
-        String(this._c('measureBox', String(text), font, this._align(), this._state.textBaseline)).split(',').map(Number);
+        String(this._c('measureBox', String(text), font, this._align(), this._state.textBaseline, this._state.direction)).split(',').map(Number);
       return { width, actualBoundingBoxLeft: left, actualBoundingBoxRight: right, actualBoundingBoxAscent: ascent,
         actualBoundingBoxDescent: descent, fontBoundingBoxAscent: fontAscent, fontBoundingBoxDescent: fontDescent,
         emHeightAscent: fontAscent, emHeightDescent: fontDescent, alphabeticBaseline: 0, hangingBaseline: fontAscent * 0.8,

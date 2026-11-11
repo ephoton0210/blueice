@@ -140,6 +140,9 @@ pub enum PaintCommand {
         /// The page-supplied face (`blueice_font::web`) the text is drawn with; `None` for
         /// the bundled fonts.
         face: Option<u32>,
+        /// Drawn right to left: `text` is in reading order, and its characters are laid out
+        /// from the right end of its width (see `blueice_font::visual_order`).
+        rtl: bool,
     },
 }
 
@@ -267,15 +270,17 @@ pub fn dump_frame(frame: &Frame) -> String {
                 bold,
                 italic,
                 face,
+                rtl,
             } => out.push_str(&format!(
-                "text {},{} \"{text}\" {} {} {} {}{}\n",
+                "text {},{} \"{text}\" {} {} {} {}{}{}\n",
                 fmt_num(*x),
                 fmt_num(*y),
                 fmt_color(*color),
                 fmt_num(*font_size_px),
                 if *bold { "bold" } else { "normal" },
                 if *italic { "italic" } else { "normal" },
-                face.map_or(String::new(), |f| format!(" face={f}"))
+                face.map_or(String::new(), |f| format!(" face={f}")),
+                if *rtl { " rtl" } else { "" }
             )),
         }
     }
@@ -889,7 +894,8 @@ fn paint_fragment(
                     .get("letter-spacing")
                     .and_then(|v| length_px(v, style.font_size_px))
                     .filter(|s| *s != 0.0);
-                let mut emit = |x: f64, text: String| {
+                let rtl = fragment.rtl;
+                let mut emit = |x: f64, text: String, rtl: bool| {
                     out.push(PaintCommand::Text {
                         x,
                         y,
@@ -899,13 +905,20 @@ fn paint_fragment(
                         bold,
                         italic,
                         face,
+                        rtl,
                     });
                 };
                 match spacing {
                     Some(spacing) => {
                         let mut cursor = x;
-                        for c in text.chars() {
-                            emit(cursor, c.to_string());
+                        // A right-to-left run is spaced out already in the order it is drawn.
+                        let drawn: String = if rtl {
+                            blueice_font::visual_order(text)
+                        } else {
+                            text.clone()
+                        };
+                        for c in drawn.chars() {
+                            emit(cursor, c.to_string(), false);
                             cursor += blueice_font::measure_text_width_in(
                                 &c.to_string(),
                                 style.font_size_px,
@@ -915,7 +928,7 @@ fn paint_fragment(
                             ) + spacing;
                         }
                     }
-                    None => emit(x, text.clone()),
+                    None => emit(x, text.clone(), rtl),
                 }
                 paint_decorations(fragment, x, y, style, inherited, color, out);
             }
@@ -1141,6 +1154,7 @@ fn paint_native_form(
                     bold: text_face(style).1,
                     italic: text_face(style).2,
                     face: face_of(style),
+                    rtl: false,
                 });
             }
             return;
@@ -1187,6 +1201,7 @@ fn paint_native_form(
         bold: text_face(style).1,
         italic: text_face(style).2,
         face: face_of(style),
+        rtl: false,
     });
 }
 
@@ -1379,6 +1394,49 @@ mod tests {
             unreachable!()
         };
         assert_eq!(*color, Color::Rgba(255, 0, 0, 128));
+    }
+
+    #[test]
+    fn right_to_left_text_is_painted_flagged_and_left_to_right_text_is_not() {
+        let f = paint_html("<p>abc \u{5d0}\u{5d1}\u{5d2}</p>", "", 320.0);
+        let texts: Vec<(String, bool)> = f
+            .commands
+            .iter()
+            .filter_map(|c| match c {
+                PaintCommand::Text { text, rtl, .. } => Some((text.clone(), *rtl)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            texts,
+            [("abc".to_string(), false), ("\u{5d0}\u{5d1}\u{5d2}".to_string(), true)]
+        );
+    }
+
+    #[test]
+    fn letter_spaced_right_to_left_text_is_emitted_a_character_at_a_time_in_drawn_order() {
+        let f = paint_html(
+            "<p>\u{5d0}\u{5d1}\u{5d2}</p>",
+            "p { letter-spacing: 2px }",
+            320.0,
+        );
+        let chars: Vec<(char, f64, bool)> = f
+            .commands
+            .iter()
+            .filter_map(|c| match c {
+                PaintCommand::Text { text, x, rtl, .. } => {
+                    Some((text.chars().next().unwrap(), *x, *rtl))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            chars.iter().map(|c| c.0).collect::<String>(),
+            "\u{5d2}\u{5d1}\u{5d0}",
+            "left to right on screen, the last letter comes first"
+        );
+        assert!(chars.windows(2).all(|w| w[0].1 < w[1].1));
+        assert!(chars.iter().all(|c| !c.2), "already in drawn order");
     }
 
     #[test]
@@ -1715,6 +1773,7 @@ mod tests {
                     bold: false,
                     italic: false,
                     face: None,
+                    rtl: false,
                 },
                 PaintCommand::Text {
                     x: 1.0,
@@ -1725,12 +1784,13 @@ mod tests {
                     bold: true,
                     italic: true,
                     face: None,
+                    rtl: true,
                 },
             ],
         };
         assert_eq!(
             dump_frame(&frame),
-            "rect 0.0,0.0 100.0x20.0 #ff0000\nborder 0.0,0.0 100.0x4.0 #000000\ntext 1.0,2.0 \"hi\" #0000ff 16.0 normal normal\ntext 1.0,20.0 \"yo\" #0000ff 16.0 bold italic\n"
+            "rect 0.0,0.0 100.0x20.0 #ff0000\nborder 0.0,0.0 100.0x4.0 #000000\ntext 1.0,2.0 \"hi\" #0000ff 16.0 normal normal\ntext 1.0,20.0 \"yo\" #0000ff 16.0 bold italic rtl\n"
         );
     }
 

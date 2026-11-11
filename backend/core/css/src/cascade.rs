@@ -556,6 +556,18 @@ fn compute_style_for(
     // overriding earlier ones. A `var()` declaration is substituted and then
     // parsed here -- a shorthand may expand to several longhands -- and is
     // dropped entirely when a reference cannot be satisfied.
+    // The direction flow-relative properties resolve against: the winning `direction`
+    // declaration, or the parent's.
+    let rtl = match matched
+        .iter()
+        .rev()
+        .find(|m| m.declaration.property == "direction")
+        .map(|m| &m.declaration.value)
+    {
+        Some(Value::Keyword(k)) if k == "rtl" => true,
+        Some(Value::Keyword(k)) if k == "ltr" => false,
+        _ => matches!(parent.other.get("direction"), Some(Value::Keyword(k)) if k == "rtl"),
+    };
     let mut winners: HashMap<String, Value> = HashMap::new();
     for m in &matched {
         let property = m.declaration.property.as_str();
@@ -567,7 +579,12 @@ fn compute_style_for(
                 let Some(substituted) = crate::vars::substitute(tokens, &custom) else {
                     continue;
                 };
-                for (longhand, value) in crate::parser::expand_property(property, &substituted) {
+                let longhands = if crate::parser::is_direction_relative(property) {
+                    crate::parser::expand_logical_inline(property, &substituted, rtl)
+                } else {
+                    crate::parser::expand_property(property, &substituted)
+                };
+                for (longhand, value) in longhands {
                     winners.insert(longhand, value);
                 }
             }
@@ -832,8 +849,8 @@ th { text-align: center; }
 body { margin: 8px; }
 p, blockquote, figure, dl, menu, ul, ol, pre { margin-top: 1em; margin-bottom: 1em; }
 blockquote, figure { margin-left: 40px; margin-right: 40px; }
-dd { margin-left: 40px; }
-ul, ol, menu { padding-left: 40px; }
+dd { margin-inline-start: 40px; }
+ul, ol, menu { padding-inline-start: 40px; }
 ul, menu { list-style-type: disc; }
 ol { list-style-type: decimal; }
 ul ul, ol ul { list-style-type: circle; }
@@ -847,6 +864,14 @@ h3 { font-size: 1.17em; font-weight: bold; margin-top: 1em; margin-bottom: 1em; 
 h4 { font-size: 1em; font-weight: bold; margin-top: 1.33em; margin-bottom: 1.33em; }
 h5 { font-size: 0.83em; font-weight: bold; margin-top: 1.67em; margin-bottom: 1.67em; }
 h6 { font-size: 0.67em; font-weight: bold; margin-top: 2.33em; margin-bottom: 2.33em; }
+/* Directionality, after the HTML Standard's "Bidirectional text" rendering rules. */
+[dir=ltr] { direction: ltr; unicode-bidi: isolate; }
+[dir=rtl] { direction: rtl; unicode-bidi: isolate; }
+[dir=auto] { unicode-bidi: isolate; }
+bdi, output { unicode-bidi: isolate; }
+bdo { unicode-bidi: bidi-override; }
+bdo[dir] { unicode-bidi: isolate-override; }
+textarea[dir=auto], pre[dir=auto] { unicode-bidi: plaintext; }
 "#;
 
 pub fn ua_stylesheet() -> Vec<Rule> {
@@ -1086,6 +1111,45 @@ mod tests {
         assert_eq!(
             styles[&p].other.get("margin-top"),
             Some(&Value::Length(Length::Px(10.0)))
+        );
+    }
+
+    #[test]
+    fn inline_start_and_end_properties_follow_the_elements_direction() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let ltr = elem(&mut doc, root, "p", &[]);
+        let rtl = elem(&mut doc, root, "div", &[]);
+        let child = elem(&mut doc, rtl, "span", &[]);
+        let author = parse(
+            "p, span { margin-inline-start: 10px; padding-inline-end: 3px; } \
+             div { direction: rtl; } \
+             div { margin-inline: 1px 2px; }",
+        );
+        let styles = cascade(&doc, &[(Origin::Author, &author)]);
+        let px = |n: NodeId, p: &str| styles[&n].other.get(p).cloned();
+        assert_eq!(px(ltr, "margin-left"), Some(Value::Length(Length::Px(10.0))));
+        assert_eq!(px(ltr, "padding-right"), Some(Value::Length(Length::Px(3.0))));
+        assert_eq!(px(ltr, "margin-right"), None);
+        // the span inherits its parent's right-to-left direction
+        assert_eq!(px(child, "margin-right"), Some(Value::Length(Length::Px(10.0))));
+        assert_eq!(px(child, "padding-left"), Some(Value::Length(Length::Px(3.0))));
+        assert_eq!(px(child, "margin-left"), None);
+        // a two-value shorthand is start then end
+        assert_eq!(px(rtl, "margin-right"), Some(Value::Length(Length::Px(1.0))));
+        assert_eq!(px(rtl, "margin-left"), Some(Value::Length(Length::Px(2.0))));
+    }
+
+    #[test]
+    fn a_later_physical_declaration_beats_an_earlier_logical_one_for_the_same_side() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let p = elem(&mut doc, root, "p", &[]);
+        let author = parse("p { direction: rtl; margin-inline-start: 10px; margin-right: 4px; }");
+        let styles = cascade(&doc, &[(Origin::Author, &author)]);
+        assert_eq!(
+            styles[&p].other.get("margin-right"),
+            Some(&Value::Length(Length::Px(4.0)))
         );
     }
 

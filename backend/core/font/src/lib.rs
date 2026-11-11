@@ -46,7 +46,9 @@
 //! glyph bug reappearing one level down.
 
 pub mod web;
+mod shape;
 mod variable;
+pub use shape::{is_mark, mirrored, shape_with, visual_order};
 pub use variable::{Axis, VarInstance, Variation};
 
 use std::sync::OnceLock;
@@ -212,13 +214,25 @@ pub fn measure_text_width_in(
     italic: bool,
     face: Option<web::WebFontId>,
 ) -> f64 {
-    text.chars()
+    shape_in(text, bold, italic, face)
+        .chars()
         .map(|c| {
             font_for_char_in(c, bold, italic, face)
                 .metrics(c, font_size_px as f32)
                 .advance_width as f64
         })
         .sum()
+}
+
+/// `text` as it is drawn and measured: Arabic letters in their joining forms (see
+/// [`shape_with`]), each form used only when the face that would draw it has the glyph.
+pub fn shape_in(
+    text: &str,
+    bold: bool,
+    italic: bool,
+    face: Option<web::WebFontId>,
+) -> std::borrow::Cow<'_, str> {
+    shape_with(text, |c| font_for_char_in(c, bold, italic, face).has_glyph(c))
 }
 
 /// [`ascent_descent`] of a page's own face (`None`: the bundled fonts).
@@ -244,13 +258,7 @@ pub fn ascent_descent_in(
 /// never disagree about how wide a run of text is, even across a
 /// script-fallback boundary.
 pub fn measure_text_width(text: &str, font_size_px: f64, bold: bool, italic: bool) -> f64 {
-    text.chars()
-        .map(|c| {
-            font_for_char(c, bold, italic)
-                .metrics(c, font_size_px as f32)
-                .advance_width as f64
-        })
-        .sum()
+    measure_text_width_in(text, font_size_px, bold, italic, None)
 }
 
 /// The bundled font's ascent and descent (both positive, in pixels) at
@@ -369,6 +377,20 @@ mod tests {
             .map(|c| font_for(false, false).metrics(c, 16.0).advance_width as f64)
             .sum();
         assert_eq!(measure_text_width("abc", 16.0, false, false), expected);
+    }
+
+    #[test]
+    fn arabic_is_measured_in_its_joined_forms() {
+        // beh beh: initial then final, not two isolated letters
+        let joined = measure_text_width("\u{0628}\u{0628}", 16.0, false, false);
+        let face = font_for(false, false);
+        let forms: f64 = ['\u{FE91}', '\u{FE90}']
+            .iter()
+            .map(|c| face.metrics(*c, 16.0).advance_width as f64)
+            .sum();
+        assert_eq!(joined, forms);
+        let isolated: f64 = face.metrics('\u{0628}', 16.0).advance_width as f64 * 2.0;
+        assert_ne!(joined, isolated);
     }
 
     #[test]

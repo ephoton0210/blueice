@@ -82,6 +82,7 @@ struct TextRun<'a> {
     bold: bool,
     italic: bool,
     face: Option<WebFontId>,
+    rtl: bool,
 }
 
 /// An RGBA8, row-major pixel buffer -- the engine's final rendered
@@ -192,7 +193,15 @@ impl Pixmap {
         let smear = if synthesized && run.bold { (run.font_size_px / 20.0).max(1.0).round() as i64 } else { 0 };
         let slant = if synthesized && run.italic { 0.2 } else { 0.0 };
         let mut pen_x = run.x;
-        for ch in run.text.chars() {
+        // Arabic letters take the form their neighbours call for; a right-to-left run is then
+        // drawn backwards, from its last character to its first, brackets mirrored.
+        let shaped = blueice_font::shape_in(run.text, run.bold, run.italic, run.face);
+        let drawn = if run.rtl {
+            std::borrow::Cow::Owned(blueice_font::visual_order(&shaped))
+        } else {
+            shaped
+        };
+        for ch in drawn.chars() {
             // Per-character, not once for the whole run: a run can mix
             // scripts (e.g. a CJK sentence with an English word in it),
             // and `blueice-font`'s CJK fallback only kicks in for the
@@ -326,6 +335,7 @@ pub fn rasterize(frame: &Frame) -> Pixmap {
                 bold,
                 italic,
                 face,
+                rtl,
             } => pixmap.draw_text(
                 TextRun {
                     x: *x,
@@ -336,6 +346,7 @@ pub fn rasterize(frame: &Frame) -> Pixmap {
                     bold: *bold,
                     italic: *italic,
                     face: face.map(WebFontId::from_u32),
+                    rtl: *rtl,
                 },
                 clip,
             ),
@@ -476,6 +487,7 @@ fn rasterize_viewport_culled(
                 bold,
                 italic,
                 face,
+                rtl,
             } => PaintCommand::Text {
                 x: x * scale,
                 y: (y - scroll_y) * scale,
@@ -485,6 +497,7 @@ fn rasterize_viewport_culled(
                 bold,
                 italic,
                 face,
+                rtl,
             },
         })
         .collect();
@@ -560,6 +573,7 @@ mod tests {
                 bold: false,
                 italic: false,
                 face: None,
+                rtl: false,
             });
         }
         let page = frame(100.0, 1000.0, commands.clone());
@@ -586,6 +600,7 @@ mod tests {
                 bold: false,
                 italic: false,
                 face: None,
+                rtl: false,
             });
         }
         commands.push(PaintCommand::Shadow {
@@ -735,6 +750,7 @@ mod tests {
                 bold: false,
                 italic: false,
                 face: None,
+                rtl: false,
             }],
         ));
         let has_ink = (0..pixmap.height)
@@ -756,6 +772,7 @@ mod tests {
                 bold: false,
                 italic: false,
                 face: None,
+                rtl: false,
             }],
         ));
         for y in 0..pixmap.height {
@@ -779,6 +796,7 @@ mod tests {
                 bold: false,
                 italic: false,
                 face: None,
+                rtl: false,
             }],
         ));
         let two_char = rasterize(&frame(
@@ -793,6 +811,7 @@ mod tests {
                 bold: false,
                 italic: false,
                 face: None,
+                rtl: false,
             }],
         ));
         let ink_extent = |p: &Pixmap| -> u32 {

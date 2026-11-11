@@ -338,6 +338,13 @@ impl CanvasFont {
     fn width(&self, text: &str) -> f64 {
         blueice_font::measure_text_width_in(text, self.size, self.bold, self.italic, self.face)
     }
+
+    /// `text` as it is drawn left to right: Arabic letters in their joining forms, then each
+    /// right-to-left run (a whole line when `rtl`) in reverse.
+    fn display(&self, text: &str, rtl: bool) -> String {
+        let shaped = blueice_font::shape_in(text, self.bold, self.italic, self.face);
+        blueice_layout::visual_text(&shaped, rtl)
+    }
 }
 
 impl Canvas2d {
@@ -349,9 +356,11 @@ impl Canvas2d {
         (x, y): (f64, f64),
         font: &CanvasFont,
         m: &Affine,
-        (align, baseline): (&str, &str),
+        (align, baseline, rtl): (&str, &str, bool),
         max_width: f64,
     ) -> (Vec<Placed>, Affine) {
+        let text = font.display(text, rtl);
+        let text = text.as_str();
         let width = font.width(text);
         let (ascent, descent) =
             blueice_font::ascent_descent_in(font.size, font.bold, font.italic, font.face);
@@ -426,7 +435,7 @@ impl Canvas2d {
         paint: &Paint,
         alpha: f64,
         m: &Affine,
-        place: (&str, &str),
+        place: (&str, &str, bool),
         max_width: f64,
     ) {
         let (glyphs, m) = Self::place_text(text, at, font, m, place, max_width);
@@ -446,7 +455,7 @@ impl Canvas2d {
         paint: &Paint,
         alpha: f64,
         m: &Affine,
-        place: (&str, &str),
+        place: (&str, &str, bool),
         max_width: f64,
         line_width: f64,
     ) {
@@ -780,12 +789,12 @@ impl Canvas2d {
         Ok(match op {
             "fillText" | "strokeText" => {
                 // text, x, y, font, paint, alpha, matrix, align, baseline, maxWidth (<0: none),
-                // lineWidth (strokeText)
+                // lineWidth (strokeText only; fillText sends 0), direction ("rtl" or not)
                 let font = CanvasFont::parse(text(a, 3), fonts);
                 let paint = Paint::parse(text(a, 4));
                 let max = if a.get(9).is_some() { num(a, 9) } else { -1.0 };
                 let (at, alpha, m) = ((num(a, 1), num(a, 2)), num(a, 5).clamp(0.0, 1.0), affine(a, 6));
-                let place = (text(a, 7), text(a, 8));
+                let place = (text(a, 7), text(a, 8), text(a, 11) == "rtl");
                 if op == "fillText" {
                     self.fill_text(text(a, 0), at, &font, &paint, alpha, &m, place, max);
                 } else {
@@ -793,7 +802,7 @@ impl Canvas2d {
                 }
                 Reply::Undefined
             }
-            // text, font, align, baseline: width, then the ink's extents from the alignment point
+            // text, font, align, baseline, direction: width, then the ink's extents from the alignment point
             // (left and right either side, ascent above the baseline, descent below) and the
             // font's own, as comma-separated numbers.
             "measureBox" => {
@@ -803,7 +812,7 @@ impl Canvas2d {
                     (0.0, 0.0),
                     &font,
                     &[1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-                    (text(a, 2), text(a, 3)),
+                    (text(a, 2), text(a, 3), text(a, 4) == "rtl"),
                     -1.0,
                 );
                 let min = |f: fn(&Placed) -> f64| glyphs.iter().map(f).fold(f64::INFINITY, f64::min);
@@ -814,11 +823,12 @@ impl Canvas2d {
                     (-min(|g| g.x), max(|g| g.x + g.w as f64), -min(|g| g.y), max(|g| g.y + g.h as f64))
                 };
                 let (fa, fd) = blueice_font::ascent_descent_in(font.size, font.bold, font.italic, font.face);
-                Reply::Text(format!("{},{left},{right},{ascent},{descent},{fa},{fd}", font.width(text(a, 0))))
+                let shown = font.display(text(a, 0), text(a, 4) == "rtl");
+                Reply::Text(format!("{},{left},{right},{ascent},{descent},{fa},{fd}", font.width(&shown)))
             }
             "measureText" => {
                 let font = CanvasFont::parse(text(a, 1), fonts);
-                Reply::Number(font.width(text(a, 0)))
+                Reply::Number(font.width(&font.display(text(a, 0), false)))
             }
             // path (JSON), paint, alpha, matrix, even-odd (fillPath); and line width, cap, join,
             // miter limit, dash pattern (JSON), dash offset (strokePath).
@@ -1155,6 +1165,53 @@ mod tests {
         let mut big = canvas(120, 60);
         fill_text(&mut big, &text_args("Hi", 10.0, 50.0, "40px sans-serif", "start"), &none);
         assert!(super::tests::ink(&big).len() > 2 * ink.len());
+    }
+
+    /// `text_args` with a direction.
+    fn directed_args(s: &str, direction: &str) -> Vec<Reply> {
+        let mut args = text_args(s, 10.0, 40.0, "20px sans-serif", "left");
+        args.push(n(0.0));
+        args.push(t(direction));
+        args
+    }
+
+    fn ink_of(args: &[Reply]) -> std::collections::BTreeSet<(u32, u32)> {
+        let mut c = canvas(200, 60);
+        fill_text(&mut c, args, &crate::fonts::FontCatalog::default());
+        ink(&c).into_iter().collect()
+    }
+
+    #[test]
+    fn hebrew_after_latin_is_drawn_to_its_right_unless_the_canvas_runs_right_to_left() {
+        let a = ink_of(&directed_args("a", "ltr"));
+        let ltr = ink_of(&directed_args("a \u{5d0}", "ltr"));
+        assert!(a.is_subset(&ltr), "the Latin letter is where it would be alone");
+        let rtl = ink_of(&directed_args("a \u{5d0}", "rtl"));
+        assert!(!a.is_subset(&rtl), "in a right-to-left canvas the Latin letter comes last");
+        let shift = blueice_font::measure_text_width(" \u{5d0}", 20.0, false, false).round() as u32;
+        let moved: std::collections::BTreeSet<(u32, u32)> =
+            a.iter().map(|&(x, y)| (x + shift, y)).collect();
+        assert!(
+            moved.iter().filter(|p| rtl.contains(p)).count() * 10 > moved.len() * 9,
+            "it sits after the Hebrew instead"
+        );
+    }
+
+    #[test]
+    fn a_hebrew_word_is_drawn_back_to_front_whatever_the_canvas_direction() {
+        let ltr = ink_of(&directed_args("\u{5d0}\u{5d1}\u{5d2}", "ltr"));
+        let rtl = ink_of(&directed_args("\u{5d0}\u{5d1}\u{5d2}", "rtl"));
+        assert_eq!(ltr, rtl);
+        assert!(ltr.len() > 20);
+    }
+
+    #[test]
+    fn arabic_letters_are_drawn_in_their_joining_forms_on_a_canvas() {
+        assert_eq!(
+            ink_of(&directed_args("\u{628}\u{628}", "rtl")),
+            ink_of(&directed_args("\u{FE91}\u{FE90}", "ltr")),
+            "initial then final in reading order, final on the left"
+        );
     }
 
     #[test]

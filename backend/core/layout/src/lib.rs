@@ -16,6 +16,8 @@
 //! generates an ordinary block box for now (no special flex
 //! positioning yet).
 
+mod bidi;
+pub use bidi::visual_text;
 mod block;
 mod cache;
 mod ctx;

@@ -603,8 +603,45 @@ fn expand_border_sides(sides: &[&str], value_tokens: &[Token]) -> Vec<(String, V
     out
 }
 
-/// Logical (flow-relative) properties, mapped for a left-to-right,
-/// top-to-bottom document: inline is horizontal, block is vertical.
+/// The flow-relative properties whose physical side depends on the element's `direction`. They
+/// stay unexpanded in a declaration, and the cascade resolves them with
+/// [`expand_logical_inline`] once it knows the direction.
+pub(crate) fn is_direction_relative(property: &str) -> bool {
+    matches!(
+        property,
+        "margin-inline"
+            | "padding-inline"
+            | "inset-inline"
+            | "margin-inline-start"
+            | "margin-inline-end"
+            | "padding-inline-start"
+            | "padding-inline-end"
+            | "inset-inline-start"
+            | "inset-inline-end"
+    )
+}
+
+/// A direction-relative property as the physical longhands it means in text that runs left to
+/// right, or right to left when `rtl`: the inline start side is the right.
+pub(crate) fn expand_logical_inline(
+    property: &str,
+    value_tokens: &[Token],
+    rtl: bool,
+) -> Vec<(String, Value)> {
+    let swap = |name: &str| match name {
+        n if n.ends_with("left") => n.replace("left", "right"),
+        n if n.ends_with("right") => n.replace("right", "left"),
+        n => n.to_string(),
+    };
+    expand_property(property, value_tokens)
+        .into_iter()
+        .map(|(name, value)| (if rtl { swap(&name) } else { name }, value))
+        .collect()
+}
+
+/// Logical (flow-relative) properties, mapped for a top-to-bottom document: the block axis is
+/// vertical. The inline axis is horizontal; the side it means is the cascade's to resolve (see
+/// [`is_direction_relative`]), so expanding one here assumes left to right.
 fn logical_longhands(property: &str) -> Option<&'static [&'static str]> {
     Some(match property {
         "margin-inline" => &["margin-left", "margin-right"],
@@ -847,7 +884,9 @@ pub fn parse_declarations(tokens: &[Token]) -> Vec<Declaration> {
         .flat_map(|(property, value_tokens, important)| {
             // Custom properties and anything using `var()` cannot be parsed
             // until the cascade knows the element's custom properties.
-            let expanded = if property.starts_with("--") || crate::vars::contains_var(value_tokens)
+            let expanded = if property.starts_with("--")
+                || crate::vars::contains_var(value_tokens)
+                || is_direction_relative(&property)
             {
                 vec![(property, Value::Unparsed(value_tokens.to_vec()))]
             } else {
@@ -1673,33 +1712,50 @@ mod tests {
             None
         );
         assert_eq!(
-            value_of("margin-inline: 4px 8px;", "margin-left"),
-            Some(px(4.0))
-        );
-        assert_eq!(
-            value_of("margin-inline: 4px 8px;", "margin-right"),
-            Some(px(8.0))
-        );
-        assert_eq!(
             value_of("margin-block: 1px;", "margin-bottom"),
             Some(px(1.0))
-        );
-        assert_eq!(
-            value_of("padding-inline-start: 3px;", "padding-left"),
-            Some(px(3.0))
         );
         assert_eq!(
             value_of("padding-block-end: 3px;", "padding-bottom"),
             Some(px(3.0))
         );
-        assert_eq!(
-            value_of("inset-inline: 0;", "right"),
-            Some(Value::Length(Length::Zero))
-        );
         assert_eq!(value_of("inset-block-start: 5px;", "top"), Some(px(5.0)));
+    }
+
+    #[test]
+    fn inline_axis_properties_wait_for_the_direction_and_then_pick_a_side() {
+        // The parser keeps them as written: which side "start" is depends on the element.
+        for property in ["margin-inline", "padding-inline-start", "inset-inline", "margin-inline-end"] {
+            assert!(
+                parse_declarations(&tokenize(&format!("{property}: 1px;")))
+                    .iter()
+                    .all(|d| d.property == property && matches!(d.value, Value::Unparsed(_))),
+                "{property}"
+            );
+        }
+        let expand = |property: &str, css: &str, rtl: bool| {
+            expand_logical_inline(property, &tokenize(css), rtl)
+        };
         assert_eq!(
-            value_of("margin-inline-end: auto;", "margin-right"),
-            Some(Value::Keyword("auto".to_string()))
+            expand("margin-inline", "4px 8px", false),
+            [("margin-left".to_string(), px(4.0)), ("margin-right".to_string(), px(8.0))]
+        );
+        assert_eq!(
+            expand("margin-inline", "4px 8px", true),
+            [("margin-right".to_string(), px(4.0)), ("margin-left".to_string(), px(8.0))]
+        );
+        assert_eq!(expand("padding-inline-start", "3px", false), [("padding-left".to_string(), px(3.0))]);
+        assert_eq!(expand("padding-inline-start", "3px", true), [("padding-right".to_string(), px(3.0))]);
+        assert_eq!(
+            expand("inset-inline", "0", true),
+            [
+                ("right".to_string(), Value::Length(Length::Zero)),
+                ("left".to_string(), Value::Length(Length::Zero))
+            ]
+        );
+        assert_eq!(
+            expand("margin-inline-end", "auto", true),
+            [("margin-left".to_string(), Value::Keyword("auto".to_string()))]
         );
     }
 

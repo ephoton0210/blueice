@@ -10,6 +10,8 @@ blueice-css = { path = "../css" }
 blueice-font = { path = "../font" }
 
 unicode-segmentation = "1.13.3"
+# The Unicode Bidirectional Algorithm (UAX #9): embedding levels for mixed-direction text.
+unicode-bidi = "0.3.18"
 
 [dev-dependencies]
 blueice-html = { path = "../html" }

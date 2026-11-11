@@ -13,6 +13,7 @@
 //! including the container's strut; `text-align` and `text-indent` place the
 //! content on the line.
 
+use crate::bidi::{self, Base};
 use crate::block::{layout_block_level, Constraint, Forced, PendingAbs};
 use crate::ctx::{Ctx, Display, Style};
 use crate::float::{self, FloatRect};
@@ -48,6 +49,9 @@ enum Piece {
     },
     Atomic(Box<Atomic>),
     Break,
+    /// A bidi formatting character (embedding, isolate or override boundary) of a styled
+    /// inline box: it takes no room and is never placed, but it shapes the levels around it.
+    Mark(char),
 }
 
 /// An atomic inline: laid out as a block-level box and placed whole on a line.
@@ -519,15 +523,39 @@ fn collect(
                     style.side(name, cb_width)
                 }
             };
-            let before = side("margin-left") + border.left + padding.left;
-            let after = side("margin-right") + border.right + padding.right;
+            // The box's start is the side its own direction begins at.
+            let (start_side, end_side) = if style.is_rtl() {
+                ("right", "left")
+            } else {
+                ("left", "right")
+            };
+            let edge = |side_name: &str, border_width: f64, pad: f64| {
+                (
+                    side(&format!("margin-{side_name}")) + border_width + pad,
+                    side(&format!("margin-{side_name}")),
+                )
+            };
+            let sizes = |name: &str| match name {
+                "left" => (border.left, padding.left),
+                _ => (border.right, padding.right),
+            };
+            let (before, before_outside) = {
+                let (b, p) = sizes(start_side);
+                edge(start_side, b, p)
+            };
+            let (after, after_outside) = {
+                let (b, p) = sizes(end_side);
+                edge(end_side, b, p)
+            };
             let paints = paints_own_box(&style);
+            let (opening, closing) = bidi_marks(ctx, node, &style);
+            pieces.extend(opening.into_iter().map(Piece::Mark));
             if paints {
                 pieces.push(Piece::Edge {
                     node,
                     open: true,
                     width: before,
-                    outside: side("margin-left"),
+                    outside: before_outside,
                 });
             } else if before != 0.0 {
                 pieces.push(Piece::Gap(before));
@@ -540,12 +568,56 @@ fn collect(
                     node,
                     open: false,
                     width: after,
-                    outside: side("margin-right"),
+                    outside: after_outside,
                 });
             } else if after != 0.0 {
                 pieces.push(Piece::Gap(after));
             }
+            pieces.extend(closing.into_iter().map(Piece::Mark));
         }
+    }
+}
+
+/// Whether `node` asks for its direction to be found from its content (`dir=auto`, or `<bdi>`
+/// without a `dir`).
+fn direction_is_auto(ctx: &Ctx<'_>, node: NodeId) -> bool {
+    let NodeData::Element {
+        tag_name,
+        attributes,
+        ..
+    } = ctx.node(node)
+    else {
+        return false;
+    };
+    match attributes.iter().find(|(k, _)| k == "dir") {
+        Some((_, v)) => v.trim().eq_ignore_ascii_case("auto"),
+        None => tag_name == "bdi",
+    }
+}
+
+/// The bidi formatting characters an inline box's `unicode-bidi` and `direction` stand for:
+/// what opens before its content and what closes after it, innermost last.
+fn bidi_marks(ctx: &Ctx<'_>, node: NodeId, style: &Style<'_>) -> (Vec<char>, Vec<char>) {
+    use crate::bidi::{FSI, LRE, LRI, LRO, PDF, PDI, RLE, RLI, RLO};
+    let rtl = style.is_rtl();
+    let auto = direction_is_auto(ctx, node);
+    let isolate = if auto {
+        FSI
+    } else if rtl {
+        RLI
+    } else {
+        LRI
+    };
+    match style.keyword("unicode-bidi") {
+        Some("embed") => (vec![if rtl { RLE } else { LRE }], vec![PDF]),
+        Some("isolate") => (vec![isolate], vec![PDI]),
+        Some("bidi-override") => (vec![if rtl { RLO } else { LRO }], vec![PDF]),
+        Some("isolate-override") => (
+            vec![isolate, if rtl { RLO } else { LRO }],
+            vec![PDF, PDI],
+        ),
+        Some("plaintext") => (vec![FSI], vec![PDI]),
+        _ => (Vec::new(), Vec::new()),
     }
 }
 
@@ -595,6 +667,8 @@ fn text_extent(style: &Style<'_>) -> (f64, f64) {
 struct Chunk {
     /// Collapsible space before the chunk (dropped at a line start).
     lead: f64,
+    /// The last space piece that makes up `lead`.
+    lead_piece: usize,
     items: Vec<usize>,
     width: f64,
     forced_break_after: bool,
@@ -608,12 +682,14 @@ fn into_chunks(pieces: &[Piece]) -> Vec<Chunk> {
     let mut chunks: Vec<Chunk> = Vec::new();
     let mut current: Option<Chunk> = None;
     let mut lead = 0.0;
+    let mut lead_piece = 0;
     let mut need_new = false;
     for (i, piece) in pieces.iter().enumerate() {
         match piece {
             Piece::Space { width, wrap, .. } => {
                 if *wrap {
                     lead += width;
+                    lead_piece = i;
                     need_new = true;
                 } else if let Some(chunk) = current.as_mut() {
                     chunk.items.push(i);
@@ -621,6 +697,7 @@ fn into_chunks(pieces: &[Piece]) -> Vec<Chunk> {
                 } else {
                     current = Some(Chunk {
                         lead: std::mem::take(&mut lead),
+                        lead_piece,
                         items: vec![i],
                         width: *width,
                         forced_break_after: false,
@@ -638,6 +715,7 @@ fn into_chunks(pieces: &[Piece]) -> Vec<Chunk> {
                     chunks.extend(current.take());
                     current = Some(Chunk {
                         lead: std::mem::take(&mut lead),
+                        lead_piece,
                         items: vec![i],
                         width: *width,
                         forced_break_after: false,
@@ -656,6 +734,7 @@ fn into_chunks(pieces: &[Piece]) -> Vec<Chunk> {
                     chunks.extend(current.take());
                     current = Some(Chunk {
                         lead: std::mem::take(&mut lead),
+                        lead_piece,
                         items: vec![i],
                         width: *width,
                         forced_break_after: false,
@@ -667,6 +746,7 @@ fn into_chunks(pieces: &[Piece]) -> Vec<Chunk> {
                 chunks.extend(current.take());
                 current = Some(Chunk {
                     lead: std::mem::take(&mut lead),
+                    lead_piece,
                     items: vec![i],
                     width: atomic_width(atomic),
                     forced_break_after: false,
@@ -674,9 +754,11 @@ fn into_chunks(pieces: &[Piece]) -> Vec<Chunk> {
                 // A break is allowed after an atomic box.
                 need_new = true;
             }
+            Piece::Mark(_) => {}
             Piece::Break => {
                 let mut chunk = current.take().unwrap_or(Chunk {
                     lead: 0.0,
+                    lead_piece,
                     items: Vec::new(),
                     width: 0.0,
                     forced_break_after: false,
@@ -694,7 +776,8 @@ fn into_chunks(pieces: &[Piece]) -> Vec<Chunk> {
 
 enum LineItem {
     Piece(usize),
-    Space(f64),
+    /// A collapsed space between two chunks, with the space piece it stands for.
+    Space(f64, usize),
 }
 
 struct Line {
@@ -778,7 +861,7 @@ fn break_lines(
             skip_floats!();
         }
         if !line.items.is_empty() && chunk.lead > 0.0 {
-            line.items.push(LineItem::Space(chunk.lead));
+            line.items.push(LineItem::Space(chunk.lead, chunk.lead_piece));
             line.width += chunk.lead;
         }
         for i in &chunk.items {
@@ -798,13 +881,38 @@ fn break_lines(
     lines
 }
 
-/// The shift `text-align` gives a line of `width` in `available` room.
-fn align_offset(text_align: &str, width: f64, available: f64) -> f64 {
-    let free = (available - width).max(0.0);
+#[derive(Clone, Copy, PartialEq)]
+enum Side {
+    Left,
+    Right,
+    Center,
+}
+
+/// Which way `text-align` puts a line, given the direction its paragraph runs: `start` and
+/// `end` follow it, `left` and `right` do not, and `justify` (on the lines it does not stretch)
+/// falls back to `start`.
+fn align_side(text_align: &str, rtl: bool) -> Side {
+    let (start, end) = if rtl {
+        (Side::Right, Side::Left)
+    } else {
+        (Side::Left, Side::Right)
+    };
     match text_align {
-        "right" | "end" | "-webkit-right" | "-moz-right" => free,
-        "center" | "-webkit-center" | "-moz-center" => free / 2.0,
-        _ => 0.0,
+        "left" | "-webkit-left" | "-moz-left" => Side::Left,
+        "right" | "-webkit-right" | "-moz-right" => Side::Right,
+        "end" => end,
+        "center" | "-webkit-center" | "-moz-center" => Side::Center,
+        _ => start,
+    }
+}
+
+/// The shift `text-align` gives a line of `width` in `available` room.
+fn align_offset(side: Side, width: f64, available: f64) -> f64 {
+    let free = (available - width).max(0.0);
+    match side {
+        Side::Right => free,
+        Side::Center => free / 2.0,
+        Side::Left => 0.0,
     }
 }
 
@@ -815,6 +923,81 @@ fn piece_style<'a>(ctx: &'a Ctx<'a>, piece: &Piece) -> Option<Style<'a>> {
         }
         _ => None,
     }
+}
+
+/// The bidi levels of a run's pieces. Each piece stands for some characters of one paragraph
+/// string; a word whose characters fall on different levels is cut into a word per level.
+/// Returns the pieces (words possibly cut), a level for each, and the paragraph's own level.
+fn resolve_bidi(ctx: &Ctx<'_>, pieces: Vec<Piece>, base: Base) -> (Vec<Piece>, Vec<u8>, u8) {
+    let mut text = String::new();
+    let mut starts = Vec::with_capacity(pieces.len());
+    for piece in &pieces {
+        starts.push(text.len());
+        match piece {
+            Piece::Word { text: t, .. } => text.push_str(t),
+            Piece::Space { .. } => text.push(' '),
+            Piece::Gap(_) | Piece::Edge { .. } | Piece::Atomic(_) => text.push('\u{fffc}'),
+            Piece::Break => text.push('\u{2028}'),
+            Piece::Mark(c) => text.push(*c),
+        }
+    }
+    if base != Base::Rtl && !bidi::needs_bidi(&text) {
+        let levels = vec![0; pieces.len()];
+        return (pieces, levels, 0);
+    }
+    let (byte_levels, paragraph) = bidi::levels(&text, base);
+    let mut out = Vec::with_capacity(pieces.len());
+    let mut levels = Vec::with_capacity(pieces.len());
+    for (piece, start) in pieces.into_iter().zip(starts) {
+        let Piece::Word {
+            text: word,
+            style_node,
+            can_break_before,
+            wrap,
+            width,
+        } = piece
+        else {
+            levels.push(byte_levels.get(start).copied().unwrap_or(paragraph));
+            out.push(piece);
+            continue;
+        };
+        let level_at = |offset: usize| byte_levels.get(start + offset).copied().unwrap_or(paragraph);
+        // Where the level changes inside the word.
+        let mut cuts = vec![0usize];
+        let mut last = level_at(0);
+        for (offset, _) in word.char_indices().skip(1) {
+            let level = level_at(offset);
+            if level != last {
+                cuts.push(offset);
+                last = level;
+            }
+        }
+        if cuts.len() == 1 {
+            levels.push(level_at(0));
+            out.push(Piece::Word {
+                text: word,
+                width,
+                style_node,
+                can_break_before,
+                wrap,
+            });
+            continue;
+        }
+        cuts.push(word.len());
+        let props = TextProps::of(&ctx.style(style_node));
+        for (k, pair) in cuts.windows(2).enumerate() {
+            let part = &word[pair[0]..pair[1]];
+            levels.push(level_at(pair[0]));
+            out.push(Piece::Word {
+                text: part.to_string(),
+                width: props.width(part),
+                style_node,
+                can_break_before: can_break_before && k == 0,
+                wrap,
+            });
+        }
+    }
+    (out, levels, paragraph)
 }
 
 /// Lays out one run of inline-level `nodes` inside `container`.
@@ -855,11 +1038,23 @@ pub(crate) fn layout_run_around(
     }
 
     let cstyle = ctx.style(container);
+    let base = if direction_is_auto(ctx, container)
+        || cstyle.keyword("unicode-bidi") == Some("plaintext")
+    {
+        Base::Auto
+    } else if cstyle.is_rtl() {
+        Base::Rtl
+    } else {
+        Base::Ltr
+    };
+    let (pieces, levels, paragraph_level) = resolve_bidi(ctx, pieces, base);
+    let rtl_paragraph = paragraph_level % 2 == 1;
     let text_align = cstyle
         .style
         .and_then(|s| s.text_align.as_deref())
-        .unwrap_or("left")
+        .unwrap_or("start")
         .to_string();
+    let side = align_side(&text_align, rtl_paragraph);
     let indent = if first_in_block {
         cstyle.px("text-indent", content_width).unwrap_or(0.0)
     } else {
@@ -951,7 +1146,7 @@ pub(crate) fn layout_run_around(
                 let spaces = line
                     .items
                     .iter()
-                    .filter(|i| matches!(i, LineItem::Space(_)))
+                    .filter(|i| matches!(i, LineItem::Space(..)))
                     .count();
                 if spaces > 0 {
                     ((available - line.width).max(0.0)) / spaces as f64
@@ -966,19 +1161,43 @@ pub(crate) fn layout_run_around(
                 * line
                     .items
                     .iter()
-                    .filter(|i| matches!(i, LineItem::Space(_)))
+                    .filter(|i| matches!(i, LineItem::Space(..)))
                     .count() as f64;
-        let offset = line.left + line_indent + align_offset(&text_align, line.width, available);
+        // The indent is taken from the start side: the left edge, or the right in a paragraph
+        // that runs right to left.
+        let offset = line.left
+            + if rtl_paragraph { 0.0 } else { line_indent }
+            + align_offset(side, used_width, available);
+        // The line's items in the order they sit on screen. Spaces at its end take the
+        // paragraph's level, so they do not wander into the middle of the line.
+        let mut item_levels: Vec<u8> = line
+            .items
+            .iter()
+            .map(|item| match item {
+                LineItem::Piece(i) | LineItem::Space(_, i) => levels[*i],
+            })
+            .collect();
+        for (k, item) in line.items.iter().enumerate().rev() {
+            match item {
+                LineItem::Space(..) => item_levels[k] = paragraph_level,
+                LineItem::Piece(i) if matches!(pieces[*i], Piece::Space { .. }) => {
+                    item_levels[k] = paragraph_level
+                }
+                _ => break,
+            }
+        }
+        let visual = bidi::visual_order(&item_levels);
         let mut x = 0.0;
         let mut children: Vec<Fragment> = Vec::new();
         let mut decorations: Vec<(usize, NodeId, f64, f64)> = Vec::new();
         for entry in open.iter_mut() {
             entry.1 = 0.0;
         }
-        let mut run_text: Option<(String, f64, f64, NodeId, f64, f64)> = None; // text, x, width, node, y, height
-        let flush = |run: &mut Option<(String, f64, f64, NodeId, f64, f64)>,
+        // text, x, width, node, y, height, drawn right to left
+        let mut run_text: Option<(String, f64, f64, NodeId, f64, f64, bool)> = None;
+        let flush = |run: &mut Option<(String, f64, f64, NodeId, f64, f64, bool)>,
                      children: &mut Vec<Fragment>| {
-            if let Some((text, rx, rw, node, ry, rh)) = run.take() {
+            if let Some((text, rx, rw, node, ry, rh, rtl)) = run.take() {
                 let hidden = !ctx.style(node).is_visible();
                 children.push(Fragment {
                     node: Some(node),
@@ -988,13 +1207,16 @@ pub(crate) fn layout_run_around(
                     width: rw,
                     height: rh,
                     hidden,
+                    rtl,
                     ..Fragment::empty_block()
                 });
             }
         };
-        for (slot, item) in line.items.iter().enumerate() {
+        for slot in visual {
+            let item = &line.items[slot];
+            let odd = item_levels[slot] % 2 == 1;
             match item {
-                LineItem::Space(width) => {
+                LineItem::Space(width, _) => {
                     flush(&mut run_text, &mut children);
                     x += width + extra_per_space;
                 }
@@ -1016,8 +1238,16 @@ pub(crate) fn layout_run_around(
                             Align::Bottom => line_height - (above + below),
                         };
                         match run_text.as_mut() {
-                            Some((run, _, rw, node, _, _)) if *node == *style_node => {
-                                run.push_str(text);
+                            Some((run, _, rw, node, _, _, run_rtl))
+                                if *node == *style_node && *run_rtl == odd =>
+                            {
+                                // On screen a right-to-left run reads backwards, so the word
+                                // that comes next on the left is the one before in the text.
+                                if odd {
+                                    run.insert_str(0, text);
+                                } else {
+                                    run.push_str(text);
+                                }
                                 *rw += width;
                             }
                             _ => {
@@ -1029,6 +1259,7 @@ pub(crate) fn layout_run_around(
                                     *style_node,
                                     top,
                                     above + below,
+                                    odd,
                                 ));
                             }
                         }
@@ -1049,6 +1280,8 @@ pub(crate) fn layout_run_around(
                         outside,
                     } => {
                         flush(&mut run_text, &mut children);
+                        // A box's edges swap sides when they sit in right-to-left order.
+                        let opens = &(*opens != odd);
                         if *opens {
                             open.push((*node, x + outside, opened));
                             opened += 1;
@@ -1077,7 +1310,7 @@ pub(crate) fn layout_run_around(
                         x += atomic_width(a);
                         children.push(fragment);
                     }
-                    Piece::Break => {}
+                    Piece::Break | Piece::Mark(_) => {}
                 },
             }
         }
@@ -1255,6 +1488,188 @@ mod tests {
         assert_eq!(lines.len(), 4, "a, b, blank, c");
         assert!(lines[2].children.is_empty());
         assert_eq!(lines[3].y, 3.0 * 19.2);
+    }
+
+    const HE1: &str = "\u{5d0}\u{5d1}\u{5d2}";
+    const HE2: &str = "\u{5d3}\u{5d4}\u{5d5}";
+
+    /// Each text run on a line, left to right: its text, where it starts, and whether it is
+    /// drawn right to left.
+    fn runs(line: &Fragment) -> Vec<(String, f64, bool)> {
+        line.children
+            .iter()
+            .filter_map(|c| match &c.kind {
+                FragmentKind::Text(t) => Some((t.clone(), c.x, c.rtl)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn only_line(f: &Fragment) -> &Fragment {
+        &f.children[0].children[0]
+    }
+
+    #[test]
+    fn a_hebrew_phrase_in_a_left_to_right_block_reads_right_to_left() {
+        let f = body(&format!("<p>{HE1} {HE2}</p>"), "", 300.0);
+        let r = runs(only_line(&f));
+        assert_eq!(r[0].0, HE2);
+        assert_eq!(r[1].0, HE1);
+        assert!(r[0].2 && r[1].2);
+        assert_eq!(r[0].1, 0.0);
+        assert!((r[1].1 - (word_width(HE2) + space())).abs() < 0.01);
+    }
+
+    #[test]
+    fn latin_inside_hebrew_keeps_its_own_order_and_direction() {
+        let f = body(&format!("<p>abc {HE1} {HE2} def</p>"), "", 300.0);
+        let r = runs(only_line(&f));
+        let order: Vec<&str> = r.iter().map(|r| r.0.as_str()).collect();
+        assert_eq!(order, ["abc", HE2, HE1, "def"]);
+        assert_eq!(r.iter().map(|r| r.2).collect::<Vec<_>>(), [false, true, true, false]);
+    }
+
+    #[test]
+    fn latin_in_a_right_to_left_block_is_one_left_to_right_run_placed_at_the_right() {
+        let f = body("<p>abc def</p>", "p { direction: rtl }", 300.0);
+        let line = only_line(&f);
+        let r = runs(line);
+        assert_eq!(r.iter().map(|r| r.0.as_str()).collect::<Vec<_>>(), ["abc", "def"]);
+        assert!(r.iter().all(|r| !r.2), "Latin words are still drawn left to right");
+        let width = word_width("abc") + space() + word_width("def");
+        assert!((line.x - (300.0 - width)).abs() < 0.01, "start is the right edge");
+    }
+
+    #[test]
+    fn a_right_to_left_block_reads_its_runs_from_the_right() {
+        let f = body(&format!("<p>abc {HE1} def</p>"), "p { direction: rtl }", 300.0);
+        let r = runs(only_line(&f));
+        // abc is read first, so it is the rightmost run; def is read last, leftmost
+        assert_eq!(r.iter().map(|r| r.0.as_str()).collect::<Vec<_>>(), ["def", HE1, "abc"]);
+    }
+
+    #[test]
+    fn digits_in_right_to_left_text_stay_in_reading_order() {
+        let f = body(&format!("<p>{HE1} 123 {HE2}</p>"), "p { direction: rtl }", 300.0);
+        let r = runs(only_line(&f));
+        let order: Vec<&str> = r.iter().map(|r| r.0.as_str()).collect();
+        assert_eq!(order, [HE2, "123", HE1]);
+        assert_eq!(r.iter().map(|r| r.2).collect::<Vec<_>>(), [true, false, true]);
+    }
+
+    #[test]
+    fn start_and_end_follow_the_direction_and_left_and_right_do_not() {
+        let w = 200.0;
+        let hi = word_width("hi");
+        let x = |css: &str| {
+            let f = body("<p>hi</p>", css, w);
+            only_line(&f).x
+        };
+        assert_eq!(x("p { text-align: start }"), 0.0);
+        assert!((x("p { text-align: end }") - (w - hi)).abs() < 0.01);
+        assert!((x("p { direction: rtl; text-align: start }") - (w - hi)).abs() < 0.01);
+        assert_eq!(x("p { direction: rtl; text-align: end }"), 0.0);
+        assert_eq!(x("p { direction: rtl; text-align: left }"), 0.0);
+        assert!((x("p { direction: rtl; text-align: right }") - (w - hi)).abs() < 0.01);
+        assert!((x("p { direction: rtl }") - (w - hi)).abs() < 0.01, "start is the default");
+    }
+
+    #[test]
+    fn a_dir_attribute_sets_the_direction_and_isolates_its_content() {
+        let f = body(&format!("<p dir=rtl>{HE1} {HE2}</p>"), "", 300.0);
+        let line = only_line(&f);
+        let r = runs(line);
+        assert_eq!(r[0].0, HE2, "the first word is at the right, so it is last on the line");
+        let width = word_width(HE1) + space() + word_width(HE2);
+        assert!((line.x - (300.0 - width)).abs() < 0.01);
+        // an isolated span does not let its neighbours reorder its words
+        let f = body(
+            &format!("<p>abc <span dir=rtl>{HE1} {HE2}</span> def</p>"),
+            "",
+            300.0,
+        );
+        let order: Vec<String> = runs(only_line(&f)).into_iter().map(|r| r.0).collect();
+        assert_eq!(order, ["abc", HE2, HE1, "def"]);
+    }
+
+    #[test]
+    fn dir_auto_takes_the_direction_of_the_first_strong_letter() {
+        let f = body(&format!("<p dir=auto>{HE1} abc</p>"), "", 300.0);
+        let line = only_line(&f);
+        assert!(line.x > 100.0, "a Hebrew paragraph is right-aligned");
+        let f = body(&format!("<p dir=auto>abc {HE1}</p>"), "", 300.0);
+        assert_eq!(only_line(&f).x, 0.0);
+    }
+
+    #[test]
+    fn a_bdo_overrides_the_direction_of_what_it_holds() {
+        let f = body("<p><bdo dir=rtl>abc def</bdo></p>", "", 300.0);
+        let r = runs(only_line(&f));
+        assert_eq!(r.iter().map(|r| r.0.as_str()).collect::<Vec<_>>(), ["def", "abc"]);
+        assert!(r.iter().all(|r| r.2), "overridden Latin is drawn reversed too");
+    }
+
+    #[test]
+    fn text_indent_is_taken_from_the_start_side() {
+        let w = 200.0;
+        let hi = word_width("hi");
+        let ltr = body("<p>hi</p>", "p { text-indent: 30px }", w);
+        assert_eq!(only_line(&ltr).x, 30.0);
+        let rtl = body("<p>hi</p>", "p { direction: rtl; text-indent: 30px }", w);
+        assert!((only_line(&rtl).x - (w - 30.0 - hi)).abs() < 0.01);
+    }
+
+    #[test]
+    fn the_last_justified_line_of_a_right_to_left_paragraph_stays_at_the_right() {
+        let f = body(
+            &format!("<p>{HE1} {HE2} {HE1} {HE2} {HE1} {HE2} {HE1} {HE2} {HE1} {HE2}</p>"),
+            "p { direction: rtl; text-align: justify }",
+            120.0,
+        );
+        let lines = &f.children[0].children;
+        assert!(lines.len() > 1);
+        let first = &lines[0];
+        assert!(first.x.abs() < 0.5 && (first.x + first.width - 120.0).abs() < 0.5, "stretched");
+        let last = lines.last().unwrap();
+        assert!(
+            (last.x + last.width - 120.0).abs() < 0.01 && last.x > 1.0,
+            "the ragged last line sits at the start side, which is the right"
+        );
+    }
+
+    #[test]
+    fn an_inline_box_pads_its_start_on_the_right_in_right_to_left_text() {
+        let f = body(
+            &format!("<p dir=rtl><span style='padding-right:10px;background:red'>{HE1}</span></p>"),
+            "",
+            300.0,
+        );
+        let line = only_line(&f);
+        let bg = line
+            .children
+            .iter()
+            .find(|c| c.kind == FragmentKind::Block)
+            .expect("a painted inline box");
+        let word = line.children.iter().find(|c| matches!(c.kind, FragmentKind::Text(_))).unwrap();
+        // the padding sits to the right of the text, inside the box
+        assert!((bg.x + bg.width - (word.x + word.width + 10.0)).abs() < 0.01);
+        assert!((bg.x - word.x).abs() < 0.01);
+    }
+
+    #[test]
+    fn a_forced_break_ends_a_right_to_left_line_without_reordering_across_it() {
+        let f = body(&format!("<p>{HE1} {HE2}<br>abc</p>"), "", 300.0);
+        let lines = &f.children[0].children;
+        assert_eq!(lines.len(), 2);
+        assert_eq!(runs(&lines[0])[0].0, HE2);
+        assert_eq!(runs(&lines[1])[0].0, "abc");
+    }
+
+    #[test]
+    fn trailing_spaces_do_not_move_to_the_wrong_end_of_a_right_to_left_line() {
+        let f = body(&format!("<p>{HE1} {HE2} </p>"), "", 300.0);
+        let r = runs(only_line(&f));
+        assert_eq!(r[0].1, 0.0, "the line starts with text, not a stray space");
     }
 
     #[test]

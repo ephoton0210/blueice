@@ -272,7 +272,9 @@ pub(crate) fn layout_flex(ctx: &Ctx<'_>, container: NodeId, input: &FlexInput) -
     let cstyle = ctx.style(container);
     let direction = cstyle.keyword("flex-direction").unwrap_or("row");
     let row = matches!(direction, "row" | "row-reverse");
-    let reverse = matches!(direction, "row-reverse" | "column-reverse");
+    // A row starts at the right edge of a right-to-left container, so it lays out as
+    // `row-reverse` would, and `row-reverse` as a plain row.
+    let reverse = matches!(direction, "row-reverse" | "column-reverse") != (row && cstyle.is_rtl());
     let wrap_mode = cstyle.keyword("flex-wrap").unwrap_or("nowrap");
     let wrap = wrap_mode != "nowrap";
     let wrap_reverse = wrap_mode == "wrap-reverse";
@@ -1263,6 +1265,18 @@ mod tests {
             400.0,
         );
         assert_eq!(xs(&rev), vec![370.0, 340.0, 310.0]);
+    }
+
+    #[test]
+    fn a_row_in_a_right_to_left_container_starts_at_the_right() {
+        let rtl = flex(ITEMS, &css(".f{direction:rtl} i{width:30px}"), 400.0);
+        assert_eq!(xs(&rtl), vec![370.0, 340.0, 310.0]);
+        // row-reverse reads from the left there
+        let reversed = flex(ITEMS, &css(".f{direction:rtl;flex-direction:row-reverse} i{width:30px}"), 400.0);
+        assert_eq!(xs(&reversed), vec![0.0, 30.0, 60.0]);
+        // a column is not affected
+        let column = flex(ITEMS, &css(".f{direction:rtl;flex-direction:column} i{width:30px}"), 400.0);
+        assert_eq!(xs(&column), vec![0.0, 0.0, 0.0]);
     }
 
     #[test]

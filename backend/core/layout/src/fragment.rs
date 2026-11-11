@@ -107,6 +107,9 @@ pub struct Fragment {
     /// A `transform`/`translate` not yet applied to `x`/`y` (see `transform.rs`); `None`
     /// once applied, so a finished tree never carries one.
     pub translate: Option<crate::transform::Translation>,
+    /// A text run of right-to-left level: its characters are drawn from the right edge of the
+    /// fragment, so the string stays in reading (logical) order here.
+    pub rtl: bool,
 }
 
 impl Fragment {
@@ -127,6 +130,7 @@ impl Fragment {
             baseline: None,
             style_node: None,
             translate: None,
+            rtl: false,
         }
     }
 }

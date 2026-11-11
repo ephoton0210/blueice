@@ -456,6 +456,7 @@ fn list_marker(
     node: NodeId,
     style: &Style<'_>,
     children: &[Fragment],
+    content_width: f64,
 ) -> Option<Fragment> {
     let kind = style.keyword("list-style-type").unwrap_or("disc");
     let text = match kind {
@@ -479,6 +480,9 @@ fn list_marker(
     let font_size = style.font_size();
     let bold = style.style.is_some_and(|s| s.is_bold());
     let italic = style.style.is_some_and(|s| s.is_italic());
+    let rtl = style.is_rtl();
+    // In a right-to-left list the marker hangs off the right edge, and "1." reads ".1".
+    let text = if rtl { crate::bidi::visual_text(&text, true) } else { text };
     let width = blueice_font::measure_text_width_in(&text, font_size, bold, italic, style.web_face());
     // Level with the first text on the first line.
     fn first_text(children: &[Fragment], y: f64) -> Option<(f64, f64)> {
@@ -499,7 +503,11 @@ fn list_marker(
         node: None,
         style_node: Some(node),
         kind: FragmentKind::Text(text),
-        x: -(width + font_size * 0.4),
+        x: if rtl {
+            content_width + font_size * 0.4
+        } else {
+            -(width + font_size * 0.4)
+        },
         y,
         width,
         height,
@@ -734,6 +742,8 @@ fn layout_block_level_uncached(
             .is_some_and(|align| matches!(align.as_str(), "-webkit-center" | "-moz-center"))
         && style.side("margin-left", cbw) == 0.0
         && style.side("margin-right", cbw) == 0.0;
+    let container_is_rtl = !blueice_css::is_pseudo_node(node)
+        && ctx.doc.parent(node).is_some_and(|parent| ctx.style(parent).is_rtl());
     let auto_left = style.is_auto("margin-left") || webkit_centered;
     let auto_right = style.is_auto("margin-right") || webkit_centered;
     let mut margin_left = if auto_left {
@@ -773,6 +783,9 @@ fn layout_block_level_uncached(
             }
             (true, false) => margin_left = free.max(0.0),
             (false, true) => margin_right = free.max(0.0),
+            // Over-constrained: the end side gives way, which is the left of a right-to-left
+            // container.
+            (false, false) if container_is_rtl => margin_left += free,
             (false, false) => {}
         }
     }
@@ -946,7 +959,7 @@ fn layout_block_level_uncached(
     }
 
     if display == Display::ListItem && !is_native && !generated {
-        if let Some(marker) = list_marker(ctx, node, &style, &children) {
+        if let Some(marker) = list_marker(ctx, node, &style, &children, content_width) {
             children.insert(0, marker);
         }
     }
@@ -1784,6 +1797,27 @@ mod tests {
     }
 
     #[test]
+    fn an_over_constrained_block_gives_way_on_its_end_side() {
+        // In a right-to-left container a block narrower than its room sits at the right: the
+        // margin on its end (left) side is the one that grows.
+        let f = contained("<div>x</div>", "body { direction: rtl } div { width: 200px; }");
+        assert_eq!(f.children[0].x, 600.0);
+        let f = contained("<div>x</div>", "div { width: 200px; }");
+        assert_eq!(f.children[0].x, 0.0);
+        // auto margins still centre it, and an explicit margin still counts
+        let f = contained("<div>x</div>", "body { direction: rtl } div { width: 200px; margin: 0 auto; }");
+        assert_eq!(f.children[0].x, 300.0);
+        let f = contained(
+            "<div>x</div>",
+            "body { direction: rtl } div { width: 200px; margin-right: 30px; }",
+        );
+        assert_eq!(f.children[0].x, 570.0);
+        // the direction that counts is the container's, not the box's own
+        let f = contained("<div>x</div>", "div { direction: rtl; width: 200px; }");
+        assert_eq!(f.children[0].x, 0.0);
+    }
+
+    #[test]
     fn min_and_max_sizes_clamp_the_used_size() {
         let w = |css: &str| contained("<div>x</div>", css).children[0].width;
         assert_eq!(w("div { width: 50%; max-width: 300px; }"), 300.0);
@@ -2052,6 +2086,20 @@ mod tests {
             vec!["\u{2022}", "\u{25e6}"]
         );
         assert!(marker_of("<ul><li>x</li></ul>", "ul { list-style: none; }").is_empty());
+    }
+
+    #[test]
+    fn a_list_in_a_right_to_left_container_has_its_markers_and_indent_on_the_right() {
+        let f = body_fragment("<ul><li>a</li></ul>", "ul { direction: rtl; padding-inline-start: 40px }", 200.0);
+        let ul = &f.children[0];
+        let li = &ul.children[0];
+        assert_eq!(li.x, 0.0, "the 40px indent is on the right, not the left");
+        assert_eq!(li.width, 160.0);
+        let marker = &li.children[0];
+        assert!(marker.x >= li.width, "the bullet hangs off the right edge: {}", marker.x);
+        let f = body_fragment("<ol><li>a</li></ol>", "ol { direction: rtl; padding-inline-start: 40px }", 200.0);
+        let FragmentKind::Text(text) = &f.children[0].children[0].children[0].kind else { panic!() };
+        assert_eq!(text, ".1");
     }
 
     #[test]

@@ -55,6 +55,7 @@ fn high_density_text_is_newly_rasterized_instead_of_enlarging_low_density_pixels
             bold: false,
             italic: false,
             face: None,
+            rtl: false,
         }],
     };
     let low = rasterize_viewport(&frame, 0.0, 100, 40, 1.0).unwrap();

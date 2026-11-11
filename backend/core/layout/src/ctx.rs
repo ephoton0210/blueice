@@ -278,6 +278,11 @@ impl<'a> Style<'a> {
         }
     }
 
+    /// `direction: rtl`.
+    pub fn is_rtl(&self) -> bool {
+        self.keyword("direction") == Some("rtl")
+    }
+
     pub fn keyword(&self, property: &str) -> Option<&'a str> {
         match self.raw(property) {
             Some(Value::Keyword(k)) => Some(k.as_str()),

@@ -12,3 +12,6 @@ wuff = "0.2.10"
 # fontdue draws only a font's default instance.
 ttf-parser = "0.25"
 ab_glyph_rasterizer = "0.1"
+
+[dev-dependencies]
+unicode-normalization = "0.1.25"

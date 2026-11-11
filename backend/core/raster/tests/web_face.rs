@@ -22,6 +22,7 @@ fn text(face: Option<u32>, string: &str) -> Frame {
             bold: false,
             italic: false,
             face,
+            rtl: false,
         }],
     }
 }
