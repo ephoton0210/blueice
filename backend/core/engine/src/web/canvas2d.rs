@@ -22,6 +22,10 @@ pub(crate) struct Canvas2d {
     pub rgba: Vec<u8>,
     pub canvas: blueice_dom::NodeId,
     pub dirty: bool,
+    /// Coverage (0..=255) of the clipping region over the bitmap; none means everything.
+    clip: Option<std::sync::Arc<Vec<u8>>>,
+    /// The clips `save` set aside, newest last.
+    saved_clips: Vec<Option<std::sync::Arc<Vec<u8>>>>,
 }
 
 type Affine = [f64; 6];
@@ -368,7 +372,7 @@ impl Canvas2d {
                 if cx < 0.0 || cy < 0.0 || cx >= w as f64 || cy >= h as f64 {
                     continue;
                 }
-                let c = f64::from(coverage[cy as usize * w + cx as usize]) / 255.0;
+                let c = f64::from(coverage[cy as usize * w + cx as usize]) / 255.0 * self.clip_at(px, py);
                 if c > 0.0 {
                     let i = ((py as u32 * self.w + px as u32) * 4) as usize;
                     over(&mut self.rgba[i..i + 4], paint.at(u, v), alpha * c);
@@ -484,10 +488,38 @@ impl Canvas2d {
                 let (px, py) = (mask.x + col as i64, mask.y + row as i64);
                 let (u, v) = apply(&inv, px as f64 + 0.5, py as f64 + 0.5);
                 let i = ((py as u32 * self.w + px as u32) * 4) as usize;
-                over(&mut self.rgba[i..i + 4], paint.at(u, v), alpha * f64::from(c) / 255.0);
+                let open = self.clip_at(px, py);
+                over(&mut self.rgba[i..i + 4], paint.at(u, v), alpha * f64::from(c) / 255.0 * open);
             }
         }
         self.dirty = true;
+    }
+
+    /// How much of pixel `(px, py)` the clipping region leaves open, 0..=1.
+    fn clip_at(&self, px: i64, py: i64) -> f64 {
+        match &self.clip {
+            None => 1.0,
+            Some(c) => f64::from(c[py as usize * self.w as usize + px as usize]) / 255.0,
+        }
+    }
+
+    /// Narrows the clipping region to what it already allowed within `polygons` (device space).
+    fn clip_to(&mut self, polygons: &[Vec<canvas_path::Point>], even_odd: bool) {
+        let mut next = vec![0u8; self.w as usize * self.h as usize];
+        if let Some(mask) = canvas_path::rasterize(polygons, even_odd, self.w, self.h) {
+            for row in 0..mask.h {
+                for col in 0..mask.w {
+                    let at = (mask.y as usize + row) * self.w as usize + mask.x as usize + col;
+                    next[at] = mask.coverage[row * mask.w + col];
+                }
+            }
+        }
+        if let Some(old) = &self.clip {
+            for (n, o) in next.iter_mut().zip(old.iter()) {
+                *n = (u16::from(*n) * u16::from(*o) / 255) as u8;
+            }
+        }
+        self.clip = Some(std::sync::Arc::new(next));
     }
 
     pub fn new(canvas: blueice_dom::NodeId, w: u32, h: u32) -> Option<Canvas2d> {
@@ -500,6 +532,8 @@ impl Canvas2d {
             rgba: vec![0; (w * h * 4) as usize],
             canvas,
             dirty: true,
+            clip: None,
+            saved_clips: Vec::new(),
         })
     }
 
@@ -540,10 +574,16 @@ impl Canvas2d {
                     continue;
                 }
                 let i = ((py as u32 * self.w + px as u32) * 4) as usize;
+                let open = self.clip_at(px, py);
                 if clear {
-                    self.rgba[i..i + 4].copy_from_slice(&[0, 0, 0, 0]);
+                    if open >= 1.0 {
+                        self.rgba[i..i + 4].copy_from_slice(&[0, 0, 0, 0]);
+                    } else {
+                        let keep = 1.0 - open;
+                        self.rgba[i + 3] = (f64::from(self.rgba[i + 3]) * keep).round() as u8;
+                    }
                 } else {
-                    over(&mut self.rgba[i..i + 4], paint.at(u, v), alpha);
+                    over(&mut self.rgba[i..i + 4], paint.at(u, v), alpha * open);
                 }
             }
         }
@@ -627,7 +667,8 @@ impl Canvas2d {
                     (p[3] * 255.0).round().clamp(0.0, 255.0) as u8,
                 ];
                 let i = ((py as u32 * self.w + px as u32) * 4) as usize;
-                over(&mut self.rgba[i..i + 4], color, alpha);
+                let open = self.clip_at(px, py);
+                over(&mut self.rgba[i..i + 4], color, alpha * open);
             }
         }
         self.dirty = true;
@@ -679,6 +720,8 @@ impl Canvas2d {
         self.w = w;
         self.h = h;
         self.rgba = vec![0; (w * h * 4) as usize];
+        self.clip = None;
+        self.saved_clips.clear();
         self.dirty = true;
         Ok(())
     }
@@ -743,7 +786,7 @@ impl Canvas2d {
                 Reply::Number(font.width(text(a, 0)))
             }
             // path (JSON), paint, alpha, matrix, even-odd (fillPath); and line width, cap, join,
-            // miter limit (strokePath).
+            // miter limit, dash pattern (JSON), dash offset (strokePath).
             "fillPath" | "strokePath" => {
                 let paths = parse_paths(text(a, 0));
                 let (paint, alpha, m) = (Paint::parse(text(a, 1)), num(a, 2).clamp(0.0, 1.0), affine(a, 3));
@@ -765,8 +808,31 @@ impl Canvas2d {
                         },
                         miter_limit: if a.get(7).is_some() { num(a, 7).max(1.0) } else { 10.0 },
                     };
+                    let dash = serde_json::from_str::<Vec<f64>>(text(a, 8)).unwrap_or_default();
+                    let paths = canvas_path::dash_paths(&paths, &dash, num(a, 9));
                     self.paint_polygons(&canvas_path::stroke_polygons(&paths, &style), &m, false, &paint, alpha);
                 }
+                Reply::Undefined
+            }
+            "save" => {
+                self.saved_clips.push(self.clip.clone());
+                Reply::Undefined
+            }
+            "restore" => {
+                if let Some(clip) = self.saved_clips.pop() {
+                    self.clip = clip;
+                }
+                Reply::Undefined
+            }
+            // path (JSON), matrix, even-odd
+            "clipPath" => {
+                let paths = parse_paths(text(a, 0));
+                let m = affine(a, 1);
+                let device: Vec<Vec<canvas_path::Point>> = canvas_path::fill_polygons(&paths)
+                    .iter()
+                    .map(|poly| poly.iter().map(|&(x, y)| apply(&m, x, y)).collect())
+                    .collect();
+                self.clip_to(&device, num(a, 2) != 0.0);
                 Reply::Undefined
             }
             "fillRect" | "clearRect" => {
@@ -1235,5 +1301,57 @@ mod tests {
         let top = measure("H", "left", "top");
         assert!(top[3] < 2.0 && top[4] > 20.0, "with the top baseline the ink hangs below: {top:?}");
         assert_eq!(measure("", "left", "alphabetic")[1..5], [0.0; 4]);
+    }
+
+    fn square_path(x: f64, y: f64, s: f64) -> Reply {
+        t(&format!(r#"[{{"p":[{x},{y},{},{y},{},{},{x},{}],"c":1}}]"#, x + s, x + s, y + s, y + s))
+    }
+    const IDENTITY: &str = "[1,0,0,1,0,0]";
+
+    #[test]
+    fn a_clip_confines_every_later_draw_until_the_state_is_restored() {
+        let mut c = canvas(20, 20);
+        c.call("save", &[]).unwrap();
+        c.call("clipPath", &[square_path(5.0, 5.0, 10.0), t(IDENTITY), n(0.0)]).unwrap();
+        c.call("fillRect", &[n(0.0), n(0.0), n(20.0), n(20.0), t("#ff0000")]).unwrap();
+        assert_eq!(px(&c, 4, 10), [0, 0, 0, 0]);
+        assert_eq!(px(&c, 5, 10), [255, 0, 0, 255]);
+        assert_eq!(px(&c, 14, 14), [255, 0, 0, 255]);
+        assert_eq!(px(&c, 15, 10), [0, 0, 0, 0]);
+        c.call("fillPath", &[square_path(0.0, 0.0, 20.0), t("#00ff00"), n(1.0), t(IDENTITY), n(0.0)]).unwrap();
+        assert_eq!(px(&c, 2, 2), [0, 0, 0, 0], "paths are clipped too");
+        assert_eq!(px(&c, 8, 8), [0, 255, 0, 255]);
+        c.call("clearRect", &[n(0.0), n(0.0), n(20.0), n(20.0), t("#000"), n(1.0), t(IDENTITY)]).unwrap();
+        assert_eq!(px(&c, 8, 8), [0, 0, 0, 0], "clearRect inside the clip clears");
+        c.call("fillRect", &[n(0.0), n(0.0), n(20.0), n(20.0), t("#0000ff")]).unwrap();
+        c.call("restore", &[]).unwrap();
+        c.call("clearRect", &[n(0.0), n(0.0), n(5.0), n(5.0), t("#000"), n(1.0), t(IDENTITY)]).unwrap();
+        c.call("fillRect", &[n(0.0), n(0.0), n(3.0), n(3.0), t("#ffffff")]).unwrap();
+        assert_eq!(px(&c, 1, 1), [255, 255, 255, 255], "after restore the whole bitmap is open again");
+    }
+
+    #[test]
+    fn clips_intersect_and_an_empty_clip_hides_everything() {
+        let mut c = canvas(20, 20);
+        c.call("clipPath", &[square_path(0.0, 0.0, 12.0), t(IDENTITY), n(0.0)]).unwrap();
+        c.call("clipPath", &[square_path(8.0, 8.0, 12.0), t(IDENTITY), n(0.0)]).unwrap();
+        c.call("fillRect", &[n(0.0), n(0.0), n(20.0), n(20.0), t("#ff0000")]).unwrap();
+        assert_eq!((px(&c, 4, 4)[3], px(&c, 10, 10)[3], px(&c, 16, 16)[3]), (0, 255, 0));
+        let mut e = canvas(10, 10);
+        e.call("clipPath", &[t("[]"), t(IDENTITY), n(0.0)]).unwrap();
+        e.call("fillRect", &[n(0.0), n(0.0), n(10.0), n(10.0), t("#ff0000")]).unwrap();
+        assert_eq!(px(&e, 5, 5)[3], 0);
+    }
+
+    #[test]
+    fn a_clip_edge_is_anti_aliased_and_resizing_drops_the_clip() {
+        let mut c = canvas(10, 10);
+        c.call("clipPath", &[square_path(0.5, 0.0, 9.0), t(IDENTITY), n(0.0)]).unwrap();
+        c.call("fillRect", &[n(0.0), n(0.0), n(10.0), n(10.0), t("#000000")]).unwrap();
+        let a = px(&c, 0, 5)[3];
+        assert!((100..160).contains(&a), "half-covered pixel: {a}");
+        c.resize(10, 10).unwrap();
+        c.call("fillRect", &[n(0.0), n(0.0), n(10.0), n(10.0), t("#000000")]).unwrap();
+        assert_eq!(px(&c, 0, 5)[3], 255);
     }
 }

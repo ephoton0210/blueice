@@ -1267,6 +1267,68 @@ mod tests {
     }
 
     #[test]
+    fn a_script_dashes_clips_and_reuses_paths() {
+        let html = "<body><canvas id=c width=100 height=100></canvas><script>\
+             const g = document.getElementById('c').getContext('2d');\
+             const px = (x, y) => { const d = g.getImageData(x, y, 1, 1).data; return d[3] === 0 ? '-' : d[0] + ',' + d[1] + ',' + d[2]; };\
+             const out = [];\
+             g.strokeStyle = '#ff0000'; g.lineWidth = 4; g.setLineDash([10, 10]);\
+             out.push('GET ' + g.getLineDash().join('/'));\
+             g.beginPath(); g.moveTo(0, 50); g.lineTo(100, 50); g.stroke();\
+             out.push('DASH ' + px(5, 50) + ' ' + px(15, 50) + ' ' + px(25, 50));\
+             g.lineDashOffset = 10; g.clearRect(0, 0, 100, 100); g.stroke();\
+             out.push('OFF ' + px(5, 50) + ' ' + px(15, 50));\
+             g.setLineDash([3]); out.push('ODD ' + g.getLineDash().join('/'));\
+             g.setLineDash([-1, 2]); out.push('BAD ' + g.getLineDash().join('/'));\
+             g.setLineDash([]); g.lineDashOffset = 0; g.clearRect(0, 0, 100, 100); g.stroke();\
+             out.push('SOLID ' + px(5, 50) + ' ' + px(15, 50));\
+             g.clearRect(0, 0, 100, 100); g.save(); g.beginPath(); g.arc(50, 50, 20, 0, Math.PI * 2); g.clip();\
+             g.fillStyle = '#0000ff'; g.fillRect(0, 0, 100, 100);\
+             out.push('CLIP ' + px(50, 50) + ' ' + px(5, 5) + ' ' + px(50, 31) + ' ' + px(50, 28));\
+             g.restore(); g.fillStyle = '#00ff00'; g.fillRect(0, 0, 10, 10);\
+             out.push('RESTORED ' + px(5, 5));\
+             const sq = new Path2D(); sq.rect(10, 10, 30, 30);\
+             g.clearRect(0, 0, 100, 100); g.fillStyle = '#123456'; g.fill(sq);\
+             out.push('P2D ' + px(20, 20) + ' ' + px(50, 50) + ' ' + g.isPointInPath(sq, 20, 20) + ' ' + g.isPointInPath(sq, 60, 60));\
+             const both = new Path2D(sq); both.addPath(new Path2D('M60 60 h20 v20 h-20 z'));\
+             g.clearRect(0, 0, 100, 100); g.fill(both);\
+             out.push('ADD ' + px(20, 20) + ' ' + px(70, 70) + ' ' + px(50, 50));\
+             g.clearRect(0, 0, 100, 100); g.strokeStyle = '#ff00ff'; g.lineWidth = 6; g.stroke(new Path2D('M10 10 L90 10 L90 90'));\
+             out.push('SVGSTROKE ' + px(50, 10) + ' ' + px(90, 50) + ' ' + px(50, 50));\
+             g.clearRect(0, 0, 100, 100); g.fillStyle = '#ff0000'; g.fill(new Path2D('M20 50 A30 30 0 0 1 80 50 Z'));\
+             out.push('SVGARC ' + px(50, 40) + ' ' + px(50, 60) + ' ' + px(50, 15));\
+             g.clearRect(0, 0, 100, 100); g.save(); g.beginPath(); g.rect(0, 0, 50, 100); g.clip(); g.fill(new Path2D('M0 0 H100 V100 H0 Z'));\
+             out.push('CLIPPATH ' + px(25, 50) + ' ' + px(75, 50)); g.restore();\
+             g.clearRect(0, 0, 100, 100); g.fillStyle = '#ff0000'; g.beginPath(); g.roundRect(10, 10, 80, 80, [30, 0, 30, 0]); g.fill();\
+             out.push('RR4 ' + px(11, 11) + ' ' + px(88, 11) + ' ' + px(88, 88) + ' ' + px(11, 88));\
+             g.clearRect(0, 0, 100, 100); g.beginPath(); g.roundRect(10, 10, 80, 40, { x: 40, y: 10 }); g.fill();\
+             out.push('RRE ' + px(11, 11) + ' ' + px(50, 11) + ' ' + px(11, 30));\
+             try { g.roundRect(0, 0, 10, 10, -1); } catch (e) { out.push('RRNEG ' + e.name); }\
+             console.log(out.join(' | '));\
+             </script></body>";
+        let mut page = script_page(html);
+        run_scripts(&mut page);
+        let log = page.web_console().join("\n");
+        let has = |s: &str| assert!(log.contains(s), "{s} in {log}");
+        has("GET 10/10");
+        has("DASH 255,0,0 - 255,0,0");
+        has("OFF - 255,0,0");
+        has("ODD 3/3 ");
+        has("BAD 3/3 ");
+        has("SOLID 255,0,0 255,0,0");
+        has("CLIP 0,0,255 - 0,0,255 -");
+        has("RESTORED 0,255,0");
+        has("P2D 18,52,86 - true false");
+        has("ADD 18,52,86 18,52,86 -");
+        has("SVGSTROKE 255,0,255 255,0,255 -");
+        has("SVGARC 255,0,0 - -");
+        has("CLIPPATH 255,0,0 -");
+        has("RR4 - 255,0,0 - 255,0,0");
+        has("RRE - 255,0,0 255,0,0");
+        has("RRNEG RangeError");
+    }
+
+    #[test]
     fn a_script_paints_canvas_text_with_gradients_and_outlines() {
         let html = "<body><canvas id=c width=120 height=60></canvas><script>\
              const g = document.getElementById('c').getContext('2d');\

@@ -2500,89 +2500,8 @@
     }
   }
   const paintOf = (style) => (typeof style === 'string' ? style : style._spec());
-  class CanvasRenderingContext2D {
-    constructor(canvas) {
-      this.canvas = canvas;
-      this._id = bi('c2dCreate', canvas._id, canvas.width, canvas.height);
-      this._state = { fillStyle: '#000000', strokeStyle: '#000000', globalAlpha: 1, m: [1, 0, 0, 1, 0, 0], font: '10px sans-serif', textAlign: 'start', textBaseline: 'alphabetic', lineWidth: 1, lineCap: 'butt', lineJoin: 'miter', miterLimit: 10 };
-      this._stack = [];
-      this._subs = [];
-      this._cur = null;
-    }
-    _c(op, ...args) {
-      return bi('c2d', this._id, op, ...args);
-    }
-    get fillStyle() { return this._state.fillStyle; }
-    set fillStyle(v) { if (typeof v === 'string' || v instanceof CanvasGradient) this._state.fillStyle = v; }
-    get strokeStyle() { return this._state.strokeStyle; }
-    set strokeStyle(v) { if (typeof v === 'string' || v instanceof CanvasGradient) this._state.strokeStyle = v; }
-    get globalAlpha() { return this._state.globalAlpha; }
-    set globalAlpha(v) { v = Number(v); if (v >= 0 && v <= 1) this._state.globalAlpha = v; }
-    get font() { return this._state.font; }
-    set font(v) { this._state.font = String(v); }
-    get textAlign() { return this._state.textAlign; }
-    set textAlign(v) { v = String(v); if (['start', 'end', 'left', 'right', 'center'].includes(v)) this._state.textAlign = v; }
-    get textBaseline() { return this._state.textBaseline; }
-    set textBaseline(v) { v = String(v); if (['top', 'hanging', 'middle', 'alphabetic', 'ideographic', 'bottom'].includes(v)) this._state.textBaseline = v; }
-    get lineWidth() { return this._state.lineWidth; }
-    set lineWidth(v) { v = Number(v); if (v > 0 && Number.isFinite(v)) this._state.lineWidth = v; }
-    get lineCap() { return this._state.lineCap; }
-    set lineCap(v) { v = String(v); if (['butt', 'round', 'square'].includes(v)) this._state.lineCap = v; }
-    get lineJoin() { return this._state.lineJoin; }
-    set lineJoin(v) { v = String(v); if (['miter', 'round', 'bevel'].includes(v)) this._state.lineJoin = v; }
-    get miterLimit() { return this._state.miterLimit; }
-    set miterLimit(v) { v = Number(v); if (v > 0 && Number.isFinite(v)) this._state.miterLimit = v; }
-    save() { this._stack.push(Object.assign({}, this._state, { m: this._state.m.slice() })); }
-    restore() { if (this._stack.length) this._state = this._stack.pop(); }
-    setTransform(a, b, c, d, e, f) {
-      if (a && typeof a === 'object') { b = a.b; c = a.c; d = a.d; e = a.e; f = a.f; a = a.a; }
-      this._state.m = [a, b, c, d, e, f];
-    }
-    resetTransform() { this._state.m = [1, 0, 0, 1, 0, 0]; }
-    getTransform() { const m = this._state.m; return { a: m[0], b: m[1], c: m[2], d: m[3], e: m[4], f: m[5] }; }
-    transform(a, b, c, d, e, f) {
-      const m = this._state.m;
-      this._state.m = [m[0] * a + m[2] * b, m[1] * a + m[3] * b, m[0] * c + m[2] * d, m[1] * c + m[3] * d, m[0] * e + m[2] * f + m[4], m[1] * e + m[3] * f + m[5]];
-    }
-    translate(x, y) { this.transform(1, 0, 0, 1, x, y); }
-    scale(x, y) { this.transform(x, 0, 0, y, 0, 0); }
-    rotate(a) { const c = Math.cos(a), s = Math.sin(a); this.transform(c, s, -s, c, 0, 0); }
-    fillRect(x, y, w, h) { this._c('fillRect', x, y, w, h, paintOf(this._state.fillStyle), this._state.globalAlpha, JSON.stringify(this._state.m)); }
-    clearRect(x, y, w, h) { this._c('clearRect', x, y, w, h, '#000', 1, JSON.stringify(this._state.m)); }
-    // The outline of a rectangle: four bars of `lineWidth`, centred on its edges.
-    strokeRect(x, y, w, h) {
-      x = Number(x); y = Number(y); w = Number(w); h = Number(h);
-      if (![x, y, w, h].every(Number.isFinite) || (w === 0 && h === 0)) return;
-      const st = this._state, half = st.lineWidth / 2, paint = paintOf(st.strokeStyle), m = JSON.stringify(st.m);
-      const x0 = Math.min(x, x + w), y0 = Math.min(y, y + h), aw = Math.abs(w), ah = Math.abs(h);
-      const bar = (bx, by, bw, bh) => this._c('fillRect', bx, by, bw, bh, paint, st.globalAlpha, m);
-      bar(x0 - half, y0 - half, aw + st.lineWidth, st.lineWidth);
-      bar(x0 - half, y0 + ah - half, aw + st.lineWidth, st.lineWidth);
-      bar(x0 - half, y0 + half, st.lineWidth, Math.max(ah - st.lineWidth, 0));
-      bar(x0 + aw - half, y0 + half, st.lineWidth, Math.max(ah - st.lineWidth, 0));
-    }
-    drawImage(source, a, b, c, d, e, f, g, h) {
-      const px = pixelsOf(source);
-      if (!px) return;
-      const [w, hh, data] = px;
-      let sx = 0, sy = 0, sw = w, sh = hh, dx, dy, dw, dh;
-      const n = arguments.length;
-      if (n >= 9) { sx = a; sy = b; sw = c; sh = d; dx = e; dy = f; dw = g; dh = h; }
-      else if (n >= 5) { dx = a; dy = b; dw = c; dh = d; }
-      else { dx = a; dy = b; dw = w; dh = hh; }
-      this._c('drawImage', w, hh, data, sx, sy, sw, sh, dx, dy, dw, dh, this._state.globalAlpha, JSON.stringify(this._state.m));
-    }
-    getImageData(x, y, w, h) {
-      const out = new ImageData(w, h);
-      const b64 = this._c('getImageData', x, y, w, h);
-      out.data.set(base64ToBytes(b64));
-      return out;
-    }
-    putImageData(image, x, y) {
-      const bytes = new Uint8Array(image.data.buffer, image.data.byteOffset, image.data.byteLength);
-      this._c('putImageData', bytesToBase64(bytes), image.width, image.height, x, y);
-    }
-    createImageData(w, h) { return w && typeof w === 'object' ? new ImageData(w.width, w.height) : new ImageData(w, h); }
+  // The path-building methods that a canvas context and a Path2D share.
+  class PathBuilder {
     // ---- paths: points are kept in user space and drawn with the transform in force at
     // fill() or stroke(). A curve is flattened into short lines as it is added.
     _startSub(x, y) {
@@ -2597,7 +2516,6 @@
       this._lx = x;
       this._ly = y;
     }
-    beginPath() { this._subs = []; this._cur = null; }
     moveTo(x, y) {
       x = Number(x); y = Number(y);
       if (Number.isFinite(x) && Number.isFinite(y)) this._startSub(x, y);
@@ -2705,38 +2623,256 @@
     roundRect(x, y, w, h, radii) {
       [x, y, w, h] = [x, y, w, h].map(Number);
       if (![x, y, w, h].every(Number.isFinite)) return;
-      let r = Array.isArray(radii) ? Number(radii[0]) : radii && typeof radii === 'object' ? Number(radii.x) : Number(radii);
-      if (!(r > 0)) r = 0;
+      // One to four radii, each a number or an {x, y} pair: top-left, top-right, bottom-right, bottom-left.
+      const list = Array.isArray(radii) ? radii : [radii === undefined ? 0 : radii];
+      if (list.length < 1 || list.length > 4) throw new RangeError('roundRect takes one to four radii.');
+      const one = (r) => {
+        const rx = r && typeof r === 'object' ? Number(r.x === undefined ? 0 : r.x) : Number(r);
+        const ry = r && typeof r === 'object' ? Number(r.y === undefined ? 0 : r.y) : Number(r);
+        return [rx, ry];
+      };
+      const got = list.map(one);
+      if (got.some(([rx, ry]) => !Number.isFinite(rx) || !Number.isFinite(ry))) return;
+      if (got.some(([rx, ry]) => rx < 0 || ry < 0)) throw new RangeError('A radius is negative.');
+      const n = got.length;
+      const corners = n === 1 ? [got[0], got[0], got[0], got[0]] : n === 2 ? [got[0], got[1], got[0], got[1]]
+        : n === 3 ? [got[0], got[1], got[2], got[1]] : got;
       if (w < 0) { x += w; w = -w; }
       if (h < 0) { y += h; h = -h; }
-      r = Math.min(r, w / 2, h / 2);
+      // Shrink every radius alike when two on a side would overlap.
+      const f = Math.min(1,
+        w / Math.max(corners[0][0] + corners[1][0], 1e-12), w / Math.max(corners[3][0] + corners[2][0], 1e-12),
+        h / Math.max(corners[0][1] + corners[3][1], 1e-12), h / Math.max(corners[1][1] + corners[2][1], 1e-12));
+      const [tl, tr, br, bl] = corners.map(([rx, ry]) => [rx * f, ry * f]);
       const HALF = Math.PI / 2;
-      this._startSub(x + r, y);
-      this._add(x + r, y);
-      this._add(x + w - r, y);
-      this._arc(x + w - r, y + r, r, r, 0, -HALF, 0, false);
-      this._add(x + w, y + h - r);
-      this._arc(x + w - r, y + h - r, r, r, 0, 0, HALF, false);
-      this._add(x + r, y + h);
-      this._arc(x + r, y + h - r, r, r, 0, HALF, Math.PI, false);
-      this._add(x, y + r);
-      this._arc(x + r, y + r, r, r, 0, Math.PI, Math.PI * 1.5, false);
+      this._startSub(x + tl[0], y);
+      this._add(x + tl[0], y);
+      this._add(x + w - tr[0], y);
+      if (tr[0] > 0 && tr[1] > 0) this._arc(x + w - tr[0], y + tr[1], tr[0], tr[1], 0, -HALF, 0, false); else this._add(x + w, y);
+      this._add(x + w, y + h - br[1]);
+      if (br[0] > 0 && br[1] > 0) this._arc(x + w - br[0], y + h - br[1], br[0], br[1], 0, 0, HALF, false); else this._add(x + w, y + h);
+      this._add(x + bl[0], y + h);
+      if (bl[0] > 0 && bl[1] > 0) this._arc(x + bl[0], y + h - bl[1], bl[0], bl[1], 0, HALF, Math.PI, false); else this._add(x, y + h);
+      this._add(x, y + tl[1]);
+      if (tl[0] > 0 && tl[1] > 0) this._arc(x + tl[0], y + tl[1], tl[0], tl[1], 0, Math.PI, Math.PI * 1.5, false);
       this.closePath();
     }
+  }
+  // One elliptical arc of an SVG path, given by its end points (SVG 1.1 appendix F.6.5).
+  const svgArc = (p, x1, y1, rx, ry, phiDeg, fa, fs, x2, y2) => {
+    if (x1 === x2 && y1 === y2) return;
+    rx = Math.abs(rx); ry = Math.abs(ry);
+    if (rx === 0 || ry === 0) { p.lineTo(x2, y2); return; }
+    const phi = phiDeg * Math.PI / 180, cp = Math.cos(phi), sp = Math.sin(phi);
+    const dx = (x1 - x2) / 2, dy = (y1 - y2) / 2;
+    const x1p = cp * dx + sp * dy, y1p = -sp * dx + cp * dy;
+    const lam = x1p * x1p / (rx * rx) + y1p * y1p / (ry * ry);
+    if (lam > 1) { const k = Math.sqrt(lam); rx *= k; ry *= k; }
+    const top = rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p;
+    const bottom = rx * rx * y1p * y1p + ry * ry * x1p * x1p;
+    let co = Math.sqrt(Math.max(0, top / bottom));
+    if (fa === fs) co = -co;
+    const cxp = co * rx * y1p / ry, cyp = -co * ry * x1p / rx;
+    const cx = cp * cxp - sp * cyp + (x1 + x2) / 2, cy = sp * cxp + cp * cyp + (y1 + y2) / 2;
+    const ang = (ux, uy, vx, vy) => Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy);
+    const t1 = ang(1, 0, (x1p - cxp) / rx, (y1p - cyp) / ry);
+    let dt = ang((x1p - cxp) / rx, (y1p - cyp) / ry, (-x1p - cxp) / rx, (-y1p - cyp) / ry);
+    if (!fs && dt > 0) dt -= Math.PI * 2; else if (fs && dt < 0) dt += Math.PI * 2;
+    p._arc(cx, cy, rx, ry, phi, t1, t1 + dt, dt < 0);
+  };
+  // SVG path data into `p`; on a syntax error everything before it is kept, as SVG asks.
+  const svgPathInto = (p, data) => {
+    const s = String(data), n = s.length;
+    let i = 0;
+    const skip = () => { while (i < n && (s[i] === ',' || s.charCodeAt(i) <= 32)) i++; };
+    const number = () => {
+      skip();
+      const m = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/.exec(s.slice(i, i + 64));
+      if (!m) return null;
+      i += m[0].length;
+      return parseFloat(m[0]);
+    };
+    const flag = () => { skip(); const c = s[i]; if (c === '0' || c === '1') { i++; return +c; } return null; };
+    const read = (k) => { const out = []; for (let j = 0; j < k; j++) { const v = number(); if (v === null) return null; out.push(v); } return out; };
+    let cmd = '', cx = 0, cy = 0, sx = 0, sy = 0, kx = 0, ky = 0, prev = '';
+    for (let guard = 0; guard < 100000; guard++) {
+      skip();
+      if (i >= n) break;
+      if (/[a-zA-Z]/.test(s[i])) cmd = s[i++];
+      else if (!cmd || cmd === 'z' || cmd === 'Z') break;
+      const up = cmd.toUpperCase(), rel = cmd !== up;
+      const ox = rel ? cx : 0, oy = rel ? cy : 0;
+      if (up === 'Z') { p.closePath(); cx = sx; cy = sy; prev = 'Z'; continue; }
+      let a;
+      if (up === 'M' || up === 'L' || up === 'T') {
+        if (!(a = read(2))) break;
+        const x = a[0] + ox, y = a[1] + oy;
+        if (up === 'M') { p.moveTo(x, y); sx = x; sy = y; cmd = rel ? 'l' : 'L'; }
+        else if (up === 'L') p.lineTo(x, y);
+        else {
+          const qx = 'QT'.includes(prev) ? 2 * cx - kx : cx, qy = 'QT'.includes(prev) ? 2 * cy - ky : cy;
+          p.quadraticCurveTo(qx, qy, x, y); kx = qx; ky = qy;
+        }
+        cx = x; cy = y;
+      } else if (up === 'H') {
+        if (!(a = read(1))) break;
+        cx = a[0] + ox; p.lineTo(cx, cy);
+      } else if (up === 'V') {
+        if (!(a = read(1))) break;
+        cy = a[0] + oy; p.lineTo(cx, cy);
+      } else if (up === 'C') {
+        if (!(a = read(6))) break;
+        p.bezierCurveTo(a[0] + ox, a[1] + oy, a[2] + ox, a[3] + oy, a[4] + ox, a[5] + oy);
+        kx = a[2] + ox; ky = a[3] + oy; cx = a[4] + ox; cy = a[5] + oy;
+      } else if (up === 'S') {
+        if (!(a = read(4))) break;
+        const c1x = 'CS'.includes(prev) ? 2 * cx - kx : cx, c1y = 'CS'.includes(prev) ? 2 * cy - ky : cy;
+        p.bezierCurveTo(c1x, c1y, a[0] + ox, a[1] + oy, a[2] + ox, a[3] + oy);
+        kx = a[0] + ox; ky = a[1] + oy; cx = a[2] + ox; cy = a[3] + oy;
+      } else if (up === 'Q') {
+        if (!(a = read(4))) break;
+        p.quadraticCurveTo(a[0] + ox, a[1] + oy, a[2] + ox, a[3] + oy);
+        kx = a[0] + ox; ky = a[1] + oy; cx = a[2] + ox; cy = a[3] + oy;
+      } else if (up === 'A') {
+        const r = read(3); if (!r) break;
+        const fa = flag(); if (fa === null) break;
+        const fs = flag(); if (fs === null) break;
+        const e = read(2); if (!e) break;
+        svgArc(p, cx, cy, r[0], r[1], r[2], fa, fs, e[0] + ox, e[1] + oy);
+        cx = e[0] + ox; cy = e[1] + oy;
+      } else break;
+      prev = up;
+    }
+  };
+  class Path2D extends PathBuilder {
+    constructor(arg) {
+      super();
+      this._subs = [];
+      this._cur = null;
+      if (arg instanceof Path2D) this.addPath(arg);
+      else if (arg !== undefined) svgPathInto(this, arg);
+    }
+    // Another path's subpaths, moved by `matrix` ({a, b, c, d, e, f}) when one is given.
+    addPath(path, matrix) {
+      if (!(path instanceof Path2D)) throw new TypeError('The argument is not a Path2D.');
+      const m = matrix && typeof matrix === 'object' ? [matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f].map((v) => (v === undefined ? NaN : Number(v))) : [1, 0, 0, 1, 0, 0];
+      if (!m.every(Number.isFinite)) return;
+      for (const sub of path._subs.slice()) {
+        const p = [];
+        for (let i = 0; i < sub.p.length; i += 2) p.push(m[0] * sub.p[i] + m[2] * sub.p[i + 1] + m[4], m[1] * sub.p[i] + m[3] * sub.p[i + 1] + m[5]);
+        this._subs.push({ p, c: sub.c, _in: true });
+      }
+      this._cur = null;
+    }
+  }
+  class CanvasRenderingContext2D extends PathBuilder {
+    constructor(canvas) {
+      super();
+      this.canvas = canvas;
+      this._id = bi('c2dCreate', canvas._id, canvas.width, canvas.height);
+      this._state = { fillStyle: '#000000', strokeStyle: '#000000', globalAlpha: 1, m: [1, 0, 0, 1, 0, 0], font: '10px sans-serif', textAlign: 'start', textBaseline: 'alphabetic', lineWidth: 1, lineCap: 'butt', lineJoin: 'miter', miterLimit: 10, dash: [], dashOffset: 0 };
+      this._stack = [];
+      this._subs = [];
+      this._cur = null;
+    }
+    _c(op, ...args) {
+      return bi('c2d', this._id, op, ...args);
+    }
+    get fillStyle() { return this._state.fillStyle; }
+    set fillStyle(v) { if (typeof v === 'string' || v instanceof CanvasGradient) this._state.fillStyle = v; }
+    get strokeStyle() { return this._state.strokeStyle; }
+    set strokeStyle(v) { if (typeof v === 'string' || v instanceof CanvasGradient) this._state.strokeStyle = v; }
+    get globalAlpha() { return this._state.globalAlpha; }
+    set globalAlpha(v) { v = Number(v); if (v >= 0 && v <= 1) this._state.globalAlpha = v; }
+    get font() { return this._state.font; }
+    set font(v) { this._state.font = String(v); }
+    get textAlign() { return this._state.textAlign; }
+    set textAlign(v) { v = String(v); if (['start', 'end', 'left', 'right', 'center'].includes(v)) this._state.textAlign = v; }
+    get textBaseline() { return this._state.textBaseline; }
+    set textBaseline(v) { v = String(v); if (['top', 'hanging', 'middle', 'alphabetic', 'ideographic', 'bottom'].includes(v)) this._state.textBaseline = v; }
+    get lineWidth() { return this._state.lineWidth; }
+    set lineWidth(v) { v = Number(v); if (v > 0 && Number.isFinite(v)) this._state.lineWidth = v; }
+    get lineCap() { return this._state.lineCap; }
+    set lineCap(v) { v = String(v); if (['butt', 'round', 'square'].includes(v)) this._state.lineCap = v; }
+    get lineJoin() { return this._state.lineJoin; }
+    set lineJoin(v) { v = String(v); if (['miter', 'round', 'bevel'].includes(v)) this._state.lineJoin = v; }
+    get miterLimit() { return this._state.miterLimit; }
+    set miterLimit(v) { v = Number(v); if (v > 0 && Number.isFinite(v)) this._state.miterLimit = v; }
+    save() { this._stack.push(Object.assign({}, this._state, { m: this._state.m.slice() })); this._c('save'); }
+    restore() { if (this._stack.length) { this._state = this._stack.pop(); this._c('restore'); } }
+    beginPath() { this._subs = []; this._cur = null; }
+    get lineDashOffset() { return this._state.dashOffset; }
+    set lineDashOffset(v) { v = Number(v); if (Number.isFinite(v)) this._state.dashOffset = v; }
+    setTransform(a, b, c, d, e, f) {
+      if (a && typeof a === 'object') { b = a.b; c = a.c; d = a.d; e = a.e; f = a.f; a = a.a; }
+      this._state.m = [a, b, c, d, e, f];
+    }
+    resetTransform() { this._state.m = [1, 0, 0, 1, 0, 0]; }
+    getTransform() { const m = this._state.m; return { a: m[0], b: m[1], c: m[2], d: m[3], e: m[4], f: m[5] }; }
+    transform(a, b, c, d, e, f) {
+      const m = this._state.m;
+      this._state.m = [m[0] * a + m[2] * b, m[1] * a + m[3] * b, m[0] * c + m[2] * d, m[1] * c + m[3] * d, m[0] * e + m[2] * f + m[4], m[1] * e + m[3] * f + m[5]];
+    }
+    translate(x, y) { this.transform(1, 0, 0, 1, x, y); }
+    scale(x, y) { this.transform(x, 0, 0, y, 0, 0); }
+    rotate(a) { const c = Math.cos(a), s = Math.sin(a); this.transform(c, s, -s, c, 0, 0); }
+    fillRect(x, y, w, h) { this._c('fillRect', x, y, w, h, paintOf(this._state.fillStyle), this._state.globalAlpha, JSON.stringify(this._state.m)); }
+    clearRect(x, y, w, h) { this._c('clearRect', x, y, w, h, '#000', 1, JSON.stringify(this._state.m)); }
+    // The outline of a rectangle: four bars of `lineWidth`, centred on its edges.
+    strokeRect(x, y, w, h) {
+      x = Number(x); y = Number(y); w = Number(w); h = Number(h);
+      if (![x, y, w, h].every(Number.isFinite) || (w === 0 && h === 0)) return;
+      const st = this._state, half = st.lineWidth / 2, paint = paintOf(st.strokeStyle), m = JSON.stringify(st.m);
+      const x0 = Math.min(x, x + w), y0 = Math.min(y, y + h), aw = Math.abs(w), ah = Math.abs(h);
+      const bar = (bx, by, bw, bh) => this._c('fillRect', bx, by, bw, bh, paint, st.globalAlpha, m);
+      bar(x0 - half, y0 - half, aw + st.lineWidth, st.lineWidth);
+      bar(x0 - half, y0 + ah - half, aw + st.lineWidth, st.lineWidth);
+      bar(x0 - half, y0 + half, st.lineWidth, Math.max(ah - st.lineWidth, 0));
+      bar(x0 + aw - half, y0 + half, st.lineWidth, Math.max(ah - st.lineWidth, 0));
+    }
+    drawImage(source, a, b, c, d, e, f, g, h) {
+      const px = pixelsOf(source);
+      if (!px) return;
+      const [w, hh, data] = px;
+      let sx = 0, sy = 0, sw = w, sh = hh, dx, dy, dw, dh;
+      const n = arguments.length;
+      if (n >= 9) { sx = a; sy = b; sw = c; sh = d; dx = e; dy = f; dw = g; dh = h; }
+      else if (n >= 5) { dx = a; dy = b; dw = c; dh = d; }
+      else { dx = a; dy = b; dw = w; dh = hh; }
+      this._c('drawImage', w, hh, data, sx, sy, sw, sh, dx, dy, dw, dh, this._state.globalAlpha, JSON.stringify(this._state.m));
+    }
+    getImageData(x, y, w, h) {
+      const out = new ImageData(w, h);
+      const b64 = this._c('getImageData', x, y, w, h);
+      out.data.set(base64ToBytes(b64));
+      return out;
+    }
+    putImageData(image, x, y) {
+      const bytes = new Uint8Array(image.data.buffer, image.data.byteOffset, image.data.byteLength);
+      this._c('putImageData', bytesToBase64(bytes), image.width, image.height, x, y);
+    }
+    createImageData(w, h) { return w && typeof w === 'object' ? new ImageData(w.width, w.height) : new ImageData(w, h); }
+    // fill(), stroke() and clip() take the current path, or a Path2D first.
     fill(a, b) {
-      const rule = typeof a === 'string' ? a : typeof b === 'string' ? b : 'nonzero';
-      if (!this._subs.length) return;
+      const path = a instanceof Path2D;
+      const rule = path ? b : a, subs = path ? a._subs : this._subs;
+      if (!subs.length) return;
       const st = this._state;
-      this._c('fillPath', JSON.stringify(this._subs), paintOf(st.fillStyle), st.globalAlpha, JSON.stringify(st.m), rule === 'evenodd' ? 1 : 0);
+      this._c('fillPath', JSON.stringify(subs), paintOf(st.fillStyle), st.globalAlpha, JSON.stringify(st.m), rule === 'evenodd' ? 1 : 0);
     }
-    stroke() {
-      if (!this._subs.length) return;
+    stroke(path) {
+      const subs = path instanceof Path2D ? path._subs : this._subs;
+      if (!subs.length) return;
       const st = this._state;
-      this._c('strokePath', JSON.stringify(this._subs), paintOf(st.strokeStyle), st.globalAlpha, JSON.stringify(st.m),
-        st.lineWidth, st.lineCap, st.lineJoin, st.miterLimit);
+      this._c('strokePath', JSON.stringify(subs), paintOf(st.strokeStyle), st.globalAlpha, JSON.stringify(st.m),
+        st.lineWidth, st.lineCap, st.lineJoin, st.miterLimit, JSON.stringify(st.dash), st.dashOffset);
     }
-    // The clipping region is not kept: the path is accepted and drawing stays unclipped.
-    clip() {}
+    // Narrows the clipping region to the path; save() and restore() bring the old one back.
+    clip(a, b) {
+      const path = a instanceof Path2D;
+      const rule = path ? b : a, subs = path ? a._subs : this._subs;
+      this._c('clipPath', JSON.stringify(subs), JSON.stringify(this._state.m), rule === 'evenodd' ? 1 : 0);
+    }
     fillText(text, x, y, maxWidth) {
       x = Number(x); y = Number(y);
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
@@ -2760,16 +2896,24 @@
         emHeightAscent: fontAscent, emHeightDescent: fontDescent, alphabeticBaseline: 0, hangingBaseline: fontAscent * 0.8,
         ideographicBaseline: -fontDescent };
     }
-    setLineDash() {}
-    getLineDash() { return []; }
+    setLineDash(list) {
+      const items = Array.from(list || [], Number);
+      if (!items.every((d) => Number.isFinite(d) && d >= 0)) return;
+      this._state.dash = items.length % 2 ? items.concat(items) : items;
+    }
+    getLineDash() { return this._state.dash.slice(); }
     createLinearGradient(x0, y0, x1, y1) { return new CanvasGradient('linear', [x0, y0, x1, y1]); }
     createRadialGradient(x0, y0, r0, x1, y1, r1) { return new CanvasGradient('radial', [x0, y0, r0, x1, y1, r1]); }
     createPattern() { return null; }
-    isPointInPath(x, y, rule) {
+    isPointInPath(a, b, c, d) {
+      const path = a instanceof Path2D;
+      const subs = path ? a._subs : this._subs;
+      let x = path ? b : a, y = path ? c : b;
+      const rule = path ? d : c;
       x = Number(x); y = Number(y);
       if (typeof x !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) return false;
       let winding = 0;
-      for (const sub of this._subs) {
+      for (const sub of subs) {
         const p = sub.p, n = p.length / 2;
         for (let i = 0; i < n; i++) {
           const ax = p[i * 2], ay = p[i * 2 + 1], bx = p[((i + 1) % n) * 2], by = p[((i + 1) % n) * 2 + 1];
@@ -5007,7 +5151,7 @@
     HTMLAreaElement, HTMLMapElement, HTMLDataElement, HTMLTimeElement, HTMLModElement, HTMLParamElement,
     HTMLTrackElement, HTMLOptGroupElement, HTMLDataListElement, HTMLMeterElement, HTMLTableColElement,
     DOMParser, XMLSerializer, IntersectionObserver, ResizeObserver, PerformanceObserver, MessageChannel, BroadcastChannel,
-    URL, URLSearchParams, TextEncoder, TextDecoder, FontFace, CanvasGradient,
+    URL, URLSearchParams, TextEncoder, TextDecoder, FontFace, CanvasGradient, Path2D,
     // values
     document, customElements, navigator: navigatorApi, screen: screenApi, location: locationApi, history: historyApi,
     performance, crypto, localStorage: makeStorage(), sessionStorage: makeStorage(),

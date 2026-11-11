@@ -79,6 +79,95 @@ pub(crate) fn fill_polygons(paths: &[Subpath]) -> Vec<Vec<Point>> {
     paths.iter().filter(|p| p.points.len() >= 3).map(|p| p.points.clone()).collect()
 }
 
+/// The most dashes one stroke is cut into, so a tiny pattern on a long path stays cheap.
+const MAX_DASHES: usize = 100_000;
+
+/// `paths` cut into the dashes of `pattern` (alternating on and off lengths), starting
+/// `offset` into the pattern. An odd-length pattern is repeated; an empty one, one with a
+/// negative or non-finite length, or one of no total length leaves the paths solid.
+pub(crate) fn dash_paths(paths: &[Subpath], pattern: &[f64], offset: f64) -> Vec<Subpath> {
+    if pattern.is_empty() || pattern.iter().any(|d| !d.is_finite() || *d < 0.0) || !offset.is_finite() {
+        return paths.to_vec();
+    }
+    let mut items: Vec<f64> = pattern.to_vec();
+    if items.len() % 2 == 1 {
+        items.extend_from_slice(pattern);
+    }
+    let total: f64 = items.iter().sum();
+    if total <= 0.0 || !total.is_finite() {
+        return paths.to_vec();
+    }
+    let mut out: Vec<Subpath> = Vec::new();
+    for path in paths {
+        let mut pts = path.points.clone();
+        if path.closed && pts.len() > 1 {
+            pts.push(pts[0]);
+        }
+        if pts.len() < 2 {
+            out.push(path.clone());
+            continue;
+        }
+        // Where in the pattern the path begins.
+        let mut index = 0;
+        let mut left = items[0];
+        let mut skip = offset.rem_euclid(total);
+        while skip > 0.0 {
+            if skip < left {
+                left -= skip;
+                break;
+            }
+            skip -= left;
+            index = (index + 1) % items.len();
+            left = items[index];
+        }
+        let mut current: Vec<Point> = Vec::new();
+        let flush = |current: &mut Vec<Point>, item: f64, out: &mut Vec<Subpath>| {
+            if current.len() >= 2 || (current.len() == 1 && item == 0.0) {
+                out.push(Subpath { points: std::mem::take(current), closed: false });
+            }
+            current.clear();
+        };
+        if index % 2 == 0 {
+            current.push(pts[0]);
+        }
+        'path: for w in pts.windows(2) {
+            let (a, b) = (w[0], w[1]);
+            let len = (b.0 - a.0).hypot(b.1 - a.1);
+            if len <= 0.0 {
+                continue;
+            }
+            let mut at = 0.0;
+            while len - at > left {
+                at += left;
+                let t = at / len;
+                let p = (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
+                if index % 2 == 0 {
+                    current.push(p);
+                    flush(&mut current, items[index], &mut out);
+                } else {
+                    current.push(p);
+                }
+                if out.len() >= MAX_DASHES {
+                    break 'path;
+                }
+                index = (index + 1) % items.len();
+                left = items[index];
+            }
+            left -= len - at;
+            if index % 2 == 0 {
+                current.push(b);
+            }
+        }
+        if index % 2 == 0 {
+            flush(&mut current, items[index], &mut out);
+        }
+        if out.len() >= MAX_DASHES {
+            break;
+        }
+    }
+    out
+}
+
 /// The polygons whose union is the stroke of `paths`.
 pub(crate) fn stroke_polygons(paths: &[Subpath], style: &StrokeStyle) -> Vec<Vec<Point>> {
     let half = style.width / 2.0;
@@ -338,5 +427,37 @@ mod tests {
         assert!(stroke_polygons(&[square(0.0, 0.0, 5.0)], &style(0.0, Cap::Butt, Join::Miter)).is_empty());
         assert!(stroke_polygons(&[square(0.0, 0.0, 5.0)], &style(f64::NAN, Cap::Butt, Join::Miter)).is_empty());
         assert!(rasterize(&[vec![(0.0, 0.0), (f64::NAN, 1.0), (2.0, 2.0)]], false, 10, 10).is_none());
+    }
+
+    #[test]
+    fn dashing_cuts_a_line_into_the_pieces_the_pattern_asks_for() {
+        let line = [Subpath { points: vec![(0.0, 10.0), (20.0, 10.0)], closed: false }];
+        let xs = |d: &[Subpath]| d.iter().map(|s| (s.points[0].0, s.points[s.points.len() - 1].0)).collect::<Vec<_>>();
+        assert_eq!(xs(&dash_paths(&line, &[4.0, 2.0], 0.0)), vec![(0.0, 4.0), (6.0, 10.0), (12.0, 16.0), (18.0, 20.0)]);
+        assert_eq!(xs(&dash_paths(&line, &[4.0, 2.0], 3.0)), vec![(0.0, 1.0), (3.0, 7.0), (9.0, 13.0), (15.0, 19.0)]);
+        assert_eq!(xs(&dash_paths(&line, &[5.0], 0.0)), vec![(0.0, 5.0), (10.0, 15.0)], "a one-item pattern is dash and gap alike");
+        assert_eq!(dash_paths(&line, &[], 0.0), line.to_vec(), "no pattern is a solid line");
+        assert_eq!(dash_paths(&line, &[0.0, 0.0], 0.0), line.to_vec(), "a pattern with no length is a solid line");
+    }
+
+    #[test]
+    fn a_dash_follows_a_corner_and_a_closed_path_is_dashed_all_the_way_round() {
+        let corner = [Subpath { points: vec![(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)], closed: false }];
+        let d = dash_paths(&corner, &[15.0, 100.0], 0.0);
+        assert_eq!(d.len(), 1);
+        assert_eq!(d[0].points, vec![(0.0, 0.0), (10.0, 0.0), (10.0, 5.0)], "the dash bends round the corner");
+        let d = dash_paths(&[square(0.0, 0.0, 10.0)], &[10.0, 10.0], 0.0);
+        assert_eq!(d.len(), 2, "a perimeter of 40 holds two 10-long dashes");
+        let m = rasterize(&stroke_polygons(&d, &style(2.0, Cap::Butt, Join::Miter)), false, 20, 20).unwrap();
+        assert_eq!(at(&m, 5, 0), 255);
+        assert_eq!(at(&m, 5, 10), 255, "the third quarter of the perimeter is a dash");
+        assert_eq!(at(&m, 10, 5), 0, "and the second a gap");
+    }
+
+    #[test]
+    fn a_pattern_of_tiny_dashes_is_bounded() {
+        let long = [Subpath { points: vec![(0.0, 0.0), (1.0e7, 0.0)], closed: false }];
+        assert!(dash_paths(&long, &[0.01, 0.01], 0.0).len() <= 100_000);
+        assert!(dash_paths(&long, &[f64::NAN, 1.0], 0.0) == long.to_vec());
     }
 }
