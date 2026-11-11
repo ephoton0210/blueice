@@ -2790,7 +2790,7 @@
       super();
       this.canvas = canvas;
       this._id = bi('c2dCreate', canvas._id, canvas.width, canvas.height);
-      this._state = { fillStyle: '#000000', strokeStyle: '#000000', globalAlpha: 1, m: [1, 0, 0, 1, 0, 0], font: '10px sans-serif', textAlign: 'start', textBaseline: 'alphabetic', lineWidth: 1, lineCap: 'butt', lineJoin: 'miter', miterLimit: 10, dash: [], dashOffset: 0 };
+      this._state = { fillStyle: '#000000', strokeStyle: '#000000', globalAlpha: 1, m: [1, 0, 0, 1, 0, 0], font: '10px sans-serif', textAlign: 'start', textBaseline: 'alphabetic', lineWidth: 1, lineCap: 'butt', lineJoin: 'miter', miterLimit: 10, dash: [], dashOffset: 0, direction: 'ltr' };
       this._stack = [];
       this._subs = [];
       this._cur = null;
@@ -2812,6 +2812,13 @@
     set textBaseline(v) { v = String(v); if (['top', 'hanging', 'middle', 'alphabetic', 'ideographic', 'bottom'].includes(v)) this._state.textBaseline = v; }
     get lineWidth() { return this._state.lineWidth; }
     set lineWidth(v) { v = Number(v); if (v > 0 && Number.isFinite(v)) this._state.lineWidth = v; }
+    get direction() { return this._state.direction; }
+    set direction(v) { v = String(v); if (['ltr', 'rtl', 'inherit'].includes(v)) this._state.direction = v; }
+    // textAlign with start and end turned into a side by the direction (inherit is ltr here).
+    _align() {
+      const a = this._state.textAlign, rtl = this._state.direction === 'rtl';
+      return a === 'start' ? (rtl ? 'right' : 'left') : a === 'end' ? (rtl ? 'left' : 'right') : a;
+    }
     get lineCap() { return this._state.lineCap; }
     set lineCap(v) { v = String(v); if (['butt', 'round', 'square'].includes(v)) this._state.lineCap = v; }
     get lineJoin() { return this._state.lineJoin; }
@@ -2897,20 +2904,20 @@
       x = Number(x); y = Number(y);
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
       const st = this._state;
-      this._c('fillText', String(text), x, y, st.font, paintOf(st.fillStyle), st.globalAlpha, JSON.stringify(st.m), st.textAlign,
+      this._c('fillText', String(text), x, y, st.font, paintOf(st.fillStyle), st.globalAlpha, JSON.stringify(st.m), this._align(),
         st.textBaseline, maxWidth === undefined || !(maxWidth >= 0) ? -1 : Number(maxWidth));
     }
     strokeText(text, x, y, maxWidth) {
       x = Number(x); y = Number(y);
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
       const st = this._state;
-      this._c('strokeText', String(text), x, y, st.font, paintOf(st.strokeStyle), st.globalAlpha, JSON.stringify(st.m), st.textAlign,
+      this._c('strokeText', String(text), x, y, st.font, paintOf(st.strokeStyle), st.globalAlpha, JSON.stringify(st.m), this._align(),
         st.textBaseline, maxWidth === undefined || !(maxWidth >= 0) ? -1 : Number(maxWidth), st.lineWidth);
     }
     measureText(text) {
       const font = this._state.font;
       const [width, left, right, ascent, descent, fontAscent, fontDescent] =
-        String(this._c('measureBox', String(text), font, this._state.textAlign, this._state.textBaseline)).split(',').map(Number);
+        String(this._c('measureBox', String(text), font, this._align(), this._state.textBaseline)).split(',').map(Number);
       return { width, actualBoundingBoxLeft: left, actualBoundingBoxRight: right, actualBoundingBoxAscent: ascent,
         actualBoundingBoxDescent: descent, fontBoundingBoxAscent: fontAscent, fontBoundingBoxDescent: fontDescent,
         emHeightAscent: fontAscent, emHeightDescent: fontDescent, alphabeticBaseline: 0, hangingBaseline: fontAscent * 0.8,

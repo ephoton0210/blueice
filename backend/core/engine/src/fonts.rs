@@ -1387,6 +1387,33 @@ mod tests {
     }
 
     #[test]
+    fn canvas_direction_decides_which_side_start_and_end_mean() {
+        let html = "<body><canvas id=c width=100 height=30></canvas><script>\
+             const g = document.getElementById('c').getContext('2d');\
+             g.font = '16px sans-serif';\
+             const ink = () => { const d = g.getImageData(0, 0, 100, 30).data; let lo = 100, hi = -1;\
+               for (let y = 0; y < 30; y++) for (let x = 0; x < 100; x++) if (d[(y * 100 + x) * 4 + 3] > 0) { lo = Math.min(lo, x); hi = Math.max(hi, x); }\
+               g.clearRect(0, 0, 100, 30); return (lo + hi) / 2 > 50 ? 'right' : 'left'; };\
+             const out = ['DEFAULT ' + g.direction];\
+             g.textAlign = 'start'; g.fillText('HH', 50, 20); out.push('LTR-START ' + ink());\
+             g.textAlign = 'end'; g.fillText('HH', 50, 20); out.push('LTR-END ' + ink());\
+             g.direction = 'rtl'; out.push('SET ' + g.direction);\
+             g.textAlign = 'start'; g.fillText('HH', 50, 20); out.push('RTL-START ' + ink());\
+             g.textAlign = 'end'; g.fillText('HH', 50, 20); out.push('RTL-END ' + ink());\
+             g.textAlign = 'left'; g.fillText('HH', 50, 20); out.push('RTL-LEFT ' + ink());\
+             g.direction = 'sideways'; out.push('KEEP ' + g.direction);\
+             g.direction = 'inherit'; out.push('INHERIT ' + g.direction);\
+             g.save(); g.direction = 'ltr'; g.restore(); out.push('RESTORED ' + g.direction);\
+             console.log(out.join(' | '));\
+             </script></body>";
+        let mut page = script_page(html);
+        run_scripts(&mut page);
+        let log = page.web_console().join("\n");
+        let want = "DEFAULT ltr | LTR-START right | LTR-END left | SET rtl | RTL-START left | RTL-END right | RTL-LEFT right | KEEP rtl | INHERIT inherit | RESTORED inherit";
+        assert!(log.contains(want), "{log}");
+    }
+
+    #[test]
     fn a_script_paints_canvas_text_with_gradients_and_outlines() {
         let html = "<body><canvas id=c width=120 height=60></canvas><script>\
              const g = document.getElementById('c').getContext('2d');\
