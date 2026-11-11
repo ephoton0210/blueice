@@ -121,11 +121,18 @@ enum Paint {
     Solid([u8; 4]),
     Linear { p: [f64; 4], stops: Vec<(f64, [u8; 4])> },
     Radial { p: [f64; 6], stops: Vec<(f64, [u8; 4])> },
+    /// Colours swept clockwise round a centre, from the start angle.
+    Conic { p: [f64; 3], stops: Vec<(f64, [u8; 4])> },
+    /// A picture tiled over the plane.
+    Pattern { w: usize, h: usize, rgba: Vec<u8>, repeat_x: bool, repeat_y: bool },
 }
 
 impl Paint {
     /// A CSS colour, or `grad:` and the JSON a script's gradient object describes itself with.
     fn parse(text: &str) -> Paint {
+        if let Some(json) = text.strip_prefix("pat:") {
+            return Self::pattern(json);
+        }
         let Some(json) = text.strip_prefix("grad:") else {
             return Paint::Solid(
                 blueice_css::parse_css_color(text).map_or([0, 0, 0, 255], |(r, g, b, a)| [r, g, b, a]),
@@ -144,8 +151,22 @@ impl Paint {
             (Some("radial"), 6) => {
                 Paint::Radial { p: [nums[0], nums[1], nums[2], nums[3], nums[4], nums[5]], stops }
             }
+            (Some("conic"), 3) => Paint::Conic { p: [nums[0], nums[1], nums[2]], stops },
             _ => transparent,
         }
+    }
+
+    /// `{"w","h","d" (base64 RGBA),"r" (repeat, repeat-x, repeat-y or no-repeat)}`.
+    fn pattern(json: &str) -> Paint {
+        let transparent = Paint::Solid([0, 0, 0, 0]);
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(json) else { return transparent };
+        let (w, h) = (v["w"].as_u64().unwrap_or(0) as usize, v["h"].as_u64().unwrap_or(0) as usize);
+        let Some(rgba) = v["d"].as_str().and_then(base64_decode) else { return transparent };
+        if w == 0 || h == 0 || w.checked_mul(h).and_then(|n| n.checked_mul(4)) != Some(rgba.len()) {
+            return transparent;
+        }
+        let r = v["r"].as_str().unwrap_or("repeat");
+        Paint::Pattern { w, h, rgba, repeat_x: r == "repeat" || r == "repeat-x", repeat_y: r == "repeat" || r == "repeat-y" }
     }
 
     fn stop(v: &serde_json::Value) -> Option<(f64, [u8; 4])> {
@@ -209,6 +230,20 @@ impl Paint {
                     }
                 };
                 s.map_or([0, 0, 0, 0], |s| Self::ramp(stops, s))
+            }
+            Paint::Conic { p, stops } => {
+                let turn = (y - p[2]).atan2(x - p[1]) - p[0];
+                Self::ramp(stops, turn.rem_euclid(std::f64::consts::TAU) / std::f64::consts::TAU)
+            }
+            Paint::Pattern { w, h, rgba, repeat_x, repeat_y } => {
+                let (fx, fy) = (x.floor(), y.floor());
+                let (wf, hf) = (*w as f64, *h as f64);
+                if (!repeat_x && (fx < 0.0 || fx >= wf)) || (!repeat_y && (fy < 0.0 || fy >= hf)) {
+                    return [0, 0, 0, 0];
+                }
+                let (ix, iy) = (fx.rem_euclid(wf) as usize, fy.rem_euclid(hf) as usize);
+                let i = (iy * w + ix) * 4;
+                [rgba[i], rgba[i + 1], rgba[i + 2], rgba[i + 3]]
             }
         }
     }
@@ -1353,5 +1388,36 @@ mod tests {
         c.resize(10, 10).unwrap();
         c.call("fillRect", &[n(0.0), n(0.0), n(10.0), n(10.0), t("#000000")]).unwrap();
         assert_eq!(px(&c, 0, 5)[3], 255);
+    }
+
+    #[test]
+    fn a_conic_gradient_sweeps_its_colours_round_the_centre() {
+        let mut c = canvas(20, 20);
+        let spec = r##"grad:{"t":"conic","p":[0,10,10],"s":[[0,"#ff0000"],[0.5,"#ff0000"],[0.5,"#0000ff"],[1,"#0000ff"]]}"##;
+        c.call("fillRect", &[n(0.0), n(0.0), n(20.0), n(20.0), t(spec)]).unwrap();
+        // Angle 0 points right and grows clockwise on screen: the lower half is the first half turn.
+        assert_eq!(px(&c, 10, 17), [255, 0, 0, 255]);
+        assert_eq!(px(&c, 17, 12), [255, 0, 0, 255]);
+        assert_eq!(px(&c, 10, 3), [0, 0, 255, 255]);
+        assert_eq!(px(&c, 3, 8), [0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn a_pattern_tiles_its_picture_by_the_repetition_asked_for() {
+        // A 2x1 picture: red, then blue.
+        let data = base64_encode(&[255, 0, 0, 255, 0, 0, 255, 255]);
+        let spec = |r: &str| format!(r#"pat:{{"w":2,"h":1,"d":"{data}","r":"{r}"}}"#);
+        let mut c = canvas(8, 3);
+        c.call("fillRect", &[n(0.0), n(0.0), n(8.0), n(3.0), t(&spec("repeat"))]).unwrap();
+        assert_eq!((px(&c, 0, 0), px(&c, 1, 0), px(&c, 2, 2), px(&c, 7, 1)), ([255, 0, 0, 255], [0, 0, 255, 255], [255, 0, 0, 255], [0, 0, 255, 255]));
+        let mut c = canvas(8, 3);
+        c.call("fillRect", &[n(0.0), n(0.0), n(8.0), n(3.0), t(&spec("repeat-x"))]).unwrap();
+        assert_eq!((px(&c, 3, 0)[3], px(&c, 3, 1)[3]), (255, 0), "only the first row is covered");
+        let mut c = canvas(8, 3);
+        c.call("fillRect", &[n(0.0), n(0.0), n(8.0), n(3.0), t(&spec("no-repeat"))]).unwrap();
+        assert_eq!((px(&c, 1, 0)[3], px(&c, 2, 0)[3]), (255, 0));
+        let mut c = canvas(8, 3);
+        c.call("fillRect", &[n(0.0), n(0.0), n(8.0), n(3.0), t("pat:{bad")]).unwrap();
+        assert_eq!(px(&c, 0, 0)[3], 0, "an unreadable pattern paints nothing");
     }
 }

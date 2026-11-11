@@ -1329,6 +1329,42 @@ mod tests {
     }
 
     #[test]
+    fn a_script_paints_with_conic_gradients_and_patterns() {
+        let html = "<body><canvas id=c width=40 height=40></canvas><canvas id=t width=2 height=2></canvas><script>\
+             const g = document.getElementById('c').getContext('2d');\
+             const px = (x, y) => { const d = g.getImageData(x, y, 1, 1).data; return d[3] === 0 ? '-' : d[0] + ',' + d[1] + ',' + d[2]; };\
+             const out = [];\
+             const k = g.createConicGradient(0, 20, 20); k.addColorStop(0, '#ff0000'); k.addColorStop(0.5, '#ff0000'); k.addColorStop(0.5, '#0000ff'); k.addColorStop(1, '#0000ff');\
+             g.fillStyle = k; g.fillRect(0, 0, 40, 40);\
+             out.push('CONIC ' + px(20, 35) + ' ' + px(20, 5));\
+             let bad = ''; try { g.createConicGradient(NaN, 0, 0); } catch (e) { bad = e.name; } out.push('CONICBAD ' + bad);\
+             const t = document.getElementById('t').getContext('2d');\
+             t.fillStyle = '#ff0000'; t.fillRect(0, 0, 1, 2); t.fillStyle = '#00ff00'; t.fillRect(1, 0, 1, 2);\
+             const pat = g.createPattern(document.getElementById('t'), 'repeat');\
+             g.clearRect(0, 0, 40, 40); g.fillStyle = pat; g.fillRect(0, 0, 40, 40);\
+             out.push('PAT ' + px(0, 0) + ' ' + px(1, 1) + ' ' + px(38, 3) + ' ' + px(39, 3));\
+             g.clearRect(0, 0, 40, 40); g.fillStyle = g.createPattern(document.getElementById('t'), 'no-repeat'); g.fillRect(0, 0, 40, 40);\
+             out.push('NOREP ' + px(1, 1) + ' ' + px(5, 5));\
+             out.push('PATNULL ' + (g.createPattern(document.getElementById('t'), null) !== null) + ' ' + g.createPattern({}, 'repeat'));\
+             try { g.createPattern(document.getElementById('t'), 'sideways'); } catch (e) { out.push('PATBAD ' + e.name); }\
+             g.clearRect(0, 0, 40, 40); g.strokeStyle = pat; g.lineWidth = 6; g.beginPath(); g.moveTo(0, 20); g.lineTo(40, 20); g.stroke();\
+             out.push('PATSTROKE ' + px(10, 20));\
+             console.log(out.join(' | '));\
+             </script></body>";
+        let mut page = script_page(html);
+        run_scripts(&mut page);
+        let log = page.web_console().join("\n");
+        let has = |s: &str| assert!(log.contains(s), "{s} in {log}");
+        has("CONIC 255,0,0 0,0,255");
+        has("CONICBAD TypeError");
+        has("PAT 255,0,0 0,255,0 255,0,0 0,255,0");
+        has("NOREP 0,255,0 -");
+        has("PATNULL true null");
+        has("PATBAD SyntaxError");
+        has("PATSTROKE 255,0,0");
+    }
+
+    #[test]
     fn a_script_paints_canvas_text_with_gradients_and_outlines() {
         let html = "<body><canvas id=c width=120 height=60></canvas><script>\
              const g = document.getElementById('c').getContext('2d');\

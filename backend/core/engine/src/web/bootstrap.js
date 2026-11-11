@@ -2499,6 +2499,13 @@
       return 'grad:' + JSON.stringify({ t: this._kind, p: this._points, s: this._stops });
     }
   }
+  // A picture tiled as a fill; it describes itself to the canvas as `pat:` and JSON.
+  class CanvasPattern {
+    constructor(pixels, repeat) { this._px = pixels; this._repeat = repeat; }
+    setTransform() {}
+    _spec() { return 'pat:' + JSON.stringify({ w: this._px[0], h: this._px[1], d: this._px[2], r: this._repeat }); }
+  }
+  const isPaint = (v) => typeof v === 'string' || v instanceof CanvasGradient || v instanceof CanvasPattern;
   const paintOf = (style) => (typeof style === 'string' ? style : style._spec());
   // The path-building methods that a canvas context and a Path2D share.
   class PathBuilder {
@@ -2779,9 +2786,9 @@
       return bi('c2d', this._id, op, ...args);
     }
     get fillStyle() { return this._state.fillStyle; }
-    set fillStyle(v) { if (typeof v === 'string' || v instanceof CanvasGradient) this._state.fillStyle = v; }
+    set fillStyle(v) { if (isPaint(v)) this._state.fillStyle = v; }
     get strokeStyle() { return this._state.strokeStyle; }
-    set strokeStyle(v) { if (typeof v === 'string' || v instanceof CanvasGradient) this._state.strokeStyle = v; }
+    set strokeStyle(v) { if (isPaint(v)) this._state.strokeStyle = v; }
     get globalAlpha() { return this._state.globalAlpha; }
     set globalAlpha(v) { v = Number(v); if (v >= 0 && v <= 1) this._state.globalAlpha = v; }
     get font() { return this._state.font; }
@@ -2904,7 +2911,13 @@
     getLineDash() { return this._state.dash.slice(); }
     createLinearGradient(x0, y0, x1, y1) { return new CanvasGradient('linear', [x0, y0, x1, y1]); }
     createRadialGradient(x0, y0, r0, x1, y1, r1) { return new CanvasGradient('radial', [x0, y0, r0, x1, y1, r1]); }
-    createPattern() { return null; }
+    createConicGradient(angle, x, y) { return new CanvasGradient('conic', [angle, x, y]); }
+    createPattern(image, repetition) {
+      const repeat = repetition === null || repetition === undefined || repetition === '' ? 'repeat' : String(repetition);
+      if (!['repeat', 'repeat-x', 'repeat-y', 'no-repeat'].includes(repeat)) throw new DOMException('The repetition mode is not valid.', 'SyntaxError');
+      const px = pixelsOf(image);
+      return px && px[0] > 0 && px[1] > 0 ? new CanvasPattern(px, repeat) : null;
+    }
     isPointInPath(a, b, c, d) {
       const path = a instanceof Path2D;
       const subs = path ? a._subs : this._subs;
@@ -5151,7 +5164,7 @@
     HTMLAreaElement, HTMLMapElement, HTMLDataElement, HTMLTimeElement, HTMLModElement, HTMLParamElement,
     HTMLTrackElement, HTMLOptGroupElement, HTMLDataListElement, HTMLMeterElement, HTMLTableColElement,
     DOMParser, XMLSerializer, IntersectionObserver, ResizeObserver, PerformanceObserver, MessageChannel, BroadcastChannel,
-    URL, URLSearchParams, TextEncoder, TextDecoder, FontFace, CanvasGradient, Path2D,
+    URL, URLSearchParams, TextEncoder, TextDecoder, FontFace, CanvasGradient, CanvasPattern, Path2D,
     // values
     document, customElements, navigator: navigatorApi, screen: screenApi, location: locationApi, history: historyApi,
     performance, crypto, localStorage: makeStorage(), sessionStorage: makeStorage(),
