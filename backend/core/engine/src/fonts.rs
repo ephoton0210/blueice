@@ -1365,6 +1365,28 @@ mod tests {
     }
 
     #[test]
+    fn a_script_font_face_can_name_an_installed_font_with_local() {
+        let html = "<body><script>\
+             const out = [];\
+             const ok = new FontFace('LocalFace', 'local(\"DejaVu Sans Bold\")', { weight: '700' });\
+             const bad = new FontFace('Missing', 'local(\"No Such Font\")');\
+             const mixed = new FontFace('Mixed', 'local(\"No Such Font\"), local(DejaVuSans)');\
+             const both = new FontFace('Both', 'local(\"No Such Font\"), url(\"data:font/ttf;base64,AAAA\")');\
+             out.push('START ' + ok.status);\
+             Promise.all([ok.load(), mixed.load()]).then(() => {\
+               document.fonts.add(ok);\
+               out.push('OK ' + ok.status + ' ' + mixed.status + ' ' + document.fonts.check('16px LocalFace') + ' ' + document.fonts.size);\
+               return bad.load().catch((e) => out.push('BAD ' + bad.status + ' ' + e.name));\
+             }).then(() => both.load().catch((e) => out.push('BOTH ' + e.name)))\
+               .then(() => console.log(out.join(' | ')));\
+             </script></body>";
+        let mut page = script_page(html);
+        run_scripts(&mut page);
+        let log = page.web_console().join("\n");
+        assert!(log.contains("START unloaded | OK loaded loaded true 1 | BAD error NetworkError | BOTH NetworkError"), "{log}");
+    }
+
+    #[test]
     fn a_script_paints_canvas_text_with_gradients_and_outlines() {
         let html = "<body><canvas id=c width=120 height=60></canvas><script>\
              const g = document.getElementById('c').getContext('2d');\

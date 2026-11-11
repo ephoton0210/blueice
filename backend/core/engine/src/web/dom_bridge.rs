@@ -330,6 +330,11 @@ impl DomState {
                     None => Reply::Null,
                 }
             }
+            // The file of an installed font a `local()` source names, base64, or null.
+            "fontLocal" => match blueice_font::bundled_font_bytes(&text(0)) {
+                Some(bytes) => Reply::Text(crate::web::net::base64_encode(bytes)),
+                None => Reply::Null,
+            },
             // Whether a CSS colour parses: "ok" or null.
             "colorValid" => {
                 if blueice_css::parse_css_color(&text(0)).is_some() {

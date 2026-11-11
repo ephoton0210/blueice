@@ -827,12 +827,16 @@
   let fontBatch = null;
   let fontSetReady = null;
   let fontSheetListed = false;
-  const fontUrls = (source) => {
-    const urls = [];
-    const re = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]*))\s*\)/g;
+  // The sources of a `src` string, in order: `{ local }` for local(), `{ url }` for url().
+  const fontSources = (source) => {
+    const list = [];
+    const re = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]*))\s*\)|local\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)/g;
     let m;
-    while ((m = re.exec(source)) !== null) urls.push(m[1] !== undefined ? m[1] : m[2] !== undefined ? m[2] : m[3]);
-    return urls;
+    while ((m = re.exec(source)) !== null) {
+      if (m[0].startsWith('local')) list.push({ local: m[4] !== undefined ? m[4] : m[5] !== undefined ? m[5] : m[6] });
+      else list.push({ url: m[1] !== undefined ? m[1] : m[2] !== undefined ? m[2] : m[3] });
+    }
+    return list;
   };
   class FontFace {
     constructor(family, source, descriptors) {
@@ -861,7 +865,7 @@
       if (source === null) {
         // A face the stylesheets declared: loaded before the script ran (see `fontListSheet`).
       } else if (typeof source === 'string') {
-        this._urls = fontUrls(source).map(resolveUrl);
+        this._urls = fontSources(source).map((x) => (x.local !== undefined ? x : { url: resolveUrl(x.url) }));
         if (this._urls.length === 0) this._fail('SyntaxError');
       } else if (source instanceof ArrayBuffer || ArrayBuffer.isView(source)) {
         const view = source instanceof ArrayBuffer
@@ -906,7 +910,16 @@
           done();
           return this._fail('NetworkError');
         }
-        const url = this._urls[i];
+        const source = this._urls[i];
+        if (source.local !== undefined) {
+          // An installed font: one the engine carries, by its name.
+          setTimeout(() => {
+            const body = bi('fontLocal', source.local);
+            if (body) { this._body = body; this._url = ''; this._finish(); } else tryNext(i + 1);
+          }, 0);
+          return;
+        }
+        const url = source.url;
         const accept = (body) => {
           if (!bi('fontCheck', body, body ? '' : url)) return tryNext(i + 1);
           this._body = body;
