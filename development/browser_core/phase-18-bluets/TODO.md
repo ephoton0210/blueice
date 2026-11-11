@@ -67,6 +67,119 @@ binds complete Native/local/Windows gates and current project regressions to
 this source. Callable utilities and prior mitt/defu evaluations retain their
 original dated evidence. All 22 broader rows remain open.
 
+## Open gaps and implementation priority — 2026-11-11
+
+Reviewed against `eafbd9680` and its accepted compiler source
+`backend-tree:4687d8d818e1d6b08bb437b41b19c9d84813356f`.
+The [inventory](COMPATIBILITY_INVENTORY.md) contains 23
+feature rows; G-C2 is scoped closed and the following 22 remain open. Each row
+already has accepted finite coverage. The remaining scope below summarizes
+unmeasured combinations and explicit limitations, rather than declaring the
+whole feature unimplemented.
+
+The accounting tools currently **fix G-C2 to closed and every other G-ID to
+open**: [row generation](tools/account_inventory_rows.py) and
+[status validation](tools/check_compatibility_status.py). Thus 22 is a category
+count, not a decreasing count of reproduced defects. Track delivery through
+finite work packages and their evidence. Changing a broader row's status needs
+an explicit closure contract and consistent accounting rules; accepted subitems
+alone do not establish arbitrary TypeScript compatibility.
+
+| ID | Feature and remaining scope | Primary priority |
+| --- | --- | --- |
+| G-T1 | Control-flow narrowing: unmeasured guard, capture/write invalidation, exceptional-flow and declaration compositions. | P1 |
+| G-T2 | Generic/contextual inference: recursive conditional/reverse-mapped inference, imported/quantified contexts and variance compositions. | P0 |
+| G-T3 | Type operators: recursive/composed keyof, indexed, mapped and template operators, queries and library/key augmentation. | P0 |
+| G-T4 | Overload resolution: candidate isolation/order, contextual callbacks, imported/computed chains and variance/nullability combinations. | P0 |
+| G-T5 | Advanced type compositions: computed keys, unions/intersections, optional/rest/variadic tuples, const/satisfies and scope/flag interactions. | P0 |
+| G-T6 | Structural compatibility: computed/non-literal members, callback/generic protocols, optional/rest parameters and library/variance relations. | P0 |
+| G-T7 | Standard library: six missing utility names in the ES2022 probe, ES5 Awaited and its supporting declarations, wider catalogs and compositions. | P0 |
+| G-T8 | Return/context inference: nested/imported/recursive returns, async/generator/getter results, flow and operator/library compositions. | P0 |
+| G-T9 | Classes: recursive/imported getters and merges, computed generic calls, constructor contexts and decorated class expressions. | P3 |
+| G-T10 | Module types: declaration merging, import queries/attributes/resolution modes, private/generic/ambient compositions and metadata import retention. | P1 |
+| G-E1 | Target lowering: unmeasured target/library/field/suspension compositions, including async super writes. | P3 |
+| G-E2 | Module/helper emission: module/Node format, target, library, helper-provider ABI and option compositions. | P2 |
+| G-E3 | Decorator emission: suspended logical super writes, private parameter-initializer super, legacy computed auto-accessors and metadata boundaries. | P3 |
+| G-E4 | Emit options: nested/inferred declaration members, isolatedDeclarations, stripInternal and target/field/option interactions. | P1 |
+| G-E5 | Source-map precision: arbitrary constructs outside the frozen source-role matrices; the accepted 572 Native corrections remain regression evidence. | P3 |
+| G-D1 | Declaration inference: anonymous/contextual/const-generic types, overload/merge surfaces and external-name compositions. | P1 |
+| G-D2 | Declaration maps: isolated/nested/inferred declarations, stripInternal compositions and complete map provenance. | P1 |
+| G-M1 | Resolution: package/mapped JS, declaration/library/flag combinations and unsupported nested runtime-body JSDoc. | P2 |
+| G-M2 | Build/state/watch: multi-project graphs, state/option combinations, unlisted/package input changes and unmeasured Native warm behavior. | P2 |
+| G-M3 | Platform/toolchain combinations beyond the accepted Windows x86_64 profile; the accepted 82-core/local gate remains the required boundary. | Common gate |
+| G-C1 | Diagnostics/CLI: unmeasured recovery/CLI forms and physical default-library/package tracing, with exact messages and UTF-16 locations. | P2; common diagnostic acceptance |
+| G-C3 | JSX/decorator checking: further props/provider/overload/context, source/library/target/option compositions. | P3 |
+
+Prioritize shared implementation paths, reproduced differences and prerequisites.
+Do not rank a package higher merely because its tests mention more G-IDs.
+Exact declarations, diagnostics and platform checks are common acceptance
+obligations; they are not three additional implementation fixes per feature.
+
+| Order | Shared work and overlap | Concrete reason for this order |
+| --- | --- | --- |
+| P0 | Inference/type operators/library semantics: G-T2 through G-T8. NoInfer directly connects G-T2/G-T4/G-T6/G-T7/G-T8; union, intersection, template and thenable work connects G-T3/G-T5. | The accepted name probe supplies concrete failures, and the code shares candidate collection, substitution and bounded operator expansion. Start here. |
+| P1 | Flow, imported identities and exact declarations: G-T1/G-T10/G-D1/G-D2/G-E4, with G-T8/G-T9 interactions. | Stable inferred types and retained identities feed both public declarations and declaration maps. Freeze new cross-file/flow counterexamples before extending the existing accepted forms. |
+| P2 | One dependency graph across resolution, modules, build/watch and tracing: G-M1/G-M2/G-E2/G-C1, with G-T10 interactions. | Canonical resolved/missing inputs, package decisions and their fingerprints drive invalidation and explainFiles. Share those facts while preserving owner confinement. |
+| P3 | Class/decorator/JSX and target lowering: G-T9/G-E1/G-E3/G-E5/G-C3, with G-E2/G-E4 interactions. | These compositions depend on earlier type/identity work and involve several separate lowering/runtime paths. Add new mapping families with the corresponding constructs; retain the already accepted 572 corrections. |
+
+Code supporting these dependencies:
+
+- [Generic inference](../../../backend/bluets/src/checker/inference.rs),
+  [candidate collection](../../../backend/bluets/src/checker/inference/collect.rs),
+  [contextual calls](../../../backend/bluets/src/checker/module/expressions/generic_inference.rs)
+  and [return inference](../../../backend/bluets/src/checker/module/return_inference.rs)
+  connect argument evidence, callback/overload contexts and inferred results.
+- [Type operators](../../../backend/bluets/src/checker/type_operators.rs),
+  [substitution](../../../backend/bluets/src/checker/type_relations/substitution.rs)
+  and [declaration rendering](../../../backend/bluets/src/emitter/inferred_declarations/render.rs)
+  connect normalization with named public type identities and exact output.
+- [Library selection](../../../backend/bluets/src/standard_library/manifest.rs)
+  currently admits [Promise/PromiseLike/Awaited](../../../backend/bluets/src/standard_library/ecma-promise.v3.d.ts)
+  from ES2015. The accepted ES5 presence witness reports missing **both Awaited
+  and PromiseLike**. Its repair must isolate those dependencies and test
+  structural thenables, rather than only move an alias into another file.
+- [Resolution fingerprints](../../../backend/bluets/src/bin/bluetsc/build_graph/freshness/resolution_inputs.rs)
+  already bind canonical, missing and changed inputs. Future resolver/watch/CLI
+  work should extend the same graph facts rather than maintain unrelated copies.
+
+### Next implementation packages — P0 first
+
+The [accepted presence probe](RECEIVER_UTILITY_MEASUREMENT.json#/presenceInventory/corrected)
+reports NonNullable, Uppercase, Lowercase, Capitalize, Uncapitalize and NoInfer
+missing in ES2022; ES5 also reports Awaited. This probes 22 selected names in
+two profiles, not the full library catalog or semantic completeness.
+
+- [ ] **P0-A — NoInfer and shared candidate boundaries; start here.** Freeze
+  Native positive/negative controls for ordinary versus blocked inference,
+  argument/contextual-result evidence, nested/aliased positions, constraints,
+  defaults, callbacks and competing overloads. Preserve assignability after
+  instantiation and owner/local shadowing. Implement the inference boundary
+  through the type model and candidate collector; an identity alias or a
+  utility-name check cannot supply the required behavior. This package targets
+  G-T2/G-T4/G-T6/G-T7/G-T8 together.
+- [ ] **P0-B — NonNullable and ES5 Awaited foundations.** Freeze nullability,
+  union/intersection, unknown/any/never, generic and recursive/custom-thenable
+  controls. Isolate ES5 Awaited visibility from PromiseLike visibility; keep
+  static declarations separate from runtime Promise authority. Reuse the
+  ordinary relations, conditional/infer and library-selection paths. This
+  package targets G-T2/G-T3/G-T5/G-T6/G-T7/G-T8, with G-T1 guard regressions.
+- [ ] **P0-C — One string-intrinsic implementation for four utilities.** Freeze
+  Uppercase/Lowercase/Capitalize/Uncapitalize across empty/literal/general
+  strings, Unicode/UTF-16 boundaries, unions, templates, constraints and
+  generic/owner aliases. Preserve Native rejection and distribution behavior.
+  Implement their common semantics once; this targets G-T3/G-T5/G-T7, with
+  generic-context regressions in G-T2/G-T8.
+
+Each package needs frozen authored inputs and Native expectations before
+production changes, complete primary/related diagnostics and UTF-16 positions,
+byte-exact accepted declaration inventories, isolated positive/negative
+consumers and applicable executable checks. Retain owner/default-deny/budget
+controls separately. Record exact case counts from the frozen matrix; name
+presence alone is insufficient. Run focused checks during implementation, then
+the complete same-source Native/local/Windows-82, map and tooling acceptance
+for the finished package. Commit its implementation and matching measurements
+together, then push. Broader row closure remains a separate scoped decision.
+
 ## Maintenance and real-project follow-up — 2026-11-09
 
 User-authorized follow-up to the completed finite Phase L packages:
