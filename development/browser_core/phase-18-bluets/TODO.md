@@ -8,24 +8,24 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-11-10).**
+**Current BlueTS / BlueTSC compatibility status (2026-11-11).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 39,717 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 39,927 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 38,875/38,881 (99.9846%); 3 open, 3 refused observations |
+| Direct agreement | 39,085/39,091 (99.9847%); 3 open, 3 refused observations |
 | Separate controls | 633 native-reference + 203 BlueTS owner = 836; excluded from direct agreement |
-| Case labels | 39,711 scoped closed (including controls), 3 open, 3 refused |
-| Suite inventory | 183 suites / 388 ignored Rust functions; not a case denominator |
-| Suite labels | 179 scoped closed, 1 open, 3 refused |
+| Case labels | 39,921 scoped closed (including controls), 3 open, 3 refused |
+| Suite inventory | 184 suites / 389 ignored Rust functions; not a case denominator |
+| Suite labels | 180 scoped closed, 1 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 227 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 39,717 recorded case expectations pass; expected differences/refusals are not
+All 39,927 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,8 +33,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:8325633e249e34109b7622acbdd5a19f6f194992`.
-Input graph SHA-256: `9d1e0ddaba3d64579095a552803cfad11ff07886074d146716b6fe47ac6f5ee5`.
+Compiler/oracle source: `backend-tree:4687d8d818e1d6b08bb437b41b19c9d84813356f`.
+Input graph SHA-256: `b23e0d3f3b3d5550d5d704b7ce90b09c0881babd6e53858d81c7b8861ae1078f`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -60,12 +60,12 @@ broader G-C1 inventory row remains open for unmeasured CLI/recovery coverage;
 the finite checklist does not claim full parity. See the
 [acceptance record](PLAN.md#phase-l--g-c1-implementation).
 
-**Latest completed follow-up:** G-T7/G-T2 now supplies the frozen callable and
-constructor utilities with full diagnostics, byte-exact declarations and isolated
-consumers. [Current acceptance](CALLABLE_UTILITY_ACCEPTANCE.md) binds implementation,
-complete gates and raw evidence to the same source. The earlier complete mitt,
-defu and multi-source state evaluations remain dated evidence and also pass this
-source's project regression checks. The 22 broader rows remain open.
+**Latest completed follow-up:** G-T7/G-T2 supplies the frozen receiver utilities
+`ThisParameterType` and `OmitThisParameter`, with full diagnostics, byte-exact
+`.d.ts`, isolated consumers and execution. [Current acceptance](RECEIVER_UTILITY_ACCEPTANCE.md)
+binds complete Native/local/Windows gates and current project regressions to
+this source. Callable utilities and prior mitt/defu evaluations retain their
+original dated evidence. All 22 broader rows remain open.
 
 ## Maintenance and real-project follow-up — 2026-11-09
 
@@ -207,6 +207,36 @@ two** map reports, and Windows **82 core oracles + 25 paths + five complete
 regression cohorts**. All previous 39,561 case identities/classifications remain;
 156 new direct observations bring the generated inventory to 39,717. Nine owner
 checks remain outside the direct denominator. [Measurements and scope limits](CALLABLE_UTILITY_ACCEPTANCE.md).
+
+### G-T7 / G-T2 — receiver utility follow-up
+
+[Fixed scope and minimum acceptance](RECEIVER_UTILITY_FOLLOWUP.md).
+
+- [x] Supply `ThisParameterType` and `OmitThisParameter` with ordinary
+  conditional/infer semantics, preserving explicit/absent receivers, final
+  overloads, generic bounds and original generic signatures when required.
+  Freeze 70 forms × three strict profiles = 210 independent Native observations
+  before production changes; retain the previous accepted compiler's replay.
+- [x] Match every complete diagnostic and UTF-16 primary/related position, all
+  105 accepted declaration inventories byte-exact, 210 isolated declaration
+  consumers, 105 selected-edition syntax checks and six actual executions.
+  Retain rejected noEmitOnError publication checks and six separate owner checks.
+- [x] Pass the source-bound complete Native/local workspace/Clippy/map/project
+  and existing Windows 82-oracle gates. Publish corresponding measurements and
+  preserve prior cases and owner policies before committing and pushing.
+
+The separate 22-name/two-profile probe measures presence only: after these two
+names, `NonNullable`, `Uppercase`, `Lowercase`, `Capitalize`, `Uncapitalize`,
+`NoInfer`, and ES5 `Awaited` remain to be implemented and semantically measured.
+This finite package does not close the 22 broader G-* rows.
+
+Accepted on `backend-tree:4687d8d818e1d6b08bb437b41b19c9d84813356f`: **184 Native suites / 1,048
+tests**, **7,843 local workspace passes**, both complete **8,407 ×
+two** map reports, and Windows **82 core oracles + 25 paths + six complete
+regression cohorts**. All previous 39,717 case identities/classifications remain;
+210 new direct observations bring the inventory to 39,927. Six owner checks and
+44 name-presence witnesses stay outside direct agreement.
+[Measurements and remaining scope](RECEIVER_UTILITY_ACCEPTANCE.md).
 
 ## Completed baseline (condensed)
 

@@ -98,6 +98,16 @@ their types; their names acquire no runtime binding. Its 52-form/three-profile
 matrix requires all diagnostics, exact declarations, isolated consumers and
 execution. Other utility names and unmeasured compositions remain open.
 
+The [receiver utility follow-up](RECEIVER_UTILITY_ACCEPTANCE.md) adds original
+ThisParameterType and OmitThisParameter declarations in the same content-hashed
+core layer. Conditional signature inference distinguishes `this` from positional
+parameters, retains generic signatures for unknown/any receivers, and preserves
+named constructor queries. Its 70-form/three-profile matrix requires 210 complete
+diagnostics and 105 byte-exact declarations with isolated consumers, syntax and
+execution. Six owner controls are separate; no runtime binding is installed.
+NonNullable, Uppercase, Lowercase, Capitalize, Uncapitalize, NoInfer, ES5 Awaited
+and unmeasured receiver compositions remain open.
+
 Broader generic inference, structural protocols, overloads, index signatures
 and declaration precision remain K.4/K.8 and the compatibility inventory.
 Each additional form needs a pinned oracle before the minimum set expands.

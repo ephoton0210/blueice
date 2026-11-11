@@ -92,11 +92,18 @@ pub(super) fn any_signature(
     let Type::Function { parameters, result } = pattern else {
         return None;
     };
-    let [rest] = parameters.as_slice() else {
+    let positional = parameters
+        .iter()
+        .filter(|parameter| parameter.name != "this")
+        .collect::<Vec<_>>();
+    let [rest] = positional.as_slice() else {
         return None;
     };
     if !rest.rest {
         return None;
+    }
+    if !super::functions::receiver(&[], parameters, bindings, aliases, budget) {
+        return Some(false);
     }
     // Inference of a complete parameter list from any yields unknown[], while
     // the return position retains any. This is signature inference, not a

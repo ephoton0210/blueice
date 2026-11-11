@@ -597,7 +597,14 @@ impl<'a> ModuleChecker<'a> {
                         let preserving = signatures.iter().find(|signature| {
                             let Some(parameter) = function_parameter_for_argument(signature, actuals.len()) else { return false };
                             let annotation = if parameter.rest { rest_parameter_element_annotation(parameter) } else { parameter.annotation.as_ref() };
-                            matches!(annotation, Some(Type::Literal(_))) || matches!(annotation,
+                            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                            budget.checking = self.checking;
+                            let concrete = annotation.map(|annotation| {
+                                if crate::checker::type_operators::is_operator_context(annotation, &self.types) {
+                                    crate::checker::inference::result_type(annotation, &BTreeMap::new(), &self.types, &mut budget)
+                                } else { annotation.clone() }
+                            });
+                            (!budget.exhausted && matches!(concrete, Some(Type::Literal(_) | Type::Null))) || matches!(annotation,
                                 Some(Type::Named { name, arguments }) if arguments.is_empty()
                                     && signature.type_parameters.iter().any(|parameter| parameter.name == *name
                                         && (matches!(&signature.return_type, Type::Named { name: result, arguments } if arguments.is_empty() && result == name)

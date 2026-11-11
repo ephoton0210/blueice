@@ -186,16 +186,7 @@ pub(crate) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Typ
             }
         }
         Type::Function { parameters, result } => Type::Function {
-            parameters: parameters
-                .iter()
-                .map(|parameter| Parameter {
-                    annotation: parameter
-                        .annotation
-                        .as_ref()
-                        .map(|value| substitute_type(value, substitutions)),
-                    ..parameter.clone()
-                })
-                .collect(),
+            parameters: substitute_parameters(parameters, substitutions),
             result: Box::new(substitute_type(result, substitutions)),
         },
         Type::Union(values) => Type::Union(
@@ -212,6 +203,49 @@ pub(crate) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Typ
         ),
         _ => value.clone(),
     }
+}
+
+fn substitute_parameters(
+    parameters: &[Parameter],
+    substitutions: &BTreeMap<String, Type>,
+) -> Vec<Parameter> {
+    let mut result = Vec::new();
+    for parameter in parameters {
+        let annotation = parameter
+            .annotation
+            .as_ref()
+            .map(|value| substitute_type(value, substitutions));
+        // Instantiating a parameter pack creates ordinary labelled parameters.
+        // An explicitly authored tuple-rest annotation retains its spelling.
+        if parameter.rest && matches!(parameter.annotation, Some(Type::Named { .. })) {
+            if let Some(Type::Tuple(elements)) = &annotation {
+                result.extend(elements.iter().enumerate().map(|(index, element)| {
+                    Parameter {
+                        name: element
+                            .label
+                            .clone()
+                            .unwrap_or_else(|| format!("{}_{index}", parameter.name)),
+                        pattern: None,
+                        rest: element.rest,
+                        optional: element.optional,
+                        annotation: Some(if element.optional {
+                            union([element.annotation.clone(), Type::Undefined])
+                        } else {
+                            element.annotation.clone()
+                        }),
+                        default: None,
+                        ..parameter.clone()
+                    }
+                }));
+                continue;
+            }
+        }
+        result.push(Parameter {
+            annotation,
+            ..parameter.clone()
+        });
+    }
+    result
 }
 
 pub(in crate::checker) fn type_identity(value: &Type) -> String {

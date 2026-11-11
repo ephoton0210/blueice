@@ -188,7 +188,11 @@ fn variance_method_detail(
 }
 
 impl ModuleChecker<'_> {
-    pub(super) fn explain_missing_constraint_signature(&mut self, actual: &Type, expected: &Type) {
+    pub(in crate::checker::module) fn explain_missing_constraint_signature(
+        &mut self,
+        actual: &Type,
+        expected: &Type,
+    ) {
         let source = self.compatibility_shape(actual);
         let target = self.compatibility_shape(expected);
         let (construct, parameters, result) = match &target {

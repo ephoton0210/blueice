@@ -6,6 +6,7 @@
 use super::*;
 
 mod callables;
+mod functions;
 
 pub(super) fn resolve(
     value: &ConditionalType,
@@ -219,45 +220,7 @@ pub(super) fn matches(
                 parameters: pattern,
                 result: expected,
             },
-        ) => {
-            if pattern.len() == 1 && pattern[0].rest {
-                if let Some(Type::Infer(parameter)) = &pattern[0].annotation {
-                    let tuple = Type::Tuple(
-                        actual
-                            .iter()
-                            .filter(|p| p.name != "this")
-                            .map(|p| TupleTypeElement {
-                                annotation: p.annotation.clone().unwrap_or(Type::Any),
-                                optional: p.optional,
-                                label: Some(p.name.clone()),
-                                rest: p.rest,
-                            })
-                            .collect(),
-                    );
-                    if !matches(
-                        &tuple,
-                        &Type::Infer(parameter.clone()),
-                        bindings,
-                        aliases,
-                        budget,
-                    ) {
-                        return false;
-                    }
-                }
-                return matches(result, expected, bindings, aliases, budget);
-            }
-            actual.len() == pattern.len()
-                && actual.iter().zip(pattern).all(|(actual, pattern)| {
-                    matches(
-                        actual.annotation.as_ref().unwrap_or(&Type::Any),
-                        pattern.annotation.as_ref().unwrap_or(&Type::Any),
-                        bindings,
-                        aliases,
-                        budget,
-                    )
-                })
-                && matches(result, expected, bindings, aliases, budget)
-        }
+        ) => functions::matches(actual, result, pattern, expected, bindings, aliases, budget),
         _ => is_assignable(&actual, pattern, aliases, &mut HashSet::new(), budget),
     }
 }

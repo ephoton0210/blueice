@@ -332,7 +332,14 @@ impl<'a> Context<'a> {
                     if context.used_imports.contains(&variable.name)
                         && !context.variables.contains_key(&variable.span.start)
                     {
-                        if let Some(value) = context.value_types.get(&variable.name) {
+                        if let Some(value) = context.value_types.get(&variable.name).cloned() {
+                            if matches!(&value, Type::Named { name, .. } if name.starts_with("typeof "))
+                            {
+                                let rendered = context.render(&value, 0, &variable.span)?;
+                                context
+                                    .variables
+                                    .insert(variable.span.start, (rendered, false));
+                            }
                             if let Type::CallableRecord { signatures, .. } = value.object_type() {
                                 if let Some(name) = signatures.iter().find_map(|signature| {
                                     match &signature.result {

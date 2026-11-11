@@ -16,7 +16,8 @@ impl ModuleChecker<'_> {
             if variable.annotation.is_some() {
                 continue;
             }
-            let mut value = self.infer_variable_type(variable, &scope);
+            let inferred = self.infer_variable_type(variable, &scope);
+            let mut value = inferred.clone();
             let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
             let mut visited = HashSet::new();
             while matches!(value, Type::Named { .. }) {
@@ -94,6 +95,14 @@ impl ModuleChecker<'_> {
                 .collect();
             self.class_constructors
                 .insert(variable.name.clone(), binding);
+            // Constructor capabilities use the resolved signatures above;
+            // declarations retain the checked identity of a named value query.
+            let value = if matches!(&inferred, Type::Named { name, .. } if name.starts_with("typeof "))
+            {
+                inferred
+            } else {
+                value
+            };
             scope.insert(variable.name.clone(), value.clone());
             self.values.insert(variable.name.clone(), value);
         }

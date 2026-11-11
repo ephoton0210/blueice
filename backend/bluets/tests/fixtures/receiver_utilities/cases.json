@@ -1,0 +1,537 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "scope": "G-T7/G-T2 receiver utility projection and omission; full primary/related UTF16 diagnostics, byte-exact declarations, source-free consumers, selected syntax and owner runtime. Unlisted type/library/flag combinations remain open.",
+  "options": {
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "lf"
+  },
+  "profiles": [
+    {
+      "id": "es5-commonjs",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "lib": [
+          "ES5"
+        ]
+      }
+    },
+    {
+      "id": "es2022-commonjs",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES2022"
+        ]
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "lib": [
+          "ES5"
+        ]
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "receiver-object-accept",
+      "source": "declare const console: { log(value: string): void };\nfunction original(this: { tag: string }, value: number): string { return this.tag + \":\" + value; }\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<ThisParameterType<typeof original>>({ tag: \"ok\" });\nconsole.log(original.call(inferred, 3));\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: { tag: string } = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: { tag: number } = inferred;\n"
+      },
+      "runtime": "bind the typed receiver and execute the original function"
+    },
+    {
+      "id": "receiver-object-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<ThisParameterType<(this: { tag: string }, value: number) => string>>({ tag: 1 });\n",
+      "accepts": false
+    },
+    {
+      "id": "receiver-string-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<ThisParameterType<(this: string, value: number) => void>>(\"ok\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: string = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: number = inferred;\n"
+      }
+    },
+    {
+      "id": "receiver-string-reject",
+      "source": "// 😀 receiver coordinates\r\nfunction keep<T>(value: T): T { return value; }\r\nexport const inferred = keep<ThisParameterType<(this: string, value: number) => void>>(1);\r\n",
+      "accepts": false
+    },
+    {
+      "id": "receiver-rest-optional-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<ThisParameterType<(this: { tag: string }, value?: number, ...tail: boolean[]) => void>>({ tag: \"ok\" });\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: { tag: string } = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: { tag: number } = inferred;\n"
+      }
+    },
+    {
+      "id": "receiver-rest-optional-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<ThisParameterType<(this: { tag: string }, value?: number, ...tail: boolean[]) => void>>({ tag: false });\n",
+      "accepts": false
+    },
+    {
+      "id": "receiver-absent-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<ThisParameterType<(value: number) => string>>(1);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: unknown = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: string = inferred;\n"
+      }
+    },
+    {
+      "id": "receiver-absent-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred: string = keep<ThisParameterType<(value: number) => string>>(1);\n",
+      "accepts": false
+    },
+    {
+      "id": "receiver-last-overload-accept",
+      "source": "interface Source { (this: { old: number }, first: string): number; (this: { tag: string }, value: number): string; }\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<ThisParameterType<Source>>({ tag: \"ok\" });\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: { tag: string } = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: { tag: number } = inferred;\n"
+      }
+    },
+    {
+      "id": "receiver-last-overload-reject",
+      "source": "interface Source { (this: { old: number }, first: string): number; (this: { tag: string }, value: number): string; }\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<ThisParameterType<Source>>({ tag: 1 });\n",
+      "accepts": false
+    },
+    {
+      "id": "receiver-callable-record-accept",
+      "source": "interface Source { (this: { tag: string }, value: number): string; readonly marker: number; }\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<ThisParameterType<Source>>({ tag: \"ok\" });\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: { tag: string } = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: { tag: number } = inferred;\n"
+      }
+    },
+    {
+      "id": "receiver-callable-record-reject",
+      "source": "interface Source { (this: { tag: string }, value: number): string; readonly marker: number; }\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<ThisParameterType<Source>>({ tag: false });\n",
+      "accepts": false
+    },
+    {
+      "id": "receiver-intersection-last-accept",
+      "source": "type Source = ((this: { old: number }, first: string) => number) & ((this: { tag: string }, value: number) => string);\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<ThisParameterType<Source>>({ tag: \"ok\" });\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: { tag: string } = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: { tag: number } = inferred;\n"
+      }
+    },
+    {
+      "id": "receiver-intersection-last-reject",
+      "source": "type Source = ((this: { old: number }, first: string) => number) & ((this: { tag: string }, value: number) => string);\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<ThisParameterType<Source>>({ tag: 1 });\n",
+      "accepts": false
+    },
+    {
+      "id": "receiver-union-accept",
+      "source": "type Source = ((this: string, value: number) => string) | ((this: number, value: string) => number);\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<ThisParameterType<Source>>(1);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: string | number = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: boolean = inferred;\n"
+      }
+    },
+    {
+      "id": "receiver-union-reject",
+      "source": "type Source = ((this: string, value: number) => string) | ((this: number, value: string) => number);\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<ThisParameterType<Source>>(false);\n",
+      "accepts": false
+    },
+    {
+      "id": "receiver-generic-unbounded-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<ThisParameterType<<T>(this: T, value: T) => T>>(1);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: unknown = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: string = inferred;\n"
+      }
+    },
+    {
+      "id": "receiver-generic-unbounded-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred: string = keep<ThisParameterType<<T>(this: T, value: T) => T>>(1);\n",
+      "accepts": false
+    },
+    {
+      "id": "receiver-generic-bounded-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<ThisParameterType<<T extends { tag: string }>(this: T, value: T) => T>>({ tag: \"ok\" });\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: { tag: string } = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: { tag: number } = inferred;\n"
+      }
+    },
+    {
+      "id": "receiver-generic-bounded-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<ThisParameterType<<T extends { tag: string }>(this: T, value: T) => T>>({ tag: 1 });\n",
+      "accepts": false
+    },
+    {
+      "id": "receiver-any-operand-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<ThisParameterType<any>>(1);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: unknown = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: string = inferred;\n"
+      }
+    },
+    {
+      "id": "receiver-any-operand-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred: string = keep<ThisParameterType<any>>(1);\n",
+      "accepts": false
+    },
+    {
+      "id": "receiver-unknown-operand-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<ThisParameterType<unknown>>(1);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: unknown = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: string = inferred;\n"
+      }
+    },
+    {
+      "id": "receiver-unknown-operand-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred: string = keep<ThisParameterType<unknown>>(1);\n",
+      "accepts": false
+    },
+    {
+      "id": "receiver-constructor-operand-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<ThisParameterType<new (value: number) => { value: number }>>(1);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: unknown = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: string = inferred;\n"
+      }
+    },
+    {
+      "id": "receiver-constructor-operand-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred: string = keep<ThisParameterType<new (value: number) => { value: number }>>(1);\n",
+      "accepts": false
+    },
+    {
+      "id": "receiver-null-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<ThisParameterType<(this: null, value: number) => string>>(null);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: null = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: number = inferred;\n"
+      }
+    },
+    {
+      "id": "receiver-null-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<ThisParameterType<(this: null, value: number) => string>>(1);\n",
+      "accepts": false
+    },
+    {
+      "id": "receiver-never-accept",
+      "source": "export function inferred(value: ThisParameterType<(this: never, value: number) => string>): never { return value; }\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: (value: never) => never = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: (value: number) => number = inferred;\n"
+      }
+    },
+    {
+      "id": "receiver-never-reject",
+      "source": "export function inferred(value: number): ThisParameterType<(this: never, value: number) => string> { return value; }\n",
+      "accepts": false
+    },
+    {
+      "id": "receiver-never-operand-accept",
+      "source": "export function inferred(value: ThisParameterType<never>): never { return value; }\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: (value: never) => never = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: (value: number) => number = inferred;\n"
+      }
+    },
+    {
+      "id": "receiver-never-operand-reject",
+      "source": "export function inferred(value: number): ThisParameterType<never> { return value; }\n",
+      "accepts": false
+    },
+    {
+      "id": "omit-fixed-accept",
+      "source": "declare const console: { log(value: string): void };\nfunction original(this: { tag: string }, value: number): string { return this.tag + \":\" + value; }\nfunction keep<T>(value: T): T { return value; }\nfunction produced(value: number): string { return original.call({ tag: \"bound\" }, value); }\nexport const inferred = keep<OmitThisParameter<typeof original>>(produced);\nconsole.log(inferred(4));\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: (value: number) => string = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: (value: string) => number = inferred;\n"
+      },
+      "runtime": "execute the owner-supplied wrapper with its omitted receiver signature"
+    },
+    {
+      "id": "omit-fixed-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nfunction produced(value: string): number { return 1; }\nexport const inferred = keep<OmitThisParameter<(this: { tag: string }, value: number) => string>>(produced);\n",
+      "accepts": false
+    },
+    {
+      "id": "omit-rest-optional-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nfunction produced(value?: number, ...tail: string[]): string { return \"ok\"; }\nexport const inferred = keep<OmitThisParameter<(this: { tag: string }, value?: number, ...tail: string[]) => string>>(produced);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: (value?: number, ...tail: string[]) => string = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: (value: boolean) => number = inferred;\n"
+      }
+    },
+    {
+      "id": "omit-rest-optional-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nfunction produced(value: boolean): number { return 1; }\nexport const inferred = keep<OmitThisParameter<(this: { tag: string }, value?: number, ...tail: string[]) => string>>(produced);\n",
+      "accepts": false
+    },
+    {
+      "id": "omit-absent-generic-accept",
+      "source": "type Source = <T>(value: T) => T;\nfunction keep<T>(value: T): T { return value; }\nfunction produced<T>(value: T): T { return value; }\nexport const inferred = keep<OmitThisParameter<Source>>(produced);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: <T>(value: T) => T = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: (value: number) => string = inferred;\n"
+      }
+    },
+    {
+      "id": "omit-absent-generic-reject",
+      "source": "type Source = <T>(value: T) => T;\nfunction keep<T>(value: T): T { return value; }\nfunction produced(value: string): string { return value; }\nexport const inferred = keep<OmitThisParameter<Source>>(produced);\n",
+      "accepts": false
+    },
+    {
+      "id": "omit-generic-bounded-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nfunction produced(value: string): string { return value; }\nexport const inferred = keep<OmitThisParameter<<T extends string>(this: { tag: T }, value: T) => T>>(produced);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: (value: string) => string = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: (value: number) => number = inferred;\n"
+      }
+    },
+    {
+      "id": "omit-generic-bounded-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nfunction produced(value: number): number { return value; }\nexport const inferred = keep<OmitThisParameter<<T extends string>(this: { tag: T }, value: T) => T>>(produced);\n",
+      "accepts": false
+    },
+    {
+      "id": "omit-last-overload-accept",
+      "source": "interface Source { (this: { old: number }, first: string): number; (this: { tag: string }, value: number): string; }\nfunction keep<T>(value: T): T { return value; }\nfunction produced(value: number): string { return \"value:\" + value; }\nexport const inferred = keep<OmitThisParameter<Source>>(produced);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: (value: number) => string = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: (value: string) => number = inferred;\n"
+      }
+    },
+    {
+      "id": "omit-last-overload-reject",
+      "source": "interface Source { (this: { old: number }, first: string): number; (this: { tag: string }, value: number): string; }\nfunction keep<T>(value: T): T { return value; }\nfunction produced(value: string): number { return 1; }\nexport const inferred = keep<OmitThisParameter<Source>>(produced);\n",
+      "accepts": false
+    },
+    {
+      "id": "omit-callable-record-accept",
+      "source": "interface Source { (this: { tag: string }, value: number): string; readonly marker: number; }\nfunction keep<T>(value: T): T { return value; }\nfunction produced(value: number): string { return \"value:\" + value; }\nexport const inferred = keep<OmitThisParameter<Source>>(produced);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: (value: number) => string = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: (value: string) => number = inferred;\n"
+      }
+    },
+    {
+      "id": "omit-callable-record-reject",
+      "source": "interface Source { (this: { tag: string }, value: number): string; readonly marker: number; }\nfunction keep<T>(value: T): T { return value; }\nfunction produced(value: string): number { return 1; }\nexport const inferred = keep<OmitThisParameter<Source>>(produced);\n",
+      "accepts": false
+    },
+    {
+      "id": "omit-union-accept",
+      "source": "type Source = ((this: { tag: string }, value: number) => number) | ((this: { tag: number }, value: string) => string);\nfunction keep<T>(value: T): T { return value; }\nfunction produced(value: number): number { return value; }\nexport const inferred = keep<OmitThisParameter<Source>>(produced);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: ((value: number) => number) | ((value: string) => string) = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: (value: boolean) => boolean = inferred;\n"
+      }
+    },
+    {
+      "id": "omit-union-reject",
+      "source": "type Source = ((this: { tag: string }, value: number) => number) | ((this: { tag: number }, value: string) => string);\nfunction keep<T>(value: T): T { return value; }\nfunction produced(value: boolean): boolean { return value; }\nexport const inferred = keep<OmitThisParameter<Source>>(produced);\n",
+      "accepts": false
+    },
+    {
+      "id": "omit-intersection-last-accept",
+      "source": "type Source = ((this: { old: number }, first: string) => number) & ((this: { tag: string }, value: number) => string);\nfunction keep<T>(value: T): T { return value; }\nfunction produced(value: number): string { return \"value:\" + value; }\nexport const inferred = keep<OmitThisParameter<Source>>(produced);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: (value: number) => string = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: (value: string) => number = inferred;\n"
+      }
+    },
+    {
+      "id": "omit-intersection-last-reject",
+      "source": "type Source = ((this: { old: number }, first: string) => number) & ((this: { tag: string }, value: number) => string);\nfunction keep<T>(value: T): T { return value; }\nfunction produced(value: string): number { return 1; }\nexport const inferred = keep<OmitThisParameter<Source>>(produced);\n",
+      "accepts": false
+    },
+    {
+      "id": "omit-any-operand-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<OmitThisParameter<any>>(1);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: string = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: never = inferred;\n"
+      }
+    },
+    {
+      "id": "omit-any-operand-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred: never = keep<OmitThisParameter<any>>(1);\n",
+      "accepts": false
+    },
+    {
+      "id": "omit-unknown-operand-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<OmitThisParameter<unknown>>(1);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: unknown = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: string = inferred;\n"
+      }
+    },
+    {
+      "id": "omit-unknown-operand-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred: string = keep<OmitThisParameter<unknown>>(1);\n",
+      "accepts": false
+    },
+    {
+      "id": "omit-record-operand-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<OmitThisParameter<{ tag: string }>>({ tag: \"ok\" });\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: { tag: string } = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: { tag: number } = inferred;\n"
+      }
+    },
+    {
+      "id": "omit-record-operand-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nexport const inferred = keep<OmitThisParameter<{ tag: string }>>({ tag: 1 });\n",
+      "accepts": false
+    },
+    {
+      "id": "omit-unknown-receiver-generic-accept",
+      "source": "type Source = <T>(this: unknown, value: T) => T;\nfunction keep<T>(value: T): T { return value; }\nfunction produced<T>(this: unknown, value: T): T { return value; }\nexport const inferred = keep<OmitThisParameter<Source>>(produced);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: <T>(this: unknown, value: T) => T = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: (value: number) => string = inferred;\n"
+      }
+    },
+    {
+      "id": "omit-unknown-receiver-generic-reject",
+      "source": "type Source = <T>(this: unknown, value: T) => T;\nfunction keep<T>(value: T): T { return value; }\nfunction produced(value: string): string { return value; }\nexport const inferred = keep<OmitThisParameter<Source>>(produced);\n",
+      "accepts": false
+    },
+    {
+      "id": "omit-any-receiver-generic-accept",
+      "source": "type Source = <T>(this: any, value: T) => T;\nfunction keep<T>(value: T): T { return value; }\nfunction produced<T>(this: any, value: T): T { return value; }\nexport const inferred = keep<OmitThisParameter<Source>>(produced);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: <T>(this: any, value: T) => T = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: (value: number) => string = inferred;\n"
+      }
+    },
+    {
+      "id": "omit-any-receiver-generic-reject",
+      "source": "type Source = <T>(this: any, value: T) => T;\nfunction keep<T>(value: T): T { return value; }\nfunction produced(value: string): string { return value; }\nexport const inferred = keep<OmitThisParameter<Source>>(produced);\n",
+      "accepts": false
+    },
+    {
+      "id": "omit-never-receiver-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nfunction produced(value: number): string { return \"value:\" + value; }\nexport const inferred = keep<OmitThisParameter<(this: never, value: number) => string>>(produced);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: (value: number) => string = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: (value: string) => number = inferred;\n"
+      }
+    },
+    {
+      "id": "omit-never-receiver-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nfunction produced(value: string): number { return 1; }\nexport const inferred = keep<OmitThisParameter<(this: never, value: number) => string>>(produced);\n",
+      "accepts": false
+    },
+    {
+      "id": "omit-null-receiver-accept",
+      "source": "function keep<T>(value: T): T { return value; }\nfunction produced(value: number): string { return \"value:\" + value; }\nexport const inferred = keep<OmitThisParameter<(this: null, value: number) => string>>(produced);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: (value: number) => string = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: (value: string) => number = inferred;\n"
+      }
+    },
+    {
+      "id": "omit-null-receiver-reject",
+      "source": "function keep<T>(value: T): T { return value; }\nfunction produced(value: string): number { return 1; }\nexport const inferred = keep<OmitThisParameter<(this: null, value: number) => string>>(produced);\n",
+      "accepts": false
+    },
+    {
+      "id": "omit-never-operand-accept",
+      "source": "export function inferred(value: OmitThisParameter<never>): never { return value; }\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: (value: never) => never = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: (value: number) => number = inferred;\n"
+      }
+    },
+    {
+      "id": "omit-never-operand-reject",
+      "source": "export function inferred(value: number): OmitThisParameter<never> { return value; }\n",
+      "accepts": false
+    },
+    {
+      "id": "omit-constructor-operand-accept",
+      "source": "class Source { constructor(public value: number) {} }\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<OmitThisParameter<typeof Source>>(Source);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: new (value: number) => { value: number } = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: (value: number) => string = inferred;\n"
+      }
+    },
+    {
+      "id": "omit-constructor-operand-reject",
+      "source": "class Source { constructor(public value: number) {} }\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<OmitThisParameter<typeof Source>>(function (value: number): string { return \"bad\"; });\n",
+      "accepts": false
+    },
+    {
+      "id": "owner-receiver-alias-accept",
+      "source": "type Receiver<T> = T extends (this: infer R, ...args: never) => any ? R : unknown;\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<Receiver<(this: { tag: string }, value: number) => string>>({ tag: \"ok\" });\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: { tag: string } = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: { tag: number } = inferred;\n"
+      }
+    },
+    {
+      "id": "owner-receiver-alias-reject",
+      "source": "type Receiver<T> = T extends (this: infer R, ...args: never) => any ? R : unknown;\nfunction keep<T>(value: T): T { return value; }\nexport const inferred = keep<Receiver<(this: { tag: string }, value: number) => string>>({ tag: 1 });\n",
+      "accepts": false
+    },
+    {
+      "id": "owner-omission-alias-accept",
+      "source": "type Receiver<T> = T extends (this: infer R, ...args: never) => any ? R : unknown;\ntype WithoutReceiver<T> = unknown extends Receiver<T> ? T : T extends (...args: infer A) => infer R ? (...args: A) => R : T;\nfunction keep<T>(value: T): T { return value; }\nfunction produced(value: number): string { return \"value:\" + value; }\nexport const inferred = keep<WithoutReceiver<(this: { tag: string }, value: number) => string>>(produced);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { inferred } from \"./main\";\nconst observed: (value: number) => string = inferred;\n",
+        "negative": "import { inferred } from \"./main\";\nconst observed: (value: string) => number = inferred;\n"
+      }
+    },
+    {
+      "id": "owner-omission-alias-reject",
+      "source": "type Receiver<T> = T extends (this: infer R, ...args: never) => any ? R : unknown;\ntype WithoutReceiver<T> = unknown extends Receiver<T> ? T : T extends (...args: infer A) => infer R ? (...args: A) => R : T;\nfunction keep<T>(value: T): T { return value; }\nfunction produced(value: string): number { return 1; }\nexport const inferred = keep<WithoutReceiver<(this: { tag: string }, value: number) => string>>(produced);\n",
+      "accepts": false
+    }
+  ]
+}

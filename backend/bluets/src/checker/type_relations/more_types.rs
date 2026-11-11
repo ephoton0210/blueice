@@ -117,7 +117,7 @@ pub(super) fn assignable(
     if *actual == Type::StrictUnknown
         && !matches!(
             expected,
-            Type::Union(_) | Type::Intersection(_) | Type::Named { .. }
+            Type::Union(_) | Type::Intersection(_) | Type::Named { .. } | Type::Conditional(_)
         )
     {
         return Some(matches!(expected, Type::Any | Type::Unknown));

@@ -283,6 +283,9 @@ impl ModuleChecker<'_> {
         }
         let a = self.compatibility_shape(actual);
         let e = self.compatibility_shape(expected);
+        if let Some(detail) = self.callable_type_detail(&a, &e) {
+            return Some(detail);
+        }
         if matches!((&a, &e), (Type::Function { .. }, Type::Function { .. }))
             && (&a != actual || &e != expected)
         {

@@ -113,7 +113,11 @@ impl<'a> ModuleChecker<'a> {
             &self.types,
         ) && (matches!(
             literal_display,
-            Type::Literal(_) | Type::Never | Type::TemplateLiteral(_) | Type::UniqueSymbol(_)
+            Type::Literal(_)
+                | Type::Never
+                | Type::Null
+                | Type::TemplateLiteral(_)
+                | Type::UniqueSymbol(_)
         ) || matches!(&literal_display, Type::Union(parts) if parts.iter().any(|part| matches!(part, Type::Literal(_)))));
         if literal_context {
             if let [literal] = strip_outer_parentheses(tokens) {

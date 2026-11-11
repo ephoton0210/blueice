@@ -416,6 +416,7 @@ fn json_record(stem: &str) -> Option<&'static str> {
         "gc1_object_generic_methods" => "gc1_object_generic_methods/reference.json",
         "defu_prerequisites" => "defu_prerequisites/reference.json",
         "callable_utilities" => "callable_utilities/reference.json",
+        "receiver_utilities" => "receiver_utilities/reference.json",
         "gm2_incremental_options" => "gm2_incremental_options/reference.json",
         "gt2_inference" => "gt2_inference/reference.json",
         "gt5_compositions" => "gt5_compositions/reference.json",

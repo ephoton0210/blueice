@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "typescript": "5.9.3",
-  "source_revision": "backend-tree:8325633e249e34109b7622acbdd5a19f6f194992",
-  "source_graph_sha256": "9d1e0ddaba3d64579095a552803cfad11ff07886074d146716b6fe47ac6f5ee5",
+  "source_revision": "backend-tree:4687d8d818e1d6b08bb437b41b19c9d84813356f",
+  "source_graph_sha256": "b23e0d3f3b3d5550d5d704b7ce90b09c0881babd6e53858d81c7b8861ae1078f",
   "fixture_directories": 3392,
   "diagnostic_programs": 3182,
   "diagnostic_templates": 221,
@@ -2134,6 +2134,17 @@
       "inputs": {
         "backend/bluets/tests/fixtures/receiver-parameter-boundaries-reference.json": "785517fa7d23bae8d695870826ab01eb5c94a4a7",
         "backend/bluets/tests/receiver_parameter_boundaries.rs": "3b43d161fb08d593ddf994b4b090f9ff937ffa2e"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/receiver_utilities.rs",
+      "ignored_tests": [
+        "utility_native_observations_consumers_syntax_and_runtime_are_reproducible"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/receiver_utilities/cases.json": "cfe91fdd276a1fea9a162e791d1d178b46ebe5f3",
+        "backend/bluets/tests/fixtures/receiver_utilities/reference.json": "afbf96f02996c8be783e6145404cd95a27e493e2",
+        "backend/bluets/tests/receiver_utilities.rs": "c2576fbeb2bd3374dadb4e2f555215473b18d74a"
       }
     },
     {

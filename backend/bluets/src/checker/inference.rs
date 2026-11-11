@@ -13,7 +13,7 @@ mod mapped;
 mod results;
 mod surfaces;
 
-pub(crate) const VERSION: &str = "bluets-generic-inference/6";
+pub(crate) const VERSION: &str = "bluets-generic-inference/7";
 
 pub(super) fn symbolic_indexed_access(
     value: &Type,
@@ -36,18 +36,7 @@ pub(super) fn result_type(
     if symbolic_indexed_access(&value, aliases) {
         return value;
     }
-    if matches!(
-        value,
-        Type::KeyOf(_)
-            | Type::IndexedAccess { .. }
-            | Type::Conditional(_)
-            | Type::Mapped(_)
-            | Type::TemplateLiteral(_)
-    ) {
-        super::type_operators::expanded(&value, aliases, &mut HashSet::new(), budget)
-    } else {
-        results::finish(value, aliases, budget)
-    }
+    results::finish(value, aliases, budget)
 }
 
 pub(super) fn infer_call_substitutions(

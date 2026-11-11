@@ -5,6 +5,7 @@
 //! Diagnostic causes determined from the checked call signatures.
 
 use super::*;
+mod callable_types;
 mod compatibility;
 mod constructors;
 mod indexed;
@@ -234,6 +235,9 @@ impl ModuleChecker<'_> {
             ],
         );
         self.point_last_typescript(argument);
+        if argument.first().is_some_and(|token| token.is("function")) {
+            self.point_last_typescript(&argument[..1]);
+        }
         self.explain_last_type_pair(actual, &displayed_expected);
         if let Type::Function { result, .. } = actual {
             if let Some(body) = argument
@@ -552,7 +556,9 @@ impl ModuleChecker<'_> {
         expected: &Type,
     ) {
         if self.enforce_types {
-            let origin = self.parameter_constraint_origin(actual, expected);
+            let origin = self
+                .parameter_constraint_origin(actual, expected)
+                .or_else(|| self.callable_parameter_origin(actual, expected));
             let structural = self.nested_structural_reason(actual, expected);
             let missing = structural
                 .as_ref()
@@ -596,6 +602,9 @@ impl ModuleChecker<'_> {
                         counterpart.related_information.push(related);
                     }
                 }
+            }
+            if detail.is_empty() {
+                self.explain_missing_constraint_signature(actual, expected);
             }
         }
     }

@@ -136,7 +136,7 @@ pub(super) fn refine(project: &Project, diagnostic: &mut Diagnostic) {
             let name=source.get(..counterpart.span.start).unwrap_or("").rsplit('<').find_map(|part|{if part.starts_with('/') {return None;}let name=part.split(|ch:char|!ch.is_alphanumeric() && ch!='_' && ch!='.').next()?;(!name.is_empty()).then_some(name.to_string())});
             if let Some(name)=name {args=vec![name];}
         }
-        2345 if args.len()==2 && matches!(selected,"true"|"false") && args[1].contains('|')=>args[0]=selected.into(),
+        2345 if args.len()==2 && matches!(selected,"true"|"false") && boolean_literal_context(&args[1])=>args[0]=selected.into(),
         2551 if args.len()==3=>{if let Some(name)=diagnostic.message.split('`').nth(3).filter(|name|name.contains('.')) {args[1]=name.into();}}
         _=>{},
     }
@@ -158,4 +158,28 @@ pub(super) fn refine(project: &Project, diagnostic: &mut Diagnostic) {
         counterpart.arguments = args;
         counterpart.message = rendered.message;
     }
+}
+
+fn boolean_literal_context(text: &str) -> bool {
+    if !text.contains('|') {
+        return false;
+    }
+    let Ok(module) = crate::parse_module("<diagnostic-union>", format!("type Target = {text};"))
+    else {
+        return false;
+    };
+    module.declarations.iter().any(|declaration| {
+        let Declaration::TypeAlias(alias) = declaration else {
+            return false;
+        };
+        let crate::Type::Union(parts) = &alias.value else {
+            return false;
+        };
+        parts.iter().any(|part| {
+            matches!(
+                part,
+                crate::Type::Literal(_) | crate::Type::Null | crate::Type::Undefined
+            )
+        })
+    })
 }

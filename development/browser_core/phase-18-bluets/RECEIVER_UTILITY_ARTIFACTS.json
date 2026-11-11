@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:4687d8d818e1d6b08bb437b41b19c9d84813356f",
+  "artifacts": [
+    {
+      "path": "RECEIVER_UTILITY_COMPILERS.tar.gz",
+      "bytes": 29187113,
+      "sha256": "2adbca5f66f2c88a1930f12fe36278e0850b557d42663f793949251d763a915d"
+    },
+    {
+      "path": "RECEIVER_UTILITY_EVIDENCE.tar.gz",
+      "bytes": 54658681,
+      "sha256": "1648450d83b5a717dab73a5414740893121064bf7229d379fd401b413877c235"
+    },
+    {
+      "path": "RECEIVER_UTILITY_WINDOWS_EVIDENCE.tar.gz",
+      "bytes": 40716781,
+      "sha256": "e4b7a0c2cb73fa1e3128982810842eee548c63666da010b52390f21ae33f1dbf"
+    },
+    {
+      "path": "RECEIVER_UTILITY_RETIRED_225E.tar.gz",
+      "bytes": 21918354,
+      "sha256": "6d42e4e752f0220ac826a4cb92a2cacc3755c0b2e28249d1c931ab44adc56aa7"
+    }
+  ]
+}

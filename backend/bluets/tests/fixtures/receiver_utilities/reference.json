@@ -1,0 +1,5953 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "libraries": {
+    "lib.es5.d.ts": "c430d44666289dae81f30fa7b2edebf186ecc91a2d4c71266ea6ae76388792e1",
+    "lib.decorators.d.ts": "8e7f8264d0fb4c5339605a15daadb037bf238c10b654bb3eee14208f860a32ea",
+    "lib.decorators.legacy.d.ts": "782dec38049b92d4e85c1585fbea5474a219c6984a35b004963b00beb1aab538",
+    "lib.es2022.d.ts": "ee7bad0c15b58988daa84371e0b89d313b762ab83cb5b31b8a2d1162e8eb41c2",
+    "lib.es2021.d.ts": "feecb1be483ed332fad555aff858affd90a48ab19ba7272ee084704eb7167569",
+    "lib.es2020.d.ts": "5efce4fc3c29ea84e8928f97adec086e3dc876365e0982cc8479a07954a3efd4",
+    "lib.es2019.d.ts": "68d73b4a11549f9c0b7d352d10e91e5dca8faa3322bfb77b661839c42b1ddec7",
+    "lib.es2018.d.ts": "5e1c4c362065a6b95ff952c0eab010f04dcd2c3494e813b493ecfd4fcb9fc0d8",
+    "lib.es2017.d.ts": "e44bb8bbac7f10ecc786703fe0a6a4b952189f908707980ba8f3c8975a760962",
+    "lib.es2016.d.ts": "3facaf05f0c5fc569c5649dd359892c98a85557e3e0c847964caeb67076f4d75",
+    "lib.es2015.d.ts": "45b7ab580deca34ae9729e97c13cfd999df04416a79116c3bfb483804f85ded4",
+    "lib.es2015.core.d.ts": "c57796738e7f83dbc4b8e65132f11a377649c00dd3eee333f672b8f0a6bea671",
+    "lib.es2015.collection.d.ts": "dc2df20b1bcdc8c2d34af4926e2c3ab15ffe1160a63e58b7e09833f616efff44",
+    "lib.es2015.iterable.d.ts": "0559b1f683ac7505ae451f9a96ce4c3c92bdc71411651ca6ddb0e88baaaad6a3",
+    "lib.es2015.symbol.d.ts": "4ff2a353abf8a80ee399af572debb8faab2d33ad38c4b4474cff7f26e7653b8d",
+    "lib.es2015.generator.d.ts": "515d0b7b9bea2e31ea4ec968e9edd2c39d3eebf4a2d5cbd04e88639819ae3b71",
+    "lib.es2015.promise.d.ts": "0dc1e7ceda9b8b9b455c3a2d67b0412feab00bd2f66656cd8850e8831b08b537",
+    "lib.es2015.proxy.d.ts": "ce691fb9e5c64efb9547083e4a34091bcbe5bdb41027e310ebba8f7d96a98671",
+    "lib.es2015.reflect.d.ts": "8d697a2a929a5fcb38b7a65594020fcef05ec1630804a33748829c5ff53640d0",
+    "lib.es2015.symbol.wellknown.d.ts": "fb0f136d372979348d59b3f5020b4cdb81b5504192b1cacff5d1fbba29378aa1",
+    "lib.es2016.array.include.d.ts": "d15bea3d62cbbdb9797079416b8ac375ae99162a7fba5de2c6c505446486ac0a",
+    "lib.es2016.intl.d.ts": "68d18b664c9d32a7336a70235958b8997ebc1c3b8505f4f1ae2b7e7753b87618",
+    "lib.es2017.arraybuffer.d.ts": "eb3d66c8327153d8fa7dd03f9c58d351107fe824c79e9b56b462935176cdf12a",
+    "lib.es2017.date.d.ts": "38f0219c9e23c915ef9790ab1d680440d95419ad264816fa15009a8851e79119",
+    "lib.es2017.intl.d.ts": "4de680d5bb41c17f7f68e0419412ca23c98d5749dcaaea1896172f06435891fc",
+    "lib.es2017.object.d.ts": "69ab18c3b76cd9b1be3d188eaf8bba06112ebbe2f47f6c322b5105a6fbc45a2e",
+    "lib.es2017.sharedmemory.d.ts": "a680117f487a4d2f30ea46f1b4b7f58bef1480456e18ba53ee85c2746eeca012",
+    "lib.es2017.string.d.ts": "2f11ff796926e0832f9ae148008138ad583bd181899ab7dd768a2666700b1893",
+    "lib.es2017.typedarrays.d.ts": "954296b30da6d508a104a3a0b5d96b76495c709785c1d11610908e63481ee667",
+    "lib.es2018.asynciterable.d.ts": "0a969edff4bd52585473d24995c5ef223f6652d6ef46193309b3921d65dd4376",
+    "lib.es2018.asyncgenerator.d.ts": "ac9538681b19688c8eae65811b329d3744af679e0bdfa5d842d0e32524c73e1c",
+    "lib.es2018.promise.d.ts": "811ec78f7fefcabbda4bfa93b3eb67d9ae166ef95f9bff989d964061cbf81a0c",
+    "lib.es2018.regexp.d.ts": "717937616a17072082152a2ef351cb51f98802fb4b2fdabd32399843875974ca",
+    "lib.es2018.intl.d.ts": "9e9fbd7030c440b33d021da145d3232984c8bb7916f277e8ffd3dc2e3eae2bdb",
+    "lib.es2019.array.d.ts": "d7e7d9b7b50e5f22c915b525acc5a49a7a6584cf8f62d0569e557c5cfc4b2ac2",
+    "lib.es2019.object.d.ts": "71c37f4c9543f31dfced6c7840e068c5a5aacb7b89111a4364b1d5276b852557",
+    "lib.es2019.string.d.ts": "576711e016cf4f1804676043e6a0a5414252560eb57de9faceee34d79798c850",
+    "lib.es2019.symbol.d.ts": "89c1b1281ba7b8a96efc676b11b264de7a8374c5ea1e6617f11880a13fc56dc6",
+    "lib.es2019.intl.d.ts": "74f7fa2d027d5b33eb0471c8e82a6c87216223181ec31247c357a3e8e2fddc5b",
+    "lib.es2020.bigint.d.ts": "d6d7ae4d1f1f3772e2a3cde568ed08991a8ae34a080ff1151af28b7f798e22ca",
+    "lib.es2020.intl.d.ts": "639e512c0dfc3fad96a84caad71b8834d66329a1f28dc95e3946c9b58176c73a",
+    "lib.es2020.date.d.ts": "063600664504610fe3e99b717a1223f8b1900087fab0b4cad1496a114744f8df",
+    "lib.es2020.number.d.ts": "368af93f74c9c932edd84c58883e736c9e3d53cec1fe24c0b0ff451f529ceab1",
+    "lib.es2020.promise.d.ts": "934019d7e3c81950f9a8426d093458b65d5aff2c7c1511233c0fd5b941e608ab",
+    "lib.es2020.sharedmemory.d.ts": "52ada8e0b6e0482b728070b7639ee42e83a9b1c22d205992756fe020fd9f4a47",
+    "lib.es2020.string.d.ts": "3bdefe1bfd4d6dee0e26f928f93ccc128f1b64d5d501ff4a8cf3c6371200e5e6",
+    "lib.es2020.symbol.wellknown.d.ts": "59fb2c069260b4ba00b5643b907ef5d5341b167e7d1dbf58dfd895658bda2867",
+    "lib.es2021.promise.d.ts": "af3dd424cf267428f30ccfc376f47a2c0114546b55c44d8c0f1d57d841e28d74",
+    "lib.es2021.string.d.ts": "995c005ab91a498455ea8dfb63aa9f83fa2ea793c3d8aa344be4a1678d06d399",
+    "lib.es2021.weakref.d.ts": "959d36cddf5e7d572a65045b876f2956c973a586da58e5d26cde519184fd9b8a",
+    "lib.es2021.intl.d.ts": "965f36eae237dd74e6cca203a43e9ca801ce38824ead814728a2807b1910117d",
+    "lib.es2022.array.d.ts": "3925a6c820dcb1a06506c90b1577db1fdbf7705d65b62b99dce4be75c637e26b",
+    "lib.es2022.error.d.ts": "0a3d63ef2b853447ec4f749d3f368ce642264246e02911fcb1590d8c161b8005",
+    "lib.es2022.intl.d.ts": "8cdf8847677ac7d20486e54dd3fcf09eda95812ac8ace44b4418da1bbbab6eb8",
+    "lib.es2022.object.d.ts": "8444af78980e3b20b49324f4a16ba35024fef3ee069a0eb67616ea6ca821c47a",
+    "lib.es2022.regexp.d.ts": "b4b67b1a91182421f5df999988c690f14d813b9850b40acd06ed44691f6727ad",
+    "lib.es2022.string.d.ts": "3287d9d085fbd618c3971944b65b4be57859f5415f495b33a6adc994edd2f004"
+  },
+  "inputSha256": "e15c62dbb9fefdb8a939e727f5f1319a3487b5b84eaaf4ab3bb50a1ef539e8da",
+  "cases": [
+    {
+      "id": "es5-commonjs/receiver-object-accept",
+      "form": "receiver-object-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      },
+      "runtime": {
+        "exit": 0,
+        "stdout": "ok:3\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "es5-commonjs/receiver-object-reject",
+      "form": "receiver-object-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 101,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 2,
+                "column": 57,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/receiver-string-accept",
+      "form": "receiver-string-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/receiver-string-reject",
+      "form": "receiver-string-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 88,
+            "length": 1
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/receiver-rest-optional-accept",
+      "form": "receiver-rest-optional-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/receiver-rest-optional-reject",
+      "form": "receiver-rest-optional-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'boolean' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 120,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 2,
+                "column": 57,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/receiver-absent-accept",
+      "form": "receiver-absent-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: unknown;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'unknown' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/receiver-absent-reject",
+      "form": "receiver-absent-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 14,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/receiver-last-overload-accept",
+      "form": "receiver-last-overload-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/receiver-last-overload-reject",
+      "form": "receiver-last-overload-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 59,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 1,
+                "column": 77,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/receiver-callable-record-accept",
+      "form": "receiver-callable-record-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/receiver-callable-record-reject",
+      "form": "receiver-callable-record-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'boolean' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 59,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 1,
+                "column": 29,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/receiver-intersection-last-accept",
+      "form": "receiver-intersection-last-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/receiver-intersection-last-reject",
+      "form": "receiver-intersection-last-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 59,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 1,
+                "column": 78,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/receiver-union-accept",
+      "form": "receiver-union-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: string | number;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'string | number' is not assignable to type 'boolean'.\n  Type 'string' is not assignable to type 'boolean'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/receiver-union-reject",
+      "form": "receiver-union-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'boolean' is not assignable to parameter of type 'string | number'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 57,
+            "length": 5
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/receiver-generic-unbounded-accept",
+      "form": "receiver-generic-unbounded-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: unknown;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'unknown' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/receiver-generic-unbounded-reject",
+      "form": "receiver-generic-unbounded-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 14,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/receiver-generic-bounded-accept",
+      "form": "receiver-generic-bounded-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/receiver-generic-bounded-reject",
+      "form": "receiver-generic-bounded-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 104,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 2,
+                "column": 61,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/receiver-any-operand-accept",
+      "form": "receiver-any-operand-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: unknown;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'unknown' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/receiver-any-operand-reject",
+      "form": "receiver-any-operand-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 14,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/receiver-unknown-operand-accept",
+      "form": "receiver-unknown-operand-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: unknown;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'unknown' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/receiver-unknown-operand-reject",
+      "form": "receiver-unknown-operand-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 14,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/receiver-constructor-operand-accept",
+      "form": "receiver-constructor-operand-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: unknown;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'unknown' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/receiver-constructor-operand-reject",
+      "form": "receiver-constructor-operand-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 14,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/receiver-null-accept",
+      "form": "receiver-null-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: null;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'null' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/receiver-null-reject",
+      "form": "receiver-null-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '1' is not assignable to parameter of type 'null'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 88,
+            "length": 1
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/receiver-never-accept",
+      "form": "receiver-never-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare function inferred(value: ThisParameterType<(this: never, value: number) => string>): never;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: never) => never' is not assignable to type '(value: number) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'never'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/receiver-never-reject",
+      "form": "receiver-never-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'never'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 102,
+            "length": 6
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/receiver-never-operand-accept",
+      "form": "receiver-never-operand-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare function inferred(value: ThisParameterType<never>): never;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: never) => never' is not assignable to type '(value: number) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'never'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/receiver-never-operand-reject",
+      "form": "receiver-never-operand-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'never'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 69,
+            "length": 6
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/omit-fixed-accept",
+      "form": "omit-fixed-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: number) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: number) => string' is not assignable to type '(value: string) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      },
+      "runtime": {
+        "exit": 0,
+        "stdout": "bound:4\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "es5-commonjs/omit-fixed-reject",
+      "form": "omit-fixed-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => number' is not assignable to parameter of type '(value: number) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 99,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/omit-rest-optional-accept",
+      "form": "omit-rest-optional-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value?: number | undefined, ...tail: string[]) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value?: number | undefined, ...tail: string[]) => string' is not assignable to type '(value: boolean) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'boolean' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/omit-rest-optional-reject",
+      "form": "omit-rest-optional-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: boolean) => number' is not assignable to parameter of type '(value?: number | undefined, ...tail: string[]) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number | undefined' is not assignable to type 'boolean'.\n      Type 'undefined' is not assignable to type 'boolean'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 119,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/omit-absent-generic-accept",
+      "form": "omit-absent-generic-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Source = <T>(value: T) => T;\nexport declare const inferred: Source;\nexport {};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'Source' is not assignable to type '(value: number) => string'.\n  Type 'number' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/omit-absent-generic-reject",
+      "form": "omit-absent-generic-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => string' is not assignable to parameter of type 'Source'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'T' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 4,
+            "column": 57,
+            "length": 8
+          },
+          "relatedInformation": [
+            {
+              "code": 2208,
+              "message": "This type parameter might need an `extends string` constraint.",
+              "file": "main.ts",
+              "position": {
+                "line": 1,
+                "column": 16,
+                "length": 1
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/omit-generic-bounded-accept",
+      "form": "omit-generic-bounded-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: string) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: string) => string' is not assignable to type '(value: number) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/omit-generic-bounded-reject",
+      "form": "omit-generic-bounded-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: number) => number' is not assignable to parameter of type '(value: string) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 102,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/omit-last-overload-accept",
+      "form": "omit-last-overload-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: number) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: number) => string' is not assignable to type '(value: string) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/omit-last-overload-reject",
+      "form": "omit-last-overload-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => number' is not assignable to parameter of type '(value: number) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 4,
+            "column": 57,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/omit-callable-record-accept",
+      "form": "omit-callable-record-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: number) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: number) => string' is not assignable to type '(value: string) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/omit-callable-record-reject",
+      "form": "omit-callable-record-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => number' is not assignable to parameter of type '(value: number) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 4,
+            "column": 57,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/omit-union-accept",
+      "form": "omit-union-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: ((value: number) => number) | ((value: string) => string);\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '((value: number) => number) | ((value: string) => string)' is not assignable to type '(value: boolean) => boolean'.\n  Type '(value: number) => number' is not assignable to type '(value: boolean) => boolean'.\n    Types of parameters 'value' and 'value' are incompatible.\n      Type 'boolean' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/omit-union-reject",
+      "form": "omit-union-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: boolean) => boolean' is not assignable to parameter of type '((value: number) => number) | ((value: string) => string)'.\n  Type '(value: boolean) => boolean' is not assignable to type '(value: number) => number'.\n    Types of parameters 'value' and 'value' are incompatible.\n      Type 'number' is not assignable to type 'boolean'.",
+          "file": "main.ts",
+          "position": {
+            "line": 4,
+            "column": 57,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/omit-intersection-last-accept",
+      "form": "omit-intersection-last-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: number) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: number) => string' is not assignable to type '(value: string) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/omit-intersection-last-reject",
+      "form": "omit-intersection-last-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => number' is not assignable to parameter of type '(value: number) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 4,
+            "column": 57,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/omit-any-operand-accept",
+      "form": "omit-any-operand-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: any;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'any' is not assignable to type 'never'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/omit-any-operand-reject",
+      "form": "omit-any-operand-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'any' is not assignable to type 'never'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 14,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/omit-unknown-operand-accept",
+      "form": "omit-unknown-operand-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: unknown;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'unknown' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/omit-unknown-operand-reject",
+      "form": "omit-unknown-operand-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 14,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/omit-record-operand-accept",
+      "form": "omit-record-operand-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/omit-record-operand-reject",
+      "form": "omit-record-operand-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 68,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 2,
+                "column": 50,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/omit-unknown-receiver-generic-accept",
+      "form": "omit-unknown-receiver-generic-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Source = <T>(this: unknown, value: T) => T;\nexport declare const inferred: Source;\nexport {};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'Source' is not assignable to type '(value: number) => string'.\n  Type 'number' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/omit-unknown-receiver-generic-reject",
+      "form": "omit-unknown-receiver-generic-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => string' is not assignable to parameter of type 'Source'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'T' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 4,
+            "column": 57,
+            "length": 8
+          },
+          "relatedInformation": [
+            {
+              "code": 2208,
+              "message": "This type parameter might need an `extends string` constraint.",
+              "file": "main.ts",
+              "position": {
+                "line": 1,
+                "column": 16,
+                "length": 1
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/omit-any-receiver-generic-accept",
+      "form": "omit-any-receiver-generic-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Source = <T>(this: any, value: T) => T;\nexport declare const inferred: Source;\nexport {};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'Source' is not assignable to type '(value: number) => string'.\n  Type 'number' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/omit-any-receiver-generic-reject",
+      "form": "omit-any-receiver-generic-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => string' is not assignable to parameter of type 'Source'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'T' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 4,
+            "column": 57,
+            "length": 8
+          },
+          "relatedInformation": [
+            {
+              "code": 2208,
+              "message": "This type parameter might need an `extends string` constraint.",
+              "file": "main.ts",
+              "position": {
+                "line": 1,
+                "column": 16,
+                "length": 1
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/omit-never-receiver-accept",
+      "form": "omit-never-receiver-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: number) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: number) => string' is not assignable to type '(value: string) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/omit-never-receiver-reject",
+      "form": "omit-never-receiver-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => number' is not assignable to parameter of type '(value: number) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 89,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/omit-null-receiver-accept",
+      "form": "omit-null-receiver-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: number) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: number) => string' is not assignable to type '(value: string) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/omit-null-receiver-reject",
+      "form": "omit-null-receiver-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => number' is not assignable to parameter of type '(value: number) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 88,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/omit-never-operand-accept",
+      "form": "omit-never-operand-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare function inferred(value: OmitThisParameter<never>): never;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: never) => never' is not assignable to type '(value: number) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'never'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/omit-never-operand-reject",
+      "form": "omit-never-operand-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'never'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 69,
+            "length": 6
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/omit-constructor-operand-accept",
+      "form": "omit-constructor-operand-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "declare class Source {\n    value: number;\n    constructor(value: number);\n}\nexport declare const inferred: typeof Source;\nexport {};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'typeof Source' is not assignable to type '(value: number) => string'.\n  Type 'typeof Source' provides no match for the signature '(value: number): string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/omit-constructor-operand-reject",
+      "form": "omit-constructor-operand-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: number) => string' is not assignable to parameter of type 'typeof Source'.\n  Type '(value: number) => string' provides no match for the signature 'new (value: number): Source'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 64,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/owner-receiver-alias-accept",
+      "form": "owner-receiver-alias-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/owner-receiver-alias-reject",
+      "form": "owner-receiver-alias-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 92,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 3,
+                "column": 48,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es5-commonjs/owner-omission-alias-accept",
+      "form": "owner-omission-alias-accept",
+      "profile": "es5-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: number) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: number) => string' is not assignable to type '(value: string) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es5-commonjs/owner-omission-alias-reject",
+      "form": "owner-omission-alias-reject",
+      "profile": "es5-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => number' is not assignable to parameter of type '(value: number) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 97,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/receiver-object-accept",
+      "form": "receiver-object-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      },
+      "runtime": {
+        "exit": 0,
+        "stdout": "ok:3\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "es2022-commonjs/receiver-object-reject",
+      "form": "receiver-object-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 101,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 2,
+                "column": 57,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/receiver-string-accept",
+      "form": "receiver-string-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/receiver-string-reject",
+      "form": "receiver-string-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 88,
+            "length": 1
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/receiver-rest-optional-accept",
+      "form": "receiver-rest-optional-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/receiver-rest-optional-reject",
+      "form": "receiver-rest-optional-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'boolean' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 120,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 2,
+                "column": 57,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/receiver-absent-accept",
+      "form": "receiver-absent-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: unknown;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'unknown' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/receiver-absent-reject",
+      "form": "receiver-absent-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 14,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/receiver-last-overload-accept",
+      "form": "receiver-last-overload-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/receiver-last-overload-reject",
+      "form": "receiver-last-overload-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 59,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 1,
+                "column": 77,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/receiver-callable-record-accept",
+      "form": "receiver-callable-record-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/receiver-callable-record-reject",
+      "form": "receiver-callable-record-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'boolean' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 59,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 1,
+                "column": 29,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/receiver-intersection-last-accept",
+      "form": "receiver-intersection-last-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/receiver-intersection-last-reject",
+      "form": "receiver-intersection-last-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 59,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 1,
+                "column": 78,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/receiver-union-accept",
+      "form": "receiver-union-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: string | number;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'string | number' is not assignable to type 'boolean'.\n  Type 'string' is not assignable to type 'boolean'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/receiver-union-reject",
+      "form": "receiver-union-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'boolean' is not assignable to parameter of type 'string | number'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 57,
+            "length": 5
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/receiver-generic-unbounded-accept",
+      "form": "receiver-generic-unbounded-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: unknown;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'unknown' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/receiver-generic-unbounded-reject",
+      "form": "receiver-generic-unbounded-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 14,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/receiver-generic-bounded-accept",
+      "form": "receiver-generic-bounded-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/receiver-generic-bounded-reject",
+      "form": "receiver-generic-bounded-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 104,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 2,
+                "column": 61,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/receiver-any-operand-accept",
+      "form": "receiver-any-operand-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: unknown;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'unknown' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/receiver-any-operand-reject",
+      "form": "receiver-any-operand-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 14,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/receiver-unknown-operand-accept",
+      "form": "receiver-unknown-operand-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: unknown;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'unknown' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/receiver-unknown-operand-reject",
+      "form": "receiver-unknown-operand-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 14,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/receiver-constructor-operand-accept",
+      "form": "receiver-constructor-operand-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: unknown;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'unknown' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/receiver-constructor-operand-reject",
+      "form": "receiver-constructor-operand-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 14,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/receiver-null-accept",
+      "form": "receiver-null-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: null;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'null' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/receiver-null-reject",
+      "form": "receiver-null-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '1' is not assignable to parameter of type 'null'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 88,
+            "length": 1
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/receiver-never-accept",
+      "form": "receiver-never-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare function inferred(value: ThisParameterType<(this: never, value: number) => string>): never;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: never) => never' is not assignable to type '(value: number) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'never'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/receiver-never-reject",
+      "form": "receiver-never-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'never'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 102,
+            "length": 6
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/receiver-never-operand-accept",
+      "form": "receiver-never-operand-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare function inferred(value: ThisParameterType<never>): never;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: never) => never' is not assignable to type '(value: number) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'never'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/receiver-never-operand-reject",
+      "form": "receiver-never-operand-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'never'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 69,
+            "length": 6
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/omit-fixed-accept",
+      "form": "omit-fixed-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: number) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: number) => string' is not assignable to type '(value: string) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      },
+      "runtime": {
+        "exit": 0,
+        "stdout": "bound:4\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "es2022-commonjs/omit-fixed-reject",
+      "form": "omit-fixed-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => number' is not assignable to parameter of type '(value: number) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 99,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/omit-rest-optional-accept",
+      "form": "omit-rest-optional-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value?: number | undefined, ...tail: string[]) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value?: number | undefined, ...tail: string[]) => string' is not assignable to type '(value: boolean) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'boolean' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/omit-rest-optional-reject",
+      "form": "omit-rest-optional-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: boolean) => number' is not assignable to parameter of type '(value?: number | undefined, ...tail: string[]) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number | undefined' is not assignable to type 'boolean'.\n      Type 'undefined' is not assignable to type 'boolean'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 119,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/omit-absent-generic-accept",
+      "form": "omit-absent-generic-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Source = <T>(value: T) => T;\nexport declare const inferred: Source;\nexport {};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'Source' is not assignable to type '(value: number) => string'.\n  Type 'number' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/omit-absent-generic-reject",
+      "form": "omit-absent-generic-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => string' is not assignable to parameter of type 'Source'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'T' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 4,
+            "column": 57,
+            "length": 8
+          },
+          "relatedInformation": [
+            {
+              "code": 2208,
+              "message": "This type parameter might need an `extends string` constraint.",
+              "file": "main.ts",
+              "position": {
+                "line": 1,
+                "column": 16,
+                "length": 1
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/omit-generic-bounded-accept",
+      "form": "omit-generic-bounded-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: string) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: string) => string' is not assignable to type '(value: number) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/omit-generic-bounded-reject",
+      "form": "omit-generic-bounded-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: number) => number' is not assignable to parameter of type '(value: string) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 102,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/omit-last-overload-accept",
+      "form": "omit-last-overload-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: number) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: number) => string' is not assignable to type '(value: string) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/omit-last-overload-reject",
+      "form": "omit-last-overload-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => number' is not assignable to parameter of type '(value: number) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 4,
+            "column": 57,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/omit-callable-record-accept",
+      "form": "omit-callable-record-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: number) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: number) => string' is not assignable to type '(value: string) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/omit-callable-record-reject",
+      "form": "omit-callable-record-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => number' is not assignable to parameter of type '(value: number) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 4,
+            "column": 57,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/omit-union-accept",
+      "form": "omit-union-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: ((value: number) => number) | ((value: string) => string);\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '((value: number) => number) | ((value: string) => string)' is not assignable to type '(value: boolean) => boolean'.\n  Type '(value: number) => number' is not assignable to type '(value: boolean) => boolean'.\n    Types of parameters 'value' and 'value' are incompatible.\n      Type 'boolean' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/omit-union-reject",
+      "form": "omit-union-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: boolean) => boolean' is not assignable to parameter of type '((value: number) => number) | ((value: string) => string)'.\n  Type '(value: boolean) => boolean' is not assignable to type '(value: number) => number'.\n    Types of parameters 'value' and 'value' are incompatible.\n      Type 'number' is not assignable to type 'boolean'.",
+          "file": "main.ts",
+          "position": {
+            "line": 4,
+            "column": 57,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/omit-intersection-last-accept",
+      "form": "omit-intersection-last-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: number) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: number) => string' is not assignable to type '(value: string) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/omit-intersection-last-reject",
+      "form": "omit-intersection-last-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => number' is not assignable to parameter of type '(value: number) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 4,
+            "column": 57,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/omit-any-operand-accept",
+      "form": "omit-any-operand-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: any;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'any' is not assignable to type 'never'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/omit-any-operand-reject",
+      "form": "omit-any-operand-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'any' is not assignable to type 'never'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 14,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/omit-unknown-operand-accept",
+      "form": "omit-unknown-operand-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: unknown;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'unknown' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/omit-unknown-operand-reject",
+      "form": "omit-unknown-operand-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 14,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/omit-record-operand-accept",
+      "form": "omit-record-operand-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/omit-record-operand-reject",
+      "form": "omit-record-operand-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 68,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 2,
+                "column": 50,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/omit-unknown-receiver-generic-accept",
+      "form": "omit-unknown-receiver-generic-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Source = <T>(this: unknown, value: T) => T;\nexport declare const inferred: Source;\nexport {};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'Source' is not assignable to type '(value: number) => string'.\n  Type 'number' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/omit-unknown-receiver-generic-reject",
+      "form": "omit-unknown-receiver-generic-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => string' is not assignable to parameter of type 'Source'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'T' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 4,
+            "column": 57,
+            "length": 8
+          },
+          "relatedInformation": [
+            {
+              "code": 2208,
+              "message": "This type parameter might need an `extends string` constraint.",
+              "file": "main.ts",
+              "position": {
+                "line": 1,
+                "column": 16,
+                "length": 1
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/omit-any-receiver-generic-accept",
+      "form": "omit-any-receiver-generic-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Source = <T>(this: any, value: T) => T;\nexport declare const inferred: Source;\nexport {};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'Source' is not assignable to type '(value: number) => string'.\n  Type 'number' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/omit-any-receiver-generic-reject",
+      "form": "omit-any-receiver-generic-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => string' is not assignable to parameter of type 'Source'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'T' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 4,
+            "column": 57,
+            "length": 8
+          },
+          "relatedInformation": [
+            {
+              "code": 2208,
+              "message": "This type parameter might need an `extends string` constraint.",
+              "file": "main.ts",
+              "position": {
+                "line": 1,
+                "column": 16,
+                "length": 1
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/omit-never-receiver-accept",
+      "form": "omit-never-receiver-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: number) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: number) => string' is not assignable to type '(value: string) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/omit-never-receiver-reject",
+      "form": "omit-never-receiver-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => number' is not assignable to parameter of type '(value: number) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 89,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/omit-null-receiver-accept",
+      "form": "omit-null-receiver-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: number) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: number) => string' is not assignable to type '(value: string) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/omit-null-receiver-reject",
+      "form": "omit-null-receiver-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => number' is not assignable to parameter of type '(value: number) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 88,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/omit-never-operand-accept",
+      "form": "omit-never-operand-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare function inferred(value: OmitThisParameter<never>): never;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: never) => never' is not assignable to type '(value: number) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'never'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/omit-never-operand-reject",
+      "form": "omit-never-operand-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'never'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 69,
+            "length": 6
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/omit-constructor-operand-accept",
+      "form": "omit-constructor-operand-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "declare class Source {\n    value: number;\n    constructor(value: number);\n}\nexport declare const inferred: typeof Source;\nexport {};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'typeof Source' is not assignable to type '(value: number) => string'.\n  Type 'typeof Source' provides no match for the signature '(value: number): string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/omit-constructor-operand-reject",
+      "form": "omit-constructor-operand-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: number) => string' is not assignable to parameter of type 'typeof Source'.\n  Type '(value: number) => string' provides no match for the signature 'new (value: number): Source'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 64,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/owner-receiver-alias-accept",
+      "form": "owner-receiver-alias-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/owner-receiver-alias-reject",
+      "form": "owner-receiver-alias-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 92,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 3,
+                "column": 48,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-commonjs/owner-omission-alias-accept",
+      "form": "owner-omission-alias-accept",
+      "profile": "es2022-commonjs",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: number) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: number) => string' is not assignable to type '(value: string) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-commonjs/owner-omission-alias-reject",
+      "form": "owner-omission-alias-reject",
+      "profile": "es2022-commonjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => number' is not assignable to parameter of type '(value: number) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 97,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-object-accept",
+      "form": "receiver-object-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      },
+      "runtime": {
+        "exit": 0,
+        "stdout": "ok:3\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-object-reject",
+      "form": "receiver-object-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 101,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 2,
+                "column": 57,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-string-accept",
+      "form": "receiver-string-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-string-reject",
+      "form": "receiver-string-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'number' is not assignable to parameter of type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 88,
+            "length": 1
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-rest-optional-accept",
+      "form": "receiver-rest-optional-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-rest-optional-reject",
+      "form": "receiver-rest-optional-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'boolean' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 120,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 2,
+                "column": 57,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-absent-accept",
+      "form": "receiver-absent-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: unknown;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'unknown' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-absent-reject",
+      "form": "receiver-absent-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 14,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-last-overload-accept",
+      "form": "receiver-last-overload-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-last-overload-reject",
+      "form": "receiver-last-overload-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 59,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 1,
+                "column": 77,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-callable-record-accept",
+      "form": "receiver-callable-record-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-callable-record-reject",
+      "form": "receiver-callable-record-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'boolean' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 59,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 1,
+                "column": 29,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-intersection-last-accept",
+      "form": "receiver-intersection-last-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-intersection-last-reject",
+      "form": "receiver-intersection-last-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 59,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 1,
+                "column": 78,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-union-accept",
+      "form": "receiver-union-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: string | number;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'string | number' is not assignable to type 'boolean'.\n  Type 'string' is not assignable to type 'boolean'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-union-reject",
+      "form": "receiver-union-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'boolean' is not assignable to parameter of type 'string | number'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 57,
+            "length": 5
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-generic-unbounded-accept",
+      "form": "receiver-generic-unbounded-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: unknown;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'unknown' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-generic-unbounded-reject",
+      "form": "receiver-generic-unbounded-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 14,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-generic-bounded-accept",
+      "form": "receiver-generic-bounded-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-generic-bounded-reject",
+      "form": "receiver-generic-bounded-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 104,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 2,
+                "column": 61,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-any-operand-accept",
+      "form": "receiver-any-operand-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: unknown;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'unknown' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-any-operand-reject",
+      "form": "receiver-any-operand-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 14,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-unknown-operand-accept",
+      "form": "receiver-unknown-operand-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: unknown;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'unknown' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-unknown-operand-reject",
+      "form": "receiver-unknown-operand-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 14,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-constructor-operand-accept",
+      "form": "receiver-constructor-operand-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: unknown;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'unknown' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-constructor-operand-reject",
+      "form": "receiver-constructor-operand-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 14,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-null-accept",
+      "form": "receiver-null-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: null;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'null' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-null-reject",
+      "form": "receiver-null-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '1' is not assignable to parameter of type 'null'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 88,
+            "length": 1
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-never-accept",
+      "form": "receiver-never-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare function inferred(value: ThisParameterType<(this: never, value: number) => string>): never;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: never) => never' is not assignable to type '(value: number) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'never'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-never-reject",
+      "form": "receiver-never-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'never'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 102,
+            "length": 6
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-never-operand-accept",
+      "form": "receiver-never-operand-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare function inferred(value: ThisParameterType<never>): never;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: never) => never' is not assignable to type '(value: number) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'never'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/receiver-never-operand-reject",
+      "form": "receiver-never-operand-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'never'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 69,
+            "length": 6
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-fixed-accept",
+      "form": "omit-fixed-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: number) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: number) => string' is not assignable to type '(value: string) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      },
+      "runtime": {
+        "exit": 0,
+        "stdout": "bound:4\n",
+        "stderr": ""
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-fixed-reject",
+      "form": "omit-fixed-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => number' is not assignable to parameter of type '(value: number) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 99,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-rest-optional-accept",
+      "form": "omit-rest-optional-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value?: number | undefined, ...tail: string[]) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value?: number | undefined, ...tail: string[]) => string' is not assignable to type '(value: boolean) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'boolean' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-rest-optional-reject",
+      "form": "omit-rest-optional-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: boolean) => number' is not assignable to parameter of type '(value?: number | undefined, ...tail: string[]) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number | undefined' is not assignable to type 'boolean'.\n      Type 'undefined' is not assignable to type 'boolean'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 119,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-absent-generic-accept",
+      "form": "omit-absent-generic-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Source = <T>(value: T) => T;\nexport declare const inferred: Source;\nexport {};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'Source' is not assignable to type '(value: number) => string'.\n  Type 'number' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-absent-generic-reject",
+      "form": "omit-absent-generic-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => string' is not assignable to parameter of type 'Source'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'T' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 4,
+            "column": 57,
+            "length": 8
+          },
+          "relatedInformation": [
+            {
+              "code": 2208,
+              "message": "This type parameter might need an `extends string` constraint.",
+              "file": "main.ts",
+              "position": {
+                "line": 1,
+                "column": 16,
+                "length": 1
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-generic-bounded-accept",
+      "form": "omit-generic-bounded-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: string) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: string) => string' is not assignable to type '(value: number) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-generic-bounded-reject",
+      "form": "omit-generic-bounded-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: number) => number' is not assignable to parameter of type '(value: string) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 102,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-last-overload-accept",
+      "form": "omit-last-overload-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: number) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: number) => string' is not assignable to type '(value: string) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-last-overload-reject",
+      "form": "omit-last-overload-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => number' is not assignable to parameter of type '(value: number) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 4,
+            "column": 57,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-callable-record-accept",
+      "form": "omit-callable-record-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: number) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: number) => string' is not assignable to type '(value: string) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-callable-record-reject",
+      "form": "omit-callable-record-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => number' is not assignable to parameter of type '(value: number) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 4,
+            "column": 57,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-union-accept",
+      "form": "omit-union-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: ((value: number) => number) | ((value: string) => string);\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '((value: number) => number) | ((value: string) => string)' is not assignable to type '(value: boolean) => boolean'.\n  Type '(value: number) => number' is not assignable to type '(value: boolean) => boolean'.\n    Types of parameters 'value' and 'value' are incompatible.\n      Type 'boolean' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-union-reject",
+      "form": "omit-union-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: boolean) => boolean' is not assignable to parameter of type '((value: number) => number) | ((value: string) => string)'.\n  Type '(value: boolean) => boolean' is not assignable to type '(value: number) => number'.\n    Types of parameters 'value' and 'value' are incompatible.\n      Type 'number' is not assignable to type 'boolean'.",
+          "file": "main.ts",
+          "position": {
+            "line": 4,
+            "column": 57,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-intersection-last-accept",
+      "form": "omit-intersection-last-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: number) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: number) => string' is not assignable to type '(value: string) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-intersection-last-reject",
+      "form": "omit-intersection-last-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => number' is not assignable to parameter of type '(value: number) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 4,
+            "column": 57,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-any-operand-accept",
+      "form": "omit-any-operand-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: any;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'any' is not assignable to type 'never'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-any-operand-reject",
+      "form": "omit-any-operand-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'any' is not assignable to type 'never'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 14,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-unknown-operand-accept",
+      "form": "omit-unknown-operand-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: unknown;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'unknown' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-unknown-operand-reject",
+      "form": "omit-unknown-operand-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'unknown' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 14,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-record-operand-accept",
+      "form": "omit-record-operand-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-record-operand-reject",
+      "form": "omit-record-operand-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 68,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 2,
+                "column": 50,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-unknown-receiver-generic-accept",
+      "form": "omit-unknown-receiver-generic-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Source = <T>(this: unknown, value: T) => T;\nexport declare const inferred: Source;\nexport {};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'Source' is not assignable to type '(value: number) => string'.\n  Type 'number' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-unknown-receiver-generic-reject",
+      "form": "omit-unknown-receiver-generic-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => string' is not assignable to parameter of type 'Source'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'T' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 4,
+            "column": 57,
+            "length": 8
+          },
+          "relatedInformation": [
+            {
+              "code": 2208,
+              "message": "This type parameter might need an `extends string` constraint.",
+              "file": "main.ts",
+              "position": {
+                "line": 1,
+                "column": 16,
+                "length": 1
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-any-receiver-generic-accept",
+      "form": "omit-any-receiver-generic-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Source = <T>(this: any, value: T) => T;\nexport declare const inferred: Source;\nexport {};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'Source' is not assignable to type '(value: number) => string'.\n  Type 'number' is not assignable to type 'string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-any-receiver-generic-reject",
+      "form": "omit-any-receiver-generic-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => string' is not assignable to parameter of type 'Source'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'T' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 4,
+            "column": 57,
+            "length": 8
+          },
+          "relatedInformation": [
+            {
+              "code": 2208,
+              "message": "This type parameter might need an `extends string` constraint.",
+              "file": "main.ts",
+              "position": {
+                "line": 1,
+                "column": 16,
+                "length": 1
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-never-receiver-accept",
+      "form": "omit-never-receiver-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: number) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: number) => string' is not assignable to type '(value: string) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-never-receiver-reject",
+      "form": "omit-never-receiver-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => number' is not assignable to parameter of type '(value: number) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 89,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-null-receiver-accept",
+      "form": "omit-null-receiver-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: number) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: number) => string' is not assignable to type '(value: string) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-null-receiver-reject",
+      "form": "omit-null-receiver-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => number' is not assignable to parameter of type '(value: number) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 88,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-never-operand-accept",
+      "form": "omit-never-operand-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare function inferred(value: OmitThisParameter<never>): never;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: never) => never' is not assignable to type '(value: number) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'never'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-never-operand-reject",
+      "form": "omit-never-operand-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'never'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 69,
+            "length": 6
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-constructor-operand-accept",
+      "form": "omit-constructor-operand-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "declare class Source {\n    value: number;\n    constructor(value: number);\n}\nexport declare const inferred: typeof Source;\nexport {};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'typeof Source' is not assignable to type '(value: number) => string'.\n  Type 'typeof Source' provides no match for the signature '(value: number): string'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/omit-constructor-operand-reject",
+      "form": "omit-constructor-operand-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: number) => string' is not assignable to parameter of type 'typeof Source'.\n  Type '(value: number) => string' provides no match for the signature 'new (value: number): Source'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 64,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/owner-receiver-alias-accept",
+      "form": "owner-receiver-alias-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: {\n    tag: string;\n};\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ tag: string; }' is not assignable to type '{ tag: number; }'.\n  Types of property 'tag' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/owner-receiver-alias-reject",
+      "form": "owner-receiver-alias-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 92,
+            "length": 3
+          },
+          "relatedInformation": [
+            {
+              "code": 6500,
+              "message": "The expected type comes from property 'tag' which is declared here on type '{ tag: string; }'",
+              "file": "main.ts",
+              "position": {
+                "line": 3,
+                "column": 48,
+                "length": 3
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022-esnext-es5lib/owner-omission-alias-accept",
+      "form": "owner-omission-alias-accept",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const inferred: (value: number) => string;\n"
+      },
+      "consumers": {
+        "positive": {
+          "accepts": true,
+          "diagnostics": []
+        },
+        "negative": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '(value: number) => string' is not assignable to type '(value: string) => number'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'string' is not assignable to type 'number'.",
+              "file": "consumer.ts",
+              "position": {
+                "line": 2,
+                "column": 7,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib/owner-omission-alias-reject",
+      "form": "owner-omission-alias-reject",
+      "profile": "es2022-esnext-es5lib",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '(value: string) => number' is not assignable to parameter of type '(value: number) => string'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'number' is not assignable to type 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 97,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    }
+  ]
+}

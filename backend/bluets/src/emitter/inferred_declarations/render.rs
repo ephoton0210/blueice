@@ -313,8 +313,27 @@ impl Context<'_> {
                 } else if let Some(member) = name.strip_prefix("\0jsx-runtime.") {
                     self.jsx_runtime_type(member, span)?
                 } else if name.starts_with("typeof ") {
-                    self.retain(name);
-                    crate::parser::source_type_name(name).to_string()
+                    let spelling = crate::parser::source_type_name(name);
+                    let query = spelling.strip_prefix("typeof ").expect("value query");
+                    if query
+                        .rsplit_once('@')
+                        .is_some_and(|(_, id)| self.project.modules.contains_key(id))
+                    {
+                        format!(
+                            "typeof {}",
+                            self.render(
+                                &Type::Named {
+                                    name: query.to_string(),
+                                    arguments: Vec::new(),
+                                },
+                                indent,
+                                span
+                            )?
+                        )
+                    } else {
+                        self.retain(spelling);
+                        spelling.to_string()
+                    }
                 } else if name.starts_with("#typeparam@") {
                     crate::parser::source_type_name(name).to_string()
                 } else if let Some((bare, id)) = name.split_once('@') {

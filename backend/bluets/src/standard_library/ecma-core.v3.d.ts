@@ -6,6 +6,8 @@ type ReturnType<F extends (...values: any[]) => any> = F extends (...values: any
 type Parameters<F extends (...args: any) => any> = F extends (...args: infer Args) => any ? Args : never;
 type ConstructorParameters<F extends abstract new (...args: any) => any> = F extends abstract new (...args: infer Args) => any ? Args : never;
 type InstanceType<F extends abstract new (...args: any) => any> = F extends abstract new (...args: any) => infer Instance ? Instance : any;
+type ThisParameterType<F> = F extends (this: infer Receiver, ...args: never) => any ? Receiver : unknown;
+type OmitThisParameter<F> = unknown extends ThisParameterType<F> ? F : F extends (...args: infer Args) => infer Result ? (...args: Args) => Result : F;
 
 // Original finite ECMAScript type model for G-T7; not upstream library text.
 type Readonly<T> = { readonly [P in keyof T]: T[P] };
