@@ -98,6 +98,9 @@ pub(crate) struct Placed {
     pub margin_bottom: Margin,
     pub margin_left: f64,
     pub margin_right: f64,
+    /// How far a right-to-left container pushes the box toward its right edge when the box is
+    /// over-constrained: where it is drawn, not room it takes (its shrink-to-fit width is the same).
+    pub shift: f64,
     pub pending_abs: Vec<PendingAbs>,
     /// No height, padding or border: its margins collapse through it.
     pub collapses_through: bool,
@@ -395,7 +398,7 @@ fn layout_flow(
                 if placed.collapses_through {
                     pending = pending.join(placed.margin_top).join(placed.margin_bottom);
                     let mut fragment = placed.fragment;
-                    fragment.x = placed.margin_left;
+                    fragment.x = placed.margin_left + placed.shift;
                     fragment.y = cursor_y + if top_open { 0.0 } else { pending.value() };
                     apply_relative(ctx, &child_style, &mut fragment, &constraint);
                     child_escaped = float::translate(&child_escaped, fragment.x, fragment.y);
@@ -418,7 +421,7 @@ fn layout_flow(
                 no_lines_yet = false;
                 flow.empty = false;
                 let mut fragment = std::mem::replace(&mut placed.fragment, Fragment::empty_block());
-                fragment.x = placed.margin_left;
+                fragment.x = placed.margin_left + placed.shift;
                 fragment.y = cursor_y;
                 flow.extent = flow
                     .extent
@@ -742,6 +745,7 @@ fn layout_block_level_uncached(
             .is_some_and(|align| matches!(align.as_str(), "-webkit-center" | "-moz-center"))
         && style.side("margin-left", cbw) == 0.0
         && style.side("margin-right", cbw) == 0.0;
+    let mut end_shift = 0.0;
     let container_is_rtl = !blueice_css::is_pseudo_node(node)
         && ctx.doc.parent(node).is_some_and(|parent| ctx.style(parent).is_rtl());
     let auto_left = style.is_auto("margin-left") || webkit_centered;
@@ -785,7 +789,7 @@ fn layout_block_level_uncached(
             (false, true) => margin_right = free.max(0.0),
             // Over-constrained: the end side gives way, which is the left of a right-to-left
             // container.
-            (false, false) if container_is_rtl => margin_left += free,
+            (false, false) if container_is_rtl => end_shift = free,
             (false, false) => {}
         }
     }
@@ -1134,6 +1138,7 @@ fn layout_block_level_uncached(
         margin_bottom: pass_bottom,
         margin_left,
         margin_right,
+        shift: end_shift,
         pending_abs: escaping,
         collapses_through,
         preferred_width,

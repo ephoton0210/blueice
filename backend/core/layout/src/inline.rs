@@ -1193,11 +1193,11 @@ pub(crate) fn layout_run_around(
         for entry in open.iter_mut() {
             entry.1 = 0.0;
         }
-        // text, x, width, node, y, height, drawn right to left
-        let mut run_text: Option<(String, f64, f64, NodeId, f64, f64, bool)> = None;
-        let flush = |run: &mut Option<(String, f64, f64, NodeId, f64, f64, bool)>,
-                     children: &mut Vec<Fragment>| {
-            if let Some((text, rx, rw, node, ry, rh, rtl)) = run.take() {
+        // text, x, width, node, y, height, drawn right to left, first piece in reading order
+        type Run = (String, f64, f64, NodeId, f64, f64, bool, u32);
+        let mut run_text: Option<Run> = None;
+        let flush = |run: &mut Option<Run>, children: &mut Vec<Fragment>| {
+            if let Some((text, rx, rw, node, ry, rh, rtl, logical)) = run.take() {
                 let hidden = !ctx.style(node).is_visible();
                 children.push(Fragment {
                     node: Some(node),
@@ -1208,6 +1208,7 @@ pub(crate) fn layout_run_around(
                     height: rh,
                     hidden,
                     rtl,
+                    logical,
                     ..Fragment::empty_block()
                 });
             }
@@ -1238,9 +1239,10 @@ pub(crate) fn layout_run_around(
                             Align::Bottom => line_height - (above + below),
                         };
                         match run_text.as_mut() {
-                            Some((run, _, rw, node, _, _, run_rtl))
+                            Some((run, _, rw, node, _, _, run_rtl, first))
                                 if *node == *style_node && *run_rtl == odd =>
                             {
+                                *first = (*first).min(*i as u32);
                                 // On screen a right-to-left run reads backwards, so the word
                                 // that comes next on the left is the one before in the text.
                                 if odd {
@@ -1260,6 +1262,7 @@ pub(crate) fn layout_run_around(
                                     top,
                                     above + below,
                                     odd,
+                                    *i as u32,
                                 ));
                             }
                         }
@@ -1308,6 +1311,7 @@ pub(crate) fn layout_run_around(
                             });
                         }
                         x += atomic_width(a);
+                        fragment.logical = *i as u32;
                         children.push(fragment);
                     }
                     Piece::Break | Piece::Mark(_) => {}

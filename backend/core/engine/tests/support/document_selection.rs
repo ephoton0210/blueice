@@ -688,3 +688,33 @@ fn document_selection_blocks_preserved_select_commands_before_mutation() {
         assert_eq!(page.native_text_input_state(17), before);
     }
 }
+
+#[test]
+fn right_to_left_text_is_copied_in_reading_order_and_its_characters_run_leftward() {
+    // Two Hebrew words: on screen the second is on the left, but the copy reads first to second.
+    let mut page = page("<p id='p'>\u{5d0}\u{5d1}\u{5d2} \u{5d3}\u{5d4}\u{5d5}</p>");
+    apply(&mut page, TextInputAction::DocumentSelectAll);
+    let state = selection(&page);
+    assert_eq!(state["selected_text"], "\u{5d0}\u{5d1}\u{5d2} \u{5d3}\u{5d4}\u{5d5}");
+    let p = page.script_get_element_by_id("p").unwrap();
+    let context = context(&page, p);
+    let bounds = |page: &mut Page, location: u32| {
+        let TextResult::Bounds(Some(b)) = page
+            .accessibility_text(
+                &context,
+                17,
+                Action::Bounds { range: TextRange { location, length: 1 } },
+            )
+            .unwrap()
+            .1
+        else {
+            panic!()
+        };
+        b
+    };
+    // the first letter of the paragraph is to the right of the second, and of the second word
+    let (a, b) = (bounds(&mut page, 0), bounds(&mut page, 1));
+    let second_word = bounds(&mut page, 4);
+    assert!(a.x > b.x, "letters of a right-to-left word run leftward: {a:?} {b:?}");
+    assert!(a.x > second_word.x, "the first word is right of the second");
+}

@@ -367,6 +367,7 @@ pub(crate) fn layout_table(ctx: &Ctx<'_>, table: NodeId, input: &TableInput) -> 
     };
     result.width = table_width;
 
+    let table_rtl = ctx.style(table).is_rtl();
     let mut col_x = Vec::with_capacity(columns);
     let mut cursor = space_x;
     for w in &col_width {
@@ -513,7 +514,12 @@ pub(crate) fn layout_table(ctx: &Ctx<'_>, table: NodeId, input: &TableInput) -> 
             }
         }
         fragment.height = slot.max(fragment.height);
-        fragment.x = col_x[cell.col] - space_x;
+        // A right-to-left table starts its first column at the right edge.
+        fragment.x = if table_rtl {
+            table_width - col_x[cell.col] - span_width(cell) - space_x
+        } else {
+            col_x[cell.col] - space_x
+        };
         fragment.y = 0.0;
         let origin_x = space_x + fragment.x;
         let origin_y = row_y[cell.row];
@@ -649,6 +655,18 @@ mod tests {
             150.0,
             "block content cannot shrink below its width"
         );
+    }
+
+    #[test]
+    fn a_right_to_left_table_lays_its_columns_out_from_the_right() {
+        let ltr = cells(&table(TWO_BY_TWO, "", 800.0));
+        let rtl = cells(&table(TWO_BY_TWO, "table { direction: rtl }", 800.0));
+        let width = table(TWO_BY_TWO, "", 800.0).width;
+        for (l, r) in ltr.iter().zip(&rtl) {
+            assert_eq!((l.1, l.2, l.3), (r.1, r.2, r.3), "only the column order changes");
+            assert_eq!(r.0, width - l.0 - l.2, "mirrored across the table");
+        }
+        assert!(rtl[0].0 > rtl[1].0, "the first cell is the rightmost");
     }
 
     #[test]

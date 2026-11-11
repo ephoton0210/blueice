@@ -110,6 +110,10 @@ pub struct Fragment {
     /// A text run of right-to-left level: its characters are drawn from the right edge of the
     /// fragment, so the string stays in reading (logical) order here.
     pub rtl: bool,
+    /// Within a line, where this item comes in reading order. A line's children are in the order
+    /// they sit on screen, which right-to-left text makes different from the order they are read
+    /// in; sort by this to read them.
+    pub logical: u32,
 }
 
 impl Fragment {
@@ -131,6 +135,7 @@ impl Fragment {
             style_node: None,
             translate: None,
             rtl: false,
+            logical: 0,
         }
     }
 }

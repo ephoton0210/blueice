@@ -30,6 +30,8 @@ struct Span {
     node: Option<NodeId>,
     line: usize,
     bounds: Bounds,
+    /// Its characters run leftward: the start of the text is the span's right edge.
+    rtl: bool,
 }
 
 #[derive(Default)]
@@ -95,7 +97,7 @@ fn public_text(page: &Page, node: NodeId) -> bool {
 }
 
 impl Index {
-    fn append(&mut self, text: &str, node: Option<NodeId>, line: usize, bounds: Bounds) {
+    fn append(&mut self, text: &str, node: Option<NodeId>, line: usize, bounds: Bounds, rtl: bool) {
         let length = text.encode_utf16().count() as u32;
         let encoded_bytes = text
             .chars()
@@ -117,6 +119,7 @@ impl Index {
             node,
             line,
             bounds,
+            rtl,
         });
         self.text.push_str(text);
         self.length += length;
@@ -177,10 +180,15 @@ impl Index {
                     }
                     if let Some(previous) = index.spans.last() {
                         let previous_end = previous.bounds.x + previous.bounds.width;
+                        // Between two right-to-left words the gap lies to the left of the
+                        // earlier one.
+                        let leftward = previous.rtl && fragment.rtl && !boundary;
                         let bounds = Bounds {
-                            x: previous_end,
+                            x: if leftward { x + fragment.width } else { previous_end },
                             y: previous.bounds.y,
-                            width: if !boundary && (previous.bounds.y - y).abs() < 0.01 {
+                            width: if leftward && (previous.bounds.y - y).abs() < 0.01 {
+                                (previous.bounds.x - (x + fragment.width)).max(0.0)
+                            } else if !boundary && (previous.bounds.y - y).abs() < 0.01 {
                                 (x - previous_end).max(0.0)
                             } else {
                                 0.0
@@ -192,10 +200,11 @@ impl Index {
                             None,
                             previous.line,
                             bounds,
+                            false,
                         );
                     }
                     boundary = false;
-                    let mut pen = x;
+                    let mut pen = if fragment.rtl { x + fragment.width } else { x };
                     for cluster in text.graphemes(true) {
                         let width = blueice_font::measure_text_width(
                             cluster,
@@ -203,6 +212,9 @@ impl Index {
                             style.is_bold(),
                             style.is_italic(),
                         );
+                        if fragment.rtl {
+                            pen -= width;
+                        }
                         index.append(
                             cluster,
                             Some(node),
@@ -213,8 +225,11 @@ impl Index {
                                 width,
                                 height: fragment.height,
                             },
+                            fragment.rtl,
                         );
-                        pen += width;
+                        if !fragment.rtl {
+                            pen += width;
+                        }
                         if index.limited {
                             break;
                         }
@@ -224,12 +239,15 @@ impl Index {
             if index.limited {
                 break;
             }
+            // A line's items are in screen order; the text reads in `logical` order.
+            let mut children: Vec<&Fragment> = fragment.children.iter().take(MAX_VISITS).collect();
+            if fragment.kind == FragmentKind::Line {
+                children.sort_by_key(|child| child.logical);
+            }
             pending.extend(
-                fragment
-                    .children
-                    .iter()
+                children
+                    .into_iter()
                     .rev()
-                    .take(MAX_VISITS)
                     .map(|child| Visit::Enter(child, x, y, depth + 1)),
             );
         }
@@ -303,8 +321,10 @@ impl Index {
             .iter()
             .find(|span| span.start <= offset && offset < span.end)
             .or_else(|| self.spans.last())?;
+        // The end of a right-to-left span is its left edge.
+        let at_end = offset >= span.end;
         Some(Bounds {
-            x: if offset >= span.end {
+            x: if at_end != span.rtl {
                 span.bounds.x + span.bounds.width
             } else {
                 span.bounds.x
@@ -324,10 +344,17 @@ impl Index {
             if let Some(last) = rects.last_mut() {
                 if (last.y - span.bounds.y).abs() < 0.01
                     && (last.height - span.bounds.height).abs() < 0.01
-                    && (span.bounds.x - last.x - last.width).abs() < 0.01
                 {
-                    last.width += span.bounds.width;
-                    continue;
+                    if (span.bounds.x - last.x - last.width).abs() < 0.01 {
+                        last.width += span.bounds.width;
+                        continue;
+                    }
+                    // A right-to-left run adds each character on its left.
+                    if span.rtl && (span.bounds.x + span.bounds.width - last.x).abs() < 0.01 {
+                        last.x = span.bounds.x;
+                        last.width += span.bounds.width;
+                        continue;
+                    }
                 }
             }
             if rects.len() == MAX_RECTS {
@@ -345,10 +372,13 @@ impl Index {
             s.node.is_some() && s.start >= scope.location && s.end <= scope.end().unwrap_or(0)
         }) {
             let dy = (y - span.bounds.y - span.bounds.height / 2.0).abs();
-            for (offset, cx) in [
-                (span.start, span.bounds.x),
-                (span.end, span.bounds.x + span.bounds.width),
-            ] {
+            let (left, right) = (span.bounds.x, span.bounds.x + span.bounds.width);
+            let edges = if span.rtl {
+                [(span.start, right), (span.end, left)]
+            } else {
+                [(span.start, left), (span.end, right)]
+            };
+            for (offset, cx) in edges {
                 let d = (dy, (x - cx).abs());
                 if d.0
                     .total_cmp(&distance.0)
