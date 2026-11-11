@@ -30,6 +30,10 @@ pub struct FontFaceRule {
     pub weight_min: u16,
     pub weight_max: u16,
     pub italic: bool,
+    /// The angles an `oblique` face leans through, in tenths of a degree, rightwards positive
+    /// (`font-style: oblique 5deg 15deg` is `50..=150`; a bare `oblique` is 14 degrees); none for
+    /// `normal` and `italic`.
+    pub slant: Option<(i16, i16)>,
     /// The widths it covers, as a percentage in tenths (`font-stretch: 75% 125%` is
     /// `750..=1250`; the initial `normal` is 100%, `1000`).
     pub stretch_min: u16,
@@ -283,6 +287,7 @@ pub struct FaceDescriptors {
     pub weight_min: u16,
     pub weight_max: u16,
     pub italic: bool,
+    pub slant: Option<(i16, i16)>,
     pub stretch_min: u16,
     pub stretch_max: u16,
     pub unicode_ranges: Vec<(u32, u32)>,
@@ -296,10 +301,26 @@ pub fn face_descriptors(weight: &str, style: &str, stretch: &str, unicode_range:
         weight_min,
         weight_max,
         italic: style.starts_with("italic") || style.starts_with("oblique"),
+        slant: parse_slant(&style),
         stretch_min,
         stretch_max,
         unicode_ranges: parse_ranges(unicode_range),
     }
+}
+
+/// The angles of a `font-style` descriptor that starts with `oblique`.
+fn parse_slant(style: &str) -> Option<(i16, i16)> {
+    let rest = style.trim().strip_prefix("oblique")?;
+    let angles: Vec<i16> = rest
+        .split_whitespace()
+        .filter_map(|t| t.strip_suffix("deg")?.parse::<f64>().ok())
+        .map(|a| (a * 10.0).round().clamp(-900.0, 900.0) as i16)
+        .collect();
+    Some(match angles.as_slice() {
+        [] => (140, 140),
+        [a] => (*a, *a),
+        [a, b, ..] => (*a.min(b), *a.max(b)),
+    })
 }
 
 fn parse_weight(value: &str) -> (u16, u16) {
@@ -371,6 +392,7 @@ fn parse_face(body: &str) -> Option<FontFaceRule> {
     let mut sources = Vec::new();
     let mut weight = (400, 400);
     let mut italic = false;
+    let mut slant = None;
     let mut stretch = (1000, 1000);
     let mut unicode_ranges = Vec::new();
     for declaration in split_top(body, ';') {
@@ -394,6 +416,7 @@ fn parse_face(body: &str) -> Option<FontFaceRule> {
             "font-style" => {
                 let v = value.to_ascii_lowercase();
                 italic = v.starts_with("italic") || v.starts_with("oblique");
+                slant = parse_slant(&v);
             }
             "font-stretch" => stretch = parse_stretch(value),
             "unicode-range" => unicode_ranges = parse_ranges(value),
@@ -409,6 +432,7 @@ fn parse_face(body: &str) -> Option<FontFaceRule> {
         weight_min: weight.0,
         weight_max: weight.1,
         italic,
+        slant,
         stretch_min: stretch.0,
         stretch_max: stretch.1,
         unicode_ranges,

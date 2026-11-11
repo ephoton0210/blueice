@@ -994,11 +994,11 @@
     const text = bi('fontList');
     if (!text) return;
     for (const line of String(text).split('\n')) {
-      const [family, min, max, italic, ranges, smin, smax] = line.split('\t');
+      const [family, min, max, style, ranges, smin, smax] = line.split('\t');
       const pct = (tenths) => String(Number(tenths) / 10) + '%';
       const face = new FontFace(family, null, {
         weight: min === max ? min : min + ' ' + max,
-        style: italic === '1' ? 'italic' : 'normal',
+        style,
         stretch: smin === smax ? (smin === '1000' ? 'normal' : pct(smin)) : pct(smin) + ' ' + pct(smax),
         unicodeRange: ranges ? ranges.split(',').map((r) => {
           const [a, b] = r.split('-');

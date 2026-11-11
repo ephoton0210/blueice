@@ -4,7 +4,7 @@
 
 //! `@font-face` rules and the family list that picks among them.
 
-use blueice_css::{font_faces, FontFaceRule, FontSource};
+use blueice_css::{face_descriptors, font_faces, FontFaceRule, FontSource};
 
 fn one(css: &str) -> FontFaceRule {
     let mut faces = font_faces(css);
@@ -168,4 +168,21 @@ fn the_stretch_descriptor_is_a_percentage_range_in_tenths() {
     assert_eq!(stretch("font-stretch: condensed"), (750, 750));
     assert_eq!(stretch("font-stretch: condensed expanded"), (750, 1250));
     assert_eq!(stretch("font-stretch: 150% 50%"), (500, 1500), "the ends are put in order");
+}
+
+#[test]
+fn an_oblique_face_declares_the_angles_it_leans_through() {
+    let slant = |style: &str| one(&format!("@font-face{{font-family:A;src:url(a.woff2);font-style:{style}}}")).slant;
+    assert_eq!(slant("oblique 5deg 15deg"), Some((50, 150)));
+    assert_eq!(slant("oblique 10deg"), Some((100, 100)), "one angle is both ends");
+    assert_eq!(slant("oblique"), Some((140, 140)), "no angle is 14 degrees");
+    assert_eq!(slant("oblique -10deg 20deg"), Some((-100, 200)));
+    assert_eq!(slant("oblique 15deg 5deg"), Some((50, 150)), "the ends in either order");
+    assert_eq!(slant("oblique 500deg"), Some((900, 900)), "clamped to the 90 degrees the spec allows");
+    assert_eq!(slant("italic"), None);
+    assert_eq!(slant("normal"), None);
+    assert!(one("@font-face{font-family:A;src:url(a.woff2);font-style:oblique 5deg 15deg}").italic);
+    let d = face_descriptors("", "oblique 5deg 15deg", "", "");
+    assert_eq!((d.slant, d.italic), (Some((50, 150)), true));
+    assert_eq!(face_descriptors("", "italic", "", "").slant, None);
 }

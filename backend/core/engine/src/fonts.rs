@@ -35,6 +35,7 @@ struct CatalogFace {
     weight_min: u16,
     weight_max: u16,
     italic: bool,
+    slant: Option<(i16, i16)>,
     /// The widths it covers, as `font-stretch` percentages in tenths.
     stretch_min: u16,
     stretch_max: u16,
@@ -61,6 +62,8 @@ pub(crate) struct ScriptFont {
     pub weight_min: u16,
     pub weight_max: u16,
     pub italic: bool,
+    /// The angles an oblique face leans through, in tenths of a degree (see `FontFaceRule::slant`).
+    pub slant: Option<(i16, i16)>,
     /// The widths it covers, `font-stretch` percentages in tenths.
     pub stretch_min: u16,
     pub stretch_max: u16,
@@ -160,6 +163,7 @@ impl FontCatalog {
                 weight_min: font.weight_min,
                 weight_max: font.weight_max,
                 italic: font.italic,
+                slant: font.slant,
                 stretch_min: font.stretch_min,
                 stretch_max: font.stretch_max,
                 ranges: font.ranges.clone(),
@@ -185,6 +189,7 @@ impl FontCatalog {
                     weight_min: f.weight_min,
                     weight_max: f.weight_max,
                     italic: f.italic,
+                    slant: f.slant,
                     stretch_min: f.stretch_min,
                     stretch_max: f.stretch_max,
                     ranges: f.ranges.clone(),
@@ -240,7 +245,7 @@ fn best_faces(faces: &[CatalogFace], req: &FaceRequest) -> Vec<blueice_font::web
         .iter()
         .rev()
         .filter(|f| (f.italic, f.weight_min, f.weight_max) == (best.italic, best.weight_min, best.weight_max))
-        .map(|f| (f.id, f.ranges.clone(), req.variation((f.weight_min, f.weight_max), (f.stretch_min, f.stretch_max))))
+        .map(|f| (f.id, f.ranges.clone(), req.variation((f.weight_min, f.weight_max), (f.stretch_min, f.stretch_max), f.slant)))
         .collect()
 }
 
@@ -282,7 +287,8 @@ impl FaceRequest {
     }
 
     /// The axis values this asks of a face whose `@font-face` declares these weights and widths.
-    pub(crate) fn variation(&self, weights: (u16, u16), stretches: (u16, u16)) -> blueice_font::Variation {
+    pub(crate) fn variation(&self, weights: (u16, u16), stretches: (u16, u16), slants: Option<(i16, i16)>) -> blueice_font::Variation {
+        let held = |angle: i16| slants.map_or(angle, |(lo, hi)| angle.clamp(lo, hi));
         let mut v = blueice_font::Variation {
             wght: Some(self.weight.clamp(weights.0, weights.1)),
             wdth: Some(self.stretch.clamp(stretches.0, stretches.1)),
@@ -292,9 +298,9 @@ impl FaceRequest {
             Slant::Upright => {}
             Slant::Italic => {
                 v.ital = Some(true);
-                v.slnt = Some(-140);
+                v.slnt = Some(-held(140));
             }
-            Slant::Oblique(angle) => v.slnt = Some(-angle),
+            Slant::Oblique(angle) => v.slnt = Some(-held(angle)),
         }
         if self.optical && self.size > 0 {
             v.opsz = Some(self.size);
@@ -470,6 +476,7 @@ pub(crate) fn fetch_linked_fonts(
                 weight_min: face.weight_min,
                 weight_max: face.weight_max,
                 italic: face.italic,
+                slant: face.slant,
                 stretch_min: face.stretch_min,
                 stretch_max: face.stretch_max,
                 ranges: face.unicode_ranges,
@@ -1162,33 +1169,43 @@ mod tests {
         req.stretch = 875;
         req.size = 160;
         req.optical = true;
-        let v = req.variation((600, 700), (750, 1000));
+        let v = req.variation((600, 700), (750, 1000), None);
         assert_eq!(v, Variation { wght: Some(650), wdth: Some(875), opsz: Some(160), ..Variation::NONE });
         req.optical = false;
         req.stretch = 1250;
-        assert_eq!(req.variation((600, 700), (750, 1000)).wdth, Some(1000), "clamped to the declared range");
-        assert_eq!(req.variation((600, 700), (750, 1000)).opsz, None);
+        assert_eq!(req.variation((600, 700), (750, 1000), None).wdth, Some(1000), "clamped to the declared range");
+        assert_eq!(req.variation((600, 700), (750, 1000), None).opsz, None);
         // Slants: an angle leans the other way on the axis; the italic keyword also asks the
         // italic switch, with the usual 14 degrees if the face only slants.
         req.slant = Slant::Oblique(100);
-        let v = req.variation((400, 400), (1000, 1000));
+        let v = req.variation((400, 400), (1000, 1000), None);
         assert_eq!((v.slnt, v.ital), (Some(-100), None));
         req.slant = Slant::Italic;
-        let v = req.variation((400, 400), (1000, 1000));
+        let v = req.variation((400, 400), (1000, 1000), None);
         assert_eq!((v.slnt, v.ital), (Some(-140), Some(true)));
         req.slant = Slant::Upright;
-        let v = req.variation((400, 400), (1000, 1000));
+        let v = req.variation((400, 400), (1000, 1000), None);
         assert_eq!((v.slnt, v.ital), (None, None));
+        // A face that declares the angles it leans through holds the request to them.
+        req.slant = Slant::Oblique(200);
+        assert_eq!(req.variation((400, 400), (1000, 1000), Some((50, 150))).slnt, Some(-150), "past the far end");
+        req.slant = Slant::Oblique(10);
+        assert_eq!(req.variation((400, 400), (1000, 1000), Some((50, 150))).slnt, Some(-50), "short of the near end");
+        req.slant = Slant::Oblique(100);
+        assert_eq!(req.variation((400, 400), (1000, 1000), Some((50, 150))).slnt, Some(-100), "inside it");
+        req.slant = Slant::Italic;
+        assert_eq!(req.variation((400, 400), (1000, 1000), Some((50, 100))).slnt, Some(-100), "the italic's 14 degrees too");
+        req.slant = Slant::Upright;
         // The page's settings come last and are not held to the declared ranges.
         req.settings = vec![("wdth".into(), 60_000), ("slnt".into(), -5_000), ("ital".into(), 1_000), ("wght".into(), 905_400)];
-        let v = req.variation((400, 400), (1000, 1000));
+        let v = req.variation((400, 400), (1000, 1000), None);
         assert_eq!((v.wdth, v.slnt, v.ital, v.wght), (Some(600), Some(-50), Some(true), Some(905)));
         // Any other four-letter axis is passed on in thousandths, at most four of them.
         req.settings = vec![("GRAD".into(), 150_000), ("XTRA".into(), 468_500), ("GRAD".into(), -25_000)];
-        let v = req.variation((400, 400), (1000, 1000));
+        let v = req.variation((400, 400), (1000, 1000), None);
         assert_eq!(v.custom, [Some((*b"GRAD", -25_000)), Some((*b"XTRA", 468_500)), None, None], "the later value wins");
         req.settings = ["AAAA", "BBBB", "CCCC", "DDDD", "EEEE"].iter().map(|t| (t.to_string(), 1_000)).collect();
-        assert_eq!(req.variation((400, 400), (1000, 1000)).custom.iter().flatten().count(), 4);
+        assert_eq!(req.variation((400, 400), (1000, 1000), None).custom.iter().flatten().count(), 4);
     }
 
     #[test]
@@ -1196,6 +1213,25 @@ mod tests {
         let plain = run_width("", "", OPEN_SANS);
         let asked = run_width("", "font-variation-settings: \"GRAD\" 100, \"SOFT\" 50", OPEN_SANS);
         assert!((plain - asked).abs() < 0.01);
+    }
+
+    #[test]
+    fn document_fonts_lists_the_angles_of_an_oblique_stylesheet_face() {
+        let html = format!(
+            "<style>@font-face {{ font-family: A; font-style: oblique 5deg 15deg; src: url({0}) format('woff2'); }}\
+             @font-face {{ font-family: B; font-style: italic; src: url({0}) format('woff2'); }}\
+             @font-face {{ font-family: C; font-style: oblique; src: url({0}) format('woff2'); }}</style>\
+             <body><script>console.log('STYLES ' + [...document.fonts].map((f) => f.family + '=' + f.style).sort().join(';'));</script></body>",
+            data_url(OPEN_SANS, "font/woff2")
+        );
+        let mut page = crate::Page::new(400.0, 300.0);
+        page.set_web_scripts(true);
+        page.pending_linked_fonts = catalog(&html);
+        page.load_html_str(&html, Some("https://example.com/p".to_string()));
+        page.settle();
+        run_scripts(&mut page);
+        let log = page.web_console().join("\n");
+        assert!(log.contains("STYLES a=oblique 5deg 15deg;b=italic;c=oblique 14deg"), "{log}");
     }
 
     #[test]

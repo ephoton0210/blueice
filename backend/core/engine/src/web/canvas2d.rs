@@ -1194,7 +1194,7 @@ mod tests {
         let bytes = include_bytes!("../../../font/tests/data/roboto-latin-400.woff2");
         let mut catalog = crate::fonts::FontCatalog::default();
         assert!(catalog.add_script_font(&crate::fonts::ScriptFont {
-            family: "Dyn".into(), weight_min: 400, weight_max: 400, italic: false, stretch_min: 1000, stretch_max: 1000, ranges: vec![], bytes: bytes.to_vec(),
+            family: "Dyn".into(), weight_min: 400, weight_max: 400, italic: false, slant: None, stretch_min: 1000, stretch_max: 1000, ranges: vec![], bytes: bytes.to_vec(),
         }));
         let mut c = canvas(10, 10);
         let mut w = |font: &str| match c.call_with_fonts("measureText", &[t("Hello"), t(font)], &catalog).unwrap() {
@@ -1285,7 +1285,7 @@ mod tests {
         let bytes = include_bytes!("../../../font/tests/data/inter-latin-opsz.woff2");
         let mut catalog = crate::fonts::FontCatalog::default();
         assert!(catalog.add_script_font(&crate::fonts::ScriptFont {
-            family: "Opt".into(), weight_min: 100, weight_max: 900, italic: false, stretch_min: 1000, stretch_max: 1000, ranges: vec![], bytes: bytes.to_vec(),
+            family: "Opt".into(), weight_min: 100, weight_max: 900, italic: false, slant: None, stretch_min: 1000, stretch_max: 1000, ranges: vec![], bytes: bytes.to_vec(),
         }));
         let mut c = canvas(10, 10);
         let mut w = |font: &str| match c.call_with_fonts("measureText", &[t("Hamburgefonstiv"), t(font)], &catalog).unwrap() {
@@ -1301,7 +1301,7 @@ mod tests {
         let bytes = include_bytes!("../../../font/tests/data/opensans-latin-wdth.woff2");
         let mut catalog = crate::fonts::FontCatalog::default();
         assert!(catalog.add_script_font(&crate::fonts::ScriptFont {
-            family: "Wide".into(), weight_min: 300, weight_max: 800, italic: false, stretch_min: 750, stretch_max: 1000,
+            family: "Wide".into(), weight_min: 300, weight_max: 800, italic: false, slant: None, stretch_min: 750, stretch_max: 1000,
             ranges: vec![], bytes: bytes.to_vec(),
         }));
         let mut c = canvas(10, 10);

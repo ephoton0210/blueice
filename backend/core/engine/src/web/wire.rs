@@ -369,6 +369,10 @@ fn put_font(e: &mut Enc, font: &crate::fonts::ScriptFont) {
     e.u32(u32::from(font.weight_min));
     e.u32(u32::from(font.weight_max));
     e.bool(font.italic);
+    e.bool(font.slant.is_some());
+    let (lo, hi) = font.slant.unwrap_or((0, 0));
+    e.u32(u32::from(lo as u16));
+    e.u32(u32::from(hi as u16));
     e.u32(u32::from(font.stretch_min));
     e.u32(u32::from(font.stretch_max));
     e.u64(font.ranges.len() as u64);
@@ -384,6 +388,9 @@ fn get_font(d: &mut Dec) -> Option<crate::fonts::ScriptFont> {
     let weight_min = d.u32()? as u16;
     let weight_max = d.u32()? as u16;
     let italic = d.bool()?;
+    let has_slant = d.bool()?;
+    let (lo, hi) = (d.u32()? as u16 as i16, d.u32()? as u16 as i16);
+    let slant = has_slant.then_some((lo, hi));
     let stretch_min = d.u32()? as u16;
     let stretch_max = d.u32()? as u16;
     let m = d.count()?;
@@ -391,7 +398,7 @@ fn get_font(d: &mut Dec) -> Option<crate::fonts::ScriptFont> {
     for _ in 0..m {
         ranges.push((d.u32()?, d.u32()?));
     }
-    Some(crate::fonts::ScriptFont { family, weight_min, weight_max, italic, stretch_min, stretch_max, ranges, bytes: d.bytes()? })
+    Some(crate::fonts::ScriptFont { family, weight_min, weight_max, italic, slant, stretch_min, stretch_max, ranges, bytes: d.bytes()? })
 }
 
 impl ToChild {
@@ -817,7 +824,7 @@ mod tests {
             ToChild::Doc(vec![]),
             ToChild::FetchDoc,
             ToChild::Fonts(vec![crate::fonts::ScriptFont {
-                family: "x".into(), weight_min: 400, weight_max: 700, italic: false, stretch_min: 750, stretch_max: 1250,
+                family: "x".into(), weight_min: 400, weight_max: 700, italic: false, slant: None, stretch_min: 750, stretch_max: 1250,
                 ranges: vec![(1, 2)], bytes: vec![9, 8, 7],
             }]),
             ToChild::Answer(AnswerWire(Answer::Text(Some("block".into())))),
@@ -885,6 +892,7 @@ mod tests {
                 weight_min: 300,
                 weight_max: 700,
                 italic: true,
+                slant: Some((-50, 150)),
                 stretch_min: 500,
                 stretch_max: 2000,
                 ranges: vec![(0x41, 0x5a), (0x61, 0x61)],

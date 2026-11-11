@@ -344,7 +344,7 @@ impl DomState {
                 }
             }
             // The faces the stylesheets declared, one per line: family, weight range, style
-            // (0/1), unicode ranges as `lo-hi` hex pairs joined by commas.
+            // descriptor text, unicode ranges as `lo-hi` hex pairs joined by commas.
             "fontList" => {
                 let lines: Vec<String> = self
                     .sheet_fonts
@@ -352,9 +352,16 @@ impl DomState {
                     .map(|f| {
                         let ranges: Vec<String> =
                             f.ranges.iter().map(|(a, b)| format!("{a:X}-{b:X}")).collect();
+                        // The style as its descriptor text: normal, italic or oblique with its angles.
+                        let style = match f.slant {
+                            Some((a, b)) if a == b => format!("oblique {}deg", f64::from(a) / 10.0),
+                            Some((a, b)) => format!("oblique {}deg {}deg", f64::from(a) / 10.0, f64::from(b) / 10.0),
+                            None if f.italic => "italic".to_string(),
+                            None => "normal".to_string(),
+                        };
                         format!(
                             "{}\t{}\t{}\t{}\t{}\t{}\t{}",
-                            f.family, f.weight_min, f.weight_max, u8::from(f.italic), ranges.join(","), f.stretch_min, f.stretch_max
+                            f.family, f.weight_min, f.weight_max, style, ranges.join(","), f.stretch_min, f.stretch_max
                         )
                     })
                     .collect();
@@ -375,6 +382,7 @@ impl DomState {
                     weight_min: d.weight_min,
                     weight_max: d.weight_max,
                     italic: d.italic,
+                    slant: d.slant,
                     stretch_min: d.stretch_min,
                     stretch_max: d.stretch_max,
                     ranges: d.unicode_ranges,
