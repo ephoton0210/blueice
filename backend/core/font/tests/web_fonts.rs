@@ -252,6 +252,33 @@ fn an_optical_size_axis_changes_the_drawing_and_unknown_axes_are_ignored() {
     assert_eq!(plain, skewed, "axes the face does not have are dropped from the request");
 }
 
+const ROBOTO_FLEX: &[u8] = include_bytes!("data/robotoflex-latin-grad.woff2");
+
+#[test]
+fn a_custom_axis_is_listed_driven_clamped_and_dropped_where_absent() {
+    let soft = axis_of(ROBOTO_FLEX, b"GRAD").expect("the fixture has a grade axis, which is not a registered one");
+    assert!(soft.min < soft.max);
+    let face = web::register(ROBOTO_FLEX).unwrap();
+    let at = |v: Variation| web::register_set_varied(&[(face, vec![], v)]).unwrap();
+    let (sharp, round) = (
+        at(Variation::NONE.with_axis(*b"GRAD", (soft.min * 1000.0) as i32)),
+        at(Variation::NONE.with_axis(*b"GRAD", (soft.max * 1000.0) as i32)),
+    );
+    assert_ne!(sharp, round);
+    let ink = |id| {
+        let (_, bitmap) = font_for_char_in('o', false, false, Some(id)).rasterize('o', 96.0);
+        bitmap
+    };
+    assert_ne!(ink(sharp), ink(round), "grade changes the drawing of the letters");
+    assert_eq!(at(Variation::NONE.with_axis(*b"GRAD", i32::MAX)), round, "a value past the axis is its maximum");
+    assert_eq!(at(Variation::NONE.with_axis(*b"NOPE", 5000)), at(Variation::NONE), "an axis the face lacks is dropped");
+    let inter = web::register(INTER_VAR).unwrap();
+    assert_eq!(
+        web::register_set_varied(&[(inter, vec![], Variation::NONE.with_axis(*b"GRAD", 100_000))]).unwrap(),
+        web::register_set_varied(&[(inter, vec![], Variation::NONE)]).unwrap()
+    );
+}
+
 #[test]
 fn a_width_axis_condenses_the_text() {
     let wdth = axis_of(OPEN_SANS_WDTH, b"wdth").expect("the fixture has a width axis");
@@ -275,10 +302,10 @@ fn a_request_is_clamped_to_each_axis_and_an_italic_axis_replaces_a_slant() {
         web::Axis { tag: *b"slnt", min: -12.0, default: 0.0, max: 0.0 },
         web::Axis { tag: *b"opsz", min: 8.0, default: 14.0, max: 144.0 },
     ];
-    let r = Variation { wght: Some(2000), wdth: Some(500), slnt: Some(-300), opsz: Some(40), ital: Some(true) }.resolve(&axes);
-    assert_eq!(r, Variation { wght: Some(900), wdth: Some(750), slnt: Some(-120), opsz: Some(80), ital: None });
-    let r = Variation { wght: Some(1), wdth: Some(10), slnt: Some(50), opsz: Some(5000), ital: None }.resolve(&axes);
-    assert_eq!(r, Variation { wght: Some(100), wdth: Some(750), slnt: Some(0), opsz: Some(1440), ital: None });
+    let r = Variation { wght: Some(2000), wdth: Some(500), slnt: Some(-300), opsz: Some(40), ital: Some(true), ..Variation::NONE }.resolve(&axes);
+    assert_eq!(r, Variation { wght: Some(900), wdth: Some(750), slnt: Some(-120), opsz: Some(80), ital: None, ..Variation::NONE });
+    let r = Variation { wght: Some(1), wdth: Some(10), slnt: Some(50), opsz: Some(5000), ital: None, ..Variation::NONE }.resolve(&axes);
+    assert_eq!(r, Variation { wght: Some(100), wdth: Some(750), slnt: Some(0), opsz: Some(1440), ital: None, ..Variation::NONE });
     // With an `ital` axis the italic switch is used, and the slant is left alone.
     let with_ital = [web::Axis { tag: *b"ital", min: 0.0, default: 0.0, max: 1.0 }, axes[2]];
     let r = Variation { slnt: Some(-140), ital: Some(true), ..Variation::NONE }.resolve(&with_ital);

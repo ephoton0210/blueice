@@ -307,7 +307,11 @@ impl FaceRequest {
                 "slnt" => v.slnt = Some(tenths.clamp(-900.0, 900.0) as i16),
                 "opsz" => v.opsz = Some(tenths.clamp(1.0, 10000.0) as u16),
                 "ital" => v.ital = Some(*value >= 500),
-                _ => {}
+                other => {
+                    if let Ok(tag) = <[u8; 4]>::try_from(other.as_bytes()) {
+                        v = v.with_axis(tag, (*value).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32);
+                    }
+                }
             }
         }
         v
@@ -1179,6 +1183,19 @@ mod tests {
         req.settings = vec![("wdth".into(), 60_000), ("slnt".into(), -5_000), ("ital".into(), 1_000), ("wght".into(), 905_400)];
         let v = req.variation((400, 400), (1000, 1000));
         assert_eq!((v.wdth, v.slnt, v.ital, v.wght), (Some(600), Some(-50), Some(true), Some(905)));
+        // Any other four-letter axis is passed on in thousandths, at most four of them.
+        req.settings = vec![("GRAD".into(), 150_000), ("XTRA".into(), 468_500), ("GRAD".into(), -25_000)];
+        let v = req.variation((400, 400), (1000, 1000));
+        assert_eq!(v.custom, [Some((*b"GRAD", -25_000)), Some((*b"XTRA", 468_500)), None, None], "the later value wins");
+        req.settings = ["AAAA", "BBBB", "CCCC", "DDDD", "EEEE"].iter().map(|t| (t.to_string(), 1_000)).collect();
+        assert_eq!(req.variation((400, 400), (1000, 1000)).custom.iter().flatten().count(), 4);
+    }
+
+    #[test]
+    fn a_page_asking_for_an_axis_a_face_does_not_have_draws_it_unchanged() {
+        let plain = run_width("", "", OPEN_SANS);
+        let asked = run_width("", "font-variation-settings: \"GRAD\" 100, \"SOFT\" 50", OPEN_SANS);
+        assert!((plain - asked).abs() < 0.01);
     }
 
     #[test]

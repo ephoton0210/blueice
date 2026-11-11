@@ -19,18 +19,12 @@ pub struct Axis {
     pub max: f32,
 }
 
-/// The axes this engine drives: weight, width, slant, optical size and italic.
-const DRIVEN: [&[u8; 4]; 5] = [b"wght", b"wdth", b"slnt", b"opsz", b"ital"];
-
-/// The driven axes of a font file (none for a static font).
+/// The axes of a font file (none for a static font), registered or custom.
 pub(crate) fn axes(data: &[u8]) -> Vec<Axis> {
     let Ok(face) = Face::parse(data, 0) else { return Vec::new() };
     face.variation_axes()
         .into_iter()
-        .filter_map(|a| {
-            let tag = a.tag.to_bytes();
-            DRIVEN.contains(&&tag).then_some(Axis { tag, min: a.min_value, default: a.def_value, max: a.max_value })
-        })
+        .map(|a| Axis { tag: a.tag.to_bytes(), min: a.min_value, default: a.def_value, max: a.max_value })
         .collect()
 }
 
@@ -45,10 +39,36 @@ pub struct Variation {
     pub slnt: Option<i16>,
     pub opsz: Option<u16>,
     pub ital: Option<bool>,
+    /// Any other axis (`GRAD`, `SOFT`...): its tag and value in thousandths, sorted by tag.
+    pub custom: [Option<([u8; 4], i32)>; CUSTOM_AXES],
 }
 
+/// How many axes beyond the five registered ones one request can set.
+pub const CUSTOM_AXES: usize = 4;
+
 impl Variation {
-    pub const NONE: Variation = Variation { wght: None, wdth: None, slnt: None, opsz: None, ital: None };
+    pub const NONE: Variation = Variation {
+        wght: None,
+        wdth: None,
+        slnt: None,
+        opsz: None,
+        ital: None,
+        custom: [None; CUSTOM_AXES],
+    };
+
+    /// This request with the axis `tag` set to `thousandths` as well (replacing an earlier value;
+    /// past the fourth custom axis it is dropped).
+    pub fn with_axis(mut self, tag: [u8; 4], thousandths: i32) -> Variation {
+        let mut list: Vec<([u8; 4], i32)> = self.custom.iter().flatten().copied().filter(|(t, _)| *t != tag).collect();
+        list.push((tag, thousandths));
+        list.sort();
+        list.truncate(CUSTOM_AXES);
+        self.custom = [None; CUSTOM_AXES];
+        for (slot, item) in self.custom.iter_mut().zip(list) {
+            *slot = Some(item);
+        }
+        self
+    }
 
     pub(crate) fn is_none(&self) -> bool {
         *self == Self::NONE
@@ -71,6 +91,12 @@ impl Variation {
         }
         if let (Some(a), Some(v)) = (find(b"opsz"), self.opsz) {
             out.opsz = Some(tenths(a, f32::from(v)) as u16);
+        }
+        for (tag, value) in self.custom.iter().flatten() {
+            if let Some(a) = find(tag) {
+                let v = (*value as f32).clamp(a.min * 1000.0, a.max * 1000.0).round() as i32;
+                out = out.with_axis(*tag, v);
+            }
         }
         if let (Some(_), Some(on)) = (find(b"ital"), self.ital) {
             out.ital = Some(on);
@@ -142,6 +168,9 @@ impl VarInstance {
         set(b"slnt", v.slnt.map(|x| f32::from(x) / 10.0))?;
         set(b"opsz", v.opsz.map(|x| f32::from(x) / 10.0))?;
         set(b"ital", v.ital.map(|on| if on { 1.0 } else { 0.0 }))?;
+        for (tag, value) in v.custom.iter().flatten() {
+            set(tag, Some(*value as f32 / 1000.0))?;
+        }
         let upem = f32::from(face.units_per_em());
         (upem > 0.0).then(|| VarInstance { face, scale_per_px: 1.0 / upem })
     }
