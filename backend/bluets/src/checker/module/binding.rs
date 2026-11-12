@@ -778,7 +778,12 @@ impl<'a> ModuleChecker<'a> {
             self.infer_in_context(&variable.initializer, scope, annotation);
         }
         if !variable.initializer.is_empty() && !variable.declared {
-            self.check_direct_runtime_expression(&variable.initializer, scope, &variable.span);
+            self.check_runtime_expression_in_context(
+                &variable.initializer,
+                scope,
+                &variable.span,
+                variable.annotation.as_ref(),
+            );
         }
         let Some(annotation) = &variable.annotation else {
             return;
@@ -819,6 +824,16 @@ impl<'a> ModuleChecker<'a> {
         tokens: &[Token],
         scope: &BTreeMap<String, Type>,
         span: &SourceSpan,
+    ) {
+        self.check_runtime_expression_in_context(tokens, scope, span, None);
+    }
+
+    fn check_runtime_expression_in_context(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+        context: Option<&Type>,
     ) {
         if tokens.is_empty() {
             return;
@@ -905,7 +920,7 @@ impl<'a> ModuleChecker<'a> {
         self.check_bound_class_calls_in_expression(tokens, scope, span);
         self.check_flow_in_subjects(tokens, scope);
         if !call_chain {
-            self.check_function_call(tokens, scope, span);
+            self.check_function_call_in_context(tokens, scope, span, None, context);
         }
         self.check_flow_calls(tokens, scope, span);
         if !call_chain {

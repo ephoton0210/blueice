@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 
 mod assertions;
 mod type_forms;
+mod type_mapping;
 pub use type_forms::{
     ConditionalType, IndexSignature, MappedModifier, MappedType, TemplateLiteralType, Variance,
 };
@@ -1084,6 +1085,8 @@ pub enum Type {
     },
     Array(Box<Type>),
     Readonly(Box<Type>),
+    /// A static inference boundary; ordinary relations still inspect its base.
+    InferenceBarrier(Box<Type>),
     Tuple(Vec<TupleTypeElement>),
     Record(Vec<TypeField>),
     IndexedRecord {

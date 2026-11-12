@@ -1,0 +1,733 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "scope": "P0-A NoInfer candidate boundaries in arguments, contextual results, nested and imported aliases, constraints/defaults, callbacks, overloads, conditional infer and exact declaration materialization. Broader unmeasured compositions remain open.",
+  "options": {
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "lf"
+  },
+  "profiles": [
+    {
+      "id": "es5-commonjs",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "lib": [
+          "ES5"
+        ]
+      }
+    },
+    {
+      "id": "es2022-commonjs",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES2022"
+        ]
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "lib": [
+          "ES5"
+        ]
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "literal-anchor-accept",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<T>): T;\nexport const value = choose(\"red\", \"red\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      }
+    },
+    {
+      "id": "literal-anchor-reject",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<T>): T;\nexport const value = choose(\"red\", \"blue\");\n",
+      "accepts": false
+    },
+    {
+      "id": "ordinary-candidate-control",
+      "source": "declare function choose<T extends string>(anchor: T, check: T): T;\nexport const value = choose(\"red\", \"blue\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" | \"blue\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"green\" = value;\n"
+      }
+    },
+    {
+      "id": "unconstrained-number-accept",
+      "source": "declare function choose<T>(anchor: T, check: NoInfer<T>): T;\nexport const value = choose(7, 7);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: 7 = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: 8 = value;\n"
+      }
+    },
+    {
+      "id": "unconstrained-number-reject",
+      "source": "declare function choose<T>(anchor: T, check: NoInfer<T>): T;\nexport const value = choose(7, \"bad\");\n",
+      "accepts": false
+    },
+    {
+      "id": "unconstrained-number-literal-reject",
+      "source": "declare function choose<T>(anchor: T, check: NoInfer<T>): T;\nexport const value = choose(7, 8);\n",
+      "accepts": false
+    },
+    {
+      "id": "declared-number-anchor-accept",
+      "source": "declare const anchor: number;\ndeclare function choose<T>(anchor: T, check: NoInfer<T>): T;\nexport const value = choose(anchor, 8);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "declared-number-anchor-reject",
+      "source": "declare const anchor: number;\ndeclare function choose<T>(anchor: T, check: NoInfer<T>): T;\nexport const value = choose(anchor, \"bad\");\n",
+      "accepts": false
+    },
+    {
+      "id": "const-candidate-accept",
+      "source": "declare function choose<const T>(anchor: T, check: NoInfer<T>): T;\nexport const value = choose(7, 7);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: 7 = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: 8 = value;\n"
+      }
+    },
+    {
+      "id": "const-candidate-reject",
+      "source": "declare function choose<const T>(anchor: T, check: NoInfer<T>): T;\nexport const value = choose(7, 8);\n",
+      "accepts": false
+    },
+    {
+      "id": "default-candidate-accept",
+      "source": "declare function choose<T = number>(check: NoInfer<T>): T;\nexport const value = choose(7);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "default-candidate-reject",
+      "source": "declare function choose<T = number>(check: NoInfer<T>): T;\nexport const value = choose(\"bad\");\n",
+      "accepts": false
+    },
+    {
+      "id": "constraint-candidate-accept",
+      "source": "declare function choose<T extends string>(check: NoInfer<T>): T;\nexport const value = choose(\"red\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: string = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      }
+    },
+    {
+      "id": "constraint-candidate-reject",
+      "source": "declare function choose<T extends string>(check: NoInfer<T>): T;\nexport const value = choose(7);\n",
+      "accepts": false
+    },
+    {
+      "id": "blocked-only-candidate",
+      "source": "declare function choose<T>(check: NoInfer<T>): T;\nexport const value = choose(7);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: unknown = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      }
+    },
+    {
+      "id": "blocked-argument-context-control",
+      "source": "declare function choose<T>(check: NoInfer<T>): T;\nexport const value: number = choose(7);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "blocked-only-candidate-reject",
+      "source": "declare function choose<T>(check: NoInfer<T>): T;\nexport const value: number = choose(\"bad\");\n",
+      "accepts": false
+    },
+    {
+      "id": "explicit-argument-accept",
+      "source": "declare function choose<T>(check: NoInfer<T>): T;\nexport const value = choose<number>(7);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "explicit-argument-reject",
+      "source": "declare function choose<T>(check: NoInfer<T>): T;\nexport const value = choose<number>(\"bad\");\n",
+      "accepts": false
+    },
+    {
+      "id": "dependent-default-accept",
+      "source": "declare function choose<T extends string, U = T>(anchor: T, check: NoInfer<U>): U;\nexport const value = choose(\"red\", \"red\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      }
+    },
+    {
+      "id": "dependent-default-reject",
+      "source": "declare function choose<T extends string, U = T>(anchor: T, check: NoInfer<U>): U;\nexport const value = choose(\"red\", \"blue\");\n",
+      "accepts": false
+    },
+    {
+      "id": "rest-elements-accept",
+      "source": "declare function choose<T extends string>(anchor: T, ...checks: NoInfer<T>[]): T;\nexport const value = choose(\"red\", \"red\", \"red\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      }
+    },
+    {
+      "id": "rest-elements-reject",
+      "source": "declare function choose<T extends string>(anchor: T, ...checks: NoInfer<T>[]): T;\nexport const value = choose(\"red\", \"red\", \"blue\");\n",
+      "accepts": false
+    },
+    {
+      "id": "optional-argument-accept",
+      "source": "declare function choose<T extends string>(anchor: T, check?: NoInfer<T>): T;\nexport const value = choose(\"red\", \"red\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      }
+    },
+    {
+      "id": "optional-argument-reject",
+      "source": "declare function choose<T extends string>(anchor: T, check?: NoInfer<T>): T;\nexport const value = choose(\"red\", \"blue\");\n",
+      "accepts": false
+    },
+    {
+      "id": "optional-argument-absent",
+      "source": "declare function choose<T extends string>(anchor: T, check?: NoInfer<T>): T;\nexport const value = choose(\"red\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      }
+    },
+    {
+      "id": "tuple-position-accept",
+      "source": "declare function choose<T extends string>(anchor: T, check: [NoInfer<T>, number]): T;\nexport const value = choose(\"red\", [\"red\", 1]);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      }
+    },
+    {
+      "id": "tuple-position-reject",
+      "source": "declare function choose<T extends string>(anchor: T, check: [NoInfer<T>, number]): T;\nexport const value = choose(\"red\", [\"blue\", 1]);\n",
+      "accepts": false
+    },
+    {
+      "id": "tuple-container-accept",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<[T, number]>): T;\nexport const value = choose(\"red\", [\"red\", 1]);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      }
+    },
+    {
+      "id": "tuple-container-reject",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<[T, number]>): T;\nexport const value = choose(\"red\", [\"blue\", 1]);\n",
+      "accepts": false
+    },
+    {
+      "id": "array-position-accept",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<T>[]): T;\nexport const value = choose(\"red\", [\"red\"]);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      }
+    },
+    {
+      "id": "array-position-reject",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<T>[]): T;\nexport const value = choose(\"red\", [\"blue\"]);\n",
+      "accepts": false
+    },
+    {
+      "id": "array-container-accept",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<T[]>): T;\nexport const value = choose(\"red\", [\"red\"]);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      }
+    },
+    {
+      "id": "array-container-reject",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<T[]>): T;\nexport const value = choose(\"red\", [\"blue\"]);\n",
+      "accepts": false
+    },
+    {
+      "id": "record-position-accept",
+      "source": "declare function choose<T extends string>(anchor: T, check: {value: NoInfer<T>}): T;\nexport const value = choose(\"red\", {value: \"red\"});\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      }
+    },
+    {
+      "id": "record-position-reject",
+      "source": "declare function choose<T extends string>(anchor: T, check: {value: NoInfer<T>}): T;\nexport const value = choose(\"red\", {value: \"blue\"});\n",
+      "accepts": false
+    },
+    {
+      "id": "record-container-accept",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<{value: T}>): T;\nexport const value = choose(\"red\", {value: \"red\"});\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      }
+    },
+    {
+      "id": "record-container-reject",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<{value: T}>): T;\nexport const value = choose(\"red\", {value: \"blue\"});\n",
+      "accepts": false
+    },
+    {
+      "id": "optional-record-accept",
+      "source": "declare function choose<T extends string>(anchor: T, check: {value?: NoInfer<T>}): T;\nexport const value = choose(\"red\", {value: \"red\"});\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      }
+    },
+    {
+      "id": "optional-record-reject",
+      "source": "declare function choose<T extends string>(anchor: T, check: {value?: NoInfer<T>}): T;\nexport const value = choose(\"red\", {value: \"blue\"});\n",
+      "accepts": false
+    },
+    {
+      "id": "callback-result-accept",
+      "source": "declare function choose<T extends string>(anchor: T, check: () => NoInfer<T>): T;\nexport const value = choose(\"red\", () => \"red\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      }
+    },
+    {
+      "id": "callback-result-reject",
+      "source": "declare function choose<T extends string>(anchor: T, check: () => NoInfer<T>): T;\nexport const value = choose(\"red\", () => \"blue\");\n",
+      "accepts": false
+    },
+    {
+      "id": "callback-container-accept",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<() => T>): T;\nexport const value = choose(\"red\", () => \"red\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      }
+    },
+    {
+      "id": "callback-container-reject",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<() => T>): T;\nexport const value = choose(\"red\", () => \"blue\");\n",
+      "accepts": false
+    },
+    {
+      "id": "callback-parameter-accept",
+      "source": "declare function choose<T extends string>(anchor: T, check: (value: NoInfer<T>) => void): T;\nexport const value = choose(\"red\", (value: \"red\") => {});\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      }
+    },
+    {
+      "id": "callback-parameter-reject",
+      "source": "declare function choose<T extends string>(anchor: T, check: (value: NoInfer<T>) => void): T;\nexport const value = choose(\"red\", (value: \"blue\") => {});\n",
+      "accepts": false
+    },
+    {
+      "id": "repeated-wrapper-accept",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<NoInfer<T>>): T;\nexport const value = choose(\"red\", \"red\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      }
+    },
+    {
+      "id": "repeated-wrapper-reject",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<NoInfer<T>>): T;\nexport const value = choose(\"red\", \"blue\");\n",
+      "accepts": false
+    },
+    {
+      "id": "optional-record-absent",
+      "source": "declare function choose<T extends string>(anchor: T, check: {value?: NoInfer<T>}): T;\nexport const value = choose(\"red\", {});\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      }
+    },
+    {
+      "id": "local-alias-accept",
+      "source": "type Block<T> = NoInfer<T>;\ndeclare function choose<T extends string>(anchor: T, check: Block<T>): T;\nexport const value = choose(\"red\", \"red\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      }
+    },
+    {
+      "id": "local-alias-reject",
+      "source": "type Block<T> = NoInfer<T>;\ndeclare function choose<T extends string>(anchor: T, check: Block<T>): T;\nexport const value = choose(\"red\", \"blue\");\n",
+      "accepts": false
+    },
+    {
+      "id": "nested-alias-accept",
+      "source": "type Block<T> = NoInfer<{value: T}>;\ndeclare function choose<T extends string>(anchor: T, check: Block<T>): T;\nexport const value = choose(\"red\", {value: \"red\"});\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      }
+    },
+    {
+      "id": "nested-alias-reject",
+      "source": "type Block<T> = NoInfer<{value: T}>;\ndeclare function choose<T extends string>(anchor: T, check: Block<T>): T;\nexport const value = choose(\"red\", {value: \"blue\"});\n",
+      "accepts": false
+    },
+    {
+      "id": "imported-alias-accept",
+      "source": "import type { Block } from \"./aliases\";\ndeclare function choose<T extends string>(anchor: T, check: Block<T>): T;\nexport const value = choose(\"red\", \"red\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      },
+      "files": {
+        "aliases.ts": "export type Block<T> = NoInfer<T>;\n"
+      }
+    },
+    {
+      "id": "imported-alias-reject",
+      "source": "import type { Block } from \"./aliases\";\ndeclare function choose<T extends string>(anchor: T, check: Block<T>): T;\nexport const value = choose(\"red\", \"blue\");\n",
+      "accepts": false,
+      "files": {
+        "aliases.ts": "export type Block<T> = NoInfer<T>;\n"
+      }
+    },
+    {
+      "id": "blocked-context-result",
+      "source": "declare function choose<T>(): NoInfer<T>;\nexport const value = choose();\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: unknown = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      }
+    },
+    {
+      "id": "blocked-context-result-reject",
+      "source": "declare function choose<T>(): NoInfer<T>;\nexport const value: number = choose();\n",
+      "accepts": false
+    },
+    {
+      "id": "ordinary-context-result-control",
+      "source": "declare function choose<T>(): T;\nexport const value: number = choose();\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "overload-generic",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<T>): \"matched\";\ndeclare function choose(anchor: string, check: number): \"fallback\";\nexport const value = choose(\"red\", \"red\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"matched\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"fallback\" = value;\n"
+      }
+    },
+    {
+      "id": "overload-fallback",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<T>): \"matched\";\ndeclare function choose(anchor: string, check: number): \"fallback\";\nexport const value = choose(\"red\", 7);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"fallback\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"matched\" = value;\n"
+      }
+    },
+    {
+      "id": "overload-no-candidate",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<T>): \"matched\";\ndeclare function choose(anchor: string, check: number): \"fallback\";\nexport const value = choose(\"red\", \"blue\");\n",
+      "accepts": false
+    },
+    {
+      "id": "explicit-constraint-reject",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<T>): T;\nexport const value = choose<number>(1, 1);\n",
+      "accepts": false
+    },
+    {
+      "id": "local-shadow-accept",
+      "source": "type NoInfer<T> = {owner: T};\ndeclare function choose<T extends string>(anchor: T, check: NoInfer<T>): T;\nexport const value = choose(\"red\", {owner: \"blue\"});\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" | \"blue\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"green\" = value;\n"
+      }
+    },
+    {
+      "id": "local-shadow-reject",
+      "source": "type NoInfer<T> = {owner: T};\ndeclare function choose<T extends string>(anchor: T, check: NoInfer<T>): T;\nexport const value = choose(\"red\", {owner: 7});\n",
+      "accepts": false
+    },
+    {
+      "id": "imported-shadow-accept",
+      "source": "import type { NoInfer } from \"./aliases\";\ndeclare function choose<T extends string>(anchor: T, check: NoInfer<T>): T;\nexport const value = choose(\"red\", {owner: \"blue\"});\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" | \"blue\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"green\" = value;\n"
+      },
+      "files": {
+        "aliases.ts": "export type NoInfer<T> = {owner: T};\n"
+      }
+    },
+    {
+      "id": "imported-shadow-reject",
+      "source": "import type { NoInfer } from \"./aliases\";\ndeclare function choose<T extends string>(anchor: T, check: NoInfer<T>): T;\nexport const value = choose(\"red\", {owner: 7});\n",
+      "accepts": false,
+      "files": {
+        "aliases.ts": "export type NoInfer<T> = {owner: T};\n"
+      }
+    },
+    {
+      "id": "conditional-infer",
+      "source": "type Extracted<T> = T extends NoInfer<infer U> ? U : never;\ndeclare function choose<T>(check: T): T;\nexport const value = choose<Extracted<string>>(\"ok\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: unknown = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      }
+    },
+    {
+      "id": "conditional-infer-reject",
+      "source": "type Extracted<T> = T extends NoInfer<infer U> ? U : never;\ndeclare function choose<T>(check: T): T;\nexport const value: number = choose<Extracted<string>>(\"ok\");\n",
+      "accepts": false
+    },
+    {
+      "id": "conditional-property",
+      "source": "type Extracted<T> = T extends {value: NoInfer<infer U>} ? U : never;\ndeclare function choose<T>(check: T): T;\nexport const value = choose<Extracted<{value: string}>>(\"ok\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: unknown = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      }
+    },
+    {
+      "id": "conditional-property-reject",
+      "source": "type Extracted<T> = T extends {value: NoInfer<infer U>} ? U : never;\ndeclare function choose<T>(check: T): T;\nexport const value: number = choose<Extracted<{value: string}>>(\"ok\");\n",
+      "accepts": false
+    },
+    {
+      "id": "materialized-scalar",
+      "source": "declare function choose<T>(check: T): NoInfer<T>;\nexport const value = choose(7);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "materialized-record",
+      "source": "declare function choose<T>(check: T): NoInfer<T>;\nexport const value = choose({value: \"ok\"});\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: {value: string} = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: {value: number} = value;\n"
+      }
+    },
+    {
+      "id": "materialized-array",
+      "source": "declare function choose<T>(check: T): NoInfer<T>;\nexport const value = choose([1, 2]);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number[] = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string[] = value;\n"
+      }
+    },
+    {
+      "id": "materialized-empty",
+      "source": "declare function choose<T>(check: T): NoInfer<T>;\nexport const value = choose({});\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: {} = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      }
+    },
+    {
+      "id": "materialized-union",
+      "source": "declare function choose<T>(check: T): NoInfer<T>;\nexport const value = choose(1 as string | number);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: string | number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: boolean = value;\n"
+      }
+    },
+    {
+      "id": "readonly-record-accept",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<Readonly<{value: T}>>): T;\nexport const value = choose(\"red\", {value: \"red\"});\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      }
+    },
+    {
+      "id": "readonly-record-reject",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<Readonly<{value: T}>>): T;\nexport const value = choose(\"red\", {value: \"blue\"});\n",
+      "accepts": false
+    },
+    {
+      "id": "readonly-result-reject",
+      "source": "declare function choose<T>(check: T): NoInfer<Readonly<T>>;\nexport const value = choose({value: \"ok\"});\nvalue.value = \"bad\";\n",
+      "accepts": false
+    },
+    {
+      "id": "wrapped-union-accept",
+      "source": "declare function choose<T extends number>(anchor: T, check: NoInfer<T | string>): T;\nexport const value = choose(1, \"ok\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: 1 = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: 2 = value;\n"
+      }
+    },
+    {
+      "id": "wrapped-union-reject",
+      "source": "declare function choose<T extends number>(anchor: T, check: NoInfer<T | string>): T;\nexport const value = choose(1, true);\n",
+      "accepts": false
+    },
+    {
+      "id": "union-branch-accept",
+      "source": "declare function choose<T extends number>(anchor: T, check: NoInfer<T> | string): T;\nexport const value = choose(1, \"ok\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: 1 = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: 2 = value;\n"
+      }
+    },
+    {
+      "id": "union-branch-reject",
+      "source": "declare function choose<T extends number>(anchor: T, check: NoInfer<T> | string): T;\nexport const value = choose(1, true);\n",
+      "accepts": false
+    },
+    {
+      "id": "later-evidence-accept",
+      "source": "declare function choose<T extends string>(check: NoInfer<T> | number, anchor: T): T;\nexport const value = choose(1, \"red\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      }
+    },
+    {
+      "id": "later-evidence-reject",
+      "source": "declare function choose<T extends string>(check: NoInfer<T> | number, anchor: T): T;\nexport const value = choose(\"blue\", \"red\");\n",
+      "accepts": false
+    },
+    {
+      "id": "rest-pack",
+      "source": "declare function choose<T extends unknown[]>(...check: NoInfer<T>): T;\nexport const value = choose(1, \"ok\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: unknown[] = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: [number, string] = value;\n"
+      }
+    },
+    {
+      "id": "rest-pack-context-control",
+      "source": "declare function choose<T extends unknown[]>(...check: NoInfer<T>): T;\nexport const value: [number, string] = choose(1, \"ok\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: [number, string] = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: [string, number] = value;\n"
+      }
+    },
+    {
+      "id": "rest-pack-reject",
+      "source": "declare function choose<T extends unknown[]>(...check: NoInfer<T>): T;\nexport const value: [number, string] = choose(\"bad\", 1);\n",
+      "accepts": false
+    },
+    {
+      "id": "keyof-barrier-accept",
+      "source": "declare function choose<T>(anchor: T, key: keyof NoInfer<T>): T;\nexport const value = choose({red: 1}, \"red\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: {red: number} = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: {blue: number} = value;\n"
+      }
+    },
+    {
+      "id": "keyof-barrier-reject",
+      "source": "declare function choose<T>(anchor: T, key: keyof NoInfer<T>): T;\nexport const value = choose({red: 1}, \"blue\");\n",
+      "accepts": false
+    },
+    {
+      "id": "missing-type-argument",
+      "source": "export const value: NoInfer = 1;\n",
+      "accepts": false
+    },
+    {
+      "id": "excess-type-arguments",
+      "source": "export const value: NoInfer<number, string> = 1;\n",
+      "accepts": false
+    },
+    {
+      "id": "utf16-crlf-reject",
+      "source": "// 😀 original CRLF coordinates\r\ndeclare function choose<T extends string>(anchor: T, check: NoInfer<T>): T;\r\n/* 😀 */ export const value = choose(\"red\", \"blue\");\r\n",
+      "accepts": false
+    },
+    {
+      "id": "runtime-exported-generic",
+      "source": "declare const console: {log(value: string): void};\nexport function choose<T extends string>(anchor: T, check: NoInfer<T>): T { return anchor; }\nexport const value = choose(\"red\", \"red\");\nconsole.log(value);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import {value, choose} from \"./main\";\nconst observed: \"red\" = value;\nconst result: \"red\" = choose(\"red\", \"red\");\n",
+        "negative": "import {choose} from \"./main\";\nchoose(\"red\", \"blue\");\n"
+      },
+      "runtime": "execute the exported generic with a blocked evidence position"
+    },
+    {
+      "id": "runtime-aliased-generic",
+      "source": "declare const console: {log(value: string): void};\ntype Block<T> = NoInfer<T>;\nfunction choose<T extends string>(anchor: T, check: Block<T>): T { return anchor; }\nexport const value = choose(\"red\", \"red\");\nconsole.log(value);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      },
+      "runtime": "execute a generic whose evidence barrier passes through an alias"
+    }
+  ]
+}

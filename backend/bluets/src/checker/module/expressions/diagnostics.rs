@@ -125,6 +125,15 @@ impl ModuleChecker<'_> {
     ) {
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
         budget.checking = self.checking;
+        // Inferred scalar barriers reduce, while object barriers retain their
+        // public name in related-property diagnostics. Lookup expands the
+        // underlying checking shape separately.
+        let checked =
+            crate::checker::inference::diagnostic_type(expected, &self.types, &mut budget);
+        if checked != *expected && !budget.exhausted {
+            self.call_argument_error(span, message, actual, &checked, argument, overloaded);
+            return;
+        }
         // A closed conditional alias computes its diagnostic shape. Other
         // operators retain their native source spelling (such as keyof Events).
         let resolved = if matches!(expected, Type::Named {name, ..}

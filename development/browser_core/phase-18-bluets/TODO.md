@@ -8,24 +8,24 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-11-11).**
+**Current BlueTS / BlueTSC compatibility status (2026-11-12).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 39,927 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 40,213 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 39,085/39,091 (99.9847%); 3 open, 3 refused observations |
+| Direct agreement | 39,371/39,377 (99.9848%); 3 open, 3 refused observations |
 | Separate controls | 633 native-reference + 203 BlueTS owner = 836; excluded from direct agreement |
-| Case labels | 39,921 scoped closed (including controls), 3 open, 3 refused |
-| Suite inventory | 184 suites / 389 ignored Rust functions; not a case denominator |
-| Suite labels | 180 scoped closed, 1 open, 3 refused |
+| Case labels | 40,207 scoped closed (including controls), 3 open, 3 refused |
+| Suite inventory | 185 suites / 390 ignored Rust functions; not a case denominator |
+| Suite labels | 181 scoped closed, 1 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 227 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 39,927 recorded case expectations pass; expected differences/refusals are not
+All 40,213 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,8 +33,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:4687d8d818e1d6b08bb437b41b19c9d84813356f`.
-Input graph SHA-256: `b23e0d3f3b3d5550d5d704b7ce90b09c0881babd6e53858d81c7b8861ae1078f`.
+Compiler/oracle source: `backend-tree:1b539964f6587dc42b42a87f53001f1ee6d5751f`.
+Input graph SHA-256: `866db4efa41bdb486b36ccd47e37ba010f204795e22e3b6f83c553e9273c8e4f`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -60,12 +60,12 @@ broader G-C1 inventory row remains open for unmeasured CLI/recovery coverage;
 the finite checklist does not claim full parity. See the
 [acceptance record](PLAN.md#phase-l--g-c1-implementation).
 
-**Latest completed follow-up:** G-T7/G-T2 supplies the frozen receiver utilities
-`ThisParameterType` and `OmitThisParameter`, with full diagnostics, byte-exact
-`.d.ts`, isolated consumers and execution. [Current acceptance](RECEIVER_UTILITY_ACCEPTANCE.md)
-binds complete Native/local/Windows gates and current project regressions to
-this source. Callable utilities and prior mitt/defu evaluations retain their
-original dated evidence. All 22 broader rows remain open.
+**Latest completed follow-up:** P0-A supplies the frozen NoInfer inference
+boundary through shared candidate, contextual, conditional and checking paths.
+[Acceptance](NOINFER_ACCEPTANCE.md) binds complete Native/local/Windows gates,
+exact declarations, isolated consumers, maps and project regressions to its
+source. Earlier callable and receiver packages retain their dated evidence.
+All 22 broader rows remain open; continue with P0-B, then P0-C.
 
 ## Open gaps and implementation priority — 2026-11-11
 
@@ -93,7 +93,7 @@ alone do not establish arbitrary TypeScript compatibility.
 | G-T4 | Overload resolution: candidate isolation/order, contextual callbacks, imported/computed chains and variance/nullability combinations. | P0 |
 | G-T5 | Advanced type compositions: computed keys, unions/intersections, optional/rest/variadic tuples, const/satisfies and scope/flag interactions. | P0 |
 | G-T6 | Structural compatibility: computed/non-literal members, callback/generic protocols, optional/rest parameters and library/variance relations. | P0 |
-| G-T7 | Standard library: six missing utility names in the ES2022 probe, ES5 Awaited and its supporting declarations, wider catalogs and compositions. | P0 |
+| G-T7 | Standard library: five remaining utility names in the current ES2022 probe, ES5 Awaited and its supporting declarations, wider catalogs and compositions. | P0 |
 | G-T8 | Return/context inference: nested/imported/recursive returns, async/generator/getter results, flow and operator/library compositions. | P0 |
 | G-T9 | Classes: recursive/imported getters and merges, computed generic calls, constructor contexts and decorated class expressions. | P3 |
 | G-T10 | Module types: declaration merging, import queries/attributes/resolution modes, private/generic/ambient compositions and metadata import retention. | P1 |
@@ -117,7 +117,7 @@ obligations; they are not three additional implementation fixes per feature.
 
 | Order | Shared work and overlap | Concrete reason for this order |
 | --- | --- | --- |
-| P0 | Inference/type operators/library semantics: G-T2 through G-T8. NoInfer directly connects G-T2/G-T4/G-T6/G-T7/G-T8; union, intersection, template and thenable work connects G-T3/G-T5. | The accepted name probe supplies concrete failures, and the code shares candidate collection, substitution and bounded operator expansion. Start here. |
+| P0 | Inference/type operators/library semantics: G-T2 through G-T8. NoInfer directly connects G-T2/G-T4/G-T6/G-T7/G-T8; union, intersection, template and thenable work connects G-T3/G-T5. | The accepted name probe supplies concrete failures, and the code shares candidate collection, substitution and bounded operator expansion. Continue with P0-B, then P0-C. |
 | P1 | Flow, imported identities and exact declarations: G-T1/G-T10/G-D1/G-D2/G-E4, with G-T8/G-T9 interactions. | Stable inferred types and retained identities feed both public declarations and declaration maps. Freeze new cross-file/flow counterexamples before extending the existing accepted forms. |
 | P2 | One dependency graph across resolution, modules, build/watch and tracing: G-M1/G-M2/G-E2/G-C1, with G-T10 interactions. | Canonical resolved/missing inputs, package decisions and their fingerprints drive invalidation and explainFiles. Share those facts while preserving owner confinement. |
 | P3 | Class/decorator/JSX and target lowering: G-T9/G-E1/G-E3/G-E5/G-C3, with G-E2/G-E4 interactions. | These compositions depend on earlier type/identity work and involve several separate lowering/runtime paths. Add new mapping families with the corresponding constructs; retain the already accepted 572 corrections. |
@@ -144,19 +144,20 @@ Code supporting these dependencies:
 
 ### Next implementation packages — P0 first
 
-The [accepted presence probe](RECEIVER_UTILITY_MEASUREMENT.json#/presenceInventory/corrected)
-reports NonNullable, Uppercase, Lowercase, Capitalize, Uncapitalize and NoInfer
-missing in ES2022; ES5 also reports Awaited. This probes 22 selected names in
-two profiles, not the full library catalog or semantic completeness.
+The [current presence witnesses](NOINFER_MEASUREMENT.json#/presenceInventory/corrected)
+retain NonNullable, Uppercase, Lowercase, Capitalize and Uncapitalize as missing
+in ES2022; ES5 additionally reports Awaited and its supporting PromiseLike type.
+NoInfer now passes. This probes 22 selected names under two profiles; semantic
+acceptance is separately recorded, and broader catalogs remain open.
 
-- [ ] **P0-A — NoInfer and shared candidate boundaries; start here.** Freeze
-  Native positive/negative controls for ordinary versus blocked inference,
-  argument/contextual-result evidence, nested/aliased positions, constraints,
-  defaults, callbacks and competing overloads. Preserve assignability after
-  instantiation and owner/local shadowing. Implement the inference boundary
-  through the type model and candidate collector; an identity alias or a
-  utility-name check cannot supply the required behavior. This package targets
-  G-T2/G-T4/G-T6/G-T7/G-T8 together.
+- [x] **P0-A — NoInfer and shared candidate boundaries.** Delivered the frozen
+  282 primary and four supplementary diagnostic comparisons across
+  G-T2/G-T4/G-T6/G-T7/G-T8. All diagnostics and declaration bytes match;
+  each actual compiler passes 159 declaration files, 306 isolated consumers,
+  159 syntax checks and six executions. Complete same-source Native/local,
+  Windows-82, maps, project and tooling gates pass. Three owner controls and
+  nine budget refusals remain separate. [Acceptance](NOINFER_ACCEPTANCE.md) ·
+  [measurement](NOINFER_MEASUREMENT.json). Broader rows remain open.
 - [ ] **P0-B — NonNullable and ES5 Awaited foundations.** Freeze nullability,
   union/intersection, unknown/any/never, generic and recursive/custom-thenable
   controls. Isolate ES5 Awaited visibility from PromiseLike visibility; keep

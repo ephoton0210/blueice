@@ -284,6 +284,7 @@ fn property_type_with_access(
             }
         }
         Type::Named { .. }
+        | Type::InferenceBarrier(_)
         | Type::Conditional(_)
         | Type::Mapped(_)
         | Type::IndexedAccess { .. }
@@ -403,6 +404,7 @@ pub(super) fn contains_readonly_member(
             Ok(fields.iter().any(|field| field.readonly))
         }
         Type::Named { .. }
+        | Type::InferenceBarrier(_)
         | Type::Conditional(_)
         | Type::Mapped(_)
         | Type::IndexedAccess { .. }
@@ -458,6 +460,7 @@ pub(super) fn readonly_property(
             }
         }
         Type::Named { .. }
+        | Type::InferenceBarrier(_)
         | Type::Conditional(_)
         | Type::Mapped(_)
         | Type::IndexedAccess { .. }
@@ -535,6 +538,7 @@ pub(super) fn mutation_field_type(
                 }
             }),
         Type::Named { .. }
+        | Type::InferenceBarrier(_)
         | Type::Conditional(_)
         | Type::Mapped(_)
         | Type::IndexedAccess { .. }

@@ -151,7 +151,7 @@ fn expand_final_owner(
                 expand_final_owner(checker, part, result, budget, &mut visited.clone())?;
             }
         }
-        Type::Named { .. } => {
+        Type::Named { .. } | Type::InferenceBarrier(_) => {
             match instantiate_named(
                 &owner,
                 &checker.types,
@@ -213,7 +213,7 @@ fn access_candidates(
                 access_candidates(checker, part, property, index, result, budget)?;
             }
         }
-        Type::Named { .. } => {
+        Type::Named { .. } | Type::InferenceBarrier(_) => {
             let mut visited = HashSet::new();
             match instantiate_named(
                 &owner,
@@ -326,7 +326,7 @@ fn deep_contains_readonly(
             }
             Ok(false)
         }
-        Type::Named { .. } => {
+        Type::Named { .. } | Type::InferenceBarrier(_) => {
             match instantiate_named(
                 value,
                 aliases,

@@ -20,6 +20,9 @@ impl Collector<'_> {
         if !self.budget.consume() {
             return;
         }
+        if matches!(template, Type::InferenceBarrier(_)) {
+            return;
+        }
         let identity = type_identity(template);
         let dependent = if let Some(dependent) = self.dependencies.get(&identity) {
             *dependent

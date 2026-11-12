@@ -1,0 +1,1706 @@
+{
+  "schema": 1,
+  "recordedAt": "2026-11-12T07:37:12.245101+00:00",
+  "conclusion": "completed-within-frozen-scope",
+  "source": {
+    "sourceRevision": "backend-tree:1b539964f6587dc42b42a87f53001f1ee6d5751f",
+    "backendTree": "1b539964f6587dc42b42a87f53001f1ee6d5751f",
+    "head": "216fde83020043b7bcdc0de169f1b0a125c5e9d7",
+    "inputSha256": "f93542b0ad33c9ca5fbc3122e732548427bff77108eec7cc3f74046e0f8734e6",
+    "referenceSha256": "5af732d9e989b8dbaa687615ac4837e51f7994220b3bd43637ca260a20d18c65",
+    "maximumProductionLines": 1292
+  },
+  "gates": {
+    "sourceRevision": "backend-tree:1b539964f6587dc42b42a87f53001f1ee6d5751f",
+    "startedAt": "2026-11-12T03:52:24.435238+00:00",
+    "stage": "local-complete-awaiting-windows-and-publication",
+    "conclusion": "success",
+    "steps": [
+      {
+        "label": "suite-write",
+        "command": [
+          "cargo",
+          "run",
+          "-p",
+          "blueice-bluets",
+          "--example",
+          "compatibility_inventory",
+          "--locked",
+          "--offline",
+          "--",
+          "--write",
+          "backend-tree:1b539964f6587dc42b42a87f53001f1ee6d5751f"
+        ],
+        "exit": 0,
+        "log": "suite-write.log",
+        "sha256": "c5d030d34d2d3135eef318a28cd53f5adad01763efc66ad3bc6c8df39d97d7b3"
+      },
+      {
+        "label": "source-check",
+        "command": [
+          "cargo",
+          "run",
+          "-p",
+          "blueice-bluets",
+          "--example",
+          "compatibility_inventory",
+          "--locked",
+          "--offline",
+          "--",
+          "--check-staged"
+        ],
+        "exit": 0,
+        "log": "source-check.log",
+        "sha256": "0fc774f2560562401a53e596b3b892b5c1bf0358646ad917f3aaa9bff9931a48"
+      },
+      {
+        "label": "native-build",
+        "command": [
+          "cargo",
+          "test",
+          "-p",
+          "blueice-bluets",
+          "-p",
+          "blueice-bluets-bluejs",
+          "--no-run",
+          "--locked",
+          "--offline"
+        ],
+        "exit": 0,
+        "log": "native-build.log",
+        "sha256": "0e898929c1f380de69c8097a8129494c7e38ff913c5a082ff1a83fe2ee58b756"
+      },
+      {
+        "label": "presence-corrected",
+        "command": [
+          "node",
+          "/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112/presence_corrected.cjs"
+        ],
+        "exit": 0,
+        "log": "presence-corrected.log",
+        "sha256": "488bd2224efda1f08a7974fe9648a8ee66a3b20b9b788524e3b5da8124f45a2b"
+      },
+      {
+        "label": "project-defu",
+        "command": [
+          "node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-audit.cjs",
+          "--compiler",
+          "/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112/accepted-native-cli",
+          "--typescript",
+          "/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112/oracles/node_modules/typescript/bin/tsc",
+          "--output",
+          "/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112/project-defu",
+          "--source-tree",
+          "1b539964f6587dc42b42a87f53001f1ee6d5751f"
+        ],
+        "exit": 0,
+        "log": "project-defu.log",
+        "sha256": "54a9d8c5ab80a06f7ec71dc78270abedd1e7d62c116da4d9394ea42523309532"
+      },
+      {
+        "label": "project-mitt",
+        "command": [
+          "node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/audit.cjs",
+          "--compiler",
+          "/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112/accepted-native-cli",
+          "--typescript",
+          "/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112/oracles/node_modules/typescript/bin/tsc",
+          "--output",
+          "/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112/project-mitt",
+          "--source-tree",
+          "1b539964f6587dc42b42a87f53001f1ee6d5751f"
+        ],
+        "exit": 0,
+        "log": "project-mitt.log",
+        "sha256": "81611f3cc0863ed3cfc5a29c2505c8aeccde86b218a836e721b74723bac8d7c4"
+      },
+      {
+        "label": "project-reproductions",
+        "command": [
+          "node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-reproduce.cjs",
+          "--compiler",
+          "/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112/accepted-native-cli",
+          "--typescript",
+          "/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112/oracles/node_modules/typescript/bin/tsc",
+          "--output",
+          "/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112/project-reproductions",
+          "--source-tree",
+          "1b539964f6587dc42b42a87f53001f1ee6d5751f"
+        ],
+        "exit": 0,
+        "log": "project-reproductions.log",
+        "sha256": "624a239c060f24e4756cbe0766b884d0deabc23b9dd98841e951f2b89aede886"
+      },
+      {
+        "label": "project-interchange",
+        "command": [
+          "node",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-interchange.cjs",
+          "--compiler",
+          "/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112/accepted-native-cli",
+          "--typescript",
+          "/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112/oracles/node_modules/typescript/bin/tsc",
+          "--output",
+          "/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112/project-interchange",
+          "--source-tree",
+          "1b539964f6587dc42b42a87f53001f1ee6d5751f"
+        ],
+        "exit": 0,
+        "log": "project-interchange.log",
+        "sha256": "27dd7d79b1aaf586887c04053f22a8b4d44f9c826eac29a572ccfd72e49f2287"
+      },
+      {
+        "label": "native",
+        "command": [
+          "node",
+          "/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112/measure_priority.cjs"
+        ],
+        "exit": 0,
+        "log": "native.log",
+        "sha256": "1a1dc4c68d174279c6541cd6c9db6b006a7621cfea38243b5e5c200f24ea648e"
+      },
+      {
+        "label": "cases-write",
+        "command": [
+          "cargo",
+          "run",
+          "-p",
+          "blueice-bluets",
+          "--example",
+          "compatibility_inventory",
+          "--locked",
+          "--offline",
+          "--",
+          "--write-cases",
+          "backend-tree:1b539964f6587dc42b42a87f53001f1ee6d5751f",
+          "/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112/accepted-native/measurement.json"
+        ],
+        "exit": 0,
+        "log": "cases-write.log",
+        "sha256": "cdf881f5a59e276c70be88c925ad4602ecda71cece6d094f87021f9fac641a74"
+      },
+      {
+        "label": "suite-labels",
+        "command": [
+          "cargo",
+          "run",
+          "-p",
+          "blueice-bluets",
+          "--example",
+          "compatibility_inventory",
+          "--locked",
+          "--offline",
+          "--",
+          "--write",
+          "backend-tree:1b539964f6587dc42b42a87f53001f1ee6d5751f"
+        ],
+        "exit": 0,
+        "log": "suite-labels.log",
+        "sha256": "76278e54e7c7822f6237a823220b37631b5e463c5f21feaa350139f31e0ad785"
+      },
+      {
+        "label": "account-write",
+        "command": [
+          "python3",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/account_inventory_rows.py",
+          "--write"
+        ],
+        "exit": 0,
+        "log": "account-write.log",
+        "sha256": "0382d16032577e5fb2cbdbf3faa1aa3982f455e81b6e4bb91227b11770edafdb"
+      },
+      {
+        "label": "status-write",
+        "command": [
+          "python3",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/check_compatibility_status.py",
+          "--write"
+        ],
+        "exit": 0,
+        "log": "status-write.log",
+        "sha256": "15369a59ba9bc0f7c61fd1397430cd9f87b259b5c75842a14789c69200c43ef0"
+      },
+      {
+        "label": "workspace-build",
+        "command": [
+          "cargo",
+          "test",
+          "--workspace",
+          "--no-run",
+          "--locked",
+          "--offline"
+        ],
+        "exit": 0,
+        "log": "workspace-build.log",
+        "sha256": "d7a382324ae5916b0db0ddb09a0477fca101b14825917c75b52a25ed81f2d292"
+      },
+      {
+        "label": "workspace",
+        "command": [
+          "cargo",
+          "test",
+          "--workspace",
+          "--no-fail-fast",
+          "--locked",
+          "--offline"
+        ],
+        "exit": 0,
+        "log": "workspace.log",
+        "sha256": "0c52fae6e35ad42d7f496d693de647daf30f57e0feb35e19c1f6ef247a798343"
+      },
+      {
+        "label": "workspace-callable-oracles",
+        "command": [
+          "node",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/verify_callable_utilities.cjs"
+        ],
+        "exit": 0,
+        "log": "workspace-callable-oracles.log",
+        "sha256": "86ca389c3aa180565f80e1783aa22ae73d70ec5da70cc25bf9c4e352fcecf0bd"
+      },
+      {
+        "label": "workspace-receiver-oracles",
+        "command": [
+          "node",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/verify_receiver_utilities.cjs"
+        ],
+        "exit": 0,
+        "log": "workspace-receiver-oracles.log",
+        "sha256": "71ff09aa1054e9af0ebead6d8b4e44ef52b1583b48a5aaf1253440902abbcfd8"
+      },
+      {
+        "label": "workspace-noinfer-oracles",
+        "command": [
+          "node",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/verify_noinfer.cjs"
+        ],
+        "exit": 0,
+        "log": "workspace-noinfer-oracles.log",
+        "sha256": "d6399e86feec5a4bdd7b8b97b72d5e94f22fc5de35f2b019a5612d99ac8189cb"
+      },
+      {
+        "label": "workspace-noinfer-regressions",
+        "command": [
+          "node",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/verify_noinfer_regressions.cjs"
+        ],
+        "exit": 0,
+        "log": "workspace-noinfer-regressions.log",
+        "sha256": "49e5354535970ca22f5b74b897b66bdf23a2c623b61301176a98fa54f85eb6ca"
+      },
+      {
+        "label": "fmt-check",
+        "command": [
+          "cargo",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "exit": 0,
+        "log": "fmt-check.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "label": "clippy",
+        "command": [
+          "cargo",
+          "clippy",
+          "--workspace",
+          "--all-targets",
+          "--features",
+          "blueice-bluets/windows-symlink-tests",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "exit": 0,
+        "log": "clippy.log",
+        "sha256": "e16a59b979ed7715a213d72a8b4ff0c4dfac8b54866a8e21f4025085e18c9799"
+      },
+      {
+        "label": "node-tools",
+        "command": [
+          "node",
+          "--test",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ci_inventory_checkout.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/collect_ge5_cohort_coverage.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/gc3_policy.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge2_observations.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge4_observations.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_accessor_ending_inventory.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_async_arrow_finally_controls.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_class_declaration_chain.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_class_declaration_endpoints.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_class_expression_assignment.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_class_field_holes.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_class_generated_bindings.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_class_method_holes.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_cohort_coverage.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_decorator_field_endpoints.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_decorator_helpers.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_decorator_member_endpoints.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_decorator_method_members.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_decorator_numeric_keys.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_erased_import_comments.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_helper_collision_frames.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_acquisitions.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_declaration_maps.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_declarations.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_envelope.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_execution.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_expression_maps.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_helpers.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_imports.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_module.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_references.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_interop_source.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_maps.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_metadata_callable_capability.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_metadata_class_artifacts.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_metadata_class_graph.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_native_patch.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_preserved_class_endpoints.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_role_stream.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/ge5_safe_home_ir.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/gm2_state_paths.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/measure_compatibility_cases.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/oracle_shards.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/report_windows_symlink_tests.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/select_oracle_commands.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/backend/bluets/tests/fixtures/oracle_support/fixture_paths.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/backend/bluets/tests/fixtures/oracle_support/normalize_map_source.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/backend/bluets/tests/fixtures/oracle_support/redact_root.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/backend/bluets/tests/fixtures/oracle_support/resolve_package.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/audit.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-audit.test.cjs",
+          "/Users/ephoton/git/blueice-bluets/differential-testing/bluets-projects/defu-interchange.test.cjs"
+        ],
+        "exit": 0,
+        "log": "node-tools.log",
+        "sha256": "2cc9a168d3423129f989e3886ebb58d99e47627e5869d829b99d1b3e59c02c0c"
+      },
+      {
+        "label": "python-tools",
+        "command": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools",
+          "-p",
+          "test_*.py"
+        ],
+        "exit": 0,
+        "log": "python-tools.log",
+        "sha256": "cc971878f4d3c3b0c435d9a1f2c704d9f1f0eaafd1eb0a6f36a256665151c50a"
+      },
+      {
+        "label": "source-final",
+        "command": [
+          "cargo",
+          "run",
+          "-p",
+          "blueice-bluets",
+          "--example",
+          "compatibility_inventory",
+          "--locked",
+          "--offline",
+          "--",
+          "--check-staged"
+        ],
+        "exit": 0,
+        "log": "source-final.log",
+        "sha256": "31a3dee45269bc22737d33da584fd5516abf0ab4422b72ac712128589e0bbb80"
+      },
+      {
+        "label": "cases-final",
+        "command": [
+          "cargo",
+          "run",
+          "-p",
+          "blueice-bluets",
+          "--example",
+          "compatibility_inventory",
+          "--locked",
+          "--offline",
+          "--",
+          "--check-cases-staged"
+        ],
+        "exit": 0,
+        "log": "cases-final.log",
+        "sha256": "6c9539f2bbe798886c8407f79e4f4ee176e5c6c759ebd6f7062351bd32aa895a"
+      },
+      {
+        "label": "account-final",
+        "command": [
+          "python3",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/account_inventory_rows.py",
+          "--check"
+        ],
+        "exit": 0,
+        "log": "account-final.log",
+        "sha256": "0382d16032577e5fb2cbdbf3faa1aa3982f455e81b6e4bb91227b11770edafdb"
+      },
+      {
+        "label": "status-final",
+        "command": [
+          "python3",
+          "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/check_compatibility_status.py",
+          "--check"
+        ],
+        "exit": 0,
+        "log": "status-final.log",
+        "sha256": "15369a59ba9bc0f7c61fd1397430cd9f87b259b5c75842a14789c69200c43ef0"
+      }
+    ],
+    "nativeCompilerSha256": "a646e63f057242571dfaaedf05e0cf14cca856113834c7455358973002b79101",
+    "native": {
+      "suites": 185,
+      "functions": 1053,
+      "failed": 0,
+      "ignored": 0,
+      "filtered": 0
+    },
+    "casePreservation": {
+      "previous": 39927,
+      "current": 40213,
+      "added": 286,
+      "allOldCasesUnchanged": true
+    },
+    "workspaceCompilerSha256": "8f8b48bd6eddb78994adfd55825ecd8159911eb1571c6089a9817abcdc815eee",
+    "workspace": {
+      "passed": 7847,
+      "failed": 0,
+      "ignored": 394,
+      "filtered": 0,
+      "groups": 718
+    },
+    "finishedAt": "2026-11-12T07:31:38.196296+00:00"
+  },
+  "nativeMeasurement": {
+    "path": "COMPATIBILITY_MEASUREMENT.json",
+    "sha256": "138dcc58d0bc9fa86cff3d286bdea690cd78153841f37da25ec8fc7057d00ca6",
+    "suites": 185,
+    "functions": 1053
+  },
+  "primaryForms": 94,
+  "profiles": 3,
+  "primaryObservations": 282,
+  "diagnosticRegressionObservations": 4,
+  "directObservations": 286,
+  "acceptedDeclarationInventories": 153,
+  "declarationFiles": 159,
+  "isolatedConsumers": 306,
+  "selectedEditionParses": 159,
+  "executions": 6,
+  "ownerChecks": 3,
+  "budgetControls": 9,
+  "controlsExcludedFromDirectDenominator": true,
+  "noInferReports": {
+    "native": {
+      "primary": {
+        "path": "native-capture/noinfer/blue-14839/report.json",
+        "sha256": "f6bc5aa49a13f830da6a13086e7e48078b49ad207ec942f2df99ed04c048ca10",
+        "archive": "NOINFER_NATIVE_EVIDENCE.tar.gz"
+      },
+      "supplement": {
+        "path": "native-capture/noinfer/regressions-17018/report.json",
+        "sha256": "578d1ae8e5d3a2e239a8bd4d93be9badf2549c11001cc7d5b5372e21d5f07aa2",
+        "archive": "NOINFER_NATIVE_EVIDENCE.tar.gz"
+      }
+    },
+    "workspace": {
+      "primary": {
+        "path": "workspace-capture/noinfer/blue-29973/report.json",
+        "sha256": "af9e23d82f867e40ccf6e39f0b632853da393a7ef3abb56c9a8c995de22eb118",
+        "archive": "NOINFER_WORKSPACE_EVIDENCE.tar.gz"
+      },
+      "supplement": {
+        "path": "workspace-capture/noinfer/regressions-30893/report.json",
+        "sha256": "1af6810ef79259e6f675e47e17bbca49abc1e56967683b08406a00cdaffc1a87",
+        "archive": "NOINFER_WORKSPACE_EVIDENCE.tar.gz"
+      }
+    },
+    "windows": {
+      "archive": "NOINFER_WINDOWS_EVIDENCE.tar.gz",
+      "scope": "Archive members results-noinfer-v20/noinfer-observations/{blue-*,regressions-*}/report.json; independently checked by verify_windows.py.",
+      "compilerSha256": "b8b3b6f344ce66a0816af4efbfd93f2764825c920adfa05ee2e690d9362d1963"
+    }
+  },
+  "mapBindings": {
+    "native": {
+      "sourceRevision": "backend-tree:1b539964f6587dc42b42a87f53001f1ee6d5751f",
+      "label": "native",
+      "pid": 95810,
+      "observedAt": "2026-11-12T04:26:23.070264+00:00",
+      "compilerSha256": "a646e63f057242571dfaaedf05e0cf14cca856113834c7455358973002b79101",
+      "compilerSnapshot": "/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112/native-cli-snapshot",
+      "testExecutable": "/Users/ephoton/git/blueice-bluets/target/debug/deps/ge5_source_maps-65284d37c0752630",
+      "testExecutableSha256": "463e10e7f5db10ff0a1d8b5ea60c37f64b220884d465c42bb314dd25846af32f",
+      "reportPath": "/var/folders/y4/zd34wgns1j5ddjvp004fz7yw0000gn/T/bluets-ge5-declaration-report-95810.json",
+      "scope": "Process-bound complete8407x2 declaration/JavaScript metadata/bounds report; final whole-suite/gates are recorded separately",
+      "reportNotBeforeEpoch": 1794457581.126509,
+      "verified": true,
+      "reportFreshSinceBinding": true,
+      "reportModifiedEpoch": 1794458799.8129697,
+      "reportSha256": "bb4ed58276c250e79ee79e930738f41f639b9fee173b504c82e2831101ae6c7e",
+      "retainedReport": "/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112/native-declaration-map-report.json"
+    },
+    "workspace": {
+      "sourceRevision": "backend-tree:1b539964f6587dc42b42a87f53001f1ee6d5751f",
+      "label": "workspace",
+      "pid": 54257,
+      "observedAt": "2026-11-12T06:51:46.639832+00:00",
+      "compilerSha256": "8f8b48bd6eddb78994adfd55825ecd8159911eb1571c6089a9817abcdc815eee",
+      "compilerSnapshot": "/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112/workspace-cli-snapshot",
+      "testExecutable": "/Users/ephoton/git/blueice-bluets/target/debug/deps/ge5_source_maps-155ebb5531525fa6",
+      "testExecutableSha256": "2aec328c597a6a239124168472120a692827ef5ef3c3edfded377bbfb042c4dd",
+      "reportPath": "/var/folders/y4/zd34wgns1j5ddjvp004fz7yw0000gn/T/bluets-ge5-declaration-report-54257.json",
+      "scope": "Process-bound complete8407x2 declaration/JavaScript metadata/bounds report; final whole-suite/gates are recorded separately",
+      "reportNotBeforeEpoch": 1794466304.695059,
+      "verified": true,
+      "reportFreshSinceBinding": true,
+      "reportModifiedEpoch": 1794467274.0065286,
+      "reportSha256": "bb4ed58276c250e79ee79e930738f41f639b9fee173b504c82e2831101ae6c7e",
+      "retainedReport": "/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112/workspace-declaration-map-report.json"
+    }
+  },
+  "completeNativeRoleFamilies": [
+    "accepted-native/suite-artifacts/130/node-roles.json",
+    "accepted-native/suite-artifacts/130/reports/retained-declarations43.json",
+    "accepted-native/suite-artifacts/131/reports/safe-home-object.json",
+    "accepted-native/suite-artifacts/132/reports/standard-decorator.json",
+    "accepted-native/suite-artifacts/133/reports/static-super-complete.json",
+    "accepted-native/suite-artifacts/135/reports/decorator-literal-methods.json",
+    "accepted-native/suite-artifacts/136/reports/decorator-literal-accessors.json",
+    "accepted-native/suite-artifacts/137/reports/decorator-literal-fields.json",
+    "accepted-native/suite-artifacts/138/reports/decorator-double-accessors.json",
+    "accepted-native/suite-artifacts/139/reports/async-arrow-finally.json",
+    "accepted-native/suite-artifacts/140/reports/decorator-literal-auto-accessors.json",
+    "accepted-native/suite-artifacts/141/reports/helper-name-collision.json",
+    "accepted-native/suite-artifacts/142/reports/generator-switch-delegation.json",
+    "accepted-native/suite-artifacts/144/reports/private-accessor.json",
+    "accepted-native/suite-artifacts/148/reports/async-generator-finally.json",
+    "accepted-native/suite-artifacts/152/reports/decorator-private-static-super.json",
+    "accepted-native/suite-artifacts/152/reports/decorator-private-super-accessors.json",
+    "accepted-native/suite-artifacts/152/reports/decorator-private-super-async-generator.json",
+    "accepted-native/suite-artifacts/152/reports/decorator-private-super-method.json",
+    "accepted-native/suite-artifacts/155/reports/decorator-legacy-whole.json",
+    "accepted-native/suite-artifacts/156/reports/async-super-method.json",
+    "accepted-native/suite-artifacts/158/reports/decorator-literal-replacement-order.json",
+    "accepted-native/suite-artifacts/159/reports/interop-complete-module-acceptance.json",
+    "accepted-native/suite-artifacts/169/reports/async-class-method.json",
+    "accepted-native/suite-artifacts/176/reports/async-generator-exception-template.json",
+    "accepted-native/suite-artifacts/177/reports/async-arrow-lexical-this.json",
+    "accepted-native/suite-artifacts/179/reports/async-object-method.json",
+    "accepted-native/suite-artifacts/181/reports/async-arrow-default-block.json"
+  ],
+  "partialNativeRoleReports": [
+    {
+      "path": "accepted-native/suite-artifacts/159/reports/interop-complete-module-acceptance-partial.json",
+      "sha256": "60cb2e66b9bfa9cb28387c308dfd8e20d94155fea3865c283bc9a1a660a59567",
+      "configurations": 3,
+      "maps": 12,
+      "completeFamily": false,
+      "completeFamilyCredit": false,
+      "completeCounterpart": "accepted-native/suite-artifacts/159/reports/interop-complete-module-acceptance.json",
+      "scope": "Three frozen ordinary module-boundary observations, outside complete-family credit."
+    },
+    {
+      "path": "accepted-native/suite-artifacts/160/reports/interop-expression-maps.json",
+      "sha256": "b74e6b8ea76f2821b975f1df53a47d3d90f4c2c45af7897d005749d191ef0eba",
+      "configurations": 1,
+      "maps": 4,
+      "completeFamily": false,
+      "completeFamilyCredit": false,
+      "completeCounterpart": "accepted-native/suite-artifacts/159/reports/interop-complete-module-acceptance.json",
+      "scope": "Complete original declaration syntax, expression interiors and logical endpoints; module closure pending"
+    }
+  ],
+  "baseline": {
+    "sourceRevision": "backend-tree:4687d8d818e1d6b08bb437b41b19c9d84813356f",
+    "compilerSha256": "a2e85a3c66972996537b979b762e38d02787c70c15681b730a81994ec514aa2a",
+    "observations": 282,
+    "completeAgreements": 6,
+    "accepted": 12,
+    "archive": "NOINFER_NATIVE_EVIDENCE.tar.gz",
+    "path": "baseline-replay.json"
+  },
+  "presenceInventory": {
+    "baseline": {
+      "scope": "Presence witnesses only; no semantic-completeness percentage or direct-case denominator claim.",
+      "sourceRevision": "backend-tree:4687d8d818e1d6b08bb437b41b19c9d84813356f",
+      "compilerSha256": "a2e85a3c66972996537b979b762e38d02787c70c15681b730a81994ec514aa2a",
+      "typescript": "5.9.3",
+      "observations": [
+        {
+          "profile": "es5",
+          "name": "ThisParameterType",
+          "source": "export type Witness = ThisParameterType<(this: {tag: string}, value: number) => string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "OmitThisParameter",
+          "source": "export type Witness = OmitThisParameter<(this: {tag: string}, value: number) => string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "Awaited",
+          "source": "export type Witness = Awaited<PromiseLike<string>>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `Awaited`\",\"severity\":\"error\",\"span\":{\"end\":29,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"Awaited\"],\"code\":2304,\"message\":\"Cannot find name 'Awaited'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":7,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":29,\"module\":\"main.ts\",\"start\":22}}}\n{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `PromiseLike`\",\"severity\":\"error\",\"span\":{\"end\":41,\"module\":\"main.ts\",\"start\":30},\"typescript\":{\"arguments\":[\"PromiseLike\"],\"code\":2304,\"message\":\"Cannot find name 'PromiseLike'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":31,\"length\":11,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":41,\"module\":\"main.ts\",\"start\":30}}}\n"
+        },
+        {
+          "profile": "es5",
+          "name": "Partial",
+          "source": "export type Witness = Partial<{tag: string}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "Required",
+          "source": "export type Witness = Required<{tag?: string}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "Readonly",
+          "source": "export type Witness = Readonly<{tag: string}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "Pick",
+          "source": "export type Witness = Pick<{tag: string; value: number}, \"tag\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "Record",
+          "source": "export type Witness = Record<\"tag\", string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "Exclude",
+          "source": "export type Witness = Exclude<string | number, number>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "Extract",
+          "source": "export type Witness = Extract<string | number, string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "Omit",
+          "source": "export type Witness = Omit<{tag: string; value: number}, \"value\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "NonNullable",
+          "source": "export type Witness = NonNullable<string | null | undefined>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `NonNullable`\",\"severity\":\"error\",\"span\":{\"end\":33,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"NonNullable\"],\"code\":2304,\"message\":\"Cannot find name 'NonNullable'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":11,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":33,\"module\":\"main.ts\",\"start\":22}}}\n"
+        },
+        {
+          "profile": "es5",
+          "name": "Parameters",
+          "source": "export type Witness = Parameters<(value: number) => string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "ConstructorParameters",
+          "source": "export type Witness = ConstructorParameters<new (value: number) => {value: number}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "ReturnType",
+          "source": "export type Witness = ReturnType<() => string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "InstanceType",
+          "source": "export type Witness = InstanceType<new (value: number) => {value: number}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "Uppercase",
+          "source": "export type Witness = Uppercase<\"word\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `Uppercase`\",\"severity\":\"error\",\"span\":{\"end\":31,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"Uppercase\"],\"code\":2304,\"message\":\"Cannot find name 'Uppercase'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":9,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":31,\"module\":\"main.ts\",\"start\":22}}}\n"
+        },
+        {
+          "profile": "es5",
+          "name": "Lowercase",
+          "source": "export type Witness = Lowercase<\"WORD\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `Lowercase`\",\"severity\":\"error\",\"span\":{\"end\":31,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"Lowercase\"],\"code\":2304,\"message\":\"Cannot find name 'Lowercase'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":9,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":31,\"module\":\"main.ts\",\"start\":22}}}\n"
+        },
+        {
+          "profile": "es5",
+          "name": "Capitalize",
+          "source": "export type Witness = Capitalize<\"word\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `Capitalize`\",\"severity\":\"error\",\"span\":{\"end\":32,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"Capitalize\"],\"code\":2304,\"message\":\"Cannot find name 'Capitalize'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":10,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":32,\"module\":\"main.ts\",\"start\":22}}}\n"
+        },
+        {
+          "profile": "es5",
+          "name": "Uncapitalize",
+          "source": "export type Witness = Uncapitalize<\"Word\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `Uncapitalize`\",\"severity\":\"error\",\"span\":{\"end\":34,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"Uncapitalize\"],\"code\":2304,\"message\":\"Cannot find name 'Uncapitalize'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":12,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":34,\"module\":\"main.ts\",\"start\":22}}}\n"
+        },
+        {
+          "profile": "es5",
+          "name": "NoInfer",
+          "source": "export type Witness = NoInfer<string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `NoInfer`\",\"severity\":\"error\",\"span\":{\"end\":29,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"NoInfer\"],\"code\":2304,\"message\":\"Cannot find name 'NoInfer'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":7,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":29,\"module\":\"main.ts\",\"start\":22}}}\n"
+        },
+        {
+          "profile": "es5",
+          "name": "ThisType",
+          "source": "export type Witness = ThisType<{tag: string}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "ThisParameterType",
+          "source": "export type Witness = ThisParameterType<(this: {tag: string}, value: number) => string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "OmitThisParameter",
+          "source": "export type Witness = OmitThisParameter<(this: {tag: string}, value: number) => string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "Awaited",
+          "source": "export type Witness = Awaited<PromiseLike<string>>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "Partial",
+          "source": "export type Witness = Partial<{tag: string}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "Required",
+          "source": "export type Witness = Required<{tag?: string}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "Readonly",
+          "source": "export type Witness = Readonly<{tag: string}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "Pick",
+          "source": "export type Witness = Pick<{tag: string; value: number}, \"tag\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "Record",
+          "source": "export type Witness = Record<\"tag\", string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "Exclude",
+          "source": "export type Witness = Exclude<string | number, number>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "Extract",
+          "source": "export type Witness = Extract<string | number, string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "Omit",
+          "source": "export type Witness = Omit<{tag: string; value: number}, \"value\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "NonNullable",
+          "source": "export type Witness = NonNullable<string | null | undefined>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `NonNullable`\",\"severity\":\"error\",\"span\":{\"end\":33,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"NonNullable\"],\"code\":2304,\"message\":\"Cannot find name 'NonNullable'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":11,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":33,\"module\":\"main.ts\",\"start\":22}}}\n"
+        },
+        {
+          "profile": "es2022",
+          "name": "Parameters",
+          "source": "export type Witness = Parameters<(value: number) => string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "ConstructorParameters",
+          "source": "export type Witness = ConstructorParameters<new (value: number) => {value: number}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "ReturnType",
+          "source": "export type Witness = ReturnType<() => string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "InstanceType",
+          "source": "export type Witness = InstanceType<new (value: number) => {value: number}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "Uppercase",
+          "source": "export type Witness = Uppercase<\"word\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `Uppercase`\",\"severity\":\"error\",\"span\":{\"end\":31,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"Uppercase\"],\"code\":2304,\"message\":\"Cannot find name 'Uppercase'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":9,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":31,\"module\":\"main.ts\",\"start\":22}}}\n"
+        },
+        {
+          "profile": "es2022",
+          "name": "Lowercase",
+          "source": "export type Witness = Lowercase<\"WORD\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `Lowercase`\",\"severity\":\"error\",\"span\":{\"end\":31,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"Lowercase\"],\"code\":2304,\"message\":\"Cannot find name 'Lowercase'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":9,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":31,\"module\":\"main.ts\",\"start\":22}}}\n"
+        },
+        {
+          "profile": "es2022",
+          "name": "Capitalize",
+          "source": "export type Witness = Capitalize<\"word\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `Capitalize`\",\"severity\":\"error\",\"span\":{\"end\":32,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"Capitalize\"],\"code\":2304,\"message\":\"Cannot find name 'Capitalize'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":10,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":32,\"module\":\"main.ts\",\"start\":22}}}\n"
+        },
+        {
+          "profile": "es2022",
+          "name": "Uncapitalize",
+          "source": "export type Witness = Uncapitalize<\"Word\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `Uncapitalize`\",\"severity\":\"error\",\"span\":{\"end\":34,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"Uncapitalize\"],\"code\":2304,\"message\":\"Cannot find name 'Uncapitalize'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":12,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":34,\"module\":\"main.ts\",\"start\":22}}}\n"
+        },
+        {
+          "profile": "es2022",
+          "name": "NoInfer",
+          "source": "export type Witness = NoInfer<string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `NoInfer`\",\"severity\":\"error\",\"span\":{\"end\":29,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"NoInfer\"],\"code\":2304,\"message\":\"Cannot find name 'NoInfer'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":7,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":29,\"module\":\"main.ts\",\"start\":22}}}\n"
+        },
+        {
+          "profile": "es2022",
+          "name": "ThisType",
+          "source": "export type Witness = ThisType<{tag: string}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        }
+      ]
+    },
+    "corrected": {
+      "scope": "Presence witnesses only; no semantic-completeness percentage or direct-case denominator claim.",
+      "sourceRevision": "backend-tree:1b539964f6587dc42b42a87f53001f1ee6d5751f",
+      "compilerSha256": "a646e63f057242571dfaaedf05e0cf14cca856113834c7455358973002b79101",
+      "typescript": "5.9.3",
+      "observations": [
+        {
+          "profile": "es5",
+          "name": "ThisParameterType",
+          "source": "export type Witness = ThisParameterType<(this: {tag: string}, value: number) => string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "OmitThisParameter",
+          "source": "export type Witness = OmitThisParameter<(this: {tag: string}, value: number) => string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "Awaited",
+          "source": "export type Witness = Awaited<PromiseLike<string>>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `Awaited`\",\"severity\":\"error\",\"span\":{\"end\":29,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"Awaited\"],\"code\":2304,\"message\":\"Cannot find name 'Awaited'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":7,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":29,\"module\":\"main.ts\",\"start\":22}}}\n{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `PromiseLike`\",\"severity\":\"error\",\"span\":{\"end\":41,\"module\":\"main.ts\",\"start\":30},\"typescript\":{\"arguments\":[\"PromiseLike\"],\"code\":2304,\"message\":\"Cannot find name 'PromiseLike'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":31,\"length\":11,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":41,\"module\":\"main.ts\",\"start\":30}}}\n"
+        },
+        {
+          "profile": "es5",
+          "name": "Partial",
+          "source": "export type Witness = Partial<{tag: string}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "Required",
+          "source": "export type Witness = Required<{tag?: string}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "Readonly",
+          "source": "export type Witness = Readonly<{tag: string}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "Pick",
+          "source": "export type Witness = Pick<{tag: string; value: number}, \"tag\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "Record",
+          "source": "export type Witness = Record<\"tag\", string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "Exclude",
+          "source": "export type Witness = Exclude<string | number, number>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "Extract",
+          "source": "export type Witness = Extract<string | number, string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "Omit",
+          "source": "export type Witness = Omit<{tag: string; value: number}, \"value\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "NonNullable",
+          "source": "export type Witness = NonNullable<string | null | undefined>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `NonNullable`\",\"severity\":\"error\",\"span\":{\"end\":33,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"NonNullable\"],\"code\":2304,\"message\":\"Cannot find name 'NonNullable'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":11,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":33,\"module\":\"main.ts\",\"start\":22}}}\n"
+        },
+        {
+          "profile": "es5",
+          "name": "Parameters",
+          "source": "export type Witness = Parameters<(value: number) => string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "ConstructorParameters",
+          "source": "export type Witness = ConstructorParameters<new (value: number) => {value: number}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "ReturnType",
+          "source": "export type Witness = ReturnType<() => string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "InstanceType",
+          "source": "export type Witness = InstanceType<new (value: number) => {value: number}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "Uppercase",
+          "source": "export type Witness = Uppercase<\"word\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `Uppercase`\",\"severity\":\"error\",\"span\":{\"end\":31,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"Uppercase\"],\"code\":2304,\"message\":\"Cannot find name 'Uppercase'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":9,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":31,\"module\":\"main.ts\",\"start\":22}}}\n"
+        },
+        {
+          "profile": "es5",
+          "name": "Lowercase",
+          "source": "export type Witness = Lowercase<\"WORD\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `Lowercase`\",\"severity\":\"error\",\"span\":{\"end\":31,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"Lowercase\"],\"code\":2304,\"message\":\"Cannot find name 'Lowercase'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":9,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":31,\"module\":\"main.ts\",\"start\":22}}}\n"
+        },
+        {
+          "profile": "es5",
+          "name": "Capitalize",
+          "source": "export type Witness = Capitalize<\"word\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `Capitalize`\",\"severity\":\"error\",\"span\":{\"end\":32,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"Capitalize\"],\"code\":2304,\"message\":\"Cannot find name 'Capitalize'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":10,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":32,\"module\":\"main.ts\",\"start\":22}}}\n"
+        },
+        {
+          "profile": "es5",
+          "name": "Uncapitalize",
+          "source": "export type Witness = Uncapitalize<\"Word\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `Uncapitalize`\",\"severity\":\"error\",\"span\":{\"end\":34,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"Uncapitalize\"],\"code\":2304,\"message\":\"Cannot find name 'Uncapitalize'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":12,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":34,\"module\":\"main.ts\",\"start\":22}}}\n"
+        },
+        {
+          "profile": "es5",
+          "name": "NoInfer",
+          "source": "export type Witness = NoInfer<string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es5",
+          "name": "ThisType",
+          "source": "export type Witness = ThisType<{tag: string}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "ThisParameterType",
+          "source": "export type Witness = ThisParameterType<(this: {tag: string}, value: number) => string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "OmitThisParameter",
+          "source": "export type Witness = OmitThisParameter<(this: {tag: string}, value: number) => string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "Awaited",
+          "source": "export type Witness = Awaited<PromiseLike<string>>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "Partial",
+          "source": "export type Witness = Partial<{tag: string}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "Required",
+          "source": "export type Witness = Required<{tag?: string}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "Readonly",
+          "source": "export type Witness = Readonly<{tag: string}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "Pick",
+          "source": "export type Witness = Pick<{tag: string; value: number}, \"tag\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "Record",
+          "source": "export type Witness = Record<\"tag\", string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "Exclude",
+          "source": "export type Witness = Exclude<string | number, number>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "Extract",
+          "source": "export type Witness = Extract<string | number, string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "Omit",
+          "source": "export type Witness = Omit<{tag: string; value: number}, \"value\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "NonNullable",
+          "source": "export type Witness = NonNullable<string | null | undefined>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `NonNullable`\",\"severity\":\"error\",\"span\":{\"end\":33,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"NonNullable\"],\"code\":2304,\"message\":\"Cannot find name 'NonNullable'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":11,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":33,\"module\":\"main.ts\",\"start\":22}}}\n"
+        },
+        {
+          "profile": "es2022",
+          "name": "Parameters",
+          "source": "export type Witness = Parameters<(value: number) => string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "ConstructorParameters",
+          "source": "export type Witness = ConstructorParameters<new (value: number) => {value: number}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "ReturnType",
+          "source": "export type Witness = ReturnType<() => string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "InstanceType",
+          "source": "export type Witness = InstanceType<new (value: number) => {value: number}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "Uppercase",
+          "source": "export type Witness = Uppercase<\"word\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `Uppercase`\",\"severity\":\"error\",\"span\":{\"end\":31,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"Uppercase\"],\"code\":2304,\"message\":\"Cannot find name 'Uppercase'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":9,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":31,\"module\":\"main.ts\",\"start\":22}}}\n"
+        },
+        {
+          "profile": "es2022",
+          "name": "Lowercase",
+          "source": "export type Witness = Lowercase<\"WORD\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `Lowercase`\",\"severity\":\"error\",\"span\":{\"end\":31,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"Lowercase\"],\"code\":2304,\"message\":\"Cannot find name 'Lowercase'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":9,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":31,\"module\":\"main.ts\",\"start\":22}}}\n"
+        },
+        {
+          "profile": "es2022",
+          "name": "Capitalize",
+          "source": "export type Witness = Capitalize<\"word\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `Capitalize`\",\"severity\":\"error\",\"span\":{\"end\":32,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"Capitalize\"],\"code\":2304,\"message\":\"Cannot find name 'Capitalize'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":10,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":32,\"module\":\"main.ts\",\"start\":22}}}\n"
+        },
+        {
+          "profile": "es2022",
+          "name": "Uncapitalize",
+          "source": "export type Witness = Uncapitalize<\"Word\">;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": false,
+          "blueExit": 1,
+          "blueStderr": "{\"btsCode\":\"BTS3002\",\"noTypeScriptCounterpart\":null,\"rawMessage\":\"cannot find type `Uncapitalize`\",\"severity\":\"error\",\"span\":{\"end\":34,\"module\":\"main.ts\",\"start\":22},\"typescript\":{\"arguments\":[\"Uncapitalize\"],\"code\":2304,\"message\":\"Cannot find name 'Uncapitalize'.\",\"messageTemplate\":\"Cannot find name '{0}'.\",\"position\":{\"column\":23,\"length\":12,\"line\":1},\"relatedInformation\":[],\"span\":{\"end\":34,\"module\":\"main.ts\",\"start\":22}}}\n"
+        },
+        {
+          "profile": "es2022",
+          "name": "NoInfer",
+          "source": "export type Witness = NoInfer<string>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        },
+        {
+          "profile": "es2022",
+          "name": "ThisType",
+          "source": "export type Witness = ThisType<{tag: string}>;\n",
+          "nativeAccepts": true,
+          "nativeDiagnostics": [],
+          "blueAccepts": true,
+          "blueExit": 0,
+          "blueStderr": ""
+        }
+      ]
+    },
+    "excludedFromDirectDenominator": true
+  },
+  "projects": {
+    "defu": {
+      "archive": "NOINFER_NATIVE_EVIDENCE.tar.gz",
+      "path": "project-defu/report.json",
+      "sha256": "a53edd4d01e3777d1d50d6449a3da11da1757f701b3536b3dd143173c6d3f452",
+      "sourceRevision": "backend-tree:1b539964f6587dc42b42a87f53001f1ee6d5751f",
+      "compilerSha256": "a646e63f057242571dfaaedf05e0cf14cca856113834c7455358973002b79101"
+    },
+    "mitt": {
+      "archive": "NOINFER_NATIVE_EVIDENCE.tar.gz",
+      "path": "project-mitt/report.json",
+      "sha256": "d115b8e35c6c3bb1385512994b9616eb6487ac1ee76b3fa33f67f70ebdeaba71",
+      "sourceRevision": "backend-tree:1b539964f6587dc42b42a87f53001f1ee6d5751f",
+      "compilerSha256": "a646e63f057242571dfaaedf05e0cf14cca856113834c7455358973002b79101"
+    },
+    "reproductions": {
+      "archive": "NOINFER_NATIVE_EVIDENCE.tar.gz",
+      "path": "project-reproductions/report.json",
+      "sha256": "2709422ec58b92a5f558d8a175e6d8f64706cbaee3107df2166238f14773f6a7",
+      "sourceRevision": "backend-tree:1b539964f6587dc42b42a87f53001f1ee6d5751f",
+      "compilerSha256": "a646e63f057242571dfaaedf05e0cf14cca856113834c7455358973002b79101"
+    },
+    "interchange": {
+      "archive": "NOINFER_NATIVE_EVIDENCE.tar.gz",
+      "path": "project-interchange/report.json",
+      "sha256": "aa70b4736774f496ff8d9426bff31054e7655bf1510bf041e97daec26050c870",
+      "sourceRevision": "backend-tree:1b539964f6587dc42b42a87f53001f1ee6d5751f",
+      "compilerSha256": "a646e63f057242571dfaaedf05e0cf14cca856113834c7455358973002b79101"
+    }
+  },
+  "windows": {
+    "recordedAt": "2026-11-12T04:03:54.189636+00:00",
+    "sourceRevision": "backend-tree:1b539964f6587dc42b42a87f53001f1ee6d5751f",
+    "conclusion": "success",
+    "paths": 25,
+    "coreOracles": 82,
+    "regressionCohorts": {
+      "gc1_object_generic_methods": {
+        "passed": 5,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 0
+      },
+      "gm2_incremental_options": {
+        "passed": 7,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 0
+      },
+      "project_config": {
+        "passed": 11,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 0
+      },
+      "defu_prerequisites": {
+        "passed": 2,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 0
+      },
+      "callable_utilities": {
+        "passed": 3,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 0
+      },
+      "receiver_utilities": {
+        "passed": 3,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 0
+      },
+      "noinfer": {
+        "passed": 5,
+        "failed": 0,
+        "ignored": 0,
+        "filtered": 0
+      }
+    },
+    "allSelectedNamesPassedExactly": true,
+    "allCanonicalBackendPathsVerified": true,
+    "backendFiles": 14010,
+    "selectedFiles": 14680,
+    "patchedFilesIndependentlyHashed": 14042,
+    "actualCompilerSha256": "b8b3b6f344ce66a0816af4efbfd93f2764825c920adfa05ee2e690d9362d1963",
+    "actualCompilerArchiveHashMatches": true,
+    "noInferPrimaryObservations": 282,
+    "noInferSupplementalObservations": 4,
+    "noInferDeclarationFiles": 159,
+    "noInferConsumers": 306,
+    "noInferSyntax": 159,
+    "noInferExecutions": 6,
+    "archiveSha256": "8fb78a1f66d8c4dab196e2de75c7799aef9705df23db6ca24aff60d138d9c349",
+    "scope": "Retained original same-source Windows x86_64 acceptance; archive independently recovered and checked after local temporary-file loss. Broader GM3 platform combinations remain open."
+  },
+  "casePreservation": {
+    "previous": 39927,
+    "current": 40213,
+    "added": 286,
+    "allOldCasesUnchanged": true
+  },
+  "modules": {
+    "files": 538,
+    "maximumLines": 1477,
+    "auditPath": "all-source-module-size-audit.json",
+    "auditSha256": "afca2a3b6643ac04141c795eba859b85f06c57c41f9d016d39fb86681199a518"
+  },
+  "retiredWindowsEvidence": {
+    "f98c": {
+      "path": "retired-windows-f98c.tar.gz",
+      "bytes": 7253023,
+      "sha256": "0ee1cd99c5fa425eccef4a46bf6c59d5ac3047a2239dbaff8a9ae5c74a2db59e",
+      "passCredit": false
+    },
+    "62b": {
+      "path": "retired-windows-62b.tar.gz",
+      "bytes": 7450461,
+      "sha256": "8db7072c0badebb46a31bd74df435d25ced64e411e8d5cf37c087933727037d9",
+      "passCredit": false
+    }
+  },
+  "evidenceRecovery": {
+    "scope": "Fresh complete acceptance after the previous temporary evidence directory became unavailable; no old local or Windows pass credit without retained raw evidence. Frozen implementation, inputs and expectations unchanged.",
+    "missingDirectory": "/private/tmp/bluets-noinfer-20261111",
+    "sourceRevision": "backend-tree:1b539964f6587dc42b42a87f53001f1ee6d5751f",
+    "previousMeasurementSha256": "31d625fe00e2db89452d6103b48185924bd609f29d7ce514d818885591db3684",
+    "recoveredDriverOrigin": "recovery/manifest.json",
+    "freshOutputDirectory": "/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112"
+  },
+  "broaderFeatureRowsOpen": 22,
+  "fullTypeScriptParity": false,
+  "artifacts": [
+    {
+      "path": "NOINFER_COMPILERS.tar.gz",
+      "bytes": 29457584,
+      "sha256": "307b33ea6ecdee865bf40eb1347d50a21b46ce2aa86f1db2211f70d1485f9c4c"
+    },
+    {
+      "path": "NOINFER_NATIVE_EVIDENCE.tar.gz",
+      "bytes": 52081470,
+      "sha256": "84af539f420769352fe7d26ee86c7c9d3a346430660cad73388f71305a7b1993"
+    },
+    {
+      "path": "NOINFER_WORKSPACE_EVIDENCE.tar.gz",
+      "bytes": 677321,
+      "sha256": "bfc36976d2fa305bfa662c5c2bbad0534a993906998669372952c9530202fecd"
+    },
+    {
+      "path": "NOINFER_AUDIT_EVIDENCE.tar.gz",
+      "bytes": 16593396,
+      "sha256": "e45a6eceac5a97209b13bc2063ab1b544bbde9b7fec3d7f5922d17210a4f3064"
+    },
+    {
+      "path": "NOINFER_WINDOWS_EVIDENCE.tar.gz",
+      "bytes": 40941523,
+      "sha256": "8fb78a1f66d8c4dab196e2de75c7799aef9705df23db6ca24aff60d138d9c349"
+    }
+  ],
+  "publicationOrchestrationCorrections": [
+    {
+      "scope": "Private audit report classification",
+      "record": "acceptance-audit-classification.json",
+      "archive": "NOINFER_AUDIT_EVIDENCE.tar.gz",
+      "actualTestFailure": false
+    },
+    {
+      "scope": "Private archive guard directory metadata",
+      "record": "publication-guard-classification.json",
+      "archive": "NOINFER_AUDIT_EVIDENCE.tar.gz",
+      "actualTestFailure": false
+    }
+  ]
+}

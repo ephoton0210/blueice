@@ -21,8 +21,15 @@ fn normalize(
     value: &Type,
     aliases: &BTreeMap<String, TypeDefinition>,
     budget: &mut TypeExpansionBudget,
+    preserve_barriers: bool,
 ) -> Type {
-    let value = expanded(value, aliases, &mut HashSet::new(), budget);
+    let value = expand(
+        value,
+        aliases,
+        &mut HashSet::new(),
+        budget,
+        preserve_barriers,
+    );
     if let Type::Intersection(parts) = &value {
         for part in parts {
             let part = expanded(part, aliases, &mut HashSet::new(), budget);
@@ -47,7 +54,7 @@ pub(super) fn resolve(
     let mut products = vec![cooked(&value.head)?];
     for (part, tail) in &value.spans {
         let tail = cooked(tail)?;
-        let part = normalize(part, aliases, budget);
+        let part = normalize(part, aliases, budget, false);
         let mut alternatives = match part {
             Type::Union(parts) => parts,
             Type::Never => return Some(Type::Never),
@@ -82,7 +89,7 @@ pub(super) fn resolve(
 pub(super) fn matches(
     actual: &Type,
     value: &TemplateLiteralType,
-    bindings: &mut BTreeMap<String, Type>,
+    bindings: &mut conditional::MatchBindings,
     aliases: &BTreeMap<String, TypeDefinition>,
     budget: &mut TypeExpansionBudget,
 ) -> bool {
@@ -113,7 +120,7 @@ fn cooked(raw: &str) -> Option<String> {
 fn match_spans(
     rest: &str,
     spans: &[(Type, String)],
-    bindings: &mut BTreeMap<String, Type>,
+    bindings: &mut conditional::MatchBindings,
     aliases: &BTreeMap<String, TypeDefinition>,
     budget: &mut TypeExpansionBudget,
 ) -> bool {
@@ -139,7 +146,7 @@ fn match_spans(
     };
     for (part, rest) in splits {
         let mut candidate = bindings.clone();
-        let normalized = normalize(pattern, aliases, budget);
+        let normalized = normalize(pattern, aliases, budget, true);
         let fits = match &normalized {
             Type::String | Type::Any => true,
             Type::Number => !part.trim().is_empty() && part.parse::<f64>().is_ok(),

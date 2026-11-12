@@ -20,8 +20,21 @@ pub(super) fn expanded(
     visited: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> Type {
+    expand(value, aliases, visited, budget, false)
+}
+
+fn expand(
+    value: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+    preserve_barriers: bool,
+) -> Type {
     let mut value = value.clone();
     loop {
+        if preserve_barriers && matches!(value, Type::InferenceBarrier(_)) {
+            break;
+        }
         if let Some(next) = super::type_relations::normalize_more_type(&value, aliases) {
             if !budget.consume() {
                 break;
@@ -89,7 +102,13 @@ pub(super) fn template_matches(
     aliases: &BTreeMap<String, TypeDefinition>,
     budget: &mut TypeExpansionBudget,
 ) -> bool {
-    templates::matches(actual, expected, &mut BTreeMap::new(), aliases, budget)
+    templates::matches(
+        actual,
+        expected,
+        &mut conditional::MatchBindings::default(),
+        aliases,
+        budget,
+    )
 }
 
 /// Diagnostic aliases retain their name for records and ordinary unions;

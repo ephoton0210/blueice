@@ -195,6 +195,13 @@ impl<'a> ModuleChecker<'a> {
                         format!("cannot mutate readonly property `{property}`"),
                         DiagnosticCode::TypeMismatch,
                     );
+                    if let Some(token) = tokens
+                        .iter()
+                        .rev()
+                        .find(|token| token.start < mutation.operator.start && token.is(property))
+                    {
+                        self.point_last_typescript(std::slice::from_ref(token));
+                    }
                     return;
                 }
                 if !mutation.operator.is("=") {

@@ -6,6 +6,56 @@
 use super::*;
 
 impl ModuleChecker<'_> {
+    /// When every arity-compatible candidate fails at the same argument,
+    /// Native attaches the aggregate overload diagnostic to that expression.
+    pub(super) fn point_common_overload_mismatch(
+        &mut self,
+        signatures: &[FunctionSignature],
+        actuals: &[Type],
+        arguments: &[&[Token]],
+    ) {
+        if self
+            .diagnostics
+            .last()
+            .and_then(|diagnostic| diagnostic.typescript.as_ref())
+            .is_none_or(|diagnostic| diagnostic.code != 2769)
+        {
+            return;
+        }
+        let mut common = None;
+        for signature in signatures
+            .iter()
+            .filter(|signature| function_signature_accepts_argument_count(signature, actuals.len()))
+        {
+            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+            budget.checking = self.checking;
+            let substitutions =
+                infer_call_substitutions(signature, actuals, &self.types, &mut budget);
+            let mismatch = actuals.iter().enumerate().find_map(|(index, actual)| {
+                let parameter = function_parameter_for_argument(signature, index)?;
+                let expected = call_parameter_expected_type(parameter, &substitutions);
+                (!is_assignable(
+                    actual,
+                    &expected,
+                    &self.types,
+                    &mut HashSet::new(),
+                    &mut budget,
+                ))
+                .then_some(index)
+            });
+            let Some(index) = mismatch.filter(|_| !budget.exhausted) else {
+                return;
+            };
+            if common.is_some_and(|previous| previous != index) {
+                return;
+            }
+            common = Some(index);
+        }
+        if let Some(argument) = common.and_then(|index| arguments.get(index)) {
+            self.point_last_typescript(argument);
+        }
+    }
+
     pub(in crate::checker::module) fn overload_details(
         &self,
         signatures: &[FunctionSignature],
@@ -37,6 +87,8 @@ impl ModuleChecker<'_> {
                 let expected = call_parameter_expected_type(parameter, &substitutions);
                 let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
                 budget.checking = self.checking;
+                let expected =
+                    crate::checker::inference::diagnostic_type(&expected, &self.types, &mut budget);
                 if is_assignable(
                     actual,
                     &expected,
@@ -104,6 +156,11 @@ impl ModuleChecker<'_> {
                     result: Box::new(signature.return_type.clone()),
                 },
                 &substitutions,
+            );
+            let instantiated = crate::checker::inference::diagnostic_type(
+                &instantiated,
+                &self.types,
+                &mut inference_budget,
             );
             let Type::Function { parameters, result } = instantiated else {
                 unreachable!()

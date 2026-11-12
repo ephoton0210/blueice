@@ -72,19 +72,61 @@ pub struct TemplateLiteralType {
 }
 
 impl Type {
+    pub(crate) fn inference_barrier(value: Type) -> Type {
+        if value.inference_barrier_target() {
+            Self::InferenceBarrier(Box::new(value))
+        } else {
+            value
+        }
+    }
+
+    fn inference_barrier_target(&self) -> bool {
+        match self {
+            Self::InferenceBarrier(_) => false,
+            Self::Record(fields) => !fields.is_empty(),
+            Self::Union(parts) | Self::Intersection(parts) => {
+                parts.iter().any(Self::inference_barrier_target)
+            }
+            Self::TemplateLiteral(template) => template
+                .spans
+                .iter()
+                .any(|(value, _)| value.inference_barrier_target()),
+            Self::Named { .. }
+            | Self::Array(_)
+            | Self::Readonly(_)
+            | Self::Tuple(_)
+            | Self::IndexedRecord { .. }
+            | Self::CallableRecord { .. }
+            | Self::Function { .. }
+            | Self::GenericFunction { .. }
+            | Self::KeyOf(_)
+            | Self::IndexedAccess { .. }
+            | Self::Conditional(_)
+            | Self::Infer(_)
+            | Self::Mapped(_) => true,
+            _ => false,
+        }
+    }
+
     pub(crate) fn object_type(&self) -> &Self {
         let mut current = self;
-        while let Self::IndexedRecord { object, .. } = current {
-            current = object;
+        loop {
+            match current {
+                Self::IndexedRecord { object, .. } | Self::InferenceBarrier(object) => {
+                    current = object
+                }
+                _ => return current,
+            }
         }
-        current
     }
 
     pub(crate) fn object_type_mut(&mut self) -> &mut Self {
         let mut current = self;
         loop {
             match current {
-                Self::IndexedRecord { object, .. } => current = object,
+                Self::IndexedRecord { object, .. } | Self::InferenceBarrier(object) => {
+                    current = object
+                }
                 _ => return current,
             }
         }
@@ -93,7 +135,7 @@ impl Type {
     /// A shallow visitor, used where operator children have no local binding.
     pub(crate) fn operator_children(&self) -> Option<Vec<&Type>> {
         Some(match self {
-            Self::Readonly(value) => vec![value],
+            Self::Readonly(value) | Self::InferenceBarrier(value) => vec![value],
             Self::IndexedRecord { object, indices } => std::iter::once(object.as_ref())
                 .chain(indices.iter().flat_map(|index| {
                     [&index.key, &index.value]
@@ -182,6 +224,7 @@ impl Type {
     ) -> Option<Type> {
         Some(match self {
             Self::Readonly(value) => Self::Readonly(Box::new(map(value, &[]))),
+            Self::InferenceBarrier(value) => Self::InferenceBarrier(Box::new(map(value, &[]))),
             Self::IndexedRecord { object, indices } => Self::IndexedRecord {
                 object: Box::new(map(object, &[])),
                 indices: indices
@@ -244,6 +287,7 @@ impl Type {
 
     pub(crate) fn operator_text(&self, render: impl Fn(&Type) -> String) -> Option<String> {
         Some(match self {
+            Self::InferenceBarrier(value) => format!("NoInfer<{}>", render(value)),
             Self::Readonly(value) => format!("readonly {}", render(value)),
             Self::IndexedRecord { object, indices } => {
                 let members = indices

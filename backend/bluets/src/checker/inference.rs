@@ -5,7 +5,9 @@
 //! Bounded structural candidates for one generic call instantiation.
 
 use super::*;
+mod barriers;
 mod candidates;
+pub(super) use barriers::{checking_type, diagnostic_type};
 mod collect;
 mod dependencies;
 mod indexed;
@@ -13,7 +15,7 @@ mod mapped;
 mod results;
 mod surfaces;
 
-pub(crate) const VERSION: &str = "bluets-generic-inference/7";
+pub(crate) const VERSION: &str = "bluets-generic-inference/8";
 
 pub(super) fn symbolic_indexed_access(
     value: &Type,

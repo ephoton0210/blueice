@@ -87,8 +87,8 @@ impl ModuleChecker<'_> {
         self.diagnostics.reverse();
     }
 
-    /// Avoid cascaded assignability errors after lexical lookup has already
-    /// diagnosed an unresolved annotation at its identifier token.
+    /// Avoid cascaded assignability errors after lookup or generic-arity
+    /// validation has already diagnosed an invalid annotation.
     pub(in crate::checker::module) fn type_is_bound(&self, value: &Type) -> bool {
         match value {
             Type::KeyOf(value) => self.type_is_bound(value),
@@ -97,7 +97,9 @@ impl ModuleChecker<'_> {
             }
             Type::Predicate(predicate) => predicate.return_position,
             Type::Named { name, arguments } => {
-                (self.types.contains_key(name) || self.type_parameters.contains(name))
+                (self.types.get(name).is_some_and(|definition| {
+                    complete_type_arguments(&definition.parameters, arguments).is_some()
+                }) || self.type_parameters.contains(name) && arguments.is_empty())
                     && arguments
                         .iter()
                         .all(|argument| self.type_is_bound(argument))
@@ -386,6 +388,7 @@ impl ModuleChecker<'_> {
                 },
                 vec![display_name, required.to_string(), total.to_string()],
             );
+            self.point_last_named_type(name, span);
         }
         for argument in arguments {
             self.check_type(argument, span);

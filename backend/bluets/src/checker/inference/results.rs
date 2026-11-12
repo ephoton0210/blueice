@@ -14,6 +14,7 @@ pub(super) fn finish(
         return value;
     }
     match value {
+        Type::InferenceBarrier(value) => Type::inference_barrier(finish(*value, aliases, budget)),
         value @ (Type::Mapped(_)
         | Type::Conditional(_)
         | Type::KeyOf(_)
@@ -34,9 +35,10 @@ pub(super) fn finish(
             }
         }
         Type::Named { name, arguments } => {
-            if aliases
-                .get(&name)
-                .is_some_and(|definition| matches!(&definition.value, Type::Conditional(_)))
+            if super::barriers::alias_has_barrier(&name, aliases)
+                || aliases
+                    .get(&name)
+                    .is_some_and(|definition| matches!(&definition.value, Type::Conditional(_)))
             {
                 let parameters = aliases
                     .iter()
@@ -144,6 +146,6 @@ pub(super) fn finish(
             }
             Type::Tuple(values)
         }
-        value => value,
+        value => value.map_children(|child, _| finish(child.clone(), aliases, budget)),
     }
 }

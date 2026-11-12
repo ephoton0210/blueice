@@ -7,6 +7,62 @@
 use super::*;
 
 impl ModuleChecker<'_> {
+    pub(in crate::checker::module) fn point_last_named_type(
+        &mut self,
+        name: &str,
+        span: &SourceSpan,
+    ) {
+        // An import type already supplies its complete parsed query span.
+        // Its qualified member alone is not the type reference's location.
+        if self
+            .module
+            .import_types
+            .iter()
+            .any(|reference| reference.span == *span)
+        {
+            return;
+        }
+        let Some(source) = self.project.source(&span.module) else {
+            return;
+        };
+        let Ok(tokens) = crate::syntax::lex(&span.module, source) else {
+            return;
+        };
+        let tokens = tokens
+            .into_iter()
+            .filter(|token| span.start <= token.start && token.end <= span.end)
+            .collect::<Vec<_>>();
+        let name = crate::parser::source_type_name(name);
+        let Some(start) = tokens.iter().enumerate().find_map(|(index, token)| {
+            (token.is(name)
+                && (index == 0
+                    || !matches!(
+                        tokens[index - 1].text.as_str(),
+                        "type" | "class" | "interface"
+                    )))
+            .then_some(index)
+        }) else {
+            return;
+        };
+        let mut end = start + 1;
+        if tokens.get(end).is_some_and(|token| token.is("<")) {
+            let mut depth = 0usize;
+            for (index, token) in tokens.iter().enumerate().skip(end) {
+                if token.is("<") {
+                    depth += 1;
+                }
+                if token.is(">") {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        end = index + 1;
+                        break;
+                    }
+                }
+            }
+        }
+        self.point_last_typescript(&tokens[start..end]);
+    }
+
     pub(in crate::checker::module) fn point_last_type_argument(
         &mut self,
         span: &SourceSpan,

@@ -37,7 +37,7 @@ pub(super) fn erase(
 pub(super) fn constructor(
     actual: &Type,
     pattern: &Type,
-    bindings: &mut BTreeMap<String, Type>,
+    bindings: &mut MatchBindings,
     aliases: &BTreeMap<String, TypeDefinition>,
     budget: &mut TypeExpansionBudget,
 ) -> Option<bool> {
@@ -85,7 +85,7 @@ pub(super) fn constructor(
 
 pub(super) fn any_signature(
     pattern: &Type,
-    bindings: &mut BTreeMap<String, Type>,
+    bindings: &mut MatchBindings,
     aliases: &BTreeMap<String, TypeDefinition>,
     budget: &mut TypeExpansionBudget,
 ) -> Option<bool> {

@@ -36,6 +36,9 @@ pub(crate) fn complete_type_arguments(
 }
 
 pub(crate) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Type>) -> Type {
+    if let Type::InferenceBarrier(base) = value {
+        return Type::inference_barrier(substitute_type(base, substitutions));
+    }
     if let Type::Conditional(conditional) = value {
         if let Type::Named { name, arguments } = &conditional.check {
             if arguments.is_empty() {
@@ -250,6 +253,7 @@ fn substitute_parameters(
 
 pub(in crate::checker) fn type_identity(value: &Type) -> String {
     match value {
+        Type::InferenceBarrier(base) => format!("inference-barrier({})", type_identity(base)),
         Type::IndexedRecord { indices, .. } => format!(
             "{};mapped-domains:[{}]",
             value.operator_text(type_identity).expect("indexed record"),
@@ -322,6 +326,7 @@ pub(in crate::checker) fn type_identity(value: &Type) -> String {
 pub(crate) fn type_label(value: &Type) -> String {
     match value {
         Type::Conditional(_)
+        | Type::InferenceBarrier(_)
         | Type::Infer(_)
         | Type::Mapped(_)
         | Type::TemplateLiteral(_)

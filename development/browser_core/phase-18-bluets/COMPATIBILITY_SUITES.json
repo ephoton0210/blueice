@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "typescript": "5.9.3",
-  "source_revision": "backend-tree:4687d8d818e1d6b08bb437b41b19c9d84813356f",
-  "source_graph_sha256": "b23e0d3f3b3d5550d5d704b7ce90b09c0881babd6e53858d81c7b8861ae1078f",
+  "source_revision": "backend-tree:1b539964f6587dc42b42a87f53001f1ee6d5751f",
+  "source_graph_sha256": "866db4efa41bdb486b36ccd47e37ba010f204795e22e3b6f83c553e9273c8e4f",
   "fixture_directories": 3392,
   "diagnostic_programs": 3182,
   "diagnostic_templates": 221,
@@ -1881,6 +1881,18 @@
         "backend/bluets/tests/fixtures/typescript_oracle/narrowing-checker-matrix.tsv": "098934150835d3d2b9a763dd176ac8dfb86226bd",
         "backend/bluets/tests/fixtures/typescript_oracle/narrowing-reference.json": "09ea0dd63b4ddb1d01eb555d4717a66a276860b1",
         "backend/bluets/tests/narrowing_checker_matrix.rs": "dbe63c0caa14f01002f4c7f38036c37c2ce607c1"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/noinfer.rs",
+      "ignored_tests": [
+        "utility_native_observations_consumers_syntax_and_runtime_are_reproducible"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/noinfer/cases.json": "314e4895960c820f75d7d76ce1bd64dea6b95efd",
+        "backend/bluets/tests/fixtures/noinfer/keyof-diagnostics.json": "ac21fea7b9009c5c7d4df1c4641af2618e38bf8d",
+        "backend/bluets/tests/fixtures/noinfer/reference.json": "0e107742789bfe1ad7718883d95ef87062b8eb66",
+        "backend/bluets/tests/noinfer.rs": "269006da201294be0ab0016673d8a8a72b6ff5a9"
       }
     },
     {

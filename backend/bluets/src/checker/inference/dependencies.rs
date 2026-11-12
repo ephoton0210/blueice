@@ -14,6 +14,9 @@ pub(super) fn contains(
     active: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> bool {
+    if matches!(value, Type::InferenceBarrier(_)) {
+        return false;
+    }
     if let Type::Named { name, arguments } = value {
         if parameters.contains(name) {
             return true;

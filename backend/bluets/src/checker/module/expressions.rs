@@ -10,6 +10,7 @@ mod assertion_qualifiers;
 pub(in crate::checker) use assertion_qualifiers::projection_qualifiers;
 mod call_chains;
 mod call_presentation;
+mod callback_diagnostics;
 mod composition_diagnostics;
 mod computed_indices;
 mod conditional_inputs;
@@ -126,6 +127,17 @@ impl<'a> ModuleChecker<'a> {
         span: &SourceSpan,
         receiver: Option<&[Token]>,
     ) {
+        self.check_function_call_in_context(tokens, scope, span, receiver, None);
+    }
+
+    pub(super) fn check_function_call_in_context(
+        &mut self,
+        tokens: &[Token],
+        scope: &BTreeMap<String, Type>,
+        span: &SourceSpan,
+        receiver: Option<&[Token]>,
+        context: Option<&Type>,
+    ) {
         let Some(call) = direct_call_parts(tokens) else {
             return;
         };
@@ -159,7 +171,7 @@ impl<'a> ModuleChecker<'a> {
         if let Some(alternatives) = self.optional_spread_scopes(&arguments, scope) {
             let before = self.diagnostics.len();
             for alternative in &alternatives {
-                self.check_function_call_with_receiver(tokens, alternative, span, receiver);
+                self.check_function_call_in_context(tokens, alternative, span, receiver, context);
             }
             self.dedupe_diagnostics_since(before);
             return;
@@ -233,7 +245,12 @@ impl<'a> ModuleChecker<'a> {
                 .expect("parsed generic call has recorded type arguments")
                 .as_slice()
         });
-        let selected = match self.select_function_signature(&signatures, &actuals, explicit) {
+        let selected = match self.select_function_signature_in_context(
+            &signatures,
+            &actuals,
+            explicit,
+            context,
+        ) {
             Ok(selected) => selected.cloned(),
             Err(()) => {
                 self.type_error(
@@ -259,6 +276,7 @@ impl<'a> ModuleChecker<'a> {
                 &actuals,
                 false,
             );
+            self.point_common_overload_mismatch(&rejected, &actuals, &arguments);
             self.present_callback_return_error(&signatures, &actuals, &arguments, call.callee);
             self.present_hidden_implementation(&call.callee.text, &actuals, false);
             if self
@@ -331,7 +349,7 @@ impl<'a> ModuleChecker<'a> {
                 &actuals,
                 &self.types,
                 &mut budget,
-                None,
+                context,
             );
             if budget.exhausted {
                 self.type_error(
@@ -344,10 +362,60 @@ impl<'a> ModuleChecker<'a> {
             rejected_constraint = inferred.rejected_constraint;
             inferred.substitutions
         };
-        for (index, actual) in actuals.iter().enumerate() {
+        let rest_pack = self.check_resolved_rest_pack(
+            &signature,
+            &substitutions,
+            &actuals,
+            (&arguments, call.arguments),
+            span,
+        );
+        for (index, actual) in actuals
+            .iter()
+            .enumerate()
+            .take(rest_pack.unwrap_or(actuals.len()))
+        {
             let parameter = function_parameter_for_argument(&signature, index)
                 .expect("an accepted function call has a parameter for every argument");
-            let expected = call_parameter_expected_type(parameter, &substitutions);
+            let expected = if parameter.rest {
+                let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                budget.checking = self.checking;
+                let whole = parameter_expected_type(parameter, &substitutions);
+                let resolved = crate::checker::type_operators::expanded(
+                    &whole,
+                    &self.types,
+                    &mut HashSet::new(),
+                    &mut budget,
+                );
+                if budget.exhausted {
+                    self.type_error(
+                        span,
+                        "rest parameter expansion exceeds its limit".into(),
+                        DiagnosticCode::ResourceLimit,
+                    );
+                    return;
+                }
+                match resolved {
+                    Type::Array(element) => *element,
+                    _ => call_parameter_expected_type(parameter, &substitutions),
+                }
+            } else {
+                call_parameter_expected_type(parameter, &substitutions)
+            };
+            let mut checking_budget = TypeExpansionBudget::new(self.max_type_expansions);
+            checking_budget.checking = self.checking;
+            let expected = crate::checker::inference::diagnostic_type(
+                &expected,
+                &self.types,
+                &mut checking_budget,
+            );
+            if checking_budget.exhausted {
+                self.type_error(
+                    span,
+                    "argument type normalization exceeds its limit".into(),
+                    DiagnosticCode::ResourceLimit,
+                );
+                return;
+            }
             if self.check_fresh_argument_properties(
                 arguments.get(index).copied().unwrap_or(&[]),
                 &expected,
@@ -428,6 +496,14 @@ impl<'a> ModuleChecker<'a> {
                         type_label(candidate), type_label(constraint)
                     ),
                 );
+                if self.contextual_callback_result_error(
+                    actual,
+                    &displayed_expected,
+                    arguments.get(index).copied().unwrap_or(&[]),
+                    parameter,
+                ) {
+                    continue;
+                }
                 self.call_argument_error(
                     span,
                     message,
@@ -601,7 +677,11 @@ impl<'a> ModuleChecker<'a> {
                             budget.checking = self.checking;
                             let concrete = annotation.map(|annotation| {
                                 if crate::checker::type_operators::is_operator_context(annotation, &self.types) {
-                                    crate::checker::inference::result_type(annotation, &BTreeMap::new(), &self.types, &mut budget)
+                                    let mut evidence = seeds.as_deref().unwrap_or(&actuals).to_vec();
+                                    for (slot, actual) in evidence.iter_mut().zip(&actuals) { *slot = actual.clone(); }
+                                    let substitutions = infer_call_substitutions(signature, &evidence, &self.types, &mut budget);
+                                    let resolved = crate::checker::inference::result_type(annotation, &substitutions, &self.types, &mut budget);
+                                    crate::checker::inference::checking_type(&resolved, &self.types, &mut budget)
                                 } else { annotation.clone() }
                             });
                             (!budget.exhausted && matches!(concrete, Some(Type::Literal(_) | Type::Null))) || matches!(annotation,
@@ -802,6 +882,21 @@ impl<'a> ModuleChecker<'a> {
         actuals: &[Type],
         explicit_type_arguments: Option<&[Type]>,
     ) -> Result<Option<&'b FunctionSignature>, ()> {
+        self.select_function_signature_in_context(
+            signatures,
+            actuals,
+            explicit_type_arguments,
+            None,
+        )
+    }
+
+    pub(super) fn select_function_signature_in_context<'b>(
+        &self,
+        signatures: &'b [FunctionSignature],
+        actuals: &[Type],
+        explicit_type_arguments: Option<&[Type]>,
+        context: Option<&Type>,
+    ) -> Result<Option<&'b FunctionSignature>, ()> {
         let mut candidates = signatures.iter().collect::<Vec<_>>();
         candidates.sort_by_key(|signature| {
             !signature.parameters.iter().any(|parameter| {
@@ -809,13 +904,14 @@ impl<'a> ModuleChecker<'a> {
             })
         });
         for signature in candidates {
-            if function_signature_matches(
+            if function_signature_matches_in_context(
                 signature,
                 actuals,
                 explicit_type_arguments,
                 &self.types,
                 self.max_type_expansions,
                 self.checking,
+                context,
             )? {
                 return Ok(Some(signature));
             }

@@ -4,6 +4,7 @@
 
 //! Primitive index constraints retain fresh property literals, not const arrays.
 use super::*;
+mod records;
 
 impl ModuleChecker<'_> {
     pub(super) fn const_generic_argument(
@@ -120,6 +121,10 @@ impl ModuleChecker<'_> {
     ) -> Option<Type> {
         if !tokens.first()?.is("{") {
             return None;
+        }
+        if let Some(value) = self.constrained_property_literals(tokens, scope, parameter, signature)
+        {
+            return Some(value);
         }
         let Type::Named { name, arguments } = parameter.annotation.as_ref()? else {
             return None;

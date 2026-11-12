@@ -5,8 +5,28 @@
 //! Conditional matching binds inferred types before selecting the true branch.
 use super::*;
 
+mod barriers;
 mod callables;
 mod functions;
+
+#[derive(Clone, Default)]
+pub(super) struct MatchBindings {
+    values: BTreeMap<String, Type>,
+    saw_barrier: bool,
+}
+
+impl std::ops::Deref for MatchBindings {
+    type Target = BTreeMap<String, Type>;
+    fn deref(&self) -> &Self::Target {
+        &self.values
+    }
+}
+
+impl std::ops::DerefMut for MatchBindings {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.values
+    }
+}
 
 pub(super) fn resolve(
     value: &ConditionalType,
@@ -15,13 +35,21 @@ pub(super) fn resolve(
     budget: &mut TypeExpansionBudget,
 ) -> Option<Type> {
     let actual = &value.check;
-    let mut substitutions = BTreeMap::new();
-    let matched = matches(actual, &value.extends, &mut substitutions, aliases, budget);
+    let mut bindings = MatchBindings::default();
+    let mut matched = matches(actual, &value.extends, &mut bindings, aliases, budget);
+    if matched && bindings.saw_barrier {
+        for parameter in value.extends.infer_parameters() {
+            let fallback = parameter.constraint.unwrap_or(Type::StrictUnknown);
+            bindings.values.entry(parameter.name).or_insert(fallback);
+        }
+        let pattern = barriers::instantiate(&value.extends, &bindings.values, budget);
+        matched = is_assignable(actual, &pattern, aliases, &mut HashSet::new(), budget);
+    }
     if budget.exhausted {
         return None;
     }
     Some(if matched {
-        substitute_type(&value.when_true, &substitutions)
+        substitute_type(&value.when_true, &bindings.values)
     } else {
         value.when_false.clone()
     })
@@ -30,12 +58,17 @@ pub(super) fn resolve(
 pub(super) fn matches(
     actual: &Type,
     pattern: &Type,
-    bindings: &mut BTreeMap<String, Type>,
+    bindings: &mut MatchBindings,
     aliases: &BTreeMap<String, TypeDefinition>,
     budget: &mut TypeExpansionBudget,
 ) -> bool {
     if !budget.consume() {
         return false;
+    }
+    if let Type::InferenceBarrier(base) = pattern {
+        bindings.saw_barrier = true;
+        let mut ignored = bindings.clone();
+        return matches(actual, base, &mut ignored, aliases, budget);
     }
     if let Type::Named {
         name: expected_name,
@@ -73,11 +106,11 @@ pub(super) fn matches(
         }) {
             return false;
         }
-        let value = match bindings.get(&parameter.name) {
+        let value = match bindings.values.get(&parameter.name) {
             Some(previous) => union([previous.clone(), actual.clone()]),
             None => actual.clone(),
         };
-        bindings.insert(parameter.name.clone(), value);
+        bindings.values.insert(parameter.name.clone(), value);
         return true;
     }
     if let (

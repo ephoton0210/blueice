@@ -1,0 +1,230 @@
+{
+  "schema": 1,
+  "startedAt": "2026-11-12T07:46:08.977977+00:00",
+  "sourceRevision": "backend-tree:1b539964f6587dc42b42a87f53001f1ee6d5751f",
+  "scope": "Post-documentation consistency and archive integrity; complete runtime acceptance is in NOINFER_MEASUREMENT.json.",
+  "conclusion": "success",
+  "checks": [
+    {
+      "label": "source",
+      "command": [
+        "/Users/ephoton/git/blueice-bluets/target/debug/examples/compatibility_inventory",
+        "--check-staged"
+      ],
+      "exit": 0,
+      "stdout": "Suite inventory and input graph agree (185 suites)\n",
+      "stderr": "",
+      "stdoutSha256": "fa92c94d0b16b14ab09cb00d15bd4702ca6e4136065fed18eb325621bb024cfc",
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "cases",
+      "command": [
+        "/Users/ephoton/git/blueice-bluets/target/debug/examples/compatibility_inventory",
+        "--check-cases-staged"
+      ],
+      "exit": 0,
+      "stdout": "Case inventory and measurement agree (40213 cases, 185 suites)\n",
+      "stderr": "",
+      "stdoutSha256": "dedb073b18944783f33731c5418d79b185533cb9a51f629b78ceb50420a7df6e",
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "account-write",
+      "command": [
+        "python3",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/account_inventory_rows.py",
+        "--write"
+      ],
+      "exit": 0,
+      "stdout": "Accounted 40213 cases: 40207 closed (scoped), 3 open, 3 refused; 23 feature rows and direct profile checked\n",
+      "stderr": "",
+      "stdoutSha256": "0382d16032577e5fb2cbdbf3faa1aa3982f455e81b6e4bb91227b11770edafdb",
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "status-write",
+      "command": [
+        "python3",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/check_compatibility_status.py",
+        "--write"
+      ],
+      "exit": 0,
+      "stdout": "Current BlueTS status matches validated case/suite/measurement evidence in all 4 documents\n",
+      "stderr": "",
+      "stdoutSha256": "15369a59ba9bc0f7c61fd1397430cd9f87b259b5c75842a14789c69200c43ef0",
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "account",
+      "command": [
+        "python3",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/account_inventory_rows.py",
+        "--check"
+      ],
+      "exit": 0,
+      "stdout": "Accounted 40213 cases: 40207 closed (scoped), 3 open, 3 refused; 23 feature rows and direct profile checked\n",
+      "stderr": "",
+      "stdoutSha256": "0382d16032577e5fb2cbdbf3faa1aa3982f455e81b6e4bb91227b11770edafdb",
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "status",
+      "command": [
+        "python3",
+        "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/check_compatibility_status.py",
+        "--check"
+      ],
+      "exit": 0,
+      "stdout": "Current BlueTS status matches validated case/suite/measurement evidence in all 4 documents\n",
+      "stderr": "",
+      "stdoutSha256": "15369a59ba9bc0f7c61fd1397430cd9f87b259b5c75842a14789c69200c43ef0",
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "publication",
+      "command": [
+        "python3",
+        "/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112/check_publication.py"
+      ],
+      "exit": 0,
+      "stdout": "{\"conclusion\": \"success\", \"sourceRevision\": \"backend-tree:1b539964f6587dc42b42a87f53001f1ee6d5751f\", \"artifacts\": 5, \"exactlyOneTodoPackageChecked\": true, \"broaderRowsOpen\": 22, \"fullTypeScriptParity\": false}\n",
+      "stderr": "",
+      "stdoutSha256": "a4cdd6e3dfff11beda694e699ab6974dc2f6f613c5f19dfdaed4ac6c1aaecb4e",
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "diff",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": "",
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "priorAttempts": [
+    {
+      "schema": 1,
+      "startedAt": "2026-11-12T07:41:05.171742+00:00",
+      "sourceRevision": "backend-tree:1b539964f6587dc42b42a87f53001f1ee6d5751f",
+      "scope": "Post-documentation consistency and archive integrity; complete runtime acceptance is in NOINFER_MEASUREMENT.json.",
+      "conclusion": "failure",
+      "checks": [
+        {
+          "label": "source",
+          "command": [
+            "/Users/ephoton/git/blueice-bluets/target/debug/examples/compatibility_inventory",
+            "--check-staged"
+          ],
+          "exit": 0,
+          "stdout": "Suite inventory and input graph agree (185 suites)\n",
+          "stderr": "",
+          "stdoutSha256": "fa92c94d0b16b14ab09cb00d15bd4702ca6e4136065fed18eb325621bb024cfc",
+          "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "label": "cases",
+          "command": [
+            "/Users/ephoton/git/blueice-bluets/target/debug/examples/compatibility_inventory",
+            "--check-cases-staged"
+          ],
+          "exit": 0,
+          "stdout": "Case inventory and measurement agree (40213 cases, 185 suites)\n",
+          "stderr": "",
+          "stdoutSha256": "dedb073b18944783f33731c5418d79b185533cb9a51f629b78ceb50420a7df6e",
+          "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "label": "account-write",
+          "command": [
+            "python3",
+            "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/account_inventory_rows.py",
+            "--write"
+          ],
+          "exit": 0,
+          "stdout": "Accounted 40213 cases: 40207 closed (scoped), 3 open, 3 refused; 23 feature rows and direct profile checked\n",
+          "stderr": "",
+          "stdoutSha256": "0382d16032577e5fb2cbdbf3faa1aa3982f455e81b6e4bb91227b11770edafdb",
+          "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "label": "status-write",
+          "command": [
+            "python3",
+            "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/check_compatibility_status.py",
+            "--write"
+          ],
+          "exit": 0,
+          "stdout": "Current BlueTS status matches validated case/suite/measurement evidence in all 4 documents\n",
+          "stderr": "",
+          "stdoutSha256": "15369a59ba9bc0f7c61fd1397430cd9f87b259b5c75842a14789c69200c43ef0",
+          "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "label": "account",
+          "command": [
+            "python3",
+            "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/account_inventory_rows.py",
+            "--check"
+          ],
+          "exit": 0,
+          "stdout": "Accounted 40213 cases: 40207 closed (scoped), 3 open, 3 refused; 23 feature rows and direct profile checked\n",
+          "stderr": "",
+          "stdoutSha256": "0382d16032577e5fb2cbdbf3faa1aa3982f455e81b6e4bb91227b11770edafdb",
+          "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "label": "status",
+          "command": [
+            "python3",
+            "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/check_compatibility_status.py",
+            "--check"
+          ],
+          "exit": 0,
+          "stdout": "Current BlueTS status matches validated case/suite/measurement evidence in all 4 documents\n",
+          "stderr": "",
+          "stdoutSha256": "15369a59ba9bc0f7c61fd1397430cd9f87b259b5c75842a14789c69200c43ef0",
+          "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "label": "publication",
+          "command": [
+            "python3",
+            "/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112/check_publication.py"
+          ],
+          "exit": 1,
+          "stdout": "",
+          "stderr": "Traceback (most recent call last):\n  File \"/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112/check_publication.py\", line 78, in <module>\n    main()\n  File \"/Users/ephoton/git/blueice-bluets/target/noinfer-acceptance-20261112/check_publication.py\", line 31, in main\n    assert all(member.isfile() and not Path(member.name).is_absolute() and '..' not in Path(member.name).parts for member in members)\nAssertionError\n",
+          "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderrSha256": "a1fa803f78d73dc2916d9596c11e9e35a0ae15438732e510e6ae8d476707c6d0"
+        }
+      ]
+    }
+  ],
+  "finishedAt": "2026-11-12T07:46:37.910544+00:00",
+  "inventoryExampleSha256": "8c67f188f13c25a7a941f4e31ac4f6fc586d95082b282d85f3111c612d5cb1a5",
+  "documentsSha256": {
+    "development/browser_core/phase-18-bluets/NOINFER_ACCEPTANCE.md": "51e5822dfbf4a9500b6246d43d2690d2603e581e727ee640caa923f46eae4e93",
+    "development/browser_core/phase-18-bluets/NOINFER_FOLLOWUP.md": "35c7b7b2bc79c274e721065586a745cf2078cc488732fc8006eb515fc1287f75",
+    "development/browser_core/phase-18-bluets/TODO.md": "b46a991cab8061c18e5d62ef39e7a992f65a530ea07e93aa3858c55c2579cd9e",
+    "development/browser_core/phase-18-bluets/PLAN.md": "3ed9626b2c18351bb5d3151007cb5339ef630cc5414d732ea63482ce0c2a76d4",
+    "development/browser_core/phase-18-bluets/STANDARD_LIBRARY.md": "ea680943646e8fa1658ebff76e56b7bc4fb969380fa0614900144aac3a683ee6",
+    "development/browser_core/phase-18-bluets/COMPATIBILITY_INVENTORY.md": "f40062523b532527c6654f2b37ddbddb7a1312432e751222961a0548f6790789",
+    "development/browser_core/phase-18-bluets/COMPATIBILITY_CASES.json": "4a53f494451aaf67c92ec7294d13677c1109a06b0e13cb040014ff3ec006376b",
+    "development/browser_core/phase-18-bluets/COMPATIBILITY_SUITES.json": "72a294af6fbdd6399a6fa208524e3510c844b9699c1fdf05dbc985ede95ba7b3",
+    "development/browser_core/phase-18-bluets/COMPATIBILITY_MEASUREMENT.json": "138dcc58d0bc9fa86cff3d286bdea690cd78153841f37da25ec8fc7057d00ca6",
+    "development/browser_core/phase-18-bluets/NOINFER_MEASUREMENT.json": "02f7e30436310776c68b6f76cb1d04c2c2beaffce2e1408aeb195282bfb64cde",
+    "development/browser_core/phase-18-bluets/NOINFER_ARTIFACTS.json": "0cf93569dabf65dd32496b8849e84703b8b8f4c4c8cc8ec3778caf617e24b62c",
+    "CLAUDE.md": "20902bbdc88c920fe7ca83a7ee7740f6d54ea87721cd996a127a412df79f5f23"
+  },
+  "completedPackages": [
+    "P0-A"
+  ],
+  "broaderFeatureRowsOpen": 22,
+  "fullTypeScriptParity": false
+}

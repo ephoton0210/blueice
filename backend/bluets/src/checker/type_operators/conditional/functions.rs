@@ -9,7 +9,7 @@ use super::*;
 pub(super) fn receiver(
     actual: &[Parameter],
     pattern: &[Parameter],
-    bindings: &mut BTreeMap<String, Type>,
+    bindings: &mut MatchBindings,
     aliases: &BTreeMap<String, TypeDefinition>,
     budget: &mut TypeExpansionBudget,
 ) -> bool {
@@ -43,7 +43,7 @@ pub(super) fn matches(
     result: &Type,
     pattern: &[Parameter],
     expected: &Type,
-    bindings: &mut BTreeMap<String, Type>,
+    bindings: &mut MatchBindings,
     aliases: &BTreeMap<String, TypeDefinition>,
     budget: &mut TypeExpansionBudget,
 ) -> bool {

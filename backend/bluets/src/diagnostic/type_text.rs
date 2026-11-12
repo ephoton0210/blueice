@@ -70,6 +70,7 @@ fn text_options(
     let render = |value: &Type| text_options(value, depth + 1, project, exact_optional);
     match value {
         Type::Conditional(_)
+        | Type::InferenceBarrier(_)
         | Type::Infer(_)
         | Type::Mapped(_)
         | Type::TemplateLiteral(_)

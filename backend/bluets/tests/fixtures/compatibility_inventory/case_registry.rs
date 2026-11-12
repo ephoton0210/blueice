@@ -44,6 +44,15 @@ pub fn primary(snapshot: &Snapshot, suite: &Suite) -> Result<Option<Vec<Case>>> 
             "/observations"
         };
         let mut cases = case_sources::json_cases(&path, text, pointer, "program/configuration")?;
+        if stem == "noinfer" {
+            let regression = "backend/bluets/tests/fixtures/noinfer/keyof-diagnostics.json";
+            cases.extend(case_sources::json_cases(
+                regression,
+                snapshot.source(regression)?,
+                "/observations",
+                "program/configuration",
+            )?);
+        }
         if stem == "gc3_compositions" {
             let policy: Value = serde_json::from_str(
                 snapshot.source("backend/bluets/tests/fixtures/gc3_compositions/policy.json")?,
@@ -417,6 +426,7 @@ fn json_record(stem: &str) -> Option<&'static str> {
         "defu_prerequisites" => "defu_prerequisites/reference.json",
         "callable_utilities" => "callable_utilities/reference.json",
         "receiver_utilities" => "receiver_utilities/reference.json",
+        "noinfer" => "noinfer/reference.json",
         "gm2_incremental_options" => "gm2_incremental_options/reference.json",
         "gt2_inference" => "gt2_inference/reference.json",
         "gt5_compositions" => "gt5_compositions/reference.json",

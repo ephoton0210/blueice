@@ -438,6 +438,7 @@ fn lower(
         | Type::UniqueSymbol(_)
         | Type::ConstAssertion
         | Type::Readonly(_)
+        | Type::InferenceBarrier(_)
         | Type::IndexedRecord { .. }
         | Type::Conditional(_)
         | Type::Infer(_)

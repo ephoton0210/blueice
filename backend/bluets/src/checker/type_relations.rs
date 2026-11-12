@@ -127,6 +127,12 @@ pub(super) fn is_assignable(
     visited: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> bool {
+    if let Type::InferenceBarrier(base) = actual {
+        return budget.consume() && is_assignable(base, expected, aliases, visited, budget);
+    }
+    if let Type::InferenceBarrier(base) = expected {
+        return budget.consume() && is_assignable(actual, base, aliases, visited, budget);
+    }
     if let (
         Type::Named {
             name: actual_name, ..
@@ -907,6 +913,9 @@ pub(super) fn instantiate_named(
     budget: &mut TypeExpansionBudget,
     side: &str,
 ) -> Option<Type> {
+    if let Type::InferenceBarrier(base) = value {
+        return budget.consume().then(|| (**base).clone());
+    }
     if matches!(
         value,
         Type::Conditional(_)

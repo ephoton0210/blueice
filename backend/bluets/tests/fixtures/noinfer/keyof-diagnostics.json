@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "scope": "Four additional ES2022/CommonJS named-key regression programs. The original 282-observation benchmark and its baseline remain unchanged.",
+  "options": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "CommonJS",
+    "lib": [
+      "ES2022"
+    ],
+    "noEmitOnError": true
+  },
+  "observations": [
+    {
+      "id": "ordinary",
+      "source": "export {};\ninterface Events {count: number;name: string} declare function choose<K extends keyof Events>(key: K): void; choose(\"missing\");",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '\"missing\"' is not assignable to parameter of type 'keyof Events'.",
+          "start": 127,
+          "length": 9,
+          "file": "entry.ts",
+          "relatedInformation": []
+        }
+      ],
+      "accepts": false
+    },
+    {
+      "id": "named",
+      "source": "export {};\ninterface Events {count: number;name: string} declare const events: Events; declare function choose<T>(anchor: T,key: keyof NoInfer<T>): T; choose(events,\"missing\");",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '\"missing\"' is not assignable to parameter of type 'keyof Events'.",
+          "start": 165,
+          "length": 9,
+          "file": "entry.ts",
+          "relatedInformation": []
+        }
+      ],
+      "accepts": false
+    },
+    {
+      "id": "blockedKey",
+      "source": "export {};\ninterface Events {count: number;name: string} declare function choose(key: NoInfer<keyof Events>): void; choose(\"missing\");",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '\"missing\"' is not assignable to parameter of type 'keyof Events'.",
+          "start": 123,
+          "length": 9,
+          "file": "entry.ts",
+          "relatedInformation": []
+        }
+      ],
+      "accepts": false
+    },
+    {
+      "id": "alias",
+      "source": "export {};\ninterface Events {count: number;name: string} type BlockedKey<T> = keyof NoInfer<T>; declare const events: Events; declare function choose<T>(anchor: T,key: BlockedKey<T>): T; choose(events,\"missing\");",
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '\"missing\"' is not assignable to parameter of type 'keyof Events'.",
+          "start": 201,
+          "length": 9,
+          "file": "entry.ts",
+          "relatedInformation": []
+        }
+      ],
+      "accepts": false
+    }
+  ]
+}

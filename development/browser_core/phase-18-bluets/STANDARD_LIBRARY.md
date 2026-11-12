@@ -105,8 +105,17 @@ parameters, retains generic signatures for unknown/any receivers, and preserves
 named constructor queries. Its 70-form/three-profile matrix requires 210 complete
 diagnostics and 105 byte-exact declarations with isolated consumers, syntax and
 execution. Six owner controls are separate; no runtime binding is installed.
-NonNullable, Uppercase, Lowercase, Capitalize, Uncapitalize, NoInfer, ES5 Awaited
+NonNullable, Uppercase, Lowercase, Capitalize, Uncapitalize, ES5 Awaited
 and unmeasured receiver compositions remain open.
+
+The [NoInfer follow-up](NOINFER_ACCEPTANCE.md) adds its trusted static intrinsic
+to the core layer while preserving ordinary owner/local/imported declarations.
+Its shared inference barrier suppresses candidates and preserves checking,
+conditional patterns, exact declaration identities and bounded expansion.
+The frozen 282 primary observations plus four diagnostic regressions pass full
+same-source acceptance; three owner/runtime and nine budget controls remain
+separate. No runtime binding is installed. Other utility/catalog compositions
+retain their open scope.
 
 Broader generic inference, structural protocols, overloads, index signatures
 and declaration precision remain K.4/K.8 and the compatibility inventory.

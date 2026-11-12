@@ -273,6 +273,7 @@ impl<'a> ModuleChecker<'a> {
                 self.expand_record_fields(*object, visited, budget)
             }
             Type::Named { .. }
+            | Type::InferenceBarrier(_)
             | Type::Conditional(_)
             | Type::Mapped(_)
             | Type::KeyOf(_)

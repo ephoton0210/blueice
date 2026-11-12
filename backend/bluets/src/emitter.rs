@@ -730,6 +730,7 @@ fn apply_edits_with_anchors(
 fn type_to_ts(value: &Type) -> String {
     match value {
         Type::Conditional(_)
+        | Type::InferenceBarrier(_)
         | Type::Infer(_)
         | Type::Mapped(_)
         | Type::TemplateLiteral(_)

@@ -407,18 +407,49 @@ fn function_signature_matches(
     max_type_expansions: usize,
     checking: crate::CheckingOptions,
 ) -> Result<bool, ()> {
+    function_signature_matches_in_context(
+        signature,
+        actuals,
+        explicit_type_arguments,
+        aliases,
+        max_type_expansions,
+        checking,
+        None,
+    )
+}
+
+fn function_signature_matches_in_context(
+    signature: &FunctionSignature,
+    actuals: &[Type],
+    explicit_type_arguments: Option<&[Type]>,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    max_type_expansions: usize,
+    checking: crate::CheckingOptions,
+    context: Option<&Type>,
+) -> Result<bool, ()> {
     if !function_signature_accepts_argument_count(signature, actuals.len()) {
         return Ok(false);
     }
     let mut budget = TypeExpansionBudget::new(max_type_expansions);
     budget.checking = checking;
-    let Some(substitutions) = function_call_substitutions(
-        signature,
-        actuals,
-        explicit_type_arguments,
-        aliases,
-        &mut budget,
-    ) else {
+    let substitutions = if explicit_type_arguments.is_none() && context.is_some() {
+        Some(inference::infer_contextual_substitutions(
+            signature,
+            actuals,
+            aliases,
+            &mut budget,
+            context,
+        ))
+    } else {
+        function_call_substitutions(
+            signature,
+            actuals,
+            explicit_type_arguments,
+            aliases,
+            &mut budget,
+        )
+    };
+    let Some(substitutions) = substitutions else {
         return Ok(false);
     };
     if budget.exhausted {
@@ -442,7 +473,42 @@ fn function_signature_matches(
     for (index, actual) in actuals.iter().enumerate() {
         let parameter = function_parameter_for_argument(signature, index)
             .expect("a matching function signature has a parameter for every argument");
-        let expected = call_parameter_expected_type(parameter, &substitutions);
+        let expected = if parameter.rest {
+            let whole = parameter_expected_type(parameter, &substitutions);
+            if index + 1 == actuals.len()
+                && *actual == whole
+                && matches!(&whole, Type::Named {name, ..} if aliases.get(name).is_some_and(|definition| definition.kind == TypeDefinitionKind::Parameter))
+            {
+                return Ok(true);
+            }
+            match type_operators::expanded(&whole, aliases, &mut HashSet::new(), &mut budget) {
+                Type::Tuple(expected) => {
+                    let actual = Type::Tuple(
+                        actuals[index..]
+                            .iter()
+                            .cloned()
+                            .map(crate::parser::TupleTypeElement::required)
+                            .collect(),
+                    );
+                    let matches = is_assignable(
+                        &actual,
+                        &Type::Tuple(expected),
+                        aliases,
+                        &mut HashSet::new(),
+                        &mut budget,
+                    );
+                    return if budget.exhausted {
+                        Err(())
+                    } else {
+                        Ok(matches)
+                    };
+                }
+                Type::Array(element) => *element,
+                _ => call_parameter_expected_type(parameter, &substitutions),
+            }
+        } else {
+            call_parameter_expected_type(parameter, &substitutions)
+        };
         if !is_assignable(actual, &expected, aliases, &mut HashSet::new(), &mut budget) {
             return if budget.exhausted { Err(()) } else { Ok(false) };
         }

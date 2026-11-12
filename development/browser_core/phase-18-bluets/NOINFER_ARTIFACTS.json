@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:1b539964f6587dc42b42a87f53001f1ee6d5751f",
+  "artifacts": [
+    {
+      "path": "NOINFER_COMPILERS.tar.gz",
+      "bytes": 29457584,
+      "sha256": "307b33ea6ecdee865bf40eb1347d50a21b46ce2aa86f1db2211f70d1485f9c4c"
+    },
+    {
+      "path": "NOINFER_NATIVE_EVIDENCE.tar.gz",
+      "bytes": 52081470,
+      "sha256": "84af539f420769352fe7d26ee86c7c9d3a346430660cad73388f71305a7b1993"
+    },
+    {
+      "path": "NOINFER_WORKSPACE_EVIDENCE.tar.gz",
+      "bytes": 677321,
+      "sha256": "bfc36976d2fa305bfa662c5c2bbad0534a993906998669372952c9530202fecd"
+    },
+    {
+      "path": "NOINFER_AUDIT_EVIDENCE.tar.gz",
+      "bytes": 16593396,
+      "sha256": "e45a6eceac5a97209b13bc2063ab1b544bbde9b7fec3d7f5922d17210a4f3064"
+    },
+    {
+      "path": "NOINFER_WINDOWS_EVIDENCE.tar.gz",
+      "bytes": 40941523,
+      "sha256": "8fb78a1f66d8c4dab196e2de75c7799aef9705df23db6ca24aff60d138d9c349"
+    }
+  ]
+}

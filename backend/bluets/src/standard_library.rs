@@ -8,6 +8,7 @@ use crate::{parse_module, EcmaTarget, Module};
 use ring::digest::{digest, SHA256};
 use serde::Serialize;
 use std::sync::OnceLock;
+mod intrinsics;
 mod manifest;
 pub(crate) mod presentation;
 mod profiles;
@@ -168,9 +169,11 @@ pub(crate) fn modules(target: EcmaTarget) -> &'static [Module] {
         sources(target)
             .into_iter()
             .map(|(name, text)| {
-                parse_module(format!("<builtin:{name}>"), text).expect(
+                let mut module = parse_module(format!("<builtin:{name}>"), text).expect(
                     "the original standard library must parse under BlueTS's declaration subset",
-                )
+                );
+                intrinsics::lower(&mut module);
+                module
             })
             .collect()
     })

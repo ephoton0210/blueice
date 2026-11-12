@@ -66,6 +66,7 @@ impl Lowerer<'_, '_> {
             | Type::UniqueSymbol(_)
             | Type::ConstAssertion
             | Type::Readonly(_)
+            | Type::InferenceBarrier(_)
             | Type::IndexedRecord { .. }
             | Type::Record(_)
             | Type::CallableRecord { .. }

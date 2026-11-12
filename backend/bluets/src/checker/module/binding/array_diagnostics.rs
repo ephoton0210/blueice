@@ -58,9 +58,14 @@ impl ModuleChecker<'_> {
                 &self.types,
                 &mut budget,
             );
-            let actual = crate::checker::module::return_inference::widen(
-                self.infer_in_context(element, scope, &expected),
-            );
+            let actual = self.infer_in_context(element, scope, &expected);
+            let literal_context = matches!(expected, Type::Literal(_))
+                || matches!(&expected, Type::Union(parts) if parts.iter().any(|part| matches!(part, Type::Literal(_))));
+            let actual = if literal_context {
+                actual
+            } else {
+                crate::checker::module::return_inference::widen(actual)
+            };
             if self.is_assignable_bounded(&actual, &expected, &span) {
                 continue;
             }
@@ -86,9 +91,13 @@ impl ModuleChecker<'_> {
             } else {
                 expected
             };
-            if !matches!(expected, Type::Number | Type::String | Type::Boolean)
-                || !matches!(actual, Type::Number | Type::String | Type::Boolean)
-            {
+            if !matches!(
+                expected,
+                Type::Number | Type::String | Type::Boolean | Type::Literal(_) | Type::Union(_)
+            ) || !matches!(
+                actual,
+                Type::Number | Type::String | Type::Boolean | Type::Literal(_)
+            ) {
                 continue;
             }
             self.assignment_error(
