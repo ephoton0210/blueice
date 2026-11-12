@@ -51,7 +51,7 @@ pub use gradient::{
     StopPosition,
 };
 pub use media::{matches_media, MediaEnvironment};
-pub use font_features::{font_features, Feature};
+pub use font_features::{font_features, font_features_for, small_caps_request, Feature};
 pub use font_face::{face_descriptors, font_faces, FaceDescriptors, FontFaceRule, FontSource};
 pub use parser::{Declaration, Rule};
 pub use selector::{

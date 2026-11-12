@@ -32,6 +32,8 @@ enum Piece {
         wrap: bool,
         /// How much of its width may hang outside a line.
         hang: Hang,
+        /// The share of the font size it is drawn at (synthesized small capitals).
+        scale: f64,
     },
     Space {
         width: f64,
@@ -126,6 +128,9 @@ fn is_closing(c: char) -> bool {
     )
 }
 
+/// The size synthesized small capitals are drawn at, as a share of the font size.
+const SMALL_CAPS_SCALE: f64 = 0.7;
+
 /// Stops and commas, which `hanging-punctuation` lets hang past the end of a line.
 fn hangs_at_line_end(c: char) -> bool {
     matches!(c, '，' | '。' | '、' | '．' | ',' | '.' | '､' | '｡')
@@ -185,8 +190,12 @@ fn transform_text(text: &str, transform: Option<&str>) -> String {
     }
 }
 
+#[derive(Clone)]
 struct TextProps {
     font_size: f64,
+    /// Small capitals the face has no `smcp` for are made of capitals at 70% of the size:
+    /// `Some(true)` also shrinks the capitals already there (`all-small-caps`).
+    synthesized_small_caps: Option<bool>,
     bold: bool,
     italic: bool,
     face: Option<blueice_font::web::WebFontId>,
@@ -203,8 +212,19 @@ struct TextProps {
 
 impl TextProps {
     fn of(style: &Style<'_>) -> TextProps {
+        let (bold, italic, face) = (
+            style.style.is_some_and(|s| s.is_bold()),
+            style.style.is_some_and(|s| s.is_italic()),
+            style.web_face(),
+        );
+        // Asked for small capitals, a face with none of its own gets synthesized ones.
+        let synthesized_small_caps = style
+            .style
+            .and_then(blueice_css::small_caps_request)
+            .filter(|_| !blueice_font::face_supports_feature(bold, italic, face, *b"smcp"));
         TextProps {
             font_size: style.font_size(),
+            synthesized_small_caps,
             bold: style.style.is_some_and(|s| s.is_bold()),
             italic: style.style.is_some_and(|s| s.is_italic()),
             face: style.web_face(),
@@ -267,6 +287,38 @@ impl TextProps {
         }
     }
 
+    /// This text at `scale` times its size.
+    fn scaled(&self, scale: f64) -> TextProps {
+        TextProps {
+            font_size: self.font_size * scale,
+            letter_spacing: self.letter_spacing * scale,
+            ..self.clone()
+        }
+    }
+
+    /// `word` cut into the stretches synthesized small caps draw at different sizes: the
+    /// capitals made of lowercase letters (and, for `all-small-caps`, of capitals) at 70% of the
+    /// size, the rest at full size.
+    fn small_cap_runs(&self, word: &str) -> Vec<(String, f64)> {
+        let Some(all) = self.synthesized_small_caps else {
+            return vec![(word.to_string(), 1.0)];
+        };
+        let mut runs: Vec<(String, f64)> = Vec::new();
+        for c in word.chars() {
+            let small = c.is_lowercase() || (all && c.is_uppercase());
+            let (text, scale) = if small {
+                (c.to_uppercase().collect::<String>(), SMALL_CAPS_SCALE)
+            } else {
+                (c.to_string(), 1.0)
+            };
+            match runs.last_mut() {
+                Some((run, s)) if *s == scale => run.push_str(&text),
+                _ => runs.push((text, scale)),
+            }
+        }
+        runs
+    }
+
     /// What of `word` may hang outside a line.
     fn hang(&self, word: &str) -> Hang {
         use crate::ctx::HangEnd;
@@ -316,16 +368,21 @@ fn push_text(
     let mut previous_cjk = false;
     let flush = |word: &mut String, pieces: &mut Vec<Piece>, can_break: bool| {
         if !word.is_empty() {
-            let width = props.width(word);
-            let hang = props.hang(word);
-            pieces.push(Piece::Word {
-                text: std::mem::take(word),
-                width,
-                style_node,
-                can_break_before: can_break,
-                wrap,
-                hang,
-            });
+            let whole = std::mem::take(word);
+            for (k, (text, scale)) in props.small_cap_runs(&whole).into_iter().enumerate() {
+                let sized = props.scaled(scale);
+                let (width, hang) = (sized.width(&text), sized.hang(&text));
+                pieces.push(Piece::Word {
+                    text,
+                    width,
+                    style_node,
+                    // Within a word the sizes change but a line cannot break.
+                    can_break_before: can_break && k == 0,
+                    wrap,
+                    hang,
+                    scale,
+                });
+            }
         }
     };
     let mut break_before_next_word = false;
@@ -743,6 +800,7 @@ fn collect(
                         can_break_before: false,
                         wrap: false,
                         hang: Hang::default(),
+                        scale: 1.0,
                     });
                     state.last_space = false;
                 }
@@ -1176,6 +1234,7 @@ fn resolve_bidi(ctx: &Ctx<'_>, pieces: Vec<Piece>, base: Base) -> (Vec<Piece>, V
             wrap,
             width,
             hang,
+            scale,
         } = piece
         else {
             levels.push(byte_levels.get(start).copied().unwrap_or(paragraph));
@@ -1202,11 +1261,12 @@ fn resolve_bidi(ctx: &Ctx<'_>, pieces: Vec<Piece>, base: Base) -> (Vec<Piece>, V
                 can_break_before,
                 wrap,
                 hang,
+                scale,
             });
             continue;
         }
         cuts.push(word.len());
-        let props = TextProps::of(&ctx.style(style_node));
+        let props = TextProps::of(&ctx.style(style_node)).scaled(scale);
         for (k, pair) in cuts.windows(2).enumerate() {
             let part = &word[pair[0]..pair[1]];
             levels.push(level_at(pair[0]));
@@ -1228,6 +1288,7 @@ fn resolve_bidi(ctx: &Ctx<'_>, pieces: Vec<Piece>, base: Base) -> (Vec<Piece>, V
                     }
                     h
                 },
+                scale,
             });
         }
     }
@@ -1281,6 +1342,17 @@ pub(crate) fn layout_run_around(
     } else {
         Base::Ltr
     };
+    // `unicode-bidi: bidi-override` (or `embed`) on the block itself reads all of its text one way.
+    if matches!(
+        cstyle.keyword("unicode-bidi"),
+        Some("bidi-override" | "isolate-override" | "embed")
+    ) {
+        let (opening, closing) = bidi_marks(ctx, container, &cstyle);
+        for mark in opening.into_iter().rev() {
+            pieces.insert(0, Piece::Mark(mark));
+        }
+        pieces.extend(closing.into_iter().map(Piece::Mark));
+    }
     let (pieces, levels, paragraph_level) = resolve_bidi(ctx, pieces, base);
     let rtl_paragraph = paragraph_level % 2 == 1;
     let text_align = cstyle
@@ -1481,11 +1553,11 @@ pub(crate) fn layout_run_around(
         for entry in open.iter_mut() {
             entry.1 = 0.0;
         }
-        // text, x, width, node, y, height, drawn right to left, first piece in reading order
-        type Run = (String, f64, f64, NodeId, f64, f64, bool, u32);
+        // text, x, width, node, y, height, drawn right to left, first piece in reading order, size share
+        type Run = (String, f64, f64, NodeId, f64, f64, bool, u32, f64);
         let mut run_text: Option<Run> = None;
         let flush = |run: &mut Option<Run>, children: &mut Vec<Fragment>| {
-            if let Some((text, rx, rw, node, ry, rh, rtl, logical)) = run.take() {
+            if let Some((text, rx, rw, node, ry, rh, rtl, logical, size_scale)) = run.take() {
                 let hidden = !ctx.style(node).is_visible();
                 children.push(Fragment {
                     node: Some(node),
@@ -1497,6 +1569,7 @@ pub(crate) fn layout_run_around(
                     hidden,
                     rtl,
                     logical,
+                    size_scale,
                     ..Fragment::empty_block()
                 });
             }
@@ -1514,6 +1587,7 @@ pub(crate) fn layout_run_around(
                         text,
                         width,
                         style_node,
+                        scale,
                         ..
                     } => {
                         let (above, below, align) = metrics[slot].unwrap_or((
@@ -1527,8 +1601,8 @@ pub(crate) fn layout_run_around(
                             Align::Bottom => line_height - (above + below),
                         };
                         match run_text.as_mut() {
-                            Some((run, _, rw, node, _, _, run_rtl, first))
-                                if *node == *style_node && *run_rtl == odd =>
+                            Some((run, _, rw, node, _, _, run_rtl, first, run_scale))
+                                if *node == *style_node && *run_rtl == odd && *run_scale == *scale =>
                             {
                                 *first = (*first).min(*i as u32);
                                 // On screen a right-to-left run reads backwards, so the word
@@ -1551,6 +1625,7 @@ pub(crate) fn layout_run_around(
                                     above + below,
                                     odd,
                                     *i as u32,
+                                    *scale,
                                 ));
                             }
                         }
@@ -2054,6 +2129,67 @@ mod tests {
         assert!((width("p { font-kerning: normal }") - kerned).abs() < 0.01);
         // letters spaced out are the sum of the kerned letters and the spacing
         assert!(width("p { letter-spacing: 1px }") > kerned + 5.0);
+    }
+
+    #[test]
+    fn a_block_with_bidi_override_reads_all_of_its_text_in_its_own_direction() {
+        // without it, Latin words in a right-to-left block stay left to right
+        let plain = body("<p>abc def</p>", "p { direction: rtl }", 300.0);
+        let r = runs(first_line(&plain));
+        assert_eq!(r.iter().map(|r| r.0.as_str()).collect::<Vec<_>>(), ["abc", "def"]);
+        assert!(r.iter().all(|r| !r.2));
+        // with it, the words come in reverse and are drawn reversed
+        let over = body("<p>abc def</p>", "p { direction: rtl; unicode-bidi: bidi-override }", 300.0);
+        let r = runs(first_line(&over));
+        assert_eq!(r.iter().map(|r| r.0.as_str()).collect::<Vec<_>>(), ["def", "abc"]);
+        assert!(r.iter().all(|r| r.2), "{r:?}");
+        // and the other way round: Hebrew in a left-to-right block overridden stays in order
+        let he = "\u{5d0}\u{5d1} \u{5d2}\u{5d3}";
+        let over = body(&format!("<p>{he}</p>"), "p { direction: ltr; unicode-bidi: bidi-override }", 300.0);
+        let r = runs(first_line(&over));
+        assert_eq!(r.iter().map(|r| r.0.as_str()).collect::<Vec<_>>(), ["\u{5d0}\u{5d1}", "\u{5d2}\u{5d3}"]);
+        assert!(r.iter().all(|r| !r.2));
+    }
+
+    /// The text runs on the first line with the size each is drawn at, as a share of the font size.
+    fn scaled_runs(f: &Fragment) -> Vec<(String, f64)> {
+        first_line(f)
+            .children
+            .iter()
+            .filter_map(|c| match &c.kind {
+                FragmentKind::Text(t) => Some((t.clone(), c.size_scale)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn small_caps_are_made_of_smaller_capitals_where_the_face_has_none() {
+        // the bundled face has no `smcp`
+        let f = body("<p>Hello World</p>", "p { font-variant: small-caps }", 400.0);
+        let runs = scaled_runs(&f);
+        let texts: Vec<&str> = runs.iter().map(|r| r.0.as_str()).collect();
+        assert_eq!(texts, ["H", "ELLO", "W", "ORLD"], "{runs:?}");
+        assert_eq!(runs.iter().map(|r| r.1).collect::<Vec<_>>(), [1.0, 0.7, 1.0, 0.7]);
+        // the small ones are as wide as capitals at 70% of the size
+        let line = first_line(&f);
+        let elo = line.children.iter().find(|c| matches!(&c.kind, FragmentKind::Text(t) if t == "ELLO")).unwrap();
+        assert!((elo.width - word_width_at("ELLO", 16.0 * 0.7)).abs() < 0.01, "{}", elo.width);
+        // all-small-caps makes the capitals small too
+        let f = body("<p>Hi</p>", "p { font-variant: all-small-caps }", 400.0);
+        assert_eq!(scaled_runs(&f), [("HI".to_string(), 0.7)]);
+        // the property turned off, or synthesis refused, leaves the text alone
+        for css in ["p { font-variant: normal }", "p { font-variant: small-caps; font-synthesis: none }", "p { font-variant: small-caps; font-synthesis-small-caps: none }"] {
+            let f = body("<p>Hello</p>", css, 400.0);
+            assert_eq!(scaled_runs(&f), [("Hello".to_string(), 1.0)], "{css}");
+        }
+        // synthesis that lists the other kinds only does not synthesize small caps
+        let f = body("<p>Hello</p>", "p { font-variant: small-caps; font-synthesis: weight style }", 400.0);
+        assert_eq!(scaled_runs(&f), [("Hello".to_string(), 1.0)]);
+    }
+
+    fn word_width_at(text: &str, size: f64) -> f64 {
+        blueice_font::measure_text_width(text, size, false, false)
     }
 
     #[test]

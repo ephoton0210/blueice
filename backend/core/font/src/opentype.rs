@@ -133,6 +133,17 @@ fn bytes_of(font: &'static fontdue::Font) -> Option<&'static [u8]> {
     crate::bundled_bytes_of(font).or_else(|| crate::web::bytes_of(font))
 }
 
+/// Whether the face that draws ordinary letters at this weight and style has the OpenType
+/// feature `tag` (`smcp`, say) in its substitution tables.
+pub fn face_supports_feature(bold: bool, italic: bool, face: Option<WebFontId>, tag: [u8; 4]) -> bool {
+    let Some(hb) = face_of(font_for_char_in('a', bold, italic, face)) else {
+        return false;
+    };
+    hb.tables()
+        .gsub
+        .is_some_and(|gsub| gsub.features.index(rustybuzz::ttf_parser::Tag::from_bytes(&tag)).is_some())
+}
+
 /// A parsed face for shaping, kept for the life of the process.
 struct Shaper(&'static Face<'static>);
 
@@ -186,6 +197,76 @@ fn run_direction(run: &str, rtl: bool) -> (Direction, bool) {
     )
 }
 
+/// Whether a face has layout tables for the Arabic script. Without them HarfBuzz leaves the
+/// letters in their isolated forms, so the run is joined by the presentation-form table first.
+fn has_arabic_layout(face: &Face<'_>) -> bool {
+    face.tables().gsub.is_some_and(|gsub| {
+        gsub.scripts.index(rustybuzz::ttf_parser::Tag::from_bytes(b"arab")).is_some()
+    })
+}
+
+/// Whether `run` holds Arabic-script letters.
+fn has_arabic(run: &str) -> bool {
+    run.chars().any(|c| matches!(c as u32, 0x0600..=0x06FF | 0x0750..=0x077F | 0x08A0..=0x08FF))
+}
+
+/// One run of text in one face: its glyphs in screen order, each with the index of the character
+/// of `run` it comes from. `fallback` joins Arabic letters with the presentation-form table
+/// before shaping (what a face with no Arabic layout tables needs).
+fn shape_run(
+    font: Glyphs,
+    hb: &Face<'static>,
+    run: &str,
+    settings: &[rustybuzz::Feature],
+    px: f32,
+    rtl: bool,
+    fallback: bool,
+) -> Vec<(DrawGlyph, usize)> {
+    let prepared;
+    let (shaped_text, map): (&str, Option<Vec<usize>>) =
+        if has_arabic(run) && (fallback || !has_arabic_layout(hb)) {
+            let (joined, map) =
+                crate::shape::shape_with_map(run, |c| hb.glyph_index(c).is_some());
+            prepared = joined;
+            (&prepared, Some(map))
+        } else {
+            (run, None)
+        };
+    let (direction, turn) = run_direction(run, rtl);
+    let mut buffer = UnicodeBuffer::new();
+    buffer.push_str(shaped_text);
+    buffer.set_direction(direction);
+    buffer.guess_segment_properties();
+    let glyphs = rustybuzz::shape(hb, settings, buffer);
+    let scale = px / hb.units_per_em() as f32;
+    // Clusters are byte offsets into the text shaped.
+    let char_at: HashMap<usize, usize> =
+        shaped_text.char_indices().enumerate().map(|(i, (offset, _))| (offset, i)).collect();
+    let mut out: Vec<(DrawGlyph, usize)> = glyphs
+        .glyph_infos()
+        .iter()
+        .zip(glyphs.glyph_positions())
+        .map(|(info, pos)| {
+            let shaped_index = char_at.get(&(info.cluster as usize)).copied().unwrap_or(0);
+            let source = map.as_ref().map_or(shaped_index, |m| m.get(shaped_index).copied().unwrap_or(0));
+            (
+                DrawGlyph {
+                    font,
+                    id: info.glyph_id as u16,
+                    advance: pos.x_advance as f32 * scale,
+                    dx: pos.x_offset as f32 * scale,
+                    dy: pos.y_offset as f32 * scale,
+                },
+                source,
+            )
+        })
+        .collect();
+    if turn {
+        out.reverse();
+    }
+    out
+}
+
 /// `text` as glyphs, in the order they are drawn, shaped with the font's own layout tables
 /// (joining, ligatures, kerning, marks, contextual forms of every script) and the `features` the
 /// box asked for. `rtl` says the text runs right to left, in which case the glyphs come out in
@@ -215,30 +296,8 @@ pub fn shape_text(
     let mut shaped_runs: Vec<Vec<DrawGlyph>> = Vec::with_capacity(runs.len());
     for (font, start, end) in runs {
         let hb = face_of(font)?;
-        let run = &text[start..end];
-        let (direction, turn) = run_direction(run, rtl);
-        let mut buffer = UnicodeBuffer::new();
-        buffer.push_str(run);
-        buffer.set_direction(direction);
-        buffer.guess_segment_properties();
-        let glyphs = rustybuzz::shape(hb, &settings, buffer);
-        let scale = px / hb.units_per_em() as f32;
-        let mut shaped: Vec<DrawGlyph> = glyphs
-            .glyph_infos()
-            .iter()
-            .zip(glyphs.glyph_positions())
-            .map(|(info, pos)| DrawGlyph {
-                font,
-                id: info.glyph_id as u16,
-                advance: pos.x_advance as f32 * scale,
-                dx: pos.x_offset as f32 * scale,
-                dy: pos.y_offset as f32 * scale,
-            })
-            .collect();
-        if turn {
-            shaped.reverse();
-        }
-        shaped_runs.push(shaped);
+        let shaped = shape_run(font, hb, &text[start..end], &settings, px, rtl, false);
+        shaped_runs.push(shaped.into_iter().map(|(g, _)| g).collect());
     }
     // A right-to-left line is drawn from its last run to its first.
     if rtl {
@@ -264,10 +323,9 @@ pub fn char_advances(
     }
     let settings = features_of(features);
     let mut out = vec![0.0; text.chars().count()];
-    let mut char_of_byte: HashMap<usize, usize> = HashMap::new();
-    for (index, (offset, _)) in text.char_indices().enumerate() {
-        char_of_byte.insert(offset, index);
-    }
+    // Character index (in `text`) at each byte offset, to place a run's characters in it.
+    let first_char: HashMap<usize, usize> =
+        text.char_indices().enumerate().map(|(i, (offset, _))| (offset, i)).collect();
     let mut start = 0;
     let mut current: Option<Glyphs> = None;
     let mut runs: Vec<(Glyphs, usize, usize)> = Vec::new();
@@ -284,18 +342,10 @@ pub fn char_advances(
     }
     for (font, start, end) in runs {
         let hb = face_of(font)?;
-        let run = &text[start..end];
-        let (direction, _) = run_direction(run, rtl);
-        let mut buffer = UnicodeBuffer::new();
-        buffer.push_str(run);
-        buffer.set_direction(direction);
-        buffer.guess_segment_properties();
-        let glyphs = rustybuzz::shape(hb, &settings, buffer);
-        let scale = f64::from(px) / f64::from(hb.units_per_em());
-        for (info, pos) in glyphs.glyph_infos().iter().zip(glyphs.glyph_positions()) {
-            // Clusters are byte offsets into the run.
-            if let Some(&index) = char_of_byte.get(&(start + info.cluster as usize)) {
-                out[index] += f64::from(pos.x_advance) * scale;
+        let base = first_char.get(&start).copied().unwrap_or(0);
+        for (glyph, source) in shape_run(font, hb, &text[start..end], &settings, px, rtl, false) {
+            if let Some(slot) = out.get_mut(base + source) {
+                *slot += f64::from(glyph.advance);
             }
         }
     }
@@ -398,6 +448,30 @@ mod tests {
         let mut expected = shaped.clone();
         expected.sort_unstable();
         assert_eq!(logical, expected);
+    }
+
+    #[test]
+    fn the_bundled_text_face_has_arabic_layout_and_the_cjk_face_has_none() {
+        assert!(has_arabic_layout(static_face_of(font()).unwrap()));
+        let cjk = crate::font_for_char('\u{65E5}', false, false);
+        assert!(!has_arabic_layout(static_face_of(cjk).unwrap()));
+    }
+
+    #[test]
+    fn a_face_with_no_arabic_layout_is_given_the_presentation_form_joins() {
+        let hb = static_face_of(font()).unwrap();
+        let run = "\u{628}\u{628}\u{628}";
+        let fallback = shape_run(Glyphs::Static(font()), hb, run, &[], 16.0, true, true);
+        let by_tables = shape_run(Glyphs::Static(font()), hb, run, &[], 16.0, true, false);
+        let ids = |v: &[(DrawGlyph, usize)]| v.iter().map(|(g, _)| g.id).collect::<Vec<_>>();
+        assert_eq!(ids(&fallback), [glyph_of('\u{FE90}'), glyph_of('\u{FE92}'), glyph_of('\u{FE91}')]);
+        assert_eq!(ids(&fallback), ids(&by_tables), "the fallback agrees with the font's own tables");
+        // lam + alef is one glyph that stands for the lam; the sources are original characters
+        let word = "\u{628}\u{644}\u{627}\u{633}";
+        let shaped = shape_run(Glyphs::Static(font()), hb, word, &[], 16.0, true, true);
+        let mut sources: Vec<usize> = shaped.iter().map(|(_, s)| *s).collect();
+        sources.sort_unstable();
+        assert_eq!(sources, [0, 1, 3]);
     }
 
     #[test]

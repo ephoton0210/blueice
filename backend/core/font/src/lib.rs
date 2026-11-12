@@ -50,7 +50,7 @@ mod opentype;
 mod shape;
 mod variable;
 pub use opentype::{
-    char_advances, is_complex, register_features, shape_for_drawing, shape_text, starts_rtl,
+    char_advances, face_supports_feature, is_complex, register_features, shape_for_drawing, shape_text, starts_rtl,
     vertical_cell, vertical_glyph, DrawGlyph, FeaturesId, VerticalCell,
 };
 pub use shape::{is_mark, mirrored, shape_with, vertical_form, visual_order};
@@ -325,6 +325,24 @@ pub fn shape_in(
 ) -> std::borrow::Cow<'_, str> {
     shape_with(text, |c| font_for_char_in(c, bold, italic, face).has_glyph(c))
 }
+
+/// How far below the top of its box the baseline of text this size is drawn: a page face's own
+/// ascent, or the ratio the bundled fonts are drawn by. The rasterizer and anything that must put
+/// two sizes of text on one baseline use the same figure.
+pub fn baseline_offset(
+    font_size_px: f64,
+    bold: bool,
+    italic: bool,
+    face: Option<web::WebFontId>,
+) -> f64 {
+    match face {
+        Some(_) => ascent_descent_in(font_size_px, bold, italic, face).0,
+        None => font_size_px * ASSUMED_ASCENT_RATIO,
+    }
+}
+
+/// The share of the font size above the baseline in a box of bundled-font text.
+pub const ASSUMED_ASCENT_RATIO: f64 = 0.8;
 
 /// [`ascent_descent`] of a page's own face (`None`: the bundled fonts).
 pub fn ascent_descent_in(

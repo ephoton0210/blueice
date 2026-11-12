@@ -255,6 +255,10 @@ struct CanvasFont {
     bold: bool,
     italic: bool,
     face: Option<blueice_font::web::WebFontId>,
+    /// The OpenType features of `fontKerning`, `fontVariantCaps` and `textRendering`.
+    features: blueice_font::FeaturesId,
+    letter_spacing: f64,
+    word_spacing: f64,
 }
 
 /// A `font-stretch` keyword as a percentage in tenths.
@@ -276,7 +280,15 @@ impl CanvasFont {
     /// `[style] [weight] size[/line-height] family[, family]...`; anything else is the default
     /// `10px sans-serif`.
     fn parse(spec: &str, fonts: &crate::fonts::FontCatalog) -> CanvasFont {
-        let default = CanvasFont { size: 10.0, bold: false, italic: false, face: None };
+        let default = CanvasFont {
+            size: 10.0,
+            bold: false,
+            italic: false,
+            face: None,
+            features: blueice_font::FeaturesId::default(),
+            letter_spacing: 0.0,
+            word_spacing: 0.0,
+        };
         let (mut weight, mut italic, mut stretch) = (400_u16, false, 1000_u16);
         let mut words = spec.split_whitespace();
         let mut size = None;
@@ -332,7 +344,35 @@ impl CanvasFont {
                 req.stretch = stretch;
                 fonts.face_for_request(&families.join(","), &req).0
             },
+            features: blueice_font::FeaturesId::default(),
+            letter_spacing: 0.0,
+            word_spacing: 0.0,
         }
+    }
+
+    /// This font with the text properties a draw carries (`fontKerning`, `fontVariantCaps`,
+    /// `textRendering`, `letterSpacing`, `wordSpacing`), as the JSON array the script sends.
+    fn with_extras(mut self, json: &str) -> CanvasFont {
+        let Ok(v) = serde_json::from_str::<Vec<serde_json::Value>>(json) else {
+            return self;
+        };
+        let word = |i: usize| v.get(i).and_then(|x| x.as_str()).unwrap_or("");
+        let number = |i: usize| v.get(i).and_then(serde_json::Value::as_f64).filter(|n| n.is_finite()).unwrap_or(0.0);
+        let props = [
+            ("font-kerning", word(0)),
+            ("font-variant-caps", word(1)),
+            ("text-rendering", word(2)),
+        ];
+        let mut features = blueice_css::font_features_for(&props);
+        self.letter_spacing = number(3).clamp(-1000.0, 1000.0);
+        self.word_spacing = number(4).clamp(-1000.0, 1000.0);
+        // Letters spaced out are not joined into ligatures.
+        if self.letter_spacing != 0.0 {
+            features.push((*b"liga", 0));
+            features.push((*b"clig", 0));
+        }
+        self.features = blueice_font::register_features(&features);
+        self
     }
 
     /// `text` as what is drawn, left to right: its bidirectional runs in screen order, Arabic and
@@ -341,26 +381,58 @@ impl CanvasFont {
     fn pieces(&self, text: &str, rtl: bool) -> Vec<Piece> {
         let mut out = Vec::new();
         for (run, run_rtl) in blueice_layout::visual_runs(text, rtl) {
-            if let Some(glyphs) = blueice_font::shape_for_drawing(
-                &run,
-                self.bold,
-                self.italic,
-                self.face,
-                self.size as f32,
-                run_rtl,
-            ) {
-                out.extend(glyphs.into_iter().map(Piece::Glyph));
-                continue;
-            }
-            let shaped = blueice_font::shape_in(&run, self.bold, self.italic, self.face);
-            let drawn = if run_rtl {
-                std::borrow::Cow::Owned(blueice_font::visual_order(&shaped))
+            // With `wordSpacing` each word is shaped on its own, with the spacing between them;
+            // on screen a right-to-left run has its words last to first.
+            let mut segments: Vec<Vec<Piece>> = Vec::new();
+            if self.word_spacing == 0.0 {
+                segments.push(self.run_pieces(&run, run_rtl));
             } else {
-                shaped
-            };
-            out.extend(drawn.chars().map(Piece::Char));
+                for (i, word) in run.split(' ').enumerate() {
+                    if i > 0 {
+                        segments.push(vec![Piece::Char(' '), Piece::Gap(self.word_spacing)]);
+                    }
+                    if !word.is_empty() {
+                        segments.push(self.run_pieces(word, run_rtl));
+                    }
+                }
+            }
+            if run_rtl {
+                segments.reverse();
+            }
+            out.extend(segments.into_iter().flatten());
         }
-        out
+        if self.letter_spacing == 0.0 {
+            return out;
+        }
+        // The spacing follows every letter.
+        out.into_iter()
+            .flat_map(|piece| match piece {
+                Piece::Gap(_) => vec![piece],
+                piece => vec![piece, Piece::Gap(self.letter_spacing)],
+            })
+            .collect()
+    }
+
+    /// One run in one direction: shaped, or one character at a time where it cannot be.
+    fn run_pieces(&self, run: &str, run_rtl: bool) -> Vec<Piece> {
+        if let Some(glyphs) = blueice_font::shape_text(
+            run,
+            self.bold,
+            self.italic,
+            self.face,
+            self.features,
+            self.size as f32,
+            run_rtl,
+        ) {
+            return glyphs.into_iter().map(Piece::Glyph).collect();
+        }
+        let shaped = blueice_font::shape_in(run, self.bold, self.italic, self.face);
+        let drawn = if run_rtl {
+            std::borrow::Cow::Owned(blueice_font::visual_order(&shaped))
+        } else {
+            shaped
+        };
+        drawn.chars().map(Piece::Char).collect()
     }
 
     /// How far the pen moves over `pieces`.
@@ -369,6 +441,7 @@ impl CanvasFont {
             .iter()
             .map(|p| match p {
                 Piece::Glyph(g) => f64::from(g.advance),
+                Piece::Gap(g) => *g,
                 Piece::Char(c) => blueice_font::font_for_char_in(*c, self.bold, self.italic, self.face)
                     .metrics(*c, self.size as f32)
                     .advance_width as f64,
@@ -383,6 +456,8 @@ enum Piece {
     Glyph(blueice_font::DrawGlyph),
     /// A character drawn from the face that has it.
     Char(char),
+    /// Room the pen moves over without drawing: letter and word spacing.
+    Gap(f64),
 }
 
 impl Canvas2d {
@@ -430,7 +505,12 @@ impl Canvas2d {
         let mut pen = left;
         let mut out = Vec::new();
         for piece in &pieces {
+            if let Piece::Gap(gap) = piece {
+                pen += gap;
+                continue;
+            }
             let (metrics, bitmap, advance, (dx, dy)) = match piece {
+                Piece::Gap(_) => unreachable!("handled above"),
                 Piece::Char(ch) => {
                     let face = blueice_font::font_for_char_in(*ch, font.bold, font.italic, font.face);
                     let (metrics, bitmap) = face.rasterize(*ch, font.size as f32);
@@ -840,7 +920,7 @@ impl Canvas2d {
             "fillText" | "strokeText" => {
                 // text, x, y, font, paint, alpha, matrix, align, baseline, maxWidth (<0: none),
                 // lineWidth (strokeText only; fillText sends 0), direction ("rtl" or not)
-                let font = CanvasFont::parse(text(a, 3), fonts);
+                let font = CanvasFont::parse(text(a, 3), fonts).with_extras(text(a, 12));
                 let paint = Paint::parse(text(a, 4));
                 let max = if a.get(9).is_some() { num(a, 9) } else { -1.0 };
                 let (at, alpha, m) = ((num(a, 1), num(a, 2)), num(a, 5).clamp(0.0, 1.0), affine(a, 6));
@@ -856,7 +936,7 @@ impl Canvas2d {
             // (left and right either side, ascent above the baseline, descent below) and the
             // font's own, as comma-separated numbers.
             "measureBox" => {
-                let font = CanvasFont::parse(text(a, 1), fonts);
+                let font = CanvasFont::parse(text(a, 1), fonts).with_extras(text(a, 5));
                 let (glyphs, _) = Self::place_text(
                     text(a, 0),
                     (0.0, 0.0),

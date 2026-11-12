@@ -26,10 +26,9 @@
 
 mod shapes;
 
-use blueice_font::{ascent_descent_in, font_for_char_in, web::WebFontId};
+use blueice_font::{font_for_char_in, web::WebFontId};
 use blueice_paint::{Color, Frame, PaintCommand};
 
-const ASSUMED_ASCENT_RATIO: f64 = 0.8;
 
 /// Where an upright character's baseline is in its cell, as a fraction of the font size: the
 /// em box of an ideograph hangs from the top of the cell.
@@ -189,10 +188,7 @@ impl Pixmap {
         };
         // A page's own face puts the baseline where its own ascent says (layout aligned the
         // line with the same figure); the bundled fonts keep the assumed ratio.
-        let ascent = match run.face {
-            Some(_) => ascent_descent_in(run.font_size_px, run.bold, run.italic, run.face).0,
-            None => run.font_size_px * ASSUMED_ASCENT_RATIO,
-        };
+        let ascent = blueice_font::baseline_offset(run.font_size_px, run.bold, run.italic, run.face);
         let baseline_y = run.y + ascent;
         // A page face that lacks the weight or slant asked for is made bold by smearing each
         // glyph sideways and slanted by shearing it about the baseline.

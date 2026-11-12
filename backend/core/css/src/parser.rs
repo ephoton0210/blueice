@@ -714,6 +714,8 @@ pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(St
             | "font-synthesis"
             | "text-combine-upright"
             | "font-feature-settings"
+            | "font-variant"
+            | "font-variant-alternates"
             | "font-variant-ligatures"
             | "font-variant-numeric"
             | "font-variant-east-asian"

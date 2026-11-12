@@ -2790,7 +2790,7 @@
       super();
       this.canvas = canvas;
       this._id = bi('c2dCreate', canvas._id, canvas.width, canvas.height);
-      this._state = { fillStyle: '#000000', strokeStyle: '#000000', globalAlpha: 1, m: [1, 0, 0, 1, 0, 0], font: '10px sans-serif', textAlign: 'start', textBaseline: 'alphabetic', lineWidth: 1, lineCap: 'butt', lineJoin: 'miter', miterLimit: 10, dash: [], dashOffset: 0, direction: 'ltr' };
+      this._state = { fillStyle: '#000000', strokeStyle: '#000000', globalAlpha: 1, m: [1, 0, 0, 1, 0, 0], font: '10px sans-serif', textAlign: 'start', textBaseline: 'alphabetic', lineWidth: 1, lineCap: 'butt', lineJoin: 'miter', miterLimit: 10, dash: [], dashOffset: 0, direction: 'ltr', fontKerning: 'auto', fontVariantCaps: 'normal', textRendering: 'auto', letterSpacing: '0px', wordSpacing: '0px' };
       this._stack = [];
       this._subs = [];
       this._cur = null;
@@ -2812,6 +2812,21 @@
     set textBaseline(v) { v = String(v); if (['top', 'hanging', 'middle', 'alphabetic', 'ideographic', 'bottom'].includes(v)) this._state.textBaseline = v; }
     get lineWidth() { return this._state.lineWidth; }
     set lineWidth(v) { v = Number(v); if (v > 0 && Number.isFinite(v)) this._state.lineWidth = v; }
+    get fontKerning() { return this._state.fontKerning; }
+    set fontKerning(v) { v = String(v); if (['auto', 'normal', 'none'].includes(v)) this._state.fontKerning = v; }
+    get fontVariantCaps() { return this._state.fontVariantCaps; }
+    set fontVariantCaps(v) { v = String(v); if (['normal', 'small-caps', 'all-small-caps', 'petite-caps', 'all-petite-caps', 'unicase', 'titling-caps'].includes(v)) this._state.fontVariantCaps = v; }
+    get textRendering() { return this._state.textRendering; }
+    set textRendering(v) { v = String(v); if (['auto', 'optimizeSpeed', 'optimizeLegibility', 'geometricPrecision'].includes(v)) this._state.textRendering = v; }
+    get letterSpacing() { return this._state.letterSpacing; }
+    set letterSpacing(v) { v = String(v).trim(); if (/^-?(\d+\.?\d*|\.\d+)px$/.test(v)) this._state.letterSpacing = v; }
+    get wordSpacing() { return this._state.wordSpacing; }
+    set wordSpacing(v) { v = String(v).trim(); if (/^-?(\d+\.?\d*|\.\d+)px$/.test(v)) this._state.wordSpacing = v; }
+    // The text properties the font properties of a draw carry, as one JSON array for the engine.
+    _textExtras() {
+      const st = this._state;
+      return JSON.stringify([st.fontKerning, st.fontVariantCaps, st.textRendering, parseFloat(st.letterSpacing), parseFloat(st.wordSpacing)]);
+    }
     get direction() { return this._state.direction; }
     set direction(v) { v = String(v); if (['ltr', 'rtl', 'inherit'].includes(v)) this._state.direction = v; }
     // textAlign with start and end turned into a side by the direction (inherit is ltr here).
@@ -2905,19 +2920,19 @@
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
       const st = this._state;
       this._c('fillText', String(text), x, y, st.font, paintOf(st.fillStyle), st.globalAlpha, JSON.stringify(st.m), this._align(),
-        st.textBaseline, maxWidth === undefined || !(maxWidth >= 0) ? -1 : Number(maxWidth), 0, st.direction);
+        st.textBaseline, maxWidth === undefined || !(maxWidth >= 0) ? -1 : Number(maxWidth), 0, st.direction, this._textExtras());
     }
     strokeText(text, x, y, maxWidth) {
       x = Number(x); y = Number(y);
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
       const st = this._state;
       this._c('strokeText', String(text), x, y, st.font, paintOf(st.strokeStyle), st.globalAlpha, JSON.stringify(st.m), this._align(),
-        st.textBaseline, maxWidth === undefined || !(maxWidth >= 0) ? -1 : Number(maxWidth), st.lineWidth, st.direction);
+        st.textBaseline, maxWidth === undefined || !(maxWidth >= 0) ? -1 : Number(maxWidth), st.lineWidth, st.direction, this._textExtras());
     }
     measureText(text) {
       const font = this._state.font;
       const [width, left, right, ascent, descent, fontAscent, fontDescent] =
-        String(this._c('measureBox', String(text), font, this._align(), this._state.textBaseline, this._state.direction)).split(',').map(Number);
+        String(this._c('measureBox', String(text), font, this._align(), this._state.textBaseline, this._state.direction, this._textExtras())).split(',').map(Number);
       return { width, actualBoundingBoxLeft: left, actualBoundingBoxRight: right, actualBoundingBoxAscent: ascent,
         actualBoundingBoxDescent: descent, fontBoundingBoxAscent: fontAscent, fontBoundingBoxDescent: fontDescent,
         emHeightAscent: fontAscent, emHeightDescent: fontDescent, alphabeticBaseline: 0, hangingBaseline: fontAscent * 0.8,

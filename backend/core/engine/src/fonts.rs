@@ -1271,6 +1271,35 @@ mod tests {
     }
 
     #[test]
+    fn canvas_text_takes_kerning_spacing_and_the_other_font_properties() {
+        let html = "<body><canvas id=c width=100 height=40></canvas><script>\
+             const g = document.getElementById('c').getContext('2d');\
+             g.font = '32px sans-serif';\
+             const w = (t) => g.measureText(t).width;\
+             const kerned = w('AVAV');\
+             g.fontKerning = 'none'; const flat = w('AVAV');\
+             g.fontKerning = 'normal'; const back = w('AVAV');\
+             g.fontKerning = 'bogus'; const kept = g.fontKerning;\
+             g.fontKerning = 'auto';\
+             g.letterSpacing = '4px'; const spaced = w('abcd'); g.letterSpacing = '0px'; const plain = w('abcd');\
+             g.wordSpacing = '10px'; const words = w('a b c'); g.wordSpacing = '0px'; const nowords = w('a b c');\
+             g.textRendering = 'optimizeSpeed'; const fast = w('AVAV'); g.textRendering = 'auto';\
+             g.fontVariantCaps = 'small-caps'; const caps = g.fontVariantCaps; g.fontVariantCaps = 'bogus';\
+             console.log('KERN ' + (kerned < flat - 1) + ' ' + (back === kerned) + ' ' + kept + ' ' + (Math.abs(fast - flat) < 0.01));\
+             console.log('SPACE ' + Math.round(spaced - plain) + ' ' + Math.round(words - nowords));\
+             console.log('CAPS ' + caps + ' ' + g.fontVariantCaps + ' ' + g.letterSpacing + ' ' + g.wordSpacing + ' ' + g.textRendering);\
+             g.save(); g.fontKerning = 'none'; g.restore(); console.log('RESTORED ' + g.fontKerning);\
+             </script></body>";
+        let mut page = script_page(html);
+        run_scripts(&mut page);
+        let log = page.web_console().join("\n");
+        assert!(log.contains("KERN true true normal true"), "{log}");
+        assert!(log.contains("SPACE 16 20"), "four letters and two spaces: {log}");
+        assert!(log.contains("CAPS small-caps small-caps 0px 0px auto"), "{log}");
+        assert!(log.contains("RESTORED auto"), "{log}");
+    }
+
+    #[test]
     fn a_script_fills_and_strokes_paths() {
         let html = "<body><canvas id=c width=100 height=100></canvas><script>\
              const g = document.getElementById('c').getContext('2d');\

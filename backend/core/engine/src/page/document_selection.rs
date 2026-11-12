@@ -237,13 +237,15 @@ impl Index {
                     let mut pen_y = if upward { y + fragment.height } else { y };
                     // Arabic and Hebrew are laid out by the font's tables: a ligature's width is its
                     // first character's, a mark has none.
+                    // Synthesized small capitals are measured at the size they are drawn at.
+                    let size = style.font_size_px * fragment.size_scale;
                     let shaped_widths = blueice_font::char_advances(
                         text,
                         style.is_bold(),
                         style.is_italic(),
                         None,
                         blueice_font::register_features(&blueice_css::font_features(style)),
-                        style.font_size_px as f32,
+                        size as f32,
                         fragment.rtl,
                     );
                     let mut char_index = 0;
@@ -253,7 +255,7 @@ impl Index {
                             Some(w) => w[char_index..(char_index + chars).min(w.len())].iter().sum(),
                             None => blueice_font::measure_text_width(
                                 cluster,
-                                style.font_size_px,
+                                size,
                                 style.is_bold(),
                                 style.is_italic(),
                             ),

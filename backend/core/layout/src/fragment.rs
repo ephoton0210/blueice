@@ -139,6 +139,9 @@ pub struct Fragment {
     /// Text that a horizontal box nested in a vertical one laid out in the page's own frame and
     /// handed back turned: it is turned again when the vertical box is, which restores it.
     pub turned_back: bool,
+    /// A text run drawn at this share of its element's font size (the smaller capitals of
+    /// synthesized small caps); 1 for ordinary text.
+    pub size_scale: f64,
 }
 
 impl Fragment {
@@ -163,6 +166,7 @@ impl Fragment {
             logical: 0,
             orient: TextOrient::Horizontal,
             turned_back: false,
+            size_scale: 1.0,
         }
     }
 }

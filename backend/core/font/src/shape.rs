@@ -117,7 +117,14 @@ pub fn shape_with(text: &str, has_glyph: impl Fn(char) -> bool) -> Cow<'_, str> 
     if !needs_shaping(text) {
         return Cow::Borrowed(text);
     }
+    Cow::Owned(shape_with_map(text, has_glyph).0)
+}
+
+/// [`shape_with`], also saying which character of `text` each character of the result stands for
+/// (a lam-alef ligature stands for the lam; the alef is gone).
+pub fn shape_with_map(text: &str, has_glyph: impl Fn(char) -> bool) -> (String, Vec<usize>) {
     let chars: Vec<char> = text.chars().collect();
+    let mut map: Vec<usize> = Vec::with_capacity(chars.len());
     // The nearest non-transparent neighbour on each side.
     let before = |i: usize| chars[..i].iter().rev().map(|c| joining(*c)).find(|j| *j != Joining::Transparent);
     let after = |i: usize| chars[i + 1..].iter().map(|c| joining(*c)).find(|j| *j != Joining::Transparent);
@@ -128,6 +135,7 @@ pub fn shape_with(text: &str, has_glyph: impl Fn(char) -> bool) -> Cow<'_, str> 
         let kind = joining(c);
         if !matches!(kind, Joining::Right | Joining::Dual) {
             out.push(c);
+            map.push(i);
             i += 1;
             continue;
         }
@@ -142,7 +150,9 @@ pub fn shape_with(text: &str, has_glyph: impl Fn(char) -> bool) -> Cow<'_, str> 
                     let glyph = char::from_u32(iso + u32::from(joins_prev)).filter(|g| has_glyph(*g));
                     if let Some(glyph) = glyph {
                         out.push(glyph);
+                        map.push(i);
                         out.extend(&chars[i + 1..i + 1 + offset]);
+                        map.extend(i + 1..i + 1 + offset);
                         i += offset + 2;
                         continue;
                     }
@@ -157,9 +167,10 @@ pub fn shape_with(text: &str, has_glyph: impl Fn(char) -> bool) -> Cow<'_, str> 
             (true, true) => 3,
         };
         out.push(form(c, offset).filter(|f| has_glyph(*f)).unwrap_or(c));
+        map.push(i);
         i += 1;
     }
-    Cow::Owned(out)
+    (out, map)
 }
 
 /// The character a right-to-left run draws in place of `c`: a bracket or quote faces the other

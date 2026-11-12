@@ -64,15 +64,152 @@ fn feature_settings(value: &Value) -> Vec<Feature> {
     out
 }
 
+/// The features one `font-variant-*` keyword turns on or off.
+fn variant_keyword(word: &str) -> &'static [(&'static str, u32)] {
+    match word {
+        // ligatures
+        "none" => &[("liga", 0), ("clig", 0), ("dlig", 0), ("hlig", 0), ("calt", 0)],
+        "common-ligatures" => &[("liga", 1), ("clig", 1)],
+        "no-common-ligatures" => &[("liga", 0), ("clig", 0)],
+        "discretionary-ligatures" => &[("dlig", 1)],
+        "no-discretionary-ligatures" => &[("dlig", 0)],
+        "historical-ligatures" => &[("hlig", 1)],
+        "no-historical-ligatures" => &[("hlig", 0)],
+        "contextual" => &[("calt", 1)],
+        "no-contextual" => &[("calt", 0)],
+        // caps
+        "small-caps" => &[("smcp", 1)],
+        "all-small-caps" => &[("smcp", 1), ("c2sc", 1)],
+        "petite-caps" => &[("pcap", 1)],
+        "all-petite-caps" => &[("pcap", 1), ("c2pc", 1)],
+        "unicase" => &[("unic", 1)],
+        "titling-caps" => &[("titl", 1)],
+        // numeric
+        "lining-nums" => &[("lnum", 1)],
+        "oldstyle-nums" => &[("onum", 1)],
+        "proportional-nums" => &[("pnum", 1)],
+        "tabular-nums" => &[("tnum", 1)],
+        "diagonal-fractions" => &[("frac", 1)],
+        "stacked-fractions" => &[("afrc", 1)],
+        "ordinal" => &[("ordn", 1)],
+        "slashed-zero" => &[("zero", 1)],
+        // position
+        "sub" => &[("subs", 1)],
+        "super" => &[("sups", 1)],
+        // east asian
+        "jis78" => &[("jp78", 1)],
+        "jis83" => &[("jp83", 1)],
+        "jis90" => &[("jp90", 1)],
+        "jis04" => &[("jp04", 1)],
+        "simplified" => &[("smpl", 1)],
+        "traditional" => &[("trad", 1)],
+        "full-width" => &[("fwid", 1)],
+        "proportional-width" => &[("pwid", 1)],
+        "ruby" => &[("ruby", 1)],
+        _ => &[],
+    }
+}
+
+/// `font-variant-alternates`: `historical-forms` and the functions that pick a feature by number
+/// (`stylistic(2)`, `styleset(1, 3)`, `character-variant(5)`, `swash(2)`, `ornaments(1)`,
+/// `annotation(3)`). A name that `@font-feature-values` would give a number to is not read.
+fn alternates(value: &Value) -> Vec<(String, u32)> {
+    let tokens: Vec<Token> = match value {
+        Value::Keyword(k) => vec![Token::Ident(k.clone())],
+        Value::Unparsed(tokens) => tokens.clone(),
+        _ => return Vec::new(),
+    };
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < tokens.len() {
+        let Token::Ident(name) = &tokens[i] else {
+            i += 1;
+            continue;
+        };
+        let name = name.to_ascii_lowercase();
+        if name == "historical-forms" {
+            out.push(("hist".to_string(), 1));
+            i += 1;
+            continue;
+        }
+        if !matches!(tokens.get(i + 1), Some(Token::LeftParen)) {
+            i += 1;
+            continue;
+        }
+        let end = tokens[i + 2..]
+            .iter()
+            .position(|t| matches!(t, Token::RightParen))
+            .map_or(tokens.len(), |p| i + 2 + p);
+        for token in &tokens[i + 2..end] {
+            let Token::Number(n) = token else { continue };
+            if *n < 0.0 {
+                continue;
+            }
+            let n = *n as u32;
+            match name.as_str() {
+                "stylistic" | "styleset" => out.push((format!("ss{n:02}"), 1)),
+                "character-variant" => out.push((format!("cv{n:02}"), 1)),
+                "swash" => out.push(("swsh".to_string(), n)),
+                "ornaments" => out.push(("ornm".to_string(), n)),
+                "annotation" => out.push(("nalt".to_string(), n)),
+                _ => {}
+            }
+        }
+        i = end + 1;
+    }
+    out
+}
+
+/// Whether `style` asks for small capitals the face may have to make: `Some(false)` for
+/// `small-caps`, `Some(true)` for `all-small-caps` (capitals shrunk too), `None` when it asks for
+/// neither or `font-synthesis` does not allow making them.
+pub fn small_caps_request(style: &ComputedStyle) -> Option<bool> {
+    let other = &style.other;
+    let mut caps = None;
+    for name in ["font-variant", "font-variant-caps"] {
+        if let Some(value) = other.get(name) {
+            for word in words(value) {
+                match word.as_str() {
+                    "small-caps" => caps = Some(false),
+                    "all-small-caps" => caps = Some(true),
+                    "normal" | "none" => caps = None,
+                    _ => {}
+                }
+            }
+        }
+    }
+    let caps = caps?;
+    if other.get("font-synthesis-small-caps").is_some_and(|v| words(v).first().is_some_and(|w| w == "none")) {
+        return None;
+    }
+    if let Some(value) = other.get("font-synthesis") {
+        let listed = words(value);
+        // `none`, or a list that does not name small caps, refuses it.
+        if !listed.is_empty() && !listed.iter().any(|w| w == "small-caps") {
+            return None;
+        }
+    }
+    Some(caps)
+}
+
 /// The features `style`'s text asks for, in the order they apply (a later setting of the same
 /// tag wins). Empty when it asks for nothing, which is almost always.
 pub fn font_features(style: &ComputedStyle) -> Vec<Feature> {
     let mut out: Vec<Feature> = Vec::new();
     let other = &style.other;
     let mut set = |name: &str, value: u32| out.push((tag(name), value));
+    // Text that is to be drawn fast is not kerned or ligated; the properties below say otherwise.
+    if other.get("text-rendering").is_some_and(|v| words(v).first().is_some_and(|w| w == "optimizespeed")) {
+        for f in ["kern", "liga", "clig", "calt"] {
+            set(f, 0);
+        }
+    }
     if let Some(value) = other.get("font-kerning") {
-        if words(value).first().is_some_and(|w| w == "none") {
-            set("kern", 0);
+        match words(value).first().map(String::as_str) {
+            Some("none") => set("kern", 0),
+            // Asked for outright, it overrides what `text-rendering` leaves off.
+            Some("normal") => set("kern", 1),
+            _ => {}
         }
     }
     // Letters spaced out are not joined into ligatures.
@@ -82,94 +219,27 @@ pub fn font_features(style: &ComputedStyle) -> Vec<Feature> {
         set("liga", 0);
         set("clig", 0);
     }
-    if let Some(value) = other.get("font-variant-ligatures") {
-        for word in words(value) {
-            match word.as_str() {
-                "none" => {
-                    for f in ["liga", "clig", "dlig", "hlig", "calt"] {
-                        set(f, 0);
-                    }
+    // The `font-variant` shorthand and its longhands take the same keywords, so one table reads them.
+    for name in [
+        "font-variant",
+        "font-variant-ligatures",
+        "font-variant-caps",
+        "font-variant-numeric",
+        "font-variant-position",
+        "font-variant-east-asian",
+    ] {
+        if let Some(value) = other.get(name) {
+            for word in words(value) {
+                for (tag_name, setting) in variant_keyword(&word) {
+                    set(tag_name, *setting);
                 }
-                "common-ligatures" => {
-                    set("liga", 1);
-                    set("clig", 1);
-                }
-                "no-common-ligatures" => {
-                    set("liga", 0);
-                    set("clig", 0);
-                }
-                "discretionary-ligatures" => set("dlig", 1),
-                "no-discretionary-ligatures" => set("dlig", 0),
-                "historical-ligatures" => set("hlig", 1),
-                "no-historical-ligatures" => set("hlig", 0),
-                "contextual" => set("calt", 1),
-                "no-contextual" => set("calt", 0),
-                _ => {}
             }
         }
     }
-    let caps = other
-        .get("font-variant-caps")
-        .map(words)
-        .or_else(|| {
-            // `font-variant: small-caps` is the shorthand for it.
-            other.get("font-variant").map(words)
-        })
-        .unwrap_or_default();
-    for word in caps {
-        match word.as_str() {
-            "small-caps" => set("smcp", 1),
-            "all-small-caps" => {
-                set("smcp", 1);
-                set("c2sc", 1);
-            }
-            "petite-caps" => set("pcap", 1),
-            "all-petite-caps" => {
-                set("pcap", 1);
-                set("c2pc", 1);
-            }
-            "unicase" => set("unic", 1),
-            "titling-caps" => set("titl", 1),
-            _ => {}
-        }
-    }
-    if let Some(value) = other.get("font-variant-numeric") {
-        for word in words(value) {
-            match word.as_str() {
-                "lining-nums" => set("lnum", 1),
-                "oldstyle-nums" => set("onum", 1),
-                "proportional-nums" => set("pnum", 1),
-                "tabular-nums" => set("tnum", 1),
-                "diagonal-fractions" => set("frac", 1),
-                "stacked-fractions" => set("afrc", 1),
-                "ordinal" => set("ordn", 1),
-                "slashed-zero" => set("zero", 1),
-                _ => {}
-            }
-        }
-    }
-    if let Some(value) = other.get("font-variant-position") {
-        for word in words(value) {
-            match word.as_str() {
-                "sub" => set("subs", 1),
-                "super" => set("sups", 1),
-                _ => {}
-            }
-        }
-    }
-    if let Some(value) = other.get("font-variant-east-asian") {
-        for word in words(value) {
-            match word.as_str() {
-                "jis78" => set("jp78", 1),
-                "jis83" => set("jp83", 1),
-                "jis90" => set("jp90", 1),
-                "jis04" => set("jp04", 1),
-                "simplified" => set("smpl", 1),
-                "traditional" => set("trad", 1),
-                "full-width" => set("fwid", 1),
-                "proportional-width" => set("pwid", 1),
-                "ruby" => set("ruby", 1),
-                _ => {}
+    if let Some(value) = other.get("font-variant-alternates") {
+        for (tag_name, setting) in alternates(value) {
+            if tag_name.len() == 4 {
+                set(&tag_name, setting);
             }
         }
     }
@@ -186,6 +256,21 @@ pub fn font_features(style: &ComputedStyle) -> Vec<Feature> {
         }
     }
     seen
+}
+
+/// The features for properties given as `(name, value)` text, as a stylesheet would set them: for
+/// callers that have no computed style, such as a canvas.
+pub fn font_features_for(properties: &[(&str, &str)]) -> Vec<Feature> {
+    let mut style = ComputedStyle::initial();
+    for (name, value) in properties {
+        let tokens = crate::tokenizer::tokenize(value);
+        let value = match tokens.as_slice() {
+            [Token::Ident(w)] => Value::Keyword(w.clone()),
+            _ => Value::Unparsed(tokens),
+        };
+        style.other.insert((*name).to_string(), value);
+    }
+    font_features(&style)
 }
 
 #[cfg(test)]
@@ -232,6 +317,18 @@ mod tests {
     }
 
     #[test]
+    fn optimize_speed_turns_kerning_and_ligatures_off_but_the_other_settings_win() {
+        let off = feats(&[("text-rendering", "optimizeSpeed")]);
+        assert!(["kern", "liga", "clig", "calt"].iter().all(|t| off.contains(&((*t).to_string(), 0))));
+        assert!(feats(&[("text-rendering", "optimizeLegibility")]).is_empty());
+        assert!(feats(&[("text-rendering", "geometricPrecision")]).is_empty());
+        let back = feats(&[("text-rendering", "optimizeSpeed"), ("font-kerning", "normal"), ("font-feature-settings", "\"liga\" 1")]);
+        assert!(back.contains(&("liga".to_string(), 1)));
+        assert!(back.contains(&("kern".to_string(), 1)), "font-kerning: normal turns it back on: {back:?}");
+        assert!(back.contains(&("calt".to_string(), 0)));
+    }
+
+    #[test]
     fn spaced_out_letters_are_not_ligated() {
         let mut s = ComputedStyle::initial();
         s.other.insert("letter-spacing".into(), Value::Length(crate::value::Length::Px(2.0)));
@@ -251,6 +348,37 @@ mod tests {
         );
         assert_eq!(feats(&[("font-variant-position", "super")]), [("sups".to_string(), 1)]);
         assert_eq!(feats(&[("font-variant-east-asian", "jis04 full-width")]), [("jp04".to_string(), 1), ("fwid".to_string(), 1)]);
+    }
+
+    #[test]
+    fn the_font_variant_shorthand_takes_the_keywords_of_all_its_longhands() {
+        assert_eq!(
+            feats(&[("font-variant", "small-caps tabular-nums")]),
+            [("smcp".to_string(), 1), ("tnum".to_string(), 1)]
+        );
+        let none = feats(&[("font-variant", "none")]);
+        assert!(["liga", "clig", "dlig", "hlig", "calt"].iter().all(|t| none.contains(&((*t).to_string(), 0))));
+        assert!(feats(&[("font-variant", "normal")]).is_empty());
+    }
+
+    #[test]
+    fn alternates_pick_features_by_number() {
+        assert_eq!(feats(&[("font-variant-alternates", "historical-forms")]), [("hist".to_string(), 1)]);
+        assert_eq!(
+            feats(&[("font-variant-alternates", "stylistic(2) styleset(1, 3) character-variant(5)")]),
+            [
+                ("ss02".to_string(), 1),
+                ("ss01".to_string(), 1),
+                ("ss03".to_string(), 1),
+                ("cv05".to_string(), 1)
+            ]
+        );
+        assert_eq!(
+            feats(&[("font-variant-alternates", "swash(2) ornaments(1) annotation(3)")]),
+            [("swsh".to_string(), 2), ("ornm".to_string(), 1), ("nalt".to_string(), 3)]
+        );
+        // a name needs @font-feature-values, which is not read
+        assert!(feats(&[("font-variant-alternates", "stylistic(fancy)")]).is_empty());
     }
 
     #[test]

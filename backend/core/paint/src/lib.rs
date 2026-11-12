@@ -919,13 +919,22 @@ fn paint_fragment(
                 // Text that runs up the page starts at the bottom of its box.
                 let y = if orient == TextOrient::SidewaysCcw { y + fragment.height } else { y };
                 let features = blueice_font::register_features(&blueice_css::font_features(style)).as_u32();
+                // Synthesized small capitals are smaller text on the same baseline.
+                let font_size_px = style.font_size_px * fragment.size_scale;
+                let face_id = face.map(blueice_font::web::WebFontId::from_u32);
+                let text_y = if fragment.size_scale != 1.0 {
+                    y + blueice_font::baseline_offset(style.font_size_px, bold, italic, face_id)
+                        - blueice_font::baseline_offset(font_size_px, bold, italic, face_id)
+                } else {
+                    y
+                };
                 let mut emit = |x: f64, text: String, rtl: bool| {
                     out.push(PaintCommand::Text {
                         x,
-                        y,
+                        y: text_y,
                         text,
                         color,
-                        font_size_px: style.font_size_px,
+                        font_size_px,
                         bold,
                         italic,
                         face,
@@ -948,10 +957,10 @@ fn paint_fragment(
                             emit(cursor, c.to_string(), false);
                             cursor += blueice_font::measure_text_width_in(
                                 &c.to_string(),
-                                style.font_size_px,
+                                font_size_px,
                                 bold,
                                 italic,
-                                face.map(blueice_font::web::WebFontId::from_u32),
+                                face_id,
                             ) + spacing;
                         }
                     }
@@ -1546,6 +1555,26 @@ mod tests {
         assert_ne!(off[0], 0);
         assert_eq!(features("p { font-feature-settings: \"kern\" 0 }"), off, "the same settings are the same set");
         assert_ne!(features("p { font-variant-numeric: tabular-nums }"), off);
+    }
+
+    #[test]
+    fn synthesized_small_capitals_are_drawn_smaller_on_the_same_baseline() {
+        let f = paint_html("<p>Hi</p>", "p { font-variant: small-caps }", 320.0);
+        let runs: Vec<(String, f64, f64)> = f
+            .commands
+            .iter()
+            .filter_map(|c| match c {
+                PaintCommand::Text { text, font_size_px, y, .. } => Some((text.clone(), *font_size_px, *y)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(runs.len(), 2, "{runs:?}");
+        assert_eq!((runs[0].0.as_str(), runs[0].1), ("H", 16.0));
+        assert_eq!(runs[1].0, "I");
+        assert!((runs[1].1 - 11.2).abs() < 0.01);
+        // the baselines agree: each run's top plus its own ascent is the same line
+        let base = |(size, y): (f64, f64)| y + blueice_font::baseline_offset(size, false, false, None);
+        assert!((base((runs[0].1, runs[0].2)) - base((runs[1].1, runs[1].2))).abs() < 0.01);
     }
 
     #[test]
