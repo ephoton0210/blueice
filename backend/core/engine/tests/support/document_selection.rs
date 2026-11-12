@@ -821,7 +821,7 @@ fn shaped_arabic_is_copied_whole_and_its_characters_run_leftward_by_the_fonts_wi
     let total = blueice_font::measure_text_width(word, 16.0, false, false);
     let (right, left) = (beh.x + beh.width, seen.x);
     assert!((right - left - total).abs() < 0.01, "{} vs {total}", right - left);
-    let advances = blueice_font::char_advances(word, false, false, None, 16.0, true).unwrap();
+    let advances = blueice_font::char_advances(word, false, false, None, blueice_font::FeaturesId::default(), 16.0, true).unwrap();
     assert_eq!(advances[2], 0.0);
     assert!((lam.width - advances[1]).abs() < 0.01, "{} vs {}", lam.width, advances[1]);
 }

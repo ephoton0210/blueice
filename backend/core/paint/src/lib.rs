@@ -150,6 +150,9 @@ pub enum PaintCommand {
         /// the bottom, where the text starts.
         orient: TextOrient,
         breadth: f64,
+        /// The OpenType feature set the text asks for (`blueice_font::FeaturesId`), 0 for the
+        /// font's defaults.
+        features: u32,
     },
 }
 
@@ -915,6 +918,7 @@ fn paint_fragment(
                 let spacing = spacing.filter(|_| orient == TextOrient::Horizontal);
                 // Text that runs up the page starts at the bottom of its box.
                 let y = if orient == TextOrient::SidewaysCcw { y + fragment.height } else { y };
+                let features = blueice_font::register_features(&blueice_css::font_features(style)).as_u32();
                 let mut emit = |x: f64, text: String, rtl: bool| {
                     out.push(PaintCommand::Text {
                         x,
@@ -928,6 +932,7 @@ fn paint_fragment(
                         rtl,
                         orient,
                         breadth,
+                        features,
                     });
                 };
                 match spacing {
@@ -1179,6 +1184,7 @@ fn paint_native_form(
                     rtl: false,
                     orient: TextOrient::Horizontal,
                     breadth: 0.0,
+                    features: 0,
                 });
             }
             return;
@@ -1228,6 +1234,7 @@ fn paint_native_form(
         rtl: false,
         orient: TextOrient::Horizontal,
         breadth: 0.0,
+        features: 0,
     });
 }
 
@@ -1520,6 +1527,25 @@ mod tests {
             320.0,
         );
         assert!(dump_frame(&tcy).contains(" combined"));
+    }
+
+    #[test]
+    fn text_carries_the_feature_set_its_style_asks_for() {
+        let features = |css: &str| -> Vec<u32> {
+            paint_html("<p>AV</p>", css, 320.0)
+                .commands
+                .iter()
+                .filter_map(|c| match c {
+                    PaintCommand::Text { features, .. } => Some(*features),
+                    _ => None,
+                })
+                .collect()
+        };
+        assert_eq!(features(""), [0], "the font's defaults are set 0");
+        let off = features("p { font-kerning: none }");
+        assert_ne!(off[0], 0);
+        assert_eq!(features("p { font-feature-settings: \"kern\" 0 }"), off, "the same settings are the same set");
+        assert_ne!(features("p { font-variant-numeric: tabular-nums }"), off);
     }
 
     #[test]
@@ -1859,6 +1885,7 @@ mod tests {
                     rtl: false,
                     orient: TextOrient::Horizontal,
                     breadth: 0.0,
+                    features: 0,
                 },
                 PaintCommand::Text {
                     x: 1.0,
@@ -1872,6 +1899,7 @@ mod tests {
                     rtl: true,
                     orient: TextOrient::Horizontal,
                     breadth: 0.0,
+                    features: 0,
                 },
             ],
         };

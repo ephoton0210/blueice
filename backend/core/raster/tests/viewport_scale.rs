@@ -58,6 +58,7 @@ fn high_density_text_is_newly_rasterized_instead_of_enlarging_low_density_pixels
             rtl: false,
             orient: blueice_paint::TextOrient::Horizontal,
             breadth: 0.0,
+            features: 0,
         }],
     };
     let low = rasterize_viewport(&frame, 0.0, 100, 40, 1.0).unwrap();

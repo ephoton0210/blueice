@@ -24,6 +24,7 @@ fn run(text: &str, orient: TextOrient, x: f64, y: f64, breadth: f64) -> Frame {
             rtl: false,
             orient,
             breadth,
+            features: 0,
         }],
     }
 }

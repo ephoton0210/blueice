@@ -713,6 +713,11 @@ pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(St
             | "font-variation-settings"
             | "font-synthesis"
             | "text-combine-upright"
+            | "font-feature-settings"
+            | "font-variant-ligatures"
+            | "font-variant-numeric"
+            | "font-variant-east-asian"
+            | "font-variant-position"
             | "hanging-punctuation"
             | "font-style"
     ) {

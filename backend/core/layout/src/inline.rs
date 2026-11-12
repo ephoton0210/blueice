@@ -194,6 +194,10 @@ struct TextProps {
     word_spacing: f64,
     /// In a vertical line, which characters are set side by side in one em.
     combine: Option<crate::ctx::Combine>,
+    /// In a vertical line, which characters stand upright (`text-orientation`).
+    vertical: Option<String>,
+    /// The OpenType features the text asks for.
+    features: blueice_font::FeaturesId,
     hanging: crate::ctx::Hanging,
 }
 
@@ -207,22 +211,59 @@ impl TextProps {
             letter_spacing: style.px("letter-spacing", f64::NAN).unwrap_or(0.0),
             word_spacing: style.px("word-spacing", f64::NAN).unwrap_or(0.0),
             combine: style.combine_upright(),
+            vertical: style.vertical_orientation().map(str::to_string),
+            features: style
+                .style
+                .map(|s| blueice_font::register_features(&blueice_css::font_features(s)))
+                .unwrap_or_default(),
             hanging: style.hanging(),
         }
     }
 
     fn width(&self, text: &str) -> f64 {
         let plain = |t: &str| {
-            blueice_font::measure_text_width_in(t, self.font_size, self.bold, self.italic, self.face)
-                + self.letter_spacing * t.chars().count() as f64
+            blueice_font::measure_text_width_features(
+                t,
+                self.font_size,
+                self.bold,
+                self.italic,
+                self.face,
+                self.features,
+            ) + self.letter_spacing * t.chars().count() as f64
+        };
+        // In a vertical line an upright character is as long as the font's vertical advance.
+        let upright_aware = |t: &str| match &self.vertical {
+            Some(orientation) => {
+                let (mut total, mut sideways) = (0.0, String::new());
+                for c in t.chars() {
+                    if crate::vertical::orient_of(c, Some(orientation))
+                        == crate::fragment::TextOrient::Upright
+                    {
+                        if !sideways.is_empty() {
+                            total += plain(&std::mem::take(&mut sideways));
+                        }
+                        total += crate::vertical::upright_length(
+                            &c.to_string(),
+                            self.font_size,
+                            self.bold,
+                            self.italic,
+                            self.face,
+                        ) + self.letter_spacing;
+                    } else {
+                        sideways.push(c);
+                    }
+                }
+                total + plain(&sideways)
+            }
+            None => plain(t),
         };
         match self.combine {
             // Combined characters take one em along the line between them.
             Some(rule) => crate::vertical::combine_runs(text, rule)
                 .iter()
-                .map(|(run, combined)| if *combined { self.font_size } else { plain(run) })
+                .map(|(run, combined)| if *combined { self.font_size } else { upright_aware(run) })
                 .sum(),
-            None => plain(text),
+            None => upright_aware(text),
         }
     }
 
@@ -1344,6 +1385,25 @@ pub(crate) fn layout_run_around(
             _ => text_align.as_str(),
         };
         let side = align_side(line_align, rtl_paragraph);
+        // The line's items in the order they sit on screen. Spaces at its end take the
+        // paragraph's level, so they do not wander into the middle of the line.
+        let mut item_levels: Vec<u8> = line
+            .items
+            .iter()
+            .map(|item| match item {
+                LineItem::Piece(i) | LineItem::Space(_, i) => levels[*i],
+            })
+            .collect();
+        for (k, item) in line.items.iter().enumerate().rev() {
+            match item {
+                LineItem::Space(..) => item_levels[k] = paragraph_level,
+                LineItem::Piece(i) if matches!(pieces[*i], Piece::Space { .. }) => {
+                    item_levels[k] = paragraph_level
+                }
+                _ => break,
+            }
+        }
+        let visual = bidi::visual_order(&item_levels);
         // What hangs outside the line: a stop or comma (or, on the last line, a closing bracket)
         // at its end, an opening bracket at the start of the first line. The line is aligned and
         // stretched as if those were not on it.
@@ -1363,12 +1423,31 @@ pub(crate) fn layout_run_around(
         } else {
             0.0
         };
-        let start_hang = if is_first && first_in_block && !rtl_paragraph {
+        let start_hang = if is_first && first_in_block {
             word_hang(line.items.first()).first
         } else {
             0.0
         };
-        let visible = line.width - trailing_hang - start_hang;
+        // A hung character is outside the edge of the line it is at on screen: the logical end
+        // is the left edge in right-to-left text, the logical start the right edge there. One
+        // in the middle of a line (mixed directions) does not hang.
+        let (mut hang_left, mut hang_right) = (0.0f64, 0.0f64);
+        let last_slot = line.items.len().saturating_sub(1);
+        for (amount, slot, is_end) in [(trailing_hang, last_slot, true), (start_hang, 0, false)] {
+            if amount <= 0.0 {
+                continue;
+            }
+            // The start of a left-to-right word is at its left, of a right-to-left one at its
+            // right; its end is the other side.
+            let odd = item_levels.get(slot).is_some_and(|l| l % 2 == 1);
+            let at_right = if is_end { !odd } else { odd };
+            if at_right && visual.last() == Some(&slot) {
+                hang_right += amount;
+            } else if !at_right && visual.first() == Some(&slot) {
+                hang_left += amount;
+            }
+        }
+        let visible = line.width - hang_left - hang_right;
         let extra_per_space =
             if line_align == "justify" && (!last_line || align_last.is_some()) {
                 let spaces = line
@@ -1395,27 +1474,8 @@ pub(crate) fn layout_run_around(
         // that runs right to left.
         let offset = line.left
             + if rtl_paragraph { 0.0 } else { line_indent }
-            + align_offset(side, used_width - trailing_hang - start_hang, available);
-        // The line's items in the order they sit on screen. Spaces at its end take the
-        // paragraph's level, so they do not wander into the middle of the line.
-        let mut item_levels: Vec<u8> = line
-            .items
-            .iter()
-            .map(|item| match item {
-                LineItem::Piece(i) | LineItem::Space(_, i) => levels[*i],
-            })
-            .collect();
-        for (k, item) in line.items.iter().enumerate().rev() {
-            match item {
-                LineItem::Space(..) => item_levels[k] = paragraph_level,
-                LineItem::Piece(i) if matches!(pieces[*i], Piece::Space { .. }) => {
-                    item_levels[k] = paragraph_level
-                }
-                _ => break,
-            }
-        }
-        let visual = bidi::visual_order(&item_levels);
-        let mut x = if start_hang > 0.0 { -start_hang } else { 0.0 };
+            + align_offset(side, used_width - hang_left - hang_right, available);
+        let mut x = if hang_left > 0.0 { -hang_left } else { 0.0 };
         let mut children: Vec<Fragment> = Vec::new();
         let mut decorations: Vec<(usize, NodeId, f64, f64)> = Vec::new();
         for entry in open.iter_mut() {
@@ -1938,11 +1998,62 @@ mod tests {
     }
 
     #[test]
+    fn a_stop_hangs_past_the_left_end_of_a_right_to_left_line_and_an_opening_bracket_past_the_right() {
+        let (gd, ab) = ("\u{5d2}\u{5d3}", "\u{5d0}\u{5d1}");
+        let w = blueice_font::measure_text_width(ab, 16.0, false, false)
+            + blueice_font::measure_text_width(" ", 16.0, false, false)
+            + blueice_font::measure_text_width(gd, 16.0, false, false);
+        let stop = blueice_font::measure_text_width(".", 16.0, false, false);
+        let text = format!("<p>{gd} {ab}.</p>");
+        let plain = body(&text, &format!("p {{ direction: rtl; width: {w}px }}"), 400.0);
+        assert!(run_texts(&plain).len() >= 2, "the stop does not fit: {:?}", run_texts(&plain));
+        let hung = body(
+            &text,
+            &format!("p {{ direction: rtl; width: {w}px; hanging-punctuation: allow-end }}"),
+            400.0,
+        );
+        let lines = run_texts(&hung);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        let line = first_line(&hung);
+        let leftmost = line.children.iter().map(|c| c.x).fold(f64::INFINITY, f64::min);
+        assert!(
+            (line.x + leftmost + stop).abs() < 0.01,
+            "the stop is just left of the box: {} {leftmost} {stop}",
+            line.x
+        );
+        // an opening bracket at the start hangs past the right edge
+        let bracket = blueice_font::measure_text_width("(", 16.0, false, false);
+        let f = body(
+            &format!("<p>({ab})</p>"),
+            "p { direction: rtl; width: 100px; hanging-punctuation: first }",
+            400.0,
+        );
+        let line = first_line(&f);
+        let rightmost = line.children.iter().map(|c| c.x + c.width).fold(0.0, f64::max);
+        assert!(line.x + rightmost > 100.0 + bracket - 0.5, "the bracket is outside on the right: {}", line.x + rightmost);
+    }
+
+    #[test]
     fn hanging_does_not_apply_to_letters_or_without_the_property() {
         let f = body("<p>aaaa bbbb.</p>", "p { width: 40px; hanging-punctuation: allow-end }", 400.0);
         assert!(run_texts(&f).len() >= 2);
         let f = body("<p>\u{3042}\u{3044}\u{3046}\u{3048}\u{3002}</p>", "p { width: 64px; hanging-punctuation: none }", 400.0);
         assert_eq!(run_texts(&f).len(), 2);
+    }
+
+    #[test]
+    fn kerning_tucks_letter_pairs_together_unless_the_style_turns_it_off() {
+        let width = |css: &str| {
+            let f = body("<p>AVAVAV</p>", css, 400.0);
+            first_line(&f).width
+        };
+        let kerned = width("");
+        let plain = width("p { font-kerning: none }");
+        assert!(kerned < plain - 0.5, "{kerned} vs {plain}");
+        assert!((width("p { font-feature-settings: \"kern\" 0 }") - plain).abs() < 0.01);
+        assert!((width("p { font-kerning: normal }") - kerned).abs() < 0.01);
+        // letters spaced out are the sum of the kerned letters and the spacing
+        assert!(width("p { letter-spacing: 1px }") > kerned + 5.0);
     }
 
     #[test]

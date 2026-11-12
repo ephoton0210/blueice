@@ -95,7 +95,7 @@ impl ComputedStyle {
         }
     }
 
-    fn initial() -> Self {
+    pub(crate) fn initial() -> Self {
         ComputedStyle {
             display: "inline".to_string(),
             color: Color::Rgba(0, 0, 0, 255),
@@ -127,6 +127,13 @@ const INHERITED_PROPERTIES: &[&str] = &[
 const OTHER_INHERITED_PROPERTIES: &[&str] = &[
     "font-weight",
     "font-variant",
+    "font-kerning",
+    "font-variant-ligatures",
+    "font-variant-caps",
+    "font-variant-numeric",
+    "font-variant-east-asian",
+    "font-variant-position",
+    "font-feature-settings",
     "font-stretch",
     "font-variation-settings",
     "font-optical-sizing",

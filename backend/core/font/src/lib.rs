@@ -49,7 +49,10 @@ pub mod web;
 mod opentype;
 mod shape;
 mod variable;
-pub use opentype::{char_advances, is_complex, shape_for_drawing, starts_rtl, vertical_glyph, DrawGlyph};
+pub use opentype::{
+    char_advances, is_complex, register_features, shape_for_drawing, shape_text, starts_rtl,
+    vertical_cell, vertical_glyph, DrawGlyph, FeaturesId, VerticalCell,
+};
 pub use shape::{is_mark, mirrored, shape_with, vertical_form, visual_order};
 pub use variable::{Axis, VarInstance, Variation};
 
@@ -186,6 +189,15 @@ impl Glyphs {
         }
     }
 
+    /// The glyph with this index in the face, drawn as [`rasterize`](Glyphs::rasterize) draws a
+    /// character (for glyphs a shaper chose).
+    pub fn rasterize_indexed(self, id: u16, px: f32) -> (fontdue::Metrics, Vec<u8>) {
+        match self {
+            Glyphs::Static(f) => f.rasterize_indexed(id, px),
+            Glyphs::Variable(v) => v.rasterize_indexed(id, px),
+        }
+    }
+
     pub fn rasterize(self, c: char, px: f32) -> (fontdue::Metrics, Vec<u8>) {
         match self {
             Glyphs::Static(f) => f.rasterize(c, px),
@@ -231,10 +243,66 @@ pub fn measure_text_width_in(
     italic: bool,
     face: Option<web::WebFontId>,
 ) -> f64 {
-    // Arabic and Hebrew are as wide as the glyphs the font's tables make of them.
-    if let Some(glyphs) =
-        shape_for_drawing(text, bold, italic, face, font_size_px as f32, starts_rtl(text))
-    {
+    measure_text_width_features(text, font_size_px, bold, italic, face, FeaturesId::default())
+}
+
+/// [`measure_text_width_in`] with the OpenType features the text asks for. Text is as wide as the
+/// glyphs the font's own layout tables make of it: kerning, ligatures, joining forms.
+pub fn measure_text_width_features(
+    text: &str,
+    font_size_px: f64,
+    bold: bool,
+    italic: bool,
+    face: Option<web::WebFontId>,
+    features: FeaturesId,
+) -> f64 {
+    if text.is_empty() {
+        return 0.0;
+    }
+    type Key = (String, u32, bool, bool, Option<u32>, u32);
+    static WIDTHS: std::sync::Mutex<Option<std::collections::HashMap<Key, f64>>> =
+        std::sync::Mutex::new(None);
+    // Widths are asked for again and again as a page is laid out; shaping is not free.
+    const MAX_CACHED: usize = 32_768;
+    let key: Key = (
+        text.to_string(),
+        (font_size_px as f32).to_bits(),
+        bold,
+        italic,
+        face.map(web::WebFontId::as_u32),
+        features.as_u32(),
+    );
+    if let Some(known) = WIDTHS.lock().ok().and_then(|m| m.as_ref().and_then(|m| m.get(&key).copied())) {
+        return known;
+    }
+    let width = measure_uncached(text, font_size_px, bold, italic, face, features);
+    if let Ok(mut cache) = WIDTHS.lock() {
+        let map = cache.get_or_insert_with(Default::default);
+        if map.len() >= MAX_CACHED {
+            map.clear();
+        }
+        map.insert(key, width);
+    }
+    width
+}
+
+fn measure_uncached(
+    text: &str,
+    font_size_px: f64,
+    bold: bool,
+    italic: bool,
+    face: Option<web::WebFontId>,
+    features: FeaturesId,
+) -> f64 {
+    if let Some(glyphs) = shape_text(
+        text,
+        bold,
+        italic,
+        face,
+        features,
+        font_size_px as f32,
+        starts_rtl(text),
+    ) {
         return glyphs.iter().map(|g| f64::from(g.advance)).sum();
     }
     shape_in(text, bold, italic, face)
@@ -400,6 +468,21 @@ mod tests {
             .map(|c| font_for(false, false).metrics(c, 16.0).advance_width as f64)
             .sum();
         assert_eq!(measure_text_width("abc", 16.0, false, false), expected);
+    }
+
+    #[test]
+    fn latin_text_is_kerned_unless_the_text_turns_kerning_off() {
+        let width = |text: &str, features: FeaturesId| {
+            measure_text_width_features(text, 32.0, false, false, None, features)
+        };
+        let separate = width("A", FeaturesId::default()) + width("V", FeaturesId::default());
+        let kerned = width("AV", FeaturesId::default());
+        assert!(kerned < separate - 0.5, "the pair is tucked together: {kerned} vs {separate}");
+        let off = register_features(&[(*b"kern", 0)]);
+        assert!((width("AV", off) - separate).abs() < 0.01, "kerning off is the sum of the letters");
+        // the same set registered again is the same set
+        assert_eq!(register_features(&[(*b"kern", 0)]), off);
+        assert_eq!(register_features(&[]), FeaturesId::default());
     }
 
     #[test]

@@ -187,8 +187,31 @@ fn upright_in_mixed(c: char) -> bool {
         | 0x1F000..=0x1FAFF | 0x20000..=0x2FA1F)
 }
 
+/// How long upright `text` is down a vertical line: each character takes the font's own vertical
+/// advance (`vmtx`), or its horizontal one where the font cannot say.
+pub(crate) fn upright_length(
+    text: &str,
+    size: f64,
+    bold: bool,
+    italic: bool,
+    face: Option<blueice_font::web::WebFontId>,
+) -> f64 {
+    text.chars()
+        .map(|c| match blueice_font::font_for_char_in(c, bold, italic, face) {
+            blueice_font::Glyphs::Static(font) => blueice_font::vertical_cell(font, c)
+                .map_or_else(
+                    || blueice_font::measure_text_width_in(&c.to_string(), size, bold, italic, face),
+                    |cell| f64::from(cell.advance) * size,
+                ),
+            blueice_font::Glyphs::Variable(_) => {
+                blueice_font::measure_text_width_in(&c.to_string(), size, bold, italic, face)
+            }
+        })
+        .sum()
+}
+
 /// The orientation a character takes in a vertical line.
-fn orient_of(c: char, text_orientation: Option<&str>) -> TextOrient {
+pub(crate) fn orient_of(c: char, text_orientation: Option<&str>) -> TextOrient {
     match text_orientation {
         Some("upright") => TextOrient::Upright,
         Some("sideways" | "sideways-right") => TextOrient::Sideways,
@@ -299,6 +322,13 @@ fn split_runs(
     let em = style.as_ref().map_or(16.0, |s| s.font_size());
     let measure = |run: &str, orient: TextOrient| match &style {
         _ if orient == TextOrient::Combined => em,
+        Some(s) if orient == TextOrient::Upright => upright_length(
+            run,
+            s.font_size(),
+            s.style.is_some_and(|st| st.is_bold()),
+            s.style.is_some_and(|st| st.is_italic()),
+            s.web_face(),
+        ),
         Some(s) => blueice_font::measure_text_width_in(
             run,
             s.font_size(),

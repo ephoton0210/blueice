@@ -295,6 +295,29 @@ fn a_width_axis_condenses_the_text() {
 }
 
 #[test]
+fn a_variable_face_is_kerned_by_its_own_tables_at_the_weight_it_is_drawn() {
+    let face = web::register(ROBOTO_FLEX).unwrap();
+    let heavy = web::register_set_varied(&[(face, vec![], Variation { wght: Some(800), ..Variation::NONE })]).unwrap();
+    let width = |text: &str, features| {
+        blueice_font::measure_text_width_features(text, 48.0, false, false, Some(heavy), features)
+    };
+    let none = blueice_font::FeaturesId::default();
+    let off = blueice_font::register_features(&[(*b"kern", 0)]);
+    let (a, v) = (width("A", none), width("V", none));
+    assert!(
+        blueice_font::shape_text("AV", false, false, Some(heavy), none, 48.0, false).is_some(),
+        "a variable face is shaped"
+    );
+    assert!(width("AV", none) < a + v - 0.5, "tucked together: {} vs {}", width("AV", none), a + v);
+    assert!((width("AV", off) - (a + v)).abs() < 0.01, "kerning off is the letters' sum");
+    // and it is drawn from the glyphs the shaper chose
+    let glyphs = blueice_font::shape_text("AV", false, false, Some(heavy), none, 48.0, false).unwrap();
+    assert_eq!(glyphs.len(), 2);
+    let (metrics, bitmap) = glyphs[0].font.rasterize_indexed(glyphs[0].id, 48.0);
+    assert!(metrics.width > 10 && bitmap.iter().any(|&c| c > 200));
+}
+
+#[test]
 fn a_request_is_clamped_to_each_axis_and_an_italic_axis_replaces_a_slant() {
     let axes = [
         web::Axis { tag: *b"wght", min: 100.0, default: 400.0, max: 900.0 },

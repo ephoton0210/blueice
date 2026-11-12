@@ -23,6 +23,7 @@ fn drawn(text: &str, rtl: bool) -> Vec<u8> {
             rtl,
             orient: blueice_paint::TextOrient::Horizontal,
             breadth: 0.0,
+            features: 0,
         }],
     };
     rasterize(&frame).pixels.clone()
@@ -94,6 +95,7 @@ fn ink_set(text: &str, rtl: bool) -> std::collections::BTreeSet<(i64, i64)> {
             rtl,
             orient: blueice_paint::TextOrient::Horizontal,
             breadth: 0.0,
+            features: 0,
         }],
     };
     let pixmap = rasterize(&frame);

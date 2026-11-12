@@ -416,6 +416,22 @@ impl<'a> Style<'a> {
         }
     }
 
+    /// In a vertical line, which of its characters stand upright (`text-orientation`; the
+    /// `sideways-*` writing modes turn everything). `None` outside one.
+    pub fn vertical_orientation(&self) -> Option<&'a str> {
+        if !self.ctx.writing.get().is_vertical() {
+            return None;
+        }
+        let sideways_mode = matches!(
+            self.style.and_then(|s| s.other.get("writing-mode")),
+            Some(Value::Keyword(k)) if k.starts_with("sideways")
+        );
+        if sideways_mode {
+            return Some("sideways");
+        }
+        Some(self.keyword("text-orientation").unwrap_or("mixed"))
+    }
+
     /// What `hanging-punctuation` lets hang outside the line.
     pub fn hanging(&self) -> Hanging {
         let mut out = Hanging::default();

@@ -89,6 +89,7 @@ struct TextRun<'a> {
     rtl: bool,
     orient: blueice_paint::TextOrient,
     breadth: f64,
+    features: blueice_font::FeaturesId,
 }
 
 /// An RGBA8, row-major pixel buffer -- the engine's final rendered
@@ -204,11 +205,12 @@ impl Pixmap {
         }
         // Arabic and Hebrew are shaped with the font's own tables: joining forms, ligatures,
         // kerning and marks put on their letters. The glyphs come out in screen order.
-        if let Some(glyphs) = blueice_font::shape_for_drawing(
+        if let Some(glyphs) = blueice_font::shape_text(
             run.text,
             run.bold,
             run.italic,
             run.face,
+            run.features,
             run.font_size_px as f32,
             run.rtl,
         ) {
@@ -370,40 +372,51 @@ impl Pixmap {
         let baseline_x = if ccw { run.x + ascent } else { run.x + run.breadth - ascent };
         let mut pen = run.y;
         for original in shaped.chars() {
-            let ch = if sideways {
-                original
-            } else {
-                // The vertical form, where some face can draw it.
-                let form = blueice_font::vertical_form(original);
-                if form != original && font_for_char_in(form, run.bold, run.italic, run.face).has_glyph(form) {
-                    form
-                } else {
-                    original
-                }
-            };
-            let f = font_for_char_in(ch, run.bold, run.italic, run.face);
-            // An upright character is drawn with the font's own vertical alternate (`vert`)
-            // where it has one.
-            let alternate = match f {
+            let size = run.font_size_px as f32;
+            let f = font_for_char_in(original, run.bold, run.italic, run.face);
+            // An upright character is set from the font's own vertical layout (`vmtx`, `VORG`,
+            // `vert`): the glyph it has for a vertical line, how far the pen moves, and where the
+            // glyph hangs from the pen.
+            let cell = match f {
                 blueice_font::Glyphs::Static(font) if !sideways => {
-                    blueice_font::vertical_glyph(font, original).map(|id| (font, id))
+                    blueice_font::vertical_cell(font, original).map(|cell| (font, cell))
                 }
                 _ => None,
             };
-            let (metrics, bitmap) = match alternate {
-                Some((font, id)) => font.rasterize_indexed(id, run.font_size_px as f32),
-                None => f.rasterize(ch, run.font_size_px as f32),
-            };
-            let advance = metrics.advance_width as f64;
-            // Where this character's origin (on its baseline) is, and how a bitmap pixel maps
-            // from its offset (right of the origin, up from the baseline) to the page.
-            let (origin_x, origin_y) = if sideways {
-                (baseline_x, pen)
-            } else {
-                (
-                    run.x + run.breadth / 2.0 - advance / 2.0,
-                    pen + run.font_size_px * UPRIGHT_ASCENT_RATIO,
-                )
+            // Without an alternate in the font, a presentation form of the character, if some
+            // face has it.
+            let form = blueice_font::vertical_form(original);
+            let use_form = !sideways
+                && form != original
+                && !cell.is_some_and(|(_, c)| c.alternate)
+                && font_for_char_in(form, run.bold, run.italic, run.face).has_glyph(form);
+            let (metrics, bitmap, advance, origin_x, origin_y) = match cell {
+                Some((font, cell)) if !use_form => {
+                    let (metrics, bitmap) = font.rasterize_indexed(cell.id, size);
+                    (
+                        metrics,
+                        bitmap,
+                        f64::from(cell.advance * size),
+                        run.x + run.breadth / 2.0 + f64::from(cell.dx * size),
+                        pen + f64::from(cell.dy * size),
+                    )
+                }
+                _ => {
+                    let ch = if use_form { form } else { original };
+                    let glyphs = font_for_char_in(ch, run.bold, run.italic, run.face);
+                    let (metrics, bitmap) = glyphs.rasterize(ch, size);
+                    let advance = metrics.advance_width as f64;
+                    // Where this character's origin (on its baseline) is.
+                    let (origin_x, origin_y) = if sideways {
+                        (baseline_x, pen)
+                    } else {
+                        (
+                            run.x + run.breadth / 2.0 - advance / 2.0,
+                            pen + run.font_size_px * UPRIGHT_ASCENT_RATIO,
+                        )
+                    };
+                    (metrics, bitmap, advance, origin_x, origin_y)
+                }
             };
             for row in 0..metrics.height {
                 for col in 0..metrics.width {
@@ -543,6 +556,7 @@ pub fn rasterize(frame: &Frame) -> Pixmap {
                 rtl,
                 orient,
                 breadth,
+                features,
             } => pixmap.draw_text(
                 TextRun {
                     x: *x,
@@ -556,6 +570,7 @@ pub fn rasterize(frame: &Frame) -> Pixmap {
                     rtl: *rtl,
                     orient: *orient,
                     breadth: *breadth,
+                    features: blueice_font::FeaturesId::from_u32(*features),
                 },
                 clip,
             ),
@@ -699,6 +714,7 @@ fn rasterize_viewport_culled(
                 rtl,
                 orient,
                 breadth,
+                features,
             } => PaintCommand::Text {
                 x: x * scale,
                 y: (y - scroll_y) * scale,
@@ -711,6 +727,7 @@ fn rasterize_viewport_culled(
                 rtl,
                 orient,
                 breadth: breadth * scale,
+                features,
             },
         })
         .collect();
@@ -789,6 +806,7 @@ mod tests {
                 rtl: false,
                 orient: blueice_paint::TextOrient::Horizontal,
                 breadth: 0.0,
+                features: 0,
             });
         }
         let page = frame(100.0, 1000.0, commands.clone());
@@ -818,6 +836,7 @@ mod tests {
                 rtl: false,
                 orient: blueice_paint::TextOrient::Horizontal,
                 breadth: 0.0,
+                features: 0,
             });
         }
         commands.push(PaintCommand::Shadow {
@@ -970,6 +989,7 @@ mod tests {
                 rtl: false,
                 orient: blueice_paint::TextOrient::Horizontal,
                 breadth: 0.0,
+                features: 0,
             }],
         ));
         let has_ink = (0..pixmap.height)
@@ -994,6 +1014,7 @@ mod tests {
                 rtl: false,
                 orient: blueice_paint::TextOrient::Horizontal,
                 breadth: 0.0,
+                features: 0,
             }],
         ));
         for y in 0..pixmap.height {
@@ -1020,6 +1041,7 @@ mod tests {
                 rtl: false,
                 orient: blueice_paint::TextOrient::Horizontal,
                 breadth: 0.0,
+                features: 0,
             }],
         ));
         let two_char = rasterize(&frame(
@@ -1037,6 +1059,7 @@ mod tests {
                 rtl: false,
                 orient: blueice_paint::TextOrient::Horizontal,
                 breadth: 0.0,
+                features: 0,
             }],
         ));
         let ink_extent = |p: &Pixmap| -> u32 {

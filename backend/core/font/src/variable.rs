@@ -111,7 +111,18 @@ impl Variation {
 pub struct VarInstance {
     face: Face<'static>,
     scale_per_px: f32,
+    /// The file and the axis values this instance has, to shape text with its layout tables.
+    data: &'static [u8],
+    variations: Vec<(Tag, f32)>,
+    shaper: std::sync::OnceLock<Option<SyncFace>>,
 }
+
+/// A face read by the shaper, kept for the life of the process.
+pub(crate) struct SyncFace(pub(crate) rustybuzz::Face<'static>);
+
+// A face is read-only data over a file that lives forever.
+unsafe impl Send for SyncFace {}
+unsafe impl Sync for SyncFace {}
 
 struct Outline {
     raster: Rasterizer,
@@ -159,8 +170,12 @@ impl VarInstance {
     /// if the file does not parse or an axis cannot be set.
     pub(crate) fn new(data: &'static [u8], v: &Variation) -> Option<VarInstance> {
         let mut face = Face::parse(data, 0).ok()?;
+        let mut applied: Vec<(Tag, f32)> = Vec::new();
         let mut set = |tag: &[u8; 4], value: Option<f32>| match value {
-            Some(value) => face.set_variation(Tag::from_bytes(tag), value).map(|_| ()),
+            Some(value) => {
+                applied.push((Tag::from_bytes(tag), value));
+                face.set_variation(Tag::from_bytes(tag), value).map(|_| ())
+            }
             None => Some(()),
         };
         set(b"wght", v.wght.map(f32::from))?;
@@ -172,7 +187,69 @@ impl VarInstance {
             set(tag, Some(*value as f32 / 1000.0))?;
         }
         let upem = f32::from(face.units_per_em());
-        (upem > 0.0).then(|| VarInstance { face, scale_per_px: 1.0 / upem })
+        (upem > 0.0).then(|| VarInstance {
+            face,
+            scale_per_px: 1.0 / upem,
+            data,
+            variations: applied,
+            shaper: std::sync::OnceLock::new(),
+        })
+    }
+
+    /// The face as the shaper reads it, at this instance's axis values.
+    pub(crate) fn shaper(&self) -> Option<&rustybuzz::Face<'static>> {
+        self.shaper
+            .get_or_init(|| {
+                let mut face = rustybuzz::Face::from_slice(self.data, 0)?;
+                let variations: Vec<rustybuzz::Variation> = self
+                    .variations
+                    .iter()
+                    .map(|(tag, value)| rustybuzz::Variation { tag: *tag, value: *value })
+                    .collect();
+                face.set_variations(&variations);
+                Some(SyncFace(face))
+            })
+            .as_ref()
+            .map(|f| &f.0)
+    }
+
+    /// The glyph with this index, as [`rasterize`](Self::rasterize) draws a character: its pixel
+    /// box and coverage, and the advance the font gives it.
+    pub fn rasterize_indexed(&self, id: u16, px: f32) -> (Metrics, Vec<u8>) {
+        let gid = ttf_parser::GlyphId(id);
+        let s = self.scale(px);
+        let advance = f32::from(self.face.glyph_hor_advance(gid).unwrap_or(0)) * s;
+        let boxed = self.face.glyph_bounding_box(gid).and_then(|b| {
+            let (x0, x1) = ((f32::from(b.x_min) * s).floor() as i32, (f32::from(b.x_max) * s).ceil() as i32);
+            let (y0, y1) = ((f32::from(b.y_min) * s).floor() as i32, (f32::from(b.y_max) * s).ceil() as i32);
+            let (w, h) = ((x1 - x0).max(0) as usize, (y1 - y0).max(0) as usize);
+            (w > 0 && h > 0 && w * h <= 4_000_000).then_some((x0, y0, w, h))
+        });
+        let (xmin, ymin, width, height) = boxed.unwrap_or((0, 0, 0, 0));
+        let metrics = Metrics {
+            xmin,
+            ymin,
+            width,
+            height,
+            advance_width: advance,
+            advance_height: 0.0,
+            bounds: OutlineBounds { xmin: xmin as f32, ymin: ymin as f32, width: width as f32, height: height as f32 },
+        };
+        if width == 0 {
+            return (metrics, Vec::new());
+        }
+        let mut outline = Outline {
+            raster: Rasterizer::new(width, height),
+            scale: s,
+            xmin: xmin as f32,
+            ytop: (ymin + height as i32) as f32,
+            start: point(0.0, 0.0),
+            last: point(0.0, 0.0),
+        };
+        self.face.outline_glyph(gid, &mut outline);
+        let mut bitmap = vec![0_u8; width * height];
+        outline.raster.for_each_pixel(|i, a| bitmap[i] = (a.clamp(0.0, 1.0) * 255.0).round() as u8);
+        (metrics, bitmap)
     }
 
     pub fn has_glyph(&self, c: char) -> bool {

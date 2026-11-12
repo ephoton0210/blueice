@@ -28,6 +28,7 @@ mod cascade;
 mod color;
 mod content;
 mod font_face;
+mod font_features;
 mod gradient;
 mod media;
 mod parser;
@@ -50,6 +51,7 @@ pub use gradient::{
     StopPosition,
 };
 pub use media::{matches_media, MediaEnvironment};
+pub use font_features::{font_features, Feature};
 pub use font_face::{face_descriptors, font_faces, FaceDescriptors, FontFaceRule, FontSource};
 pub use parser::{Declaration, Rule};
 pub use selector::{

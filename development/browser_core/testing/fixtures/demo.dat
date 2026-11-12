@@ -105,11 +105,11 @@ text 63.6,81.3 "bold" #000000 16.0 bold normal
 text 108.1,81.3 "and" #000000 16.0 normal normal
 text 143.3,81.3 "italic" #000000 16.0 normal italic
 text 186.6,81.3 "text" #000000 16.0 normal normal
-text 223.5,81.3 "with" #000000 16.0 normal normal
-text 262.6,81.3 "a" #000000 16.0 normal normal
-text 277.5,81.3 "link" #0000ee 16.0 normal normal
-rect 277.5,98.0 28.3x1.0 #0000ee
-text 305.8,81.3 "." #000000 16.0 normal normal
+text 223.3,81.3 "with" #000000 16.0 normal normal
+text 262.3,81.3 "a" #000000 16.0 normal normal
+text 277.2,81.3 "link" #0000ee 16.0 normal normal
+rect 277.2,98.0 28.3x1.0 #0000ee
+text 305.5,81.3 "." #000000 16.0 normal normal
 text 32.2,116.5 "•" #000000 16.0 normal normal
 text 48.0,116.5 "one" #000000 16.0 normal normal
 text 32.2,135.7 "•" #000000 16.0 normal normal

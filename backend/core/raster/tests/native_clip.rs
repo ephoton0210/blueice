@@ -91,6 +91,7 @@ fn clipping_applies_to_text_glyphs_and_empty_intersections() {
                 rtl: false,
                 orient: blueice_paint::TextOrient::Horizontal,
                 breadth: 0.0,
+                features: 0,
             },
             PaintCommand::PushClip {
                 rect: Rect {

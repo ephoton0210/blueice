@@ -242,6 +242,7 @@ impl Index {
                         style.is_bold(),
                         style.is_italic(),
                         None,
+                        blueice_font::register_features(&blueice_css::font_features(style)),
                         style.font_size_px as f32,
                         fragment.rtl,
                     );
