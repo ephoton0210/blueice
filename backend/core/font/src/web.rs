@@ -65,6 +65,8 @@ pub type VariedMember = (WebFontId, Vec<(u32, u32)>, Variation);
 struct FaceEntry {
     font: &'static fontdue::Font,
     variable: Option<VariableFile>,
+    /// The face's file, for shaping with its OpenType tables (`opentype`).
+    bytes: &'static [u8],
 }
 
 impl Member {
@@ -129,9 +131,8 @@ fn register_unguarded(bytes: &[u8]) -> Option<WebFontId> {
     // Parsed outside the lock: it is the slow part.
     let size = sfnt.len();
     let found = axes(&sfnt);
-    let variable = (!found.is_empty()).then(|| {
-        (&*Box::leak(sfnt.clone().into_boxed_slice()), &*Box::leak(found.into_boxed_slice()))
-    });
+    let file: &'static [u8] = Box::leak(sfnt.clone().into_boxed_slice());
+    let variable = (!found.is_empty()).then(|| (file, &*Box::leak(found.into_boxed_slice())));
     let font = fontdue::Font::from_bytes(sfnt, fontdue::FontSettings::default()).ok()?;
     let mut known = registry().lock().ok()?;
     if let Some(&id) = known.by_content.get(&key) {
@@ -141,7 +142,7 @@ fn register_unguarded(bytes: &[u8]) -> Option<WebFontId> {
         return None;
     }
     let face = u32::try_from(known.faces.len()).ok()?;
-    known.faces.push(FaceEntry { font: Box::leak(Box::new(font)), variable });
+    known.faces.push(FaceEntry { font: Box::leak(Box::new(font)), variable, bytes: file });
     let members = vec![Member { face, ranges: Vec::new(), var: Variation::NONE }];
     let id = u32::try_from(known.sets.len()).ok()?;
     known.sets.push(members.clone());
@@ -250,6 +251,17 @@ pub fn slants_by_axis(id: WebFontId) -> bool {
 
 /// The face a set is measured by for line metrics: the first member that covers ordinary Latin
 /// text, else the first member.
+/// The file of a registered static face, by the font that draws it.
+pub(crate) fn bytes_of(font: &'static fontdue::Font) -> Option<&'static [u8]> {
+    registry()
+        .lock()
+        .ok()?
+        .faces
+        .iter()
+        .find(|entry| std::ptr::eq(entry.font, font))
+        .map(|entry| entry.bytes)
+}
+
 pub fn get(id: WebFontId) -> Option<Glyphs> {
     let mut known = registry().lock().ok()?;
     let members = known.sets.get(id.0 as usize)?;

@@ -202,9 +202,47 @@ impl Pixmap {
             self.draw_vertical_text(&run, ascent, smear, clip, (r, g, b, a));
             return;
         }
+        // Arabic and Hebrew are shaped with the font's own tables: joining forms, ligatures,
+        // kerning and marks put on their letters. The glyphs come out in screen order.
+        if let Some(glyphs) = blueice_font::shape_for_drawing(
+            run.text,
+            run.bold,
+            run.italic,
+            run.face,
+            run.font_size_px as f32,
+            run.rtl,
+        ) {
+            let mut pen_x = run.x;
+            for glyph in glyphs {
+                let (metrics, bitmap) = glyph.font.rasterize_indexed(glyph.id, run.font_size_px as f32);
+                let bitmap_top = baseline_y - f64::from(glyph.dy) - (metrics.ymin as f64 + metrics.height as f64);
+                let bitmap_left = pen_x + f64::from(glyph.dx) + metrics.xmin as f64;
+                for row in 0..metrics.height {
+                    for col in 0..metrics.width {
+                        let coverage = bitmap[row * metrics.width + col] as u32;
+                        if coverage == 0 {
+                            continue;
+                        }
+                        let py = (bitmap_top + row as f64).round() as i64;
+                        let shear = (baseline_y - py as f64) * slant;
+                        let px = (bitmap_left + col as f64 + shear).round() as i64;
+                        for extra in 0..=smear {
+                            self.set_pixel_blended(
+                                px + extra,
+                                py,
+                                [r, g, b, ((coverage * a as u32) / 255) as u8],
+                                clip,
+                            );
+                        }
+                    }
+                }
+                pen_x += f64::from(glyph.advance);
+            }
+            return;
+        }
         let mut pen_x = run.x;
-        // Arabic letters take the form their neighbours call for; a right-to-left run is then
-        // drawn backwards, from its last character to its first, brackets mirrored.
+        // Characters of other scripts are drawn one at a time; a right-to-left run is drawn
+        // backwards, from its last character to its first, brackets mirrored.
         let shaped = blueice_font::shape_in(run.text, run.bold, run.italic, run.face);
         let drawn = if run.rtl {
             std::borrow::Cow::Owned(blueice_font::visual_order(&shaped))
@@ -344,7 +382,18 @@ impl Pixmap {
                 }
             };
             let f = font_for_char_in(ch, run.bold, run.italic, run.face);
-            let (metrics, bitmap) = f.rasterize(ch, run.font_size_px as f32);
+            // An upright character is drawn with the font's own vertical alternate (`vert`)
+            // where it has one.
+            let alternate = match f {
+                blueice_font::Glyphs::Static(font) if !sideways => {
+                    blueice_font::vertical_glyph(font, original).map(|id| (font, id))
+                }
+                _ => None,
+            };
+            let (metrics, bitmap) = match alternate {
+                Some((font, id)) => font.rasterize_indexed(id, run.font_size_px as f32),
+                None => f.rasterize(ch, run.font_size_px as f32),
+            };
             let advance = metrics.advance_width as f64;
             // Where this character's origin (on its baseline) is, and how a bitmap pixel maps
             // from its offset (right of the origin, up from the baseline) to the page.

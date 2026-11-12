@@ -134,9 +134,66 @@ pub fn visual_text(text: &str, rtl: bool) -> String {
     out
 }
 
+/// A single line of `text` as the runs it is drawn in, left to right: each run is the characters of
+/// one embedding level in reading order, with whether it reads right to left. A run reads straight
+/// through, so it can be shaped as one piece of text; where it reads right to left the shaper
+/// turns it around. The formatting characters are dropped.
+pub fn visual_runs(text: &str, rtl: bool) -> Vec<(String, bool)> {
+    let (byte_levels, _) = levels(text, if rtl { Base::Rtl } else { Base::Ltr });
+    let mut clusters: Vec<(String, u8)> = Vec::new();
+    for (offset, c) in text.char_indices() {
+        if is_format_control(c) {
+            continue;
+        }
+        let level = byte_levels.get(offset).copied().unwrap_or(0);
+        match clusters.last_mut() {
+            Some((last, _)) if blueice_font::is_mark(c) => last.push(c),
+            _ => clusters.push((c.to_string(), level)),
+        }
+    }
+    let order = visual_order(&clusters.iter().map(|(_, l)| *l).collect::<Vec<_>>());
+    let mut runs: Vec<(Vec<&str>, u8)> = Vec::new();
+    for i in order {
+        let (cluster, level) = &clusters[i];
+        match runs.last_mut() {
+            Some((group, l)) if l == level => group.push(cluster),
+            _ => runs.push((vec![cluster.as_str()], *level)),
+        }
+    }
+    runs.into_iter()
+        .map(|(mut group, level)| {
+            let odd = level % 2 == 1;
+            // On screen a right-to-left run is in reverse; reading order is the other way.
+            if odd {
+                group.reverse();
+            }
+            (group.concat(), odd)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn visual_runs_are_in_screen_order_and_each_reads_straight_through() {
+        assert_eq!(visual_runs("abc", false), [("abc".to_string(), false)]);
+        let runs = visual_runs("abc \u{5d0}\u{5d1} def", false);
+        assert_eq!(
+            runs,
+            [
+                ("abc ".to_string(), false),
+                ("\u{5d0}\u{5d1}".to_string(), true),
+                (" def".to_string(), false)
+            ]
+        );
+        // a right-to-left paragraph reads from the right: the first word is last on screen
+        let runs = visual_runs("\u{5d0}\u{5d1} abc", true);
+        // the space between the two takes the paragraph's direction, so it reads with the Hebrew
+        assert_eq!(runs.last().unwrap(), &("\u{5d0}\u{5d1} ".to_string(), true));
+        assert_eq!(runs.first().unwrap().0, "abc");
+    }
 
     #[test]
     fn visual_text_reverses_right_to_left_runs_only() {

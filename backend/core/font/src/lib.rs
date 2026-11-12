@@ -46,8 +46,10 @@
 //! glyph bug reappearing one level down.
 
 pub mod web;
+mod opentype;
 mod shape;
 mod variable;
+pub use opentype::{char_advances, is_complex, shape_for_drawing, starts_rtl, vertical_glyph, DrawGlyph};
 pub use shape::{is_mark, mirrored, shape_with, vertical_form, visual_order};
 pub use variable::{Axis, VarInstance, Variation};
 
@@ -116,6 +118,21 @@ pub fn bundled_font_bytes(name: &str) -> Option<&'static [u8]> {
         "notosanstc" | "notosanstcregular" => FONT_CJK_FALLBACK,
         _ => return None,
     })
+}
+
+/// The file of a bundled font, by the font that draws it (for fonts already loaded).
+pub(crate) fn bundled_bytes_of(font: &'static fontdue::Font) -> Option<&'static [u8]> {
+    let set = fonts();
+    [
+        (&set.regular, FONT_REGULAR),
+        (&set.bold, FONT_BOLD),
+        (&set.italic, FONT_ITALIC),
+        (&set.bold_italic, FONT_BOLD_ITALIC),
+        (&set.cjk_fallback, FONT_CJK_FALLBACK),
+    ]
+    .into_iter()
+    .find(|(slot, _)| slot.get().is_some_and(|f| std::ptr::eq(f, font)))
+    .map(|(_, bytes)| bytes)
 }
 
 pub fn font_for(bold: bool, italic: bool) -> &'static fontdue::Font {
@@ -214,6 +231,12 @@ pub fn measure_text_width_in(
     italic: bool,
     face: Option<web::WebFontId>,
 ) -> f64 {
+    // Arabic and Hebrew are as wide as the glyphs the font's tables make of them.
+    if let Some(glyphs) =
+        shape_for_drawing(text, bold, italic, face, font_size_px as f32, starts_rtl(text))
+    {
+        return glyphs.iter().map(|g| f64::from(g.advance)).sum();
+    }
     shape_in(text, bold, italic, face)
         .chars()
         .map(|c| {

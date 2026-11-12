@@ -289,8 +289,9 @@ fn about_settings_shows_and_applies_the_running_gatekeepers_additive_policy() {
     use std::sync::Arc;
     use std::thread;
 
-    let socket =
-        blueice_ipc::local_socket::default_socket_dir().join(format!("gks-{}", std::process::id()));
+    let dir = blueice_ipc::local_socket::default_socket_dir();
+    blueice_ipc::local_socket::ensure_private_socket_dir(&dir).unwrap();
+    let socket = dir.join(format!("gks-{}", std::process::id()));
     let _ = std::fs::remove_file(&socket);
     let listener = UnixListener::bind(&socket).unwrap();
     listener.set_nonblocking(true).unwrap();

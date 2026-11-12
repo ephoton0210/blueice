@@ -17,7 +17,7 @@
 //! positioning yet).
 
 mod bidi;
-pub use bidi::visual_text;
+pub use bidi::{visual_runs, visual_text};
 mod block;
 mod cache;
 mod ctx;

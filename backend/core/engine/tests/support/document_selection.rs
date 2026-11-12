@@ -790,3 +790,38 @@ fn text_that_runs_up_the_page_is_copied_in_order_and_its_characters_climb() {
     assert!(d.y < b.y, "and D higher still");
     assert!(a.y + a.height > 190.0, "A starts at the bottom of the box: {a:?}");
 }
+
+#[test]
+fn shaped_arabic_is_copied_whole_and_its_characters_run_leftward_by_the_fonts_widths() {
+    // beh + lam + alef + seen: the lam-alef is one glyph, so the alef has no room of its own
+    let mut page = page("<p id='p' dir='rtl'>\u{628}\u{644}\u{627}\u{633}</p>");
+    apply(&mut page, TextInputAction::DocumentSelectAll);
+    assert_eq!(selection(&page)["selected_text"], "\u{628}\u{644}\u{627}\u{633}");
+    let p = page.script_get_element_by_id("p").unwrap();
+    let context = context(&page, p);
+    let bounds = |page: &mut Page, location: u32| {
+        let TextResult::Bounds(Some(b)) = page
+            .accessibility_text(
+                &context,
+                17,
+                Action::Bounds { range: TextRange { location, length: 1 } },
+            )
+            .unwrap()
+            .1
+        else {
+            panic!()
+        };
+        b
+    };
+    let (beh, lam, seen) = (bounds(&mut page, 0), bounds(&mut page, 1), bounds(&mut page, 3));
+    assert!(beh.x > lam.x && lam.x > seen.x, "right to left: {beh:?} {lam:?} {seen:?}");
+    // the alef inside the lam-alef ligature has no room of its own, so the four characters
+    // together are exactly as wide as the shaped word
+    let word = "\u{628}\u{644}\u{627}\u{633}";
+    let total = blueice_font::measure_text_width(word, 16.0, false, false);
+    let (right, left) = (beh.x + beh.width, seen.x);
+    assert!((right - left - total).abs() < 0.01, "{} vs {total}", right - left);
+    let advances = blueice_font::char_advances(word, false, false, None, 16.0, true).unwrap();
+    assert_eq!(advances[2], 0.0);
+    assert!((lam.width - advances[1]).abs() < 0.01, "{} vs {}", lam.width, advances[1]);
+}

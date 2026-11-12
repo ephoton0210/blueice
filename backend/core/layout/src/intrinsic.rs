@@ -50,7 +50,19 @@ fn is_orthogonal(ctx: &Ctx<'_>, node: NodeId) -> bool {
     ctx.writing.get().is_vertical() && ctx.style(node).writing_mode() != ctx.writing.get()
 }
 
+/// A vertical box in a horizontal frame: it is as wide as its lines stacked.
+fn vertical_root(ctx: &Ctx<'_>, node: NodeId) -> Option<crate::ctx::Writing> {
+    let mode = ctx.style(node).writing_mode();
+    (mode.is_vertical() && !ctx.writing.get().is_vertical()).then_some(mode)
+}
+
 fn content_widths_uncached(ctx: &Ctx<'_>, node: NodeId) -> (f64, f64) {
+    if let Some(mode) = vertical_root(ctx, node) {
+        let style = ctx.style(node);
+        let (padding, border) = (style.padding(0.0), style.border(0.0));
+        let width = crate::vertical::block_extent(ctx, node, mode) + padding.horizontal() + border.horizontal();
+        return (width, width);
+    }
     if is_orthogonal(ctx, node) {
         let style = ctx.style(node);
         // The content box's height across the page, not counting the box's own padding.
@@ -102,6 +114,18 @@ pub(crate) fn preferred_widths(ctx: &Ctx<'_>, node: NodeId) -> (f64, f64) {
         let extent = orthogonal_extent(ctx, node);
         ctx.intrinsic.borrow_mut().insert(node, (extent, extent));
         return (extent, extent);
+    }
+    if let Some(mode) = vertical_root(ctx, node) {
+        // An explicit width is still its own preferred width; otherwise the lines decide.
+        let style = ctx.style(node);
+        let (padding, border) = (style.padding(0.0), style.border(0.0));
+        let pb_h = padding.horizontal() + border.horizontal();
+        let width = match style.px("width", f64::NAN) {
+            Some(w) => if style.is_border_box() { w } else { w + pb_h },
+            None => crate::vertical::block_extent(ctx, node, mode) + pb_h,
+        };
+        ctx.intrinsic.borrow_mut().insert(node, (width, width));
+        return (width, width);
     }
     let style = ctx.style(node);
     let padding = style.padding(0.0);

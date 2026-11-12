@@ -332,6 +332,26 @@ fn split_runs(
         .collect()
 }
 
+/// How thick a vertical box would be with all the room along its lines it asks for: the page
+/// width its stacked lines take, which is its shrink-to-fit width. `content` leaves out the box's
+/// own padding and border.
+pub(crate) fn block_extent(ctx: &Ctx<'_>, node: NodeId, mode: Writing) -> f64 {
+    let style = ctx.style(node);
+    let (padding, border) = (style.padding(0.0), style.border(0.0));
+    let pb_v = padding.vertical() + border.vertical();
+    let room = style
+        .px("height", ctx.viewport_height)
+        .map_or((ctx.viewport_height - pb_v).max(1.0), |h| {
+            if style.is_border_box() { (h - pb_v).max(0.0) } else { h }
+        });
+    let previous = ctx.writing.replace(mode);
+    let previous_room = ctx.orth_room.replace(ctx.orth_room.get());
+    let flow = layout_flow(ctx, node, room, None, true, true, &[]);
+    ctx.orth_room.set(previous_room);
+    ctx.writing.set(previous);
+    flow.height
+}
+
 /// A horizontal box inside a vertical one. It is laid out whole in the page's own frame, at the
 /// width its own style asks for or the room the vertical box leaves across the page, and then
 /// turned into the frame the vertical box is laid out in, so that turning that frame back sets
@@ -889,6 +909,42 @@ mod tests {
         let t = texts(div(&grid));
         let (a, b) = (&t[0], &t[1]);
         assert!(b.3 >= a.3 + 49.0, "the second column of the grid starts below the first: {a:?} {b:?}");
+    }
+
+    #[test]
+    fn a_floated_vertical_box_with_no_width_is_as_wide_as_its_columns() {
+        let text = "aaa bbb ccc ddd eee fff ggg hhh";
+        let css = "float: left; writing-mode: vertical-rl; height: 100px; line-height: 20px";
+        let f = body(&format!("<div style='{css}'>{text}</div><p>after</p>"), "");
+        let float = &f.children[0];
+        let mut columns: Vec<f64> = texts(float).iter().map(|r| r.2).collect();
+        columns.dedup();
+        assert!(columns.len() >= 3, "wraps into several columns: {columns:?}");
+        assert!(
+            (float.width - 20.0 * columns.len() as f64).abs() < 0.01,
+            "{} wide for {} columns of 20px",
+            float.width,
+            columns.len()
+        );
+        // the same box as an inline-block, and with padding
+        let f = body(
+            &format!("<span style='display:inline-block;writing-mode:vertical-rl;height:100px;line-height:20px;padding:0 5px'>{text}</span>"),
+            "",
+        );
+        let line = &f.children[0];
+        let inline = line
+            .children
+            .iter()
+            .find(|c| c.kind == FragmentKind::Block && !c.children.is_empty())
+            .expect("the inline-block");
+        let mut columns: Vec<f64> = texts(inline).iter().map(|r| r.2).collect();
+        columns.dedup();
+        assert!(
+            (inline.width - (20.0 * columns.len() as f64 + 10.0)).abs() < 0.01,
+            "{} wide for {columns:?}: {:?}",
+            inline.width,
+            texts(&f.children[0])
+        );
     }
 
     #[test]

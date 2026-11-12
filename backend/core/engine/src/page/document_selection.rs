@@ -235,13 +235,29 @@ impl Index {
                     // Text that runs up the page starts at the bottom of its box.
                     let upward = fragment.orient == blueice_layout::TextOrient::SidewaysCcw;
                     let mut pen_y = if upward { y + fragment.height } else { y };
+                    // Arabic and Hebrew are laid out by the font's tables: a ligature's width is its
+                    // first character's, a mark has none.
+                    let shaped_widths = blueice_font::char_advances(
+                        text,
+                        style.is_bold(),
+                        style.is_italic(),
+                        None,
+                        style.font_size_px as f32,
+                        fragment.rtl,
+                    );
+                    let mut char_index = 0;
                     for cluster in text.graphemes(true) {
-                        let width = blueice_font::measure_text_width(
-                            cluster,
-                            style.font_size_px,
-                            style.is_bold(),
-                            style.is_italic(),
-                        );
+                        let chars = cluster.chars().count();
+                        let width = match &shaped_widths {
+                            Some(w) => w[char_index..(char_index + chars).min(w.len())].iter().sum(),
+                            None => blueice_font::measure_text_width(
+                                cluster,
+                                style.font_size_px,
+                                style.is_bold(),
+                                style.is_italic(),
+                            ),
+                        };
+                        char_index += chars;
                         if fragment.rtl {
                             pen -= width;
                         }

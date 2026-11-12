@@ -335,16 +335,54 @@ impl CanvasFont {
         }
     }
 
-    fn width(&self, text: &str) -> f64 {
-        blueice_font::measure_text_width_in(text, self.size, self.bold, self.italic, self.face)
+    /// `text` as what is drawn, left to right: its bidirectional runs in screen order, Arabic and
+    /// Hebrew shaped with the font's own tables, other characters one at a time (a variable
+    /// face, whose advances are its own, has Arabic letters in their joining forms instead).
+    fn pieces(&self, text: &str, rtl: bool) -> Vec<Piece> {
+        let mut out = Vec::new();
+        for (run, run_rtl) in blueice_layout::visual_runs(text, rtl) {
+            if let Some(glyphs) = blueice_font::shape_for_drawing(
+                &run,
+                self.bold,
+                self.italic,
+                self.face,
+                self.size as f32,
+                run_rtl,
+            ) {
+                out.extend(glyphs.into_iter().map(Piece::Glyph));
+                continue;
+            }
+            let shaped = blueice_font::shape_in(&run, self.bold, self.italic, self.face);
+            let drawn = if run_rtl {
+                std::borrow::Cow::Owned(blueice_font::visual_order(&shaped))
+            } else {
+                shaped
+            };
+            out.extend(drawn.chars().map(Piece::Char));
+        }
+        out
     }
 
-    /// `text` as it is drawn left to right: Arabic letters in their joining forms, then each
-    /// right-to-left run (a whole line when `rtl`) in reverse.
-    fn display(&self, text: &str, rtl: bool) -> String {
-        let shaped = blueice_font::shape_in(text, self.bold, self.italic, self.face);
-        blueice_layout::visual_text(&shaped, rtl)
+    /// How far the pen moves over `pieces`.
+    fn advance(&self, pieces: &[Piece]) -> f64 {
+        pieces
+            .iter()
+            .map(|p| match p {
+                Piece::Glyph(g) => f64::from(g.advance),
+                Piece::Char(c) => blueice_font::font_for_char_in(*c, self.bold, self.italic, self.face)
+                    .metrics(*c, self.size as f32)
+                    .advance_width as f64,
+            })
+            .sum()
     }
+}
+
+/// One thing to draw in a line of canvas text.
+enum Piece {
+    /// A glyph a shaper chose, with its own advance and offset.
+    Glyph(blueice_font::DrawGlyph),
+    /// A character drawn from the face that has it.
+    Char(char),
 }
 
 impl Canvas2d {
@@ -359,9 +397,8 @@ impl Canvas2d {
         (align, baseline, rtl): (&str, &str, bool),
         max_width: f64,
     ) -> (Vec<Placed>, Affine) {
-        let text = font.display(text, rtl);
-        let text = text.as_str();
-        let width = font.width(text);
+        let pieces = font.pieces(text, rtl);
+        let width = font.advance(&pieces);
         let (ascent, descent) =
             blueice_font::ascent_descent_in(font.size, font.bold, font.italic, font.face);
         let mut m = *m;
@@ -392,11 +429,24 @@ impl Canvas2d {
         };
         let mut pen = left;
         let mut out = Vec::new();
-        for ch in text.chars() {
-            let face = blueice_font::font_for_char_in(ch, font.bold, font.italic, font.face);
-            let (metrics, bitmap) = face.rasterize(ch, font.size as f32);
-            let (gx, gy) = (pen + f64::from(metrics.xmin), base - f64::from(metrics.ymin) - metrics.height as f64);
-            pen += f64::from(metrics.advance_width);
+        for piece in &pieces {
+            let (metrics, bitmap, advance, (dx, dy)) = match piece {
+                Piece::Char(ch) => {
+                    let face = blueice_font::font_for_char_in(*ch, font.bold, font.italic, font.face);
+                    let (metrics, bitmap) = face.rasterize(*ch, font.size as f32);
+                    let advance = f64::from(metrics.advance_width);
+                    (metrics, bitmap, advance, (0.0, 0.0))
+                }
+                Piece::Glyph(g) => {
+                    let (metrics, bitmap) = g.font.rasterize_indexed(g.id, font.size as f32);
+                    (metrics, bitmap, f64::from(g.advance), (f64::from(g.dx), f64::from(g.dy)))
+                }
+            };
+            let (gx, gy) = (
+                pen + dx + f64::from(metrics.xmin),
+                base - dy - f64::from(metrics.ymin) - metrics.height as f64,
+            );
+            pen += advance;
             if metrics.width > 0 && metrics.height > 0 {
                 out.push(Placed { x: gx, y: gy, w: metrics.width, h: metrics.height, coverage: bitmap });
             }
@@ -823,12 +873,12 @@ impl Canvas2d {
                     (-min(|g| g.x), max(|g| g.x + g.w as f64), -min(|g| g.y), max(|g| g.y + g.h as f64))
                 };
                 let (fa, fd) = blueice_font::ascent_descent_in(font.size, font.bold, font.italic, font.face);
-                let shown = font.display(text(a, 0), text(a, 4) == "rtl");
-                Reply::Text(format!("{},{left},{right},{ascent},{descent},{fa},{fd}", font.width(&shown)))
+                let shown = font.pieces(text(a, 0), text(a, 4) == "rtl");
+                Reply::Text(format!("{},{left},{right},{ascent},{descent},{fa},{fd}", font.advance(&shown)))
             }
             "measureText" => {
                 let font = CanvasFont::parse(text(a, 1), fonts);
-                Reply::Number(font.width(&font.display(text(a, 0), false)))
+                Reply::Number(font.advance(&font.pieces(text(a, 0), false)))
             }
             // path (JSON), paint, alpha, matrix, even-odd (fillPath); and line width, cap, join,
             // miter limit, dash pattern (JSON), dash offset (strokePath).
