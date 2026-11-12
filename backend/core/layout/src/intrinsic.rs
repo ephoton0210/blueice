@@ -27,7 +27,41 @@ pub(crate) fn content_widths(ctx: &Ctx<'_>, node: NodeId) -> (f64, f64) {
     result
 }
 
+/// The width along the line, in a vertical frame, of a box that is written in another one: its
+/// height across the page when it is as wide there as it asks to be (or the room across the page
+/// the vertical box leaves). Both preferred widths are that one size.
+fn orthogonal_extent(ctx: &Ctx<'_>, node: NodeId) -> f64 {
+    let outer = ctx.writing.replace(crate::ctx::Writing::Horizontal);
+    let room = ctx.orth_room.get();
+    let (min, max) = preferred_widths(ctx, node);
+    let width = max.min(room.max(min));
+    let placed = layout_block_level(
+        ctx,
+        node,
+        &Constraint { cb_width: room, cb_height: None, root: false },
+        Forced { width: Some(width), height: None },
+    );
+    ctx.writing.set(outer);
+    placed.fragment.height
+}
+
+/// Whether `node` is written in a different mode from the frame being laid out.
+fn is_orthogonal(ctx: &Ctx<'_>, node: NodeId) -> bool {
+    ctx.writing.get().is_vertical() && ctx.style(node).writing_mode() != ctx.writing.get()
+}
+
 fn content_widths_uncached(ctx: &Ctx<'_>, node: NodeId) -> (f64, f64) {
+    if is_orthogonal(ctx, node) {
+        let style = ctx.style(node);
+        // The content box's height across the page, not counting the box's own padding.
+        let outer = ctx.writing.replace(crate::ctx::Writing::Horizontal);
+        let (padding, border) = (style.padding(0.0), style.border(0.0));
+        let pb_v = padding.vertical() + border.vertical();
+        ctx.writing.set(outer);
+        let content = (orthogonal_extent(ctx, node) - pb_v).max(0.0);
+        // In the turned frame the box's own padding along the line is the page's vertical one.
+        return (content + pb_v, content + pb_v);
+    }
     let style = ctx.style(node);
     let padding = style.padding(0.0);
     let border = style.border(0.0);
@@ -63,6 +97,11 @@ fn content_widths_uncached(ctx: &Ctx<'_>, node: NodeId) -> (f64, f64) {
 pub(crate) fn preferred_widths(ctx: &Ctx<'_>, node: NodeId) -> (f64, f64) {
     if let Some(known) = ctx.intrinsic.borrow().get(&node) {
         return *known;
+    }
+    if is_orthogonal(ctx, node) {
+        let extent = orthogonal_extent(ctx, node);
+        ctx.intrinsic.borrow_mut().insert(node, (extent, extent));
+        return (extent, extent);
     }
     let style = ctx.style(node);
     let padding = style.padding(0.0);

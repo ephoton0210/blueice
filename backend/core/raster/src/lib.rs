@@ -244,8 +244,9 @@ impl Pixmap {
     }
 
     /// A few characters set side by side in the room of one upright character (`text-combine-
-    /// upright`): the run is drawn horizontally, shrunk to fit one em when it is wider, and
-    /// centred in the box across the line and in the em-high cell at its top.
+    /// upright`): the run is drawn horizontally, squeezed sideways to one em when it is wider
+    /// (the glyphs keep their height), and centred in the box across the line and in the em-high
+    /// cell at its top.
     fn draw_combined_text(
         &mut self,
         run: &TextRun<'_>,
@@ -255,43 +256,52 @@ impl Pixmap {
     ) {
         let em = run.font_size_px;
         let shaped = blueice_font::shape_in(run.text, run.bold, run.italic, run.face);
-        let width_at = |size: f64| -> f64 {
-            shaped
-                .chars()
-                .map(|c| {
-                    font_for_char_in(c, run.bold, run.italic, run.face)
-                        .metrics(c, size as f32)
-                        .advance_width as f64
-                })
-                .sum()
-        };
-        let natural = width_at(em);
-        let size = if natural > em { em * em / natural } else { em };
-        let width = width_at(size);
-        let mut pen_x = run.x + run.breadth / 2.0 - width / 2.0;
-        let baseline = run.y + (em - size) / 2.0 + size * UPRIGHT_ASCENT_RATIO;
+        let natural: f64 = shaped
+            .chars()
+            .map(|c| {
+                font_for_char_in(c, run.bold, run.italic, run.face)
+                    .metrics(c, em as f32)
+                    .advance_width as f64
+            })
+            .sum();
+        let squeeze = if natural > em { em / natural } else { 1.0 };
+        let mut pen_x = run.x + run.breadth / 2.0 - natural * squeeze / 2.0;
+        let baseline = run.y + em * UPRIGHT_ASCENT_RATIO;
         for ch in shaped.chars() {
             let f = font_for_char_in(ch, run.bold, run.italic, run.face);
-            let (metrics, bitmap) = f.rasterize(ch, size as f32);
-            for row in 0..metrics.height {
-                for col in 0..metrics.width {
-                    let coverage = bitmap[row * metrics.width + col] as u32;
-                    if coverage == 0 {
-                        continue;
-                    }
-                    let px = (pen_x + metrics.xmin as f64 + col as f64).round() as i64;
-                    let py = (baseline - (metrics.ymin as f64 + metrics.height as f64) + row as f64).round() as i64;
-                    for extra in 0..=smear {
-                        self.set_pixel_blended(
-                            px + extra,
-                            py,
-                            [r, g, b, ((coverage * a as u32) / 255) as u8],
-                            clip,
-                        );
+            let (metrics, bitmap) = f.rasterize(ch, em as f32);
+            if metrics.width > 0 && metrics.height > 0 {
+                // Each destination column is the mean of the source columns it covers.
+                let dest_width = ((metrics.width as f64 * squeeze).round() as usize).max(1);
+                let left = pen_x + metrics.xmin as f64 * squeeze;
+                for row in 0..metrics.height {
+                    for dc in 0..dest_width {
+                        let from = dc as f64 * metrics.width as f64 / dest_width as f64;
+                        let to = (dc + 1) as f64 * metrics.width as f64 / dest_width as f64;
+                        let (first, last) = (from.floor() as usize, (to.ceil() as usize).min(metrics.width));
+                        let mut sum = 0.0;
+                        for col in first..last {
+                            let overlap = (to.min((col + 1) as f64) - from.max(col as f64)).max(0.0);
+                            sum += overlap * f64::from(bitmap[row * metrics.width + col]);
+                        }
+                        let coverage = (sum / (to - from)).round() as u32;
+                        if coverage == 0 {
+                            continue;
+                        }
+                        let px = (left + dc as f64).round() as i64;
+                        let py = (baseline - (metrics.ymin as f64 + metrics.height as f64) + row as f64).round() as i64;
+                        for extra in 0..=smear {
+                            self.set_pixel_blended(
+                                px + extra,
+                                py,
+                                [r, g, b, ((coverage * a as u32) / 255) as u8],
+                                clip,
+                            );
+                        }
                     }
                 }
             }
-            pen_x += metrics.advance_width as f64;
+            pen_x += metrics.advance_width as f64 * squeeze;
         }
     }
 

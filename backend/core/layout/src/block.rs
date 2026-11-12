@@ -668,7 +668,7 @@ pub(crate) fn layout_block_level(
     forced: Forced,
 ) -> Placed {
     // A horizontal box in a vertical one is laid out in the page's own frame and turned in.
-    if ctx.writing.get().is_vertical() && !ctx.style(node).writing_mode().is_vertical() {
+    if ctx.writing.get().is_vertical() && ctx.style(node).writing_mode() != ctx.writing.get() {
         return crate::vertical::layout_orthogonal(ctx, node, c, forced);
     }
     let incoming = std::mem::take(&mut *ctx.floats.borrow_mut());
@@ -870,6 +870,24 @@ fn layout_block_level_uncached(
             _ => 0.0,
         };
         empty = false;
+    } else if style.writing_mode().is_vertical() && !ctx.writing.get().is_vertical() {
+        // A vertical box: its lines run down the page, so its content is laid out turned a
+        // quarter and turned back (see `vertical`). Its own box stays in the page's frame.
+        let flow = crate::vertical::layout_vertical_flow(
+            ctx,
+            node,
+            style.writing_mode(),
+            content_width,
+            child_cb_height,
+            (ctx.viewport_height - pb_v).max(1.0),
+        );
+        children = flow.children;
+        content_flow_height = flow.height;
+        top_pass = Margin::default();
+        bottom_pass = Margin::default();
+        pending_abs = flow.pending_abs;
+        extent = content_width;
+        empty = false;
     } else if matches!(display, Display::Table | Display::InlineTable) {
         let table = crate::table::layout_table(
             ctx,
@@ -927,24 +945,6 @@ fn layout_block_level_uncached(
         bottom_pass = Margin::default();
         pending_abs = flex.pending_abs;
         extent = flex.extent;
-        empty = false;
-    } else if style.writing_mode().is_vertical() && !ctx.writing.get().is_vertical() {
-        // A vertical box: its lines run down the page, so its content is laid out turned a
-        // quarter and turned back (see `vertical`). Its own box stays in the page's frame.
-        let flow = crate::vertical::layout_vertical_flow(
-            ctx,
-            node,
-            style.writing_mode(),
-            content_width,
-            child_cb_height,
-            (ctx.viewport_height - pb_v).max(1.0),
-        );
-        children = flow.children;
-        content_flow_height = flow.height;
-        top_pass = Margin::default();
-        bottom_pass = Margin::default();
-        pending_abs = flow.pending_abs;
-        extent = content_width;
         empty = false;
     } else {
         let flow = layout_flow(

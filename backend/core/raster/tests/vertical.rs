@@ -134,6 +134,16 @@ fn combined_characters_are_squeezed_into_one_em_and_centred_in_the_column() {
     let (left, right) = (set.iter().map(|p| p.0).min().unwrap(), set.iter().map(|p| p.0).max().unwrap());
     let (top, bottom) = (set.iter().map(|p| p.1).min().unwrap(), set.iter().map(|p| p.1).max().unwrap());
     assert!(right - left < 24, "within one em (24px) across: {}", right - left + 1);
+    // squeezed sideways only: the digits keep their height
+    let flat_height = {
+        let (_, _, h) = normalized(&wide);
+        h
+    };
+    assert!(
+        (bottom - top + 1 - flat_height).abs() <= 1,
+        "as tall as written flat ({flat_height}), not shrunk to fit: {}",
+        bottom - top + 1
+    );
     assert!(top >= 20 && bottom <= 20 + 24, "within the one-em cell down the page: {top}..{bottom}");
     let middle = (left + right) as f64 / 2.0;
     assert!((middle - 40.0).abs() <= 3.0, "centred in the 40px column that starts at 20: {middle}");

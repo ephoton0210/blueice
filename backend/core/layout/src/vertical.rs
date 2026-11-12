@@ -110,7 +110,53 @@ pub(crate) fn layout_vertical_flow(
     let room = content_height.unwrap_or(inline_room);
     let previous = ctx.writing.replace(mode);
     let previous_room = ctx.orth_room.replace(content_width);
-    let flow = layout_flow(ctx, node, room, None, true, true, &[]);
+    let style = ctx.style(node);
+    // The box's own layout algorithm runs in the turned frame: its inline size is `room` and, for
+    // a flex container, its block size (the turned frame's height) the page width of the box.
+    struct Flow {
+        children: Vec<Fragment>,
+        extent: f64,
+        pending_abs: Vec<PendingAbs>,
+    }
+    let flow = match style.display() {
+        crate::ctx::Display::Table | crate::ctx::Display::InlineTable => {
+            let table = crate::table::layout_table(
+                ctx,
+                node,
+                &crate::table::TableInput {
+                    available: room,
+                    specified: None,
+                    forced: None,
+                    definite_height: Some(content_width),
+                },
+            );
+            Flow { children: table.children, extent: table.width, pending_abs: table.pending_abs }
+        }
+        crate::ctx::Display::Flex
+        | crate::ctx::Display::InlineFlex
+        | crate::ctx::Display::Grid
+        | crate::ctx::Display::InlineGrid => {
+            let input = crate::flex::FlexInput {
+                content_width: room,
+                definite_height: Some(content_width),
+                min_height: style.px("min-height", content_width).unwrap_or(0.0),
+                max_height: style.px("max-height", content_width),
+            };
+            let laid = if matches!(
+                style.display(),
+                crate::ctx::Display::Grid | crate::ctx::Display::InlineGrid
+            ) {
+                crate::grid::layout_grid(ctx, node, &input)
+            } else {
+                crate::flex::layout_flex(ctx, node, &input)
+            };
+            Flow { children: laid.children, extent: laid.extent, pending_abs: laid.pending_abs }
+        }
+        _ => {
+            let laid = layout_flow(ctx, node, room, None, true, true, &[]);
+            Flow { children: laid.children, extent: laid.extent, pending_abs: laid.pending_abs }
+        }
+    };
     let height = content_height.unwrap_or_else(|| flow.extent.clamp(0.0, room));
     let turn = Turn::of(mode);
     let mut children = flow.children;
@@ -703,6 +749,21 @@ mod tests {
     }
 
     #[test]
+    fn combine_all_takes_the_whole_text_of_the_element_into_one_cell() {
+        let f = body(
+            "<div>\u{5e73}<span style='text-combine-upright:all'>12 <b>34</b></span>\u{5e74}</div>",
+            "div { writing-mode: vertical-rl; width: 60px; height: 300px }",
+        );
+        let t = texts(div(&f));
+        let combined: Vec<_> = t.iter().filter(|r| r.1 == TextOrient::Combined).collect();
+        assert_eq!(combined.len(), 1, "one cell for the whole element: {t:?}");
+        assert_eq!(combined[0].0, "12 34");
+        assert!((combined[0].5 - 16.0).abs() < 0.01, "one em long");
+        let year = t.iter().find(|r| r.0 == "\u{5e74}").unwrap();
+        assert!((year.3 - (combined[0].3 + 16.0)).abs() < 0.01, "the next character follows the cell directly");
+    }
+
+    #[test]
     fn digits_n_combines_runs_of_up_to_n_digits_and_leaves_longer_ones_sideways() {
         let css = "div { writing-mode: vertical-rl; width: 60px; height: 300px; text-combine-upright: digits 2 }";
         let f = body("<div>\u{7b2c}12\u{6708}</div>", css);
@@ -755,6 +816,79 @@ mod tests {
         let gap = after.3 - (before.3 + before.5);
         assert!(gap >= h.1 - 0.5 && gap < h.1 + 12.0, "the control takes its {} of height: {t:?}", h.1);
         assert!(h.0 <= v.0 + 0.5, "and still its {} across", h.0);
+    }
+
+    #[test]
+    fn a_vertical_rl_box_in_a_vertical_lr_box_stacks_its_own_lines_from_its_own_right() {
+        let inner = "<p style='writing-mode:vertical-rl;width:150px;height:120px'>aaa bbb ccc ddd eee fff ggg hhh</p>";
+        let f = body(
+            &format!("<div style='writing-mode:vertical-lr;width:300px;height:200px'>{inner}</div>"),
+            "",
+        );
+        let t = texts(div(&f));
+        let first = &t[0];
+        assert!(first.2 + first.4 > 149.0, "the first column is at the right of the 150px box: {first:?}");
+        let mut columns: Vec<f64> = t.iter().map(|r| r.2).collect();
+        columns.dedup();
+        assert!(columns.len() >= 2 && columns.windows(2).all(|w| w[1] < w[0]), "later lines go left: {columns:?}");
+        // and the box itself sits at the left of the outer one, where lr puts its first block
+        let p = &div(&f).children[0];
+        assert_eq!(p.x, 0.0);
+        // the other way round
+        let inner = "<p style='writing-mode:vertical-lr;width:150px;height:120px'>aaa bbb ccc ddd eee fff ggg hhh</p>";
+        let f = body(
+            &format!("<div style='writing-mode:vertical-rl;width:300px;height:200px'>{inner}</div>"),
+            "",
+        );
+        let t = texts(div(&f));
+        let first = &t[0];
+        assert!(first.2 >= 150.0 - 0.01 && first.2 < 170.0, "the lr box is at the right, its first column at its left: {first:?}");
+        let mut columns: Vec<f64> = t.iter().map(|r| r.2).collect();
+        columns.dedup();
+        assert!(columns.windows(2).all(|w| w[1] > w[0]), "its lines go right: {columns:?}");
+    }
+
+    #[test]
+    fn horizontal_flex_items_in_a_vertical_flex_container_are_sized_by_their_page_height() {
+        let item = "<p style='writing-mode:horizontal-tb;margin:0;width:100px'>aaa bbb ccc ddd eee fff</p>";
+        let f = body(
+            &format!("<div class=v style='display:flex;align-items:flex-start'>{item}{item}</div>"),
+            VBOX,
+        );
+        let t = texts(div(&f));
+        // each item wraps in its own 100px width: some rows high; the second follows the first
+        let first_rows: Vec<f64> = t.iter().filter(|r| r.0 == "aaa").map(|r| r.3).collect();
+        assert_eq!(first_rows.len(), 2, "{t:?}");
+        let (a, b) = (first_rows[0], first_rows[1]);
+        let item_height = {
+            let flat = body(&format!("<div style='width:400px'>{item}</div>"), "");
+            div(&flat).children[0].height
+        };
+        assert!(
+            (b - a - item_height).abs() < 0.5,
+            "the second item starts one item height ({item_height}) below the first: {a} {b}"
+        );
+        // and each item is as wide across the page as it is written (100px)
+        let widths: Vec<f64> = boxes(div(&f)).iter().filter(|b| (b.2 - 100.0).abs() < 0.01).map(|b| b.2).collect();
+        assert!(widths.len() >= 2, "{:?}", boxes(div(&f)));
+    }
+
+    #[test]
+    fn a_vertical_table_or_grid_container_runs_its_columns_down_the_page() {
+        let table = body(
+            "<table style='writing-mode:vertical-rl;width:200px;height:240px'><tr><td>aa</td><td>bb</td></tr></table>",
+            "",
+        );
+        let t = texts(div(&table));
+        let (a, b) = (&t[0], &t[1]);
+        assert!(b.3 > a.3 + 10.0 && (a.2 - b.2).abs() < 1.0, "{a:?} {b:?}");
+        let grid = body(
+            "<div style='display:grid;grid-template-columns:50px 60px;writing-mode:vertical-rl;width:200px;height:240px'><i style='display:block;height:20px'>a</i><i style='display:block;height:20px'>b</i></div>",
+            "",
+        );
+        let t = texts(div(&grid));
+        let (a, b) = (&t[0], &t[1]);
+        assert!(b.3 >= a.3 + 49.0, "the second column of the grid starts below the first: {a:?} {b:?}");
     }
 
     #[test]

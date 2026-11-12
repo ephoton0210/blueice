@@ -52,6 +52,27 @@ pub(crate) enum Combine {
     Digits(u32),
 }
 
+/// How a stop or comma at the end of a line hangs.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub(crate) enum HangEnd {
+    #[default]
+    None,
+    /// Only when it does not otherwise fit.
+    Allow,
+    /// Always.
+    Force,
+}
+
+/// `hanging-punctuation`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub(crate) struct Hanging {
+    /// An opening bracket or quote at the start of the first line hangs before it.
+    pub first: bool,
+    /// A closing bracket or quote at the end of the last line hangs after it if it does not fit.
+    pub last: bool,
+    pub end: HangEnd,
+}
+
 /// A writing mode as layout flows it.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub(crate) enum Writing {
@@ -395,15 +416,28 @@ impl<'a> Style<'a> {
         }
     }
 
-    /// Whether `hanging-punctuation` lets a stop or comma hang past the end of a line.
-    pub fn hangs_at_end(&self) -> bool {
+    /// What `hanging-punctuation` lets hang outside the line.
+    pub fn hanging(&self) -> Hanging {
+        let mut out = Hanging::default();
+        let mut word = |w: &str| match w {
+            "first" => out.first = true,
+            "last" => out.last = true,
+            "allow-end" => out.end = HangEnd::Allow,
+            "force-end" => out.end = HangEnd::Force,
+            _ => {}
+        };
         match self.raw("hanging-punctuation") {
-            Some(Value::Keyword(k)) => matches!(k.as_str(), "allow-end" | "force-end"),
-            Some(Value::Unparsed(tokens)) => tokens.iter().any(|t| {
-                matches!(t, blueice_css::Token::Ident(w) if matches!(w.as_str(), "allow-end" | "force-end"))
-            }),
-            _ => false,
+            Some(Value::Keyword(k)) => word(k.as_str()),
+            Some(Value::Unparsed(tokens)) => {
+                for t in tokens {
+                    if let blueice_css::Token::Ident(w) = t {
+                        word(w.as_str());
+                    }
+                }
+            }
+            _ => {}
         }
+        out
     }
 
     /// This box's `writing-mode`, as layout flows it.
