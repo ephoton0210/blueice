@@ -41,6 +41,19 @@ pub enum NativeForm {
     },
 }
 
+/// How a run of text sits on its line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TextOrient {
+    /// Left to right (or right to left) along a horizontal line.
+    #[default]
+    Horizontal,
+    /// In a vertical line, rotated a quarter turn clockwise: the baseline runs down the page and
+    /// the top of the letters faces the right.
+    Sideways,
+    /// In a vertical line, each character upright, one below the other.
+    Upright,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum FragmentKind {
     /// A block-level box (block flow, or a block-generating box
@@ -114,6 +127,9 @@ pub struct Fragment {
     /// they sit on screen, which right-to-left text makes different from the order they are read
     /// in; sort by this to read them.
     pub logical: u32,
+    /// For a text run in a vertical line: how its characters are turned. The fragment's box is
+    /// physical (`height` is the run's length down the page).
+    pub orient: TextOrient,
 }
 
 impl Fragment {
@@ -136,6 +152,7 @@ impl Fragment {
             translate: None,
             rtl: false,
             logical: 0,
+            orient: TextOrient::Horizontal,
         }
     }
 }

@@ -185,6 +185,44 @@ pub fn mirrored(c: char) -> char {
     }
 }
 
+/// The presentation form a character takes when it stands upright in a vertical line: brackets
+/// and corner marks turn to face down the line, dashes and ellipses stand on end, and the
+/// ideographic commas and stops move to the top right of their cell. A character without one is
+/// itself.
+pub fn vertical_form(c: char) -> char {
+    match c {
+        '\u{FF0C}' => '\u{FE10}',
+        '\u{3001}' => '\u{FE11}',
+        '\u{3002}' => '\u{FE12}',
+        '\u{FF1A}' => '\u{FE13}',
+        '\u{FF1B}' => '\u{FE14}',
+        '\u{FF01}' => '\u{FE15}',
+        '\u{FF1F}' => '\u{FE16}',
+        '\u{2026}' => '\u{FE19}',
+        '\u{2014}' => '\u{FE31}',
+        '\u{2013}' => '\u{FE32}',
+        '\u{FF08}' => '\u{FE35}',
+        '\u{FF09}' => '\u{FE36}',
+        '\u{FF5B}' => '\u{FE37}',
+        '\u{FF5D}' => '\u{FE38}',
+        '\u{3014}' => '\u{FE39}',
+        '\u{3015}' => '\u{FE3A}',
+        '\u{3010}' => '\u{FE3B}',
+        '\u{3011}' => '\u{FE3C}',
+        '\u{300A}' => '\u{FE3D}',
+        '\u{300B}' => '\u{FE3E}',
+        '\u{3008}' => '\u{FE3F}',
+        '\u{3009}' => '\u{FE40}',
+        '\u{300C}' => '\u{FE41}',
+        '\u{300D}' => '\u{FE42}',
+        '\u{300E}' => '\u{FE43}',
+        '\u{300F}' => '\u{FE44}',
+        '\u{FF3B}' => '\u{FE47}',
+        '\u{FF3D}' => '\u{FE48}',
+        _ => c,
+    }
+}
+
 /// Whether `c` is a combining mark that stays with the character before it.
 pub fn is_mark(c: char) -> bool {
     matches!(c, '\u{0300}'..='\u{036F}' | '\u{0591}'..='\u{05BD}' | '\u{05BF}' | '\u{05C1}'
@@ -285,6 +323,28 @@ mod tests {
     fn visual_order_reverses_characters_but_keeps_marks_on_their_base() {
         assert_eq!(visual_order("abc"), "cba");
         assert_eq!(visual_order("a\u{064E}b"), "ba\u{064E}");
+    }
+
+    #[test]
+    fn upright_punctuation_has_a_vertical_form_and_other_characters_keep_theirs() {
+        assert_eq!(vertical_form('\u{300C}'), '\u{FE41}');
+        assert_eq!(vertical_form('\u{3002}'), '\u{FE12}');
+        assert_eq!(vertical_form('\u{65e5}'), '\u{65e5}');
+        assert_eq!(vertical_form('a'), 'a');
+    }
+
+    #[test]
+    fn every_vertical_form_is_the_compatibility_form_of_its_character() {
+        use unicode_normalization::UnicodeNormalization;
+        for c in "\u{FF0C}\u{3001}\u{3002}\u{FF1A}\u{FF1B}\u{FF01}\u{FF1F}\u{2026}\u{2014}\u{2013}\u{FF08}\u{FF09}\u{FF5B}\u{FF5D}\u{3014}\u{3015}\u{3010}\u{3011}\u{300A}\u{300B}\u{3008}\u{3009}\u{300C}\u{300D}\u{300E}\u{300F}\u{FF3B}\u{FF3D}".chars() {
+            let form = vertical_form(c);
+            assert_ne!(form, c);
+            // the form decomposes to the plain character, or (for the fullwidth ones) to its
+            // halfwidth twin, so they are the same mark in another orientation
+            let plain: String = c.to_string().nfkc().collect();
+            let from_form: String = form.to_string().nfkc().collect();
+            assert_eq!(plain, from_form, "U+{:04X} -> U+{:04X}", c as u32, form as u32);
+        }
     }
 
     #[test]

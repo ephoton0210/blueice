@@ -139,6 +139,8 @@ const OTHER_INHERITED_PROPERTIES: &[&str] = &[
     "text-transform",
     "text-indent",
     "text-align-last",
+    "writing-mode",
+    "text-orientation",
     "text-shadow",
     "text-rendering",
     "white-space",

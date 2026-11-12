@@ -21,6 +21,8 @@ fn drawn(text: &str, rtl: bool) -> Vec<u8> {
             italic: false,
             face: None,
             rtl,
+            orient: blueice_paint::TextOrient::Horizontal,
+            breadth: 0.0,
         }],
     };
     rasterize(&frame).pixels.clone()

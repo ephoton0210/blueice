@@ -718,3 +718,46 @@ fn right_to_left_text_is_copied_in_reading_order_and_its_characters_run_leftward
     assert!(a.x > b.x, "letters of a right-to-left word run leftward: {a:?} {b:?}");
     assert!(a.x > second_word.x, "the first word is right of the second");
 }
+
+#[test]
+fn vertical_text_is_copied_whole_and_its_characters_run_down_the_page() {
+    let mut page = page(
+        "<div id='v' style='writing-mode:vertical-rl;width:100px;height:300px'>\u{65e5}\u{672c}\u{8a9e} abc</div>",
+    );
+    apply(&mut page, TextInputAction::DocumentSelectAll);
+    let state = selection(&page);
+    assert_eq!(state["selected_text"], "\u{65e5}\u{672c}\u{8a9e} abc");
+    let v = page.script_get_element_by_id("v").unwrap();
+    let context = context(&page, v);
+    let bounds = |page: &mut Page, location: u32| {
+        let TextResult::Bounds(Some(b)) = page
+            .accessibility_text(
+                &context,
+                17,
+                Action::Bounds { range: TextRange { location, length: 1 } },
+            )
+            .unwrap()
+            .1
+        else {
+            panic!()
+        };
+        b
+    };
+    let (first, second, last) = (bounds(&mut page, 0), bounds(&mut page, 1), bounds(&mut page, 6));
+    assert!(second.y > first.y + 5.0, "the second character is below the first: {first:?} {second:?}");
+    assert!((second.x - first.x).abs() < 1.0, "in the same column");
+    assert!(last.y > second.y, "abc comes after the ideographs, further down");
+    assert!(first.width > 5.0 && first.height > 5.0);
+    // a click on the third character's cell finds that character
+    let third = bounds(&mut page, 2);
+    assert_eq!(
+        page.accessibility_text(
+            &context,
+            17,
+            Action::RangeForPosition { x: third.x + third.width / 2.0, y: third.y + third.height / 2.0 },
+        )
+        .unwrap()
+        .1,
+        TextResult::Range(Some(TextRange { location: 2, length: 1 }))
+    );
+}

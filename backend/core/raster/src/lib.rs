@@ -30,6 +30,10 @@ use blueice_font::{ascent_descent_in, font_for_char_in, web::WebFontId};
 use blueice_paint::{Color, Frame, PaintCommand};
 
 const ASSUMED_ASCENT_RATIO: f64 = 0.8;
+
+/// Where an upright character's baseline is in its cell, as a fraction of the font size: the
+/// em box of an ideograph hangs from the top of the cell.
+const UPRIGHT_ASCENT_RATIO: f64 = 0.86;
 #[derive(Clone, Copy)]
 struct PixelClip {
     left: i64,
@@ -83,6 +87,8 @@ struct TextRun<'a> {
     italic: bool,
     face: Option<WebFontId>,
     rtl: bool,
+    orient: blueice_paint::TextOrient,
+    breadth: f64,
 }
 
 /// An RGBA8, row-major pixel buffer -- the engine's final rendered
@@ -192,6 +198,10 @@ impl Pixmap {
         let synthesized = run.face.is_some();
         let smear = if synthesized && run.bold { (run.font_size_px / 20.0).max(1.0).round() as i64 } else { 0 };
         let slant = if synthesized && run.italic { 0.2 } else { 0.0 };
+        if run.orient != blueice_paint::TextOrient::Horizontal {
+            self.draw_vertical_text(&run, ascent, smear, clip, (r, g, b, a));
+            return;
+        }
         let mut pen_x = run.x;
         // Arabic letters take the form their neighbours call for; a right-to-left run is then
         // drawn backwards, from its last character to its first, brackets mirrored.
@@ -230,6 +240,75 @@ impl Pixmap {
                 }
             }
             pen_x += metrics.advance_width as f64;
+        }
+    }
+
+    /// Text in a vertical line. Sideways, the run is the horizontal text turned a quarter
+    /// clockwise: its baseline is a vertical line `ascent` inside the right edge of the run's
+    /// box, the letters' tops face right and the text runs down from the box's top. Upright, each
+    /// character is drawn as it is on a horizontal line, one below the other, centred across the
+    /// box, in its vertical presentation form where it has one.
+    fn draw_vertical_text(
+        &mut self,
+        run: &TextRun<'_>,
+        ascent: f64,
+        smear: i64,
+        clip: PixelClip,
+        (r, g, b, a): (u8, u8, u8, u8),
+    ) {
+        let sideways = run.orient == blueice_paint::TextOrient::Sideways;
+        let shaped = blueice_font::shape_in(run.text, run.bold, run.italic, run.face);
+        let baseline_x = run.x + run.breadth - ascent;
+        let mut pen = run.y;
+        for original in shaped.chars() {
+            let ch = if sideways {
+                original
+            } else {
+                // The vertical form, where some face can draw it.
+                let form = blueice_font::vertical_form(original);
+                if form != original && font_for_char_in(form, run.bold, run.italic, run.face).has_glyph(form) {
+                    form
+                } else {
+                    original
+                }
+            };
+            let f = font_for_char_in(ch, run.bold, run.italic, run.face);
+            let (metrics, bitmap) = f.rasterize(ch, run.font_size_px as f32);
+            let advance = metrics.advance_width as f64;
+            // Where this character's origin (on its baseline) is, and how a bitmap pixel maps
+            // from its offset (right of the origin, up from the baseline) to the page.
+            let (origin_x, origin_y) = if sideways {
+                (baseline_x, pen)
+            } else {
+                (
+                    run.x + run.breadth / 2.0 - advance / 2.0,
+                    pen + run.font_size_px * UPRIGHT_ASCENT_RATIO,
+                )
+            };
+            for row in 0..metrics.height {
+                for col in 0..metrics.width {
+                    let coverage = bitmap[row * metrics.width + col] as u32;
+                    if coverage == 0 {
+                        continue;
+                    }
+                    let dx = metrics.xmin as f64 + col as f64;
+                    let up = (metrics.ymin as f64 + metrics.height as f64) - row as f64;
+                    let (px, py) = if sideways {
+                        ((origin_x + up - 1.0).round() as i64, (origin_y + dx).round() as i64)
+                    } else {
+                        ((origin_x + dx).round() as i64, (origin_y - up).round() as i64)
+                    };
+                    for extra in 0..=smear {
+                        self.set_pixel_blended(
+                            px + extra,
+                            py,
+                            [r, g, b, ((coverage * a as u32) / 255) as u8],
+                            clip,
+                        );
+                    }
+                }
+            }
+            pen += advance;
         }
     }
 
@@ -336,6 +415,8 @@ pub fn rasterize(frame: &Frame) -> Pixmap {
                 italic,
                 face,
                 rtl,
+                orient,
+                breadth,
             } => pixmap.draw_text(
                 TextRun {
                     x: *x,
@@ -347,6 +428,8 @@ pub fn rasterize(frame: &Frame) -> Pixmap {
                     italic: *italic,
                     face: face.map(WebFontId::from_u32),
                     rtl: *rtl,
+                    orient: *orient,
+                    breadth: *breadth,
                 },
                 clip,
             ),
@@ -488,6 +571,8 @@ fn rasterize_viewport_culled(
                 italic,
                 face,
                 rtl,
+                orient,
+                breadth,
             } => PaintCommand::Text {
                 x: x * scale,
                 y: (y - scroll_y) * scale,
@@ -498,6 +583,8 @@ fn rasterize_viewport_culled(
                 italic,
                 face,
                 rtl,
+                orient,
+                breadth: breadth * scale,
             },
         })
         .collect();
@@ -574,6 +661,8 @@ mod tests {
                 italic: false,
                 face: None,
                 rtl: false,
+                orient: blueice_paint::TextOrient::Horizontal,
+                breadth: 0.0,
             });
         }
         let page = frame(100.0, 1000.0, commands.clone());
@@ -601,6 +690,8 @@ mod tests {
                 italic: false,
                 face: None,
                 rtl: false,
+                orient: blueice_paint::TextOrient::Horizontal,
+                breadth: 0.0,
             });
         }
         commands.push(PaintCommand::Shadow {
@@ -751,6 +842,8 @@ mod tests {
                 italic: false,
                 face: None,
                 rtl: false,
+                orient: blueice_paint::TextOrient::Horizontal,
+                breadth: 0.0,
             }],
         ));
         let has_ink = (0..pixmap.height)
@@ -773,6 +866,8 @@ mod tests {
                 italic: false,
                 face: None,
                 rtl: false,
+                orient: blueice_paint::TextOrient::Horizontal,
+                breadth: 0.0,
             }],
         ));
         for y in 0..pixmap.height {
@@ -797,6 +892,8 @@ mod tests {
                 italic: false,
                 face: None,
                 rtl: false,
+                orient: blueice_paint::TextOrient::Horizontal,
+                breadth: 0.0,
             }],
         ));
         let two_char = rasterize(&frame(
@@ -812,6 +909,8 @@ mod tests {
                 italic: false,
                 face: None,
                 rtl: false,
+                orient: blueice_paint::TextOrient::Horizontal,
+                breadth: 0.0,
             }],
         ));
         let ink_extent = |p: &Pixmap| -> u32 {

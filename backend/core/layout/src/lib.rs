@@ -31,10 +31,11 @@ mod native_text;
 mod table;
 mod text;
 mod transform;
+mod vertical;
 
 pub use block::update_select_option_bounds;
 pub use cache::LayoutCache;
-pub use fragment::{Constraints, Fragment, FragmentKind, NativeForm, SelectOption};
+pub use fragment::{Constraints, Fragment, FragmentKind, NativeForm, SelectOption, TextOrient};
 pub use native_text::{
     input_button_label, input_range_values, select_display_size, select_options,
 };

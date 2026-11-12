@@ -30,6 +30,7 @@
 
 use blueice_css::{ComputedStyle, Value};
 use blueice_dom::NodeId;
+pub use blueice_layout::TextOrient;
 use blueice_layout::{Fragment, FragmentKind};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -143,6 +144,11 @@ pub enum PaintCommand {
         /// Drawn right to left: `text` is in reading order, and its characters are laid out
         /// from the right end of its width (see `blueice_font::visual_order`).
         rtl: bool,
+        /// In a vertical line: how the characters are turned (see [`TextOrient`]). Then `x`,
+        /// `y` are the top-left of the run's box, which is `breadth` wide across the line and
+        /// as long as the run is down the page.
+        orient: TextOrient,
+        breadth: f64,
     },
 }
 
@@ -271,8 +277,10 @@ pub fn dump_frame(frame: &Frame) -> String {
                 italic,
                 face,
                 rtl,
+                orient,
+                ..
             } => out.push_str(&format!(
-                "text {},{} \"{text}\" {} {} {} {}{}{}\n",
+                "text {},{} \"{text}\" {} {} {} {}{}{}{}\n",
                 fmt_num(*x),
                 fmt_num(*y),
                 fmt_color(*color),
@@ -280,7 +288,12 @@ pub fn dump_frame(frame: &Frame) -> String {
                 if *bold { "bold" } else { "normal" },
                 if *italic { "italic" } else { "normal" },
                 face.map_or(String::new(), |f| format!(" face={f}")),
-                if *rtl { " rtl" } else { "" }
+                if *rtl { " rtl" } else { "" },
+                match orient {
+                    TextOrient::Horizontal => "",
+                    TextOrient::Sideways => " sideways",
+                    TextOrient::Upright => " upright",
+                }
             )),
         }
     }
@@ -895,6 +908,8 @@ fn paint_fragment(
                     .and_then(|v| length_px(v, style.font_size_px))
                     .filter(|s| *s != 0.0);
                 let rtl = fragment.rtl;
+                let (orient, breadth) = (fragment.orient, fragment.width);
+                let spacing = spacing.filter(|_| orient == TextOrient::Horizontal);
                 let mut emit = |x: f64, text: String, rtl: bool| {
                     out.push(PaintCommand::Text {
                         x,
@@ -906,6 +921,8 @@ fn paint_fragment(
                         italic,
                         face,
                         rtl,
+                        orient,
+                        breadth,
                     });
                 };
                 match spacing {
@@ -1155,6 +1172,8 @@ fn paint_native_form(
                     italic: text_face(style).2,
                     face: face_of(style),
                     rtl: false,
+                    orient: TextOrient::Horizontal,
+                    breadth: 0.0,
                 });
             }
             return;
@@ -1202,6 +1221,8 @@ fn paint_native_form(
         italic: text_face(style).2,
         face: face_of(style),
         rtl: false,
+        orient: TextOrient::Horizontal,
+        breadth: 0.0,
     });
 }
 
@@ -1437,6 +1458,37 @@ mod tests {
         );
         assert!(chars.windows(2).all(|w| w[0].1 < w[1].1));
         assert!(chars.iter().all(|c| !c.2), "already in drawn order");
+    }
+
+    #[test]
+    fn vertical_text_is_painted_with_its_orientation_and_the_width_of_its_column() {
+        let f = paint_html(
+            "<div>\u{65e5}\u{672c}abc</div>",
+            "div { writing-mode: vertical-rl; width: 80px; height: 200px; line-height: 30px }",
+            320.0,
+        );
+        let runs: Vec<(String, TextOrient, f64, f64)> = f
+            .commands
+            .iter()
+            .filter_map(|c| match c {
+                PaintCommand::Text { text, orient, breadth, y, .. } => {
+                    Some((text.clone(), *orient, *breadth, *y))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(runs.len(), 2, "{runs:?}");
+        assert_eq!((runs[0].0.as_str(), runs[0].1), ("\u{65e5}\u{672c}", TextOrient::Upright));
+        assert_eq!((runs[1].0.as_str(), runs[1].1), ("abc", TextOrient::Sideways));
+        assert!(runs.iter().all(|r| (r.2 - 30.0).abs() < 0.5), "a column is a line high: {runs:?}");
+        assert!(runs[1].3 > runs[0].3, "abc is below the ideographs");
+        let horizontal = paint_html("<p>abc</p>", "", 320.0);
+        assert!(horizontal.commands.iter().all(|c| !matches!(
+            c,
+            PaintCommand::Text { orient, .. } if *orient != TextOrient::Horizontal
+        )));
+        let dump = dump_frame(&f);
+        assert!(dump.contains(" upright") && dump.contains(" sideways"), "{dump}");
     }
 
     #[test]
@@ -1774,6 +1826,8 @@ mod tests {
                     italic: false,
                     face: None,
                     rtl: false,
+                    orient: TextOrient::Horizontal,
+                    breadth: 0.0,
                 },
                 PaintCommand::Text {
                     x: 1.0,
@@ -1785,6 +1839,8 @@ mod tests {
                     italic: true,
                     face: None,
                     rtl: true,
+                    orient: TextOrient::Horizontal,
+                    breadth: 0.0,
                 },
             ],
         };

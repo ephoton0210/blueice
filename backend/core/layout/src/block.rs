@@ -202,15 +202,15 @@ fn flow_items(ctx: &Ctx<'_>, node: NodeId, out: &mut Vec<Item>) {
     }
 }
 
-struct Flow {
-    children: Vec<Fragment>,
+pub(crate) struct Flow {
+    pub(crate) children: Vec<Fragment>,
     /// Height of the in-flow content, including margins that did not pass
     /// through to the parent.
-    height: f64,
+    pub(crate) height: f64,
     top_margin: Margin,
     bottom_margin: Margin,
-    pending_abs: Vec<PendingAbs>,
-    extent: f64,
+    pub(crate) pending_abs: Vec<PendingAbs>,
+    pub(crate) extent: f64,
     /// Nothing in flow took any height.
     empty: bool,
     /// Floats placed in this flow, as margin boxes in its content coordinates.
@@ -218,7 +218,7 @@ struct Flow {
 }
 
 #[allow(clippy::too_many_arguments, unused_assignments)]
-fn layout_flow(
+pub(crate) fn layout_flow(
     ctx: &Ctx<'_>,
     node: NodeId,
     content_width: f64,
@@ -924,6 +924,24 @@ fn layout_block_level_uncached(
         pending_abs = flex.pending_abs;
         extent = flex.extent;
         empty = false;
+    } else if style.writing_mode().is_vertical() && !ctx.writing.get().is_vertical() {
+        // A vertical box: its lines run down the page, so its content is laid out turned a
+        // quarter and turned back (see `vertical`). Its own box stays in the page's frame.
+        let flow = crate::vertical::layout_vertical_flow(
+            ctx,
+            node,
+            style.writing_mode(),
+            content_width,
+            child_cb_height,
+            (ctx.viewport_height - pb_v).max(1.0),
+        );
+        children = flow.children;
+        content_flow_height = flow.height;
+        top_pass = Margin::default();
+        bottom_pass = Margin::default();
+        pending_abs = flow.pending_abs;
+        extent = content_width;
+        empty = false;
     } else {
         let flow = layout_flow(
             ctx,
@@ -1307,6 +1325,7 @@ pub(crate) fn layout_block(
         layouts: Default::default(),
         floats: Default::default(),
         pseudo: crate::ctx::generated_nodes(doc, styles),
+        writing: Default::default(),
     };
     let c = Constraint {
         cb_width: available_width,
@@ -1341,6 +1360,7 @@ pub(crate) fn layout_root_with(
         layouts: std::cell::RefCell::new(layouts),
         floats: Default::default(),
         pseudo: crate::ctx::generated_nodes(doc, styles),
+        writing: Default::default(),
     };
     let c = Constraint {
         cb_width: viewport_width,

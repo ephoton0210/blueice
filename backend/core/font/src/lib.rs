@@ -48,7 +48,7 @@
 pub mod web;
 mod shape;
 mod variable;
-pub use shape::{is_mark, mirrored, shape_with, visual_order};
+pub use shape::{is_mark, mirrored, shape_with, vertical_form, visual_order};
 pub use variable::{Axis, VarInstance, Variation};
 
 use std::sync::OnceLock;

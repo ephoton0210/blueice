@@ -23,6 +23,8 @@ fn text(face: Option<u32>, string: &str) -> Frame {
             italic: false,
             face,
             rtl: false,
+            orient: blueice_paint::TextOrient::Horizontal,
+            breadth: 0.0,
         }],
     }
 }

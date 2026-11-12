@@ -33,6 +33,80 @@ pub(crate) struct Ctx<'a> {
     /// Generated `::before` / `::after` boxes and their text: ids no DOM node
     /// has, mapped to the data a node of that kind would carry.
     pub pseudo: HashMap<NodeId, NodeData>,
+    /// The writing mode the content being laid out is flowing in. Inside a vertical box the
+    /// layout runs in a turned frame (inline axis across the page's height), and style reads
+    /// name the sides that frame sees: see [`Writing`].
+    pub writing: std::cell::Cell<Writing>,
+}
+
+/// A writing mode as layout flows it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub(crate) enum Writing {
+    #[default]
+    Horizontal,
+    /// Lines run down the page and stack from the right.
+    VerticalRl,
+    /// Lines run down the page and stack from the left.
+    VerticalLr,
+}
+
+impl Writing {
+    pub fn is_vertical(self) -> bool {
+        self != Writing::Horizontal
+    }
+
+    /// The property a vertical frame reads when layout asks for `property`. Layout works as if
+    /// writing left to right, top to bottom: its `left` and `right` are the page's top and
+    /// bottom, its `top` the page's right (left in `vertical-lr`) and its `bottom` the opposite
+    /// side; its `width` is the page's `height`.
+    fn physical(self, property: &str) -> Option<String> {
+        if !self.is_vertical() {
+            return None;
+        }
+        let rl = self == Writing::VerticalRl;
+        let side = |s: &str| -> &'static str {
+            match s {
+            "left" => "top",
+            "right" => "bottom",
+            "top" => {
+                if rl {
+                    "right"
+                } else {
+                    "left"
+                }
+            }
+            "bottom" => {
+                if rl {
+                    "left"
+                } else {
+                    "right"
+                }
+            }
+            // Only the four sides reach here.
+            _ => "top",
+            }
+        };
+        Some(match property {
+            "width" => "height".to_string(),
+            "height" => "width".to_string(),
+            "min-width" => "min-height".to_string(),
+            "min-height" => "min-width".to_string(),
+            "max-width" => "max-height".to_string(),
+            "max-height" => "max-width".to_string(),
+            _ => {
+                let parts: Vec<&str> = property.split('-').collect();
+                match parts.as_slice() {
+                    [family @ ("margin" | "padding"), s @ ("left" | "right" | "top" | "bottom")] => {
+                        format!("{family}-{}", side(s))
+                    }
+                    ["border", s @ ("left" | "right" | "top" | "bottom"), what @ ("width" | "style" | "color")] => {
+                        format!("border-{}-{what}", side(s))
+                    }
+                    _ => return None,
+                }
+            }
+        })
+    }
 }
 
 /// The generated boxes of every element in `styles` that has a `content`.
@@ -199,6 +273,12 @@ impl<'a> Ctx<'a> {
         }
     }
 
+    /// The style of the box a fragment renders: its own node's, or the generated box's.
+    pub fn style_of_fragment(&'a self, f: &crate::fragment::Fragment) -> Style<'a> {
+        let node = f.node.or(f.style_node).unwrap_or_else(|| NodeId::from_u64(0));
+        self.style(node)
+    }
+
     /// A node's data, generated pseudo-element nodes included.
     pub fn node(&self, node: NodeId) -> &NodeData {
         if blueice_css::is_pseudo_node(node) {
@@ -265,7 +345,23 @@ impl<'a> Style<'a> {
     }
 
     pub fn raw(&self, property: &str) -> Option<&'a Value> {
-        self.style.and_then(|s| s.other.get(property))
+        let style = self.style?;
+        match self.ctx.writing.get().physical(property) {
+            Some(physical) => style.other.get(&physical),
+            None => style.other.get(property),
+        }
+    }
+
+    /// This box's `writing-mode`, as layout flows it.
+    pub fn writing_mode(&self) -> Writing {
+        match self.style.and_then(|s| s.other.get("writing-mode")) {
+            Some(Value::Keyword(k)) => match k.as_str() {
+                "vertical-rl" | "sideways-rl" => Writing::VerticalRl,
+                "vertical-lr" | "sideways-lr" => Writing::VerticalLr,
+                _ => Writing::Horizontal,
+            },
+            _ => Writing::Horizontal,
+        }
     }
 
     /// The page-supplied face this element's text is drawn with, if the engine found one for
