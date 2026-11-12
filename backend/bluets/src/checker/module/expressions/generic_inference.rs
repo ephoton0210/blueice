@@ -170,11 +170,16 @@ impl ModuleChecker<'_> {
                 )));
             }
         }
-        Some(crate::checker::inference::result_type(
-            &signature.return_type,
-            &substitutions,
-            &self.types,
-            &mut budget,
-        ))
+        Some(
+            self.materialize_result_at(
+                &signature.return_type,
+                &substitutions,
+                &mut budget,
+                tokens
+                    .first()
+                    .zip(tokens.last())
+                    .map(|(first, last)| SourceSpan::new(&self.module.id, first.start, last.end)),
+            ),
+        )
     }
 }

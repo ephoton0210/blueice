@@ -105,8 +105,7 @@ parameters, retains generic signatures for unknown/any receivers, and preserves
 named constructor queries. Its 70-form/three-profile matrix requires 210 complete
 diagnostics and 105 byte-exact declarations with isolated consumers, syntax and
 execution. Six owner controls are separate; no runtime binding is installed.
-NonNullable, Uppercase, Lowercase, Capitalize, Uncapitalize, ES5 Awaited
-and unmeasured receiver compositions remain open.
+Unmeasured receiver compositions retain their open scope.
 
 The [NoInfer follow-up](NOINFER_ACCEPTANCE.md) adds its trusted static intrinsic
 to the core layer while preserving ordinary owner/local/imported declarations.
@@ -116,6 +115,15 @@ The frozen 282 primary observations plus four diagnostic regressions pass full
 same-source acceptance; three owner/runtime and nine budget controls remain
 separate. No runtime binding is installed. Other utility/catalog compositions
 retain their open scope.
+
+The [NonNullable/Awaited follow-up](NONNULLABLE_AWAITED_ACCEPTANCE.md) supplies
+NonNullable through ordinary `T & {}` semantics and places static PromiseLike,
+Promise, PromiseConstructorLike and structural Awaited declarations in a separate
+ES5 layer. Runtime Promise authority stays in the ES2015 layer. Complete
+396-comparison/four-profile acceptance includes exact declarations, 630 isolated
+consumers and semantic recursive-demand controls. Six owner/runtime and fifteen
+resource controls remain separate. Uppercase, Lowercase, Capitalize,
+Uncapitalize and broader library compositions remain open.
 
 Broader generic inference, structural protocols, overloads, index signatures
 and declaration precision remain K.4/K.8 and the compatibility inventory.

@@ -70,6 +70,11 @@ fn normalize(
     if budget.exhausted {
         return value.clone();
     }
+    if form == Form::Diagnostic
+        && matches!(value, Type::Named {name, ..} if crate::checker::type_relations::non_null_alias(name, aliases))
+    {
+        return super::results::finish(value.clone(), aliases, budget);
+    }
     if let Type::InferenceBarrier(base) = value {
         if budget.consume() {
             let base = normalize(base, aliases, budget, form);

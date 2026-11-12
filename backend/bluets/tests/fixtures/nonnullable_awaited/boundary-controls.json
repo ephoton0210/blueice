@@ -1,0 +1,241 @@
+{
+  "schema": 1,
+  "scope": "Separately authored BlueTS public-API owner/runtime/resource controls. Excluded from direct Native comparisons. Normal and constrained compilations must run against the final P0-B source before acceptance.",
+  "controls": [
+    {
+      "id": "ambient-owner/NonNullable",
+      "kind": "ambient-owner",
+      "name": "NonNullable",
+      "declaration": "type NonNullable<T> = {owned: T};",
+      "source": "export const value: NonNullable<number> = {owned: 7};",
+      "expected": {
+        "diagnostics": [],
+        "projectModules": [
+          "memory:///main.ts",
+          "memory:///owner.d.ts"
+        ],
+        "artifacts": 1
+      }
+    },
+    {
+      "id": "local-owner/NonNullable",
+      "kind": "local-owner",
+      "name": "NonNullable",
+      "declaration": "type NonNullable<T> = {owned: T};",
+      "source": "export const value: NonNullable<number> = {owned: 7};",
+      "expected": {
+        "diagnostics": [],
+        "projectModules": [
+          "memory:///main.ts"
+        ],
+        "artifacts": 1
+      }
+    },
+    {
+      "id": "type-only-runtime-deny/NonNullable",
+      "kind": "runtime-authority",
+      "source": "NonNullable();",
+      "options": {
+        "require_declared_global_calls": true
+      },
+      "expected": {
+        "hasErrors": true,
+        "runtimeAuthorityGranted": false
+      }
+    },
+    {
+      "id": "ambient-owner/Awaited",
+      "kind": "ambient-owner",
+      "name": "Awaited",
+      "declaration": "type Awaited<T> = {owned: T};",
+      "source": "export const value: Awaited<number> = {owned: 7};",
+      "expected": {
+        "diagnostics": [],
+        "projectModules": [
+          "memory:///main.ts",
+          "memory:///owner.d.ts"
+        ],
+        "artifacts": 1
+      }
+    },
+    {
+      "id": "local-owner/Awaited",
+      "kind": "local-owner",
+      "name": "Awaited",
+      "declaration": "type Awaited<T> = {owned: T};",
+      "source": "export const value: Awaited<number> = {owned: 7};",
+      "expected": {
+        "diagnostics": [],
+        "projectModules": [
+          "memory:///main.ts"
+        ],
+        "artifacts": 1
+      }
+    },
+    {
+      "id": "type-only-runtime-deny/Awaited",
+      "kind": "runtime-authority",
+      "source": "Awaited();",
+      "options": {
+        "require_declared_global_calls": true
+      },
+      "expected": {
+        "hasErrors": true,
+        "runtimeAuthorityGranted": false
+      }
+    },
+    {
+      "id": "work/nonnull-union/0",
+      "kind": "resource-limit",
+      "source": "declare const input: NonNullable<number | null | undefined>; export const value = input;",
+      "normal": {
+        "diagnostics": [],
+        "output": true
+      },
+      "limited": {
+        "max_type_expansions": 0
+      },
+      "expected": {
+        "output": false,
+        "resourceDiagnostic": true,
+        "nativeCounterpart": false
+      }
+    },
+    {
+      "id": "work/nonnull-union/1",
+      "kind": "resource-limit",
+      "source": "declare const input: NonNullable<number | null | undefined>; export const value = input;",
+      "normal": {
+        "diagnostics": [],
+        "output": true
+      },
+      "limited": {
+        "max_type_expansions": 1
+      },
+      "expected": {
+        "output": false,
+        "resourceDiagnostic": true,
+        "nativeCounterpart": false
+      }
+    },
+    {
+      "id": "work/awaited-custom/0",
+      "kind": "resource-limit",
+      "source": "type Box<T> = {then(cb: (value: T) => void): void}; declare const input: Awaited<Box<number>>; export const value = input;",
+      "normal": {
+        "diagnostics": [],
+        "output": true
+      },
+      "limited": {
+        "max_type_expansions": 0
+      },
+      "expected": {
+        "output": false,
+        "resourceDiagnostic": true,
+        "nativeCounterpart": false
+      }
+    },
+    {
+      "id": "work/awaited-custom/1",
+      "kind": "resource-limit",
+      "source": "type Box<T> = {then(cb: (value: T) => void): void}; declare const input: Awaited<Box<number>>; export const value = input;",
+      "normal": {
+        "diagnostics": [],
+        "output": true
+      },
+      "limited": {
+        "max_type_expansions": 1
+      },
+      "expected": {
+        "output": false,
+        "resourceDiagnostic": true,
+        "nativeCounterpart": false
+      }
+    },
+    {
+      "id": "work/awaited-nested/0",
+      "kind": "resource-limit",
+      "source": "type Box<T> = {then(cb: (value: T) => void): void}; declare const input: Awaited<Box<Box<number>>>; export const value = input;",
+      "normal": {
+        "diagnostics": [],
+        "output": true
+      },
+      "limited": {
+        "max_type_expansions": 0
+      },
+      "expected": {
+        "output": false,
+        "resourceDiagnostic": true,
+        "nativeCounterpart": false
+      }
+    },
+    {
+      "id": "work/awaited-nested/1",
+      "kind": "resource-limit",
+      "source": "type Box<T> = {then(cb: (value: T) => void): void}; declare const input: Awaited<Box<Box<number>>>; export const value = input;",
+      "normal": {
+        "diagnostics": [],
+        "output": true
+      },
+      "limited": {
+        "max_type_expansions": 1
+      },
+      "expected": {
+        "output": false,
+        "resourceDiagnostic": true,
+        "nativeCounterpart": false
+      }
+    },
+    {
+      "id": "work/composed-operators/0",
+      "kind": "resource-limit",
+      "source": "type Box<T> = {then(cb: (value: T) => void): void}; declare const input: NonNullable<Awaited<Box<number | null>>>; export const value = input;",
+      "normal": {
+        "diagnostics": [],
+        "output": true
+      },
+      "limited": {
+        "max_type_expansions": 0
+      },
+      "expected": {
+        "output": false,
+        "resourceDiagnostic": true,
+        "nativeCounterpart": false
+      }
+    },
+    {
+      "id": "work/composed-operators/1",
+      "kind": "resource-limit",
+      "source": "type Box<T> = {then(cb: (value: T) => void): void}; declare const input: NonNullable<Awaited<Box<number | null>>>; export const value = input;",
+      "normal": {
+        "diagnostics": [],
+        "output": true
+      },
+      "limited": {
+        "max_type_expansions": 1
+      },
+      "expected": {
+        "output": false,
+        "resourceDiagnostic": true,
+        "nativeCounterpart": false
+      }
+    },
+    {
+      "id": "depth/awaited-nonnullable",
+      "kind": "resource-limit",
+      "source": "type Deep = Awaited<NonNullable<Awaited<NonNullable<number>>>>; export const value: Deep = 7;",
+      "normal": {
+        "diagnostics": [],
+        "output": true
+      },
+      "limited": {
+        "parser.max_type_depth": 2
+      },
+      "expected": {
+        "output": false,
+        "resourceDiagnostic": true,
+        "nativeCounterpart": false
+      }
+    }
+  ]
+}

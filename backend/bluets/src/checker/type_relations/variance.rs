@@ -85,6 +85,10 @@ pub(super) fn assignable(
             .is_some_and(|definition| definition.kind == TypeDefinitionKind::Parameter)
             && !matches!(actual, Type::Any | Type::Never)
         {
+            if !budget.checking.strict_null_checks && matches!(actual, Type::Null | Type::Undefined)
+            {
+                return Some(true);
+            }
             return Some(false);
         }
     }

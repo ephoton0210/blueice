@@ -185,8 +185,11 @@ mod tests {
 
     #[test]
     fn declarations_parse_and_the_target_selects_exact_static_content() {
-        assert_eq!(modules(EcmaTarget::Es2020).len(), 12);
-        assert_eq!(modules(EcmaTarget::Es2022).len(), 15);
+        assert_eq!(modules(EcmaTarget::Es2020).len(), 13);
+        assert_eq!(modules(EcmaTarget::Es2022).len(), 16);
+        let es5 = identity(EcmaTarget::Es5);
+        assert!(es5.sources.contains(&"ecma-thenable.v3.d.ts"));
+        assert!(!es5.sources.contains(&"ecma-promise.v3.d.ts"));
         let old = identity(EcmaTarget::Es2020);
         let new = identity(EcmaTarget::Es2022);
         assert_eq!(old.version, VERSION);
@@ -200,6 +203,7 @@ mod tests {
                 "ecma-async-iteration.v2.d.ts",
                 "decorator-contexts.v2.d.ts",
                 "ecma-core.v3.d.ts",
+                "ecma-thenable.v3.d.ts",
                 "ecma-buffers.v3.d.ts",
                 "ecma-iterable.v3.d.ts",
                 "ecma-promise.v3.d.ts",

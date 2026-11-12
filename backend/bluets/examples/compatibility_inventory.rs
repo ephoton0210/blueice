@@ -10,6 +10,8 @@ mod accounting;
 mod case_ge5;
 #[path = "../tests/fixtures/compatibility_inventory/case_inline.rs"]
 mod case_inline;
+#[path = "../tests/fixtures/compatibility_inventory/case_nonnullable_awaited.rs"]
+mod case_nonnullable_awaited;
 #[path = "../tests/fixtures/compatibility_inventory/case_registry.rs"]
 mod case_registry;
 #[path = "../tests/fixtures/compatibility_inventory/case_report.rs"]

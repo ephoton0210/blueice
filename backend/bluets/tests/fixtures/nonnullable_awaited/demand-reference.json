@@ -1,0 +1,111 @@
+{
+  "typescript": "5.9.3",
+  "compilerOptions": {
+    "strict": true,
+    "target": "es5",
+    "module": "commonjs",
+    "declaration": true,
+    "noEmitOnError": true,
+    "types": [],
+    "lib": [
+      "es5"
+    ]
+  },
+  "cases": [
+    {
+      "id": "inferred-call",
+      "source": "interface Recursive {then(cb: (value: Recursive) => void): void;}\ndeclare function unwrap<T>(value: T): Awaited<T>;\ndeclare const input: Recursive;\nexport const value = unwrap(input);\n",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2589,
+          "message": "Type instantiation is excessively deep and possibly infinite.",
+          "file": "main.ts",
+          "position": {
+            "line": 4,
+            "column": 22,
+            "length": 13
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ordinary-cycle",
+      "source": "interface Recursive {then(cb: (value: Recursive) => void): void;}\ntype Unwrap<T> = T extends object & {then(cb: infer F, ...args: infer R): any} ? F extends (value: infer V, ...args: infer Q) => any ? Unwrap<V> : never : T;\ndeclare const input: Unwrap<Recursive>;\nexport const value = input;\n",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2589,
+          "message": "Type instantiation is excessively deep and possibly infinite.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 22,
+            "length": 17
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "unused-guarded",
+      "source": "interface Recursive {then(cb: (value: Recursive) => void): void;}\nexport const value = 1;\n",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const value = 1;\n"
+      }
+    },
+    {
+      "id": "guarded-result",
+      "source": "interface Node {value: number; next?: Node;}\ndeclare const input: Awaited<Node>;\nexport const value = input;\n",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "interface Node {\n    value: number;\n    next?: Node;\n}\nexport declare const value: Node;\nexport {};\n"
+      }
+    },
+    {
+      "id": "decreasing",
+      "source": "type Unwrap<T> = T extends {value: infer V} ? Unwrap<V> : T;\ndeclare const input: Unwrap<{value: {value: number}}>;\nexport const value = input;\n",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const value: number;\n"
+      }
+    },
+    {
+      "id": "independent-error",
+      "source": "interface Recursive {then(cb: (value: Recursive) => void): void;}\ndeclare const input: Awaited<Recursive>;\nexport const value = input;\nexport const wrong: number = \"bad\";\n",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2589,
+          "message": "Type instantiation is excessively deep and possibly infinite.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 22,
+            "length": 18
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "main.ts",
+          "position": {
+            "line": 4,
+            "column": 14,
+            "length": 5
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    }
+  ]
+}

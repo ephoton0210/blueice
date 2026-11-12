@@ -9,6 +9,7 @@ type InstanceType<F extends abstract new (...args: any) => any> = F extends abst
 type ThisParameterType<F> = F extends (this: infer Receiver, ...args: never) => any ? Receiver : unknown;
 type OmitThisParameter<F> = unknown extends ThisParameterType<F> ? F : F extends (...args: infer Args) => infer Result ? (...args: Args) => Result : F;
 type NoInfer<T> = intrinsic;
+type NonNullable<T> = T & {};
 
 // Original finite ECMAScript type model for G-T7; not upstream library text.
 type Readonly<T> = { readonly [P in keyof T]: T[P] };

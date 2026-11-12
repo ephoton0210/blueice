@@ -14,6 +14,11 @@ pub(super) fn contains(
     active: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> bool {
+    // With no source binders to find, expanding a closed alias cannot reveal a
+    // dependency. Its actual demanded evaluation still charges the same budget.
+    if parameters.is_empty() {
+        return false;
+    }
     if matches!(value, Type::InferenceBarrier(_)) {
         return false;
     }

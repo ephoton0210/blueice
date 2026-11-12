@@ -179,9 +179,7 @@ impl<'a> ModuleChecker<'a> {
                             .declarations
                             .iter()
                             .any(|candidate| match candidate {
-                                Declaration::Variable(variable) => {
-                                    variable.name == binding.local && !variable.declared
-                                }
+                                Declaration::Variable(variable) => variable.name == binding.local,
                                 Declaration::Function(function) => {
                                     function.name == binding.local
                                         && !function.declared

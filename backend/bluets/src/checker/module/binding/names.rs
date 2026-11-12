@@ -90,6 +90,9 @@ impl ModuleChecker<'_> {
     /// Avoid cascaded assignability errors after lookup or generic-arity
     /// validation has already diagnosed an invalid annotation.
     pub(in crate::checker::module) fn type_is_bound(&self, value: &Type) -> bool {
+        if self.instantiation.contains(value) {
+            return false;
+        }
         match value {
             Type::KeyOf(value) => self.type_is_bound(value),
             Type::IndexedAccess { object, index, .. } => {
@@ -201,6 +204,7 @@ impl ModuleChecker<'_> {
                     if !self.check_import_type_arguments(name, arguments, &definition, span) {
                         self.check_type_arguments(name, arguments, &definition, span);
                     }
+                    self.check_demanded_type(value, span);
                 }
             }
             Type::Array(value) => self.check_type(value, span),

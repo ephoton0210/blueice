@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "controls": [
+    {
+      "id": "declared-closed/0",
+      "source": "declare const input: NonNullable<{x: number} | null>; export {};",
+      "max_type_expansions": 0,
+      "expected": "ResourceLimit",
+      "nativeCounterpart": false
+    },
+    {
+      "id": "declared-closed/1",
+      "source": "declare const input: NonNullable<{x: number} | null>; export {};",
+      "max_type_expansions": 1,
+      "expected": "ResourceLimit",
+      "nativeCounterpart": false
+    },
+    {
+      "id": "declared-cycle/0",
+      "source": "interface Recursive {then(cb: (value: Recursive) => void): void;} declare const input: Awaited<Recursive>; export {};",
+      "max_type_expansions": 0,
+      "expected": "ResourceLimit",
+      "nativeCounterpart": false
+    },
+    {
+      "id": "declared-cycle/1",
+      "source": "interface Recursive {then(cb: (value: Recursive) => void): void;} declare const input: Awaited<Recursive>; export {};",
+      "max_type_expansions": 1,
+      "expected": "ResourceLimit",
+      "nativeCounterpart": false
+    },
+    {
+      "id": "inferred-cycle/0",
+      "source": "interface Recursive {then(cb: (value: Recursive) => void): void;} declare function unwrap<T>(input: T): Awaited<T>; declare const input: Recursive; export const value = unwrap(input);",
+      "max_type_expansions": 0,
+      "expected": "ResourceLimit",
+      "nativeCounterpart": false
+    },
+    {
+      "id": "inferred-cycle/1",
+      "source": "interface Recursive {then(cb: (value: Recursive) => void): void;} declare function unwrap<T>(input: T): Awaited<T>; declare const input: Recursive; export const value = unwrap(input);",
+      "max_type_expansions": 1,
+      "expected": "ResourceLimit",
+      "nativeCounterpart": false
+    }
+  ]
+}

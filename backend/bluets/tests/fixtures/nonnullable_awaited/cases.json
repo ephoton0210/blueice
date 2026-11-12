@@ -1,0 +1,865 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "scope": "P0-B finite NonNullable, ES5 static Promise foundations and structural recursive Awaited matrix. Covers strict-null options, owner aliases, type/runtime authority, custom thenables and shared inference/operator/declaration paths; broader unmeasured library and language compositions remain open.",
+  "options": {
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "lf"
+  },
+  "profiles": [
+    {
+      "id": "es5-commonjs-strict",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "lib": [
+          "ES5"
+        ]
+      }
+    },
+    {
+      "id": "es5-commonjs-loose-null",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "lib": [
+          "ES5"
+        ],
+        "strictNullChecks": false
+      }
+    },
+    {
+      "id": "es2022-commonjs-strict",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES2022"
+        ]
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib-strict",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "lib": [
+          "ES5"
+        ]
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "nonnull-primitive-union",
+      "source": "declare const input: NonNullable<string | number | null | undefined>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: string | number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: boolean = value;\n"
+      }
+    },
+    {
+      "id": "nonnull-literal-union",
+      "source": "declare const input: NonNullable<\"red\" | \"blue\" | null | undefined>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" | \"blue\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"green\" = value;\n"
+      }
+    },
+    {
+      "id": "nonnull-object-union",
+      "source": "declare const input: NonNullable<{code: number} | null | undefined>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: {code: number} = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "nonnull-unknown",
+      "source": "declare const input: NonNullable<unknown>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: {} = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      }
+    },
+    {
+      "id": "nonnull-any",
+      "source": "declare const input: NonNullable<any>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: any = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: never = value;\n"
+      }
+    },
+    {
+      "id": "nonnull-never",
+      "source": "declare const input: NonNullable<never>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: never = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: typeof value = 1;\n"
+      }
+    },
+    {
+      "id": "nonnull-null",
+      "source": "declare const input: NonNullable<null>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: never = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: typeof value = 1;\n"
+      }
+    },
+    {
+      "id": "nonnull-undefined",
+      "source": "declare const input: NonNullable<undefined>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: never = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: typeof value = 1;\n"
+      }
+    },
+    {
+      "id": "nonnull-nullish",
+      "source": "declare const input: NonNullable<null | undefined>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: never = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: typeof value = 1;\n"
+      }
+    },
+    {
+      "id": "nonnull-intersection",
+      "source": "declare const input: NonNullable<({x: number} & {y: string}) | null>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: {x: number; y: string} = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      }
+    },
+    {
+      "id": "nonnull-array",
+      "source": "declare const input: NonNullable<number[] | undefined>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number[] = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string[] = value;\n"
+      }
+    },
+    {
+      "id": "nonnull-tuple",
+      "source": "declare const input: NonNullable<[number, string] | null>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: [number, string] = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: [string, number] = value;\n"
+      }
+    },
+    {
+      "id": "nonnull-function",
+      "source": "declare const input: NonNullable<((x: number) => string) | undefined>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: (x: number) => string = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: (x: number) => number = value;\n"
+      }
+    },
+    {
+      "id": "nonnull-assignment-unknown-number",
+      "source": "export const value: NonNullable<unknown> = 7;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: unknown = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: never = value;\n"
+      }
+    },
+    {
+      "id": "nonnull-assignment-unknown-null",
+      "source": "export const value: NonNullable<unknown> = null;\n",
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: unknown = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: never = value;\n"
+      },
+      "acceptsByProfile": {
+        "es5-commonjs-strict": false,
+        "es5-commonjs-loose-null": true,
+        "es2022-commonjs-strict": false,
+        "es2022-esnext-es5lib-strict": false
+      }
+    },
+    {
+      "id": "nonnull-assignment-any-null",
+      "source": "export const value: NonNullable<any> = null;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: unknown = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: never = value;\n"
+      }
+    },
+    {
+      "id": "nonnull-assignment-never-number",
+      "source": "export const value: NonNullable<never> = 7;\n",
+      "accepts": false
+    },
+    {
+      "id": "nonnull-assignment-string-number",
+      "source": "export const value: NonNullable<string | null> = 7;\n",
+      "accepts": false
+    },
+    {
+      "id": "nonnull-assignment-string-null",
+      "source": "export const value: NonNullable<string | null> = null;\n",
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: unknown = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: never = value;\n"
+      },
+      "acceptsByProfile": {
+        "es5-commonjs-strict": false,
+        "es5-commonjs-loose-null": true,
+        "es2022-commonjs-strict": false,
+        "es2022-esnext-es5lib-strict": false
+      }
+    },
+    {
+      "id": "nonnull-assignment-object-undefined",
+      "source": "export const value: NonNullable<{x: number} | undefined> = undefined;\n",
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: unknown = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: never = value;\n"
+      },
+      "acceptsByProfile": {
+        "es5-commonjs-strict": false,
+        "es5-commonjs-loose-null": true,
+        "es2022-commonjs-strict": false,
+        "es2022-esnext-es5lib-strict": false
+      }
+    },
+    {
+      "id": "nonnull-generic-return",
+      "source": "export declare function requireValue<T>(value: T): NonNullable<T>;\nexport const value = requireValue(\"ok\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"ok\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"bad\" = value;\n"
+      }
+    },
+    {
+      "id": "nonnull-generic-guard",
+      "source": "export function requireValue<T>(input: T): NonNullable<T> {\n if (input == null) throw 0;\n return input;\n}\nexport const value = requireValue(\"ok\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"ok\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      }
+    },
+    {
+      "id": "nonnull-generic-null-reject",
+      "source": "function requireValue<T>(input: T): NonNullable<T> { return null; }\nexport const value = requireValue(1);\n",
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      },
+      "acceptsByProfile": {
+        "es5-commonjs-strict": false,
+        "es5-commonjs-loose-null": true,
+        "es2022-commonjs-strict": false,
+        "es2022-esnext-es5lib-strict": false
+      }
+    },
+    {
+      "id": "nonnull-explicit-argument-reject",
+      "source": "declare function requireValue<T>(input: NonNullable<T>): T;\nexport const value = requireValue<string | null>(7);\n",
+      "accepts": false
+    },
+    {
+      "id": "nonnull-imported-alias",
+      "source": "import type { Payload } from \"./types\";\ndeclare const input: NonNullable<Payload | null>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: {code: number} = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      },
+      "files": {
+        "types.ts": "export interface Payload { code: number; }\n"
+      }
+    },
+    {
+      "id": "nonnull-mapped-composition",
+      "source": "type RequiredValues<T> = {[K in keyof T]: NonNullable<T[K]>};\ndeclare const input: RequiredValues<{x: string | null; y: number | undefined}>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: {x: string; y: number} = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: {x: number; y: string} = value;\n"
+      }
+    },
+    {
+      "id": "nonnull-conditional-composition",
+      "source": "type Present<T> = T extends unknown ? NonNullable<T> : never;\ndeclare const input: Present<string | number | null>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: string | number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: boolean = value;\n"
+      }
+    },
+    {
+      "id": "nonnull-keyof-composition",
+      "source": "type Fields = NonNullable<{a: number; b: string} | undefined>;\ndeclare const input: keyof Fields;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"a\" | \"b\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"c\" = value;\n"
+      }
+    },
+    {
+      "id": "nonnull-readonly-preserved",
+      "source": "declare const value: NonNullable<{readonly x: number} | null>;\nvalue.x = 2;\nexport { value };\n",
+      "accepts": false
+    },
+    {
+      "id": "awaited-number",
+      "source": "declare const input: Awaited<number>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "awaited-literal",
+      "source": "declare const input: Awaited<\"ok\">;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"ok\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"bad\" = value;\n"
+      }
+    },
+    {
+      "id": "awaited-unknown",
+      "source": "declare const input: Awaited<unknown>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: unknown = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      }
+    },
+    {
+      "id": "awaited-any",
+      "source": "declare const input: Awaited<any>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: any = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: never = value;\n"
+      }
+    },
+    {
+      "id": "awaited-never",
+      "source": "declare const input: Awaited<never>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: never = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: typeof value = 1;\n"
+      }
+    },
+    {
+      "id": "awaited-null",
+      "source": "declare const input: Awaited<null>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: null = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: never = value;\n"
+      }
+    },
+    {
+      "id": "awaited-undefined",
+      "source": "declare const input: Awaited<undefined>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: undefined = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: never = value;\n"
+      }
+    },
+    {
+      "id": "awaited-nullish",
+      "source": "declare const input: Awaited<null | undefined>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: null | undefined = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: never = value;\n"
+      }
+    },
+    {
+      "id": "awaited-array-not-unwrapped",
+      "source": "declare const input: Awaited<PromiseLike<number>[]>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: PromiseLike<number>[] = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number[] = value;\n"
+      }
+    },
+    {
+      "id": "awaited-tuple-not-unwrapped",
+      "source": "declare const input: Awaited<[PromiseLike<number>, string]>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: [PromiseLike<number>, string] = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: [number, string] = value;\n"
+      }
+    },
+    {
+      "id": "awaited-promise-like",
+      "source": "declare const input: Awaited<PromiseLike<number>>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "awaited-promise",
+      "source": "declare const input: Awaited<Promise<number>>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "awaited-nested-promise",
+      "source": "declare const input: Awaited<Promise<PromiseLike<number>>>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "awaited-standard-union",
+      "source": "declare const input: Awaited<PromiseLike<number> | string | null>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number | string | null = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: boolean = value;\n"
+      }
+    },
+    {
+      "id": "awaited-custom",
+      "source": "type Thenable = {then(onfulfilled: (value: number) => void): void};\ndeclare const input: Awaited<Thenable>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "awaited-custom-union",
+      "source": "type Thenable = {then(onfulfilled: (value: number) => void): void};\ndeclare const input: Awaited<Thenable | string>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number | string = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: boolean = value;\n"
+      }
+    },
+    {
+      "id": "awaited-custom-nested",
+      "source": "type Thenable = {then(onfulfilled: (value: {then(cb: (value: number) => void): void}) => void): void};\ndeclare const input: Awaited<Thenable>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "awaited-primitive-intersection",
+      "source": "type Thenable = {then(onfulfilled: (value: number) => void): void};\ndeclare const input: Awaited<string & Thenable>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "awaited-number-intersection",
+      "source": "type Thenable = {then(onfulfilled: (value: number) => void): void};\ndeclare const input: Awaited<number & Thenable>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "awaited-noncallable-then",
+      "source": "type Thenable = {then: number};\ndeclare const input: Awaited<Thenable>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: {then: number} = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      }
+    },
+    {
+      "id": "awaited-optional-then",
+      "source": "type Thenable = {then?: (onfulfilled: (value: number) => void) => void};\ndeclare const input: Awaited<Thenable>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: {then?: (onfulfilled: (value: number) => void) => void} = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      }
+    },
+    {
+      "id": "awaited-bad-fulfillment",
+      "source": "type Thenable = {then(onfulfilled: number): void};\ndeclare const input: Awaited<Thenable>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: never = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: typeof value = 1;\n"
+      }
+    },
+    {
+      "id": "awaited-zero-argument-callback",
+      "source": "type Thenable = {then(onfulfilled: () => void): void};\ndeclare const input: Awaited<Thenable>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: unknown = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      }
+    },
+    {
+      "id": "awaited-extra-callback-arguments",
+      "source": "type Thenable = {then(onfulfilled: (value: number, second: string) => void, extra: boolean): void};\ndeclare const input: Awaited<Thenable>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "awaited-callback-rest",
+      "source": "type Thenable = {then(onfulfilled: (...args: [number, string]) => void): void};\ndeclare const input: Awaited<Thenable>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "awaited-overloaded-then-last-signature",
+      "source": "interface Thenable {then(onfulfilled: (value: number) => void): void; then(onfulfilled: (value: string) => void): void;}\ndeclare const input: Awaited<Thenable>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: string = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      }
+    },
+    {
+      "id": "awaited-overloaded-callback-last-signature",
+      "source": "interface Callback {(value: number): void; (value: string): void;}\ntype Thenable = {then(onfulfilled: Callback): void};\ndeclare const input: Awaited<Thenable>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: string = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      }
+    },
+    {
+      "id": "awaited-alias-chain",
+      "source": "type Thenable = {then(onfulfilled: (value: number) => void): void};\ntype Inner = Thenable; type Outer = Inner;\ndeclare const input: Awaited<Outer>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "awaited-imported-thenable",
+      "source": "import type { Thenable } from \"./types\";\ndeclare const input: Awaited<Thenable>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      },
+      "files": {
+        "types.ts": "export type Thenable = {then(onfulfilled: (value: number) => void): void};\n"
+      }
+    },
+    {
+      "id": "awaited-generic-container",
+      "source": "interface Box<T> {then(onfulfilled: (value: T) => void): void;}\ndeclare const input: Awaited<Box<number>>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "awaited-generic-return",
+      "source": "export declare function unwrap<T>(value: T): Awaited<T>;\ndeclare const input: PromiseLike<number>;\nexport const value = unwrap(input);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "awaited-contextual-argument-reject",
+      "source": "type Thenable = {then(onfulfilled: (value: number) => void): void};\ndeclare function accept(value: Awaited<Thenable>): void;\naccept(\"bad\");\nexport {};\n",
+      "accepts": false
+    },
+    {
+      "id": "awaited-recursive-self-reject",
+      "source": "interface Recursive {then(onfulfilled: (value: Recursive) => void): void;}\ndeclare const input: Awaited<Recursive>;\nexport const value = input;\n",
+      "accepts": false
+    },
+    {
+      "id": "awaited-recursive-mutual-reject",
+      "source": "interface First {then(cb: (value: Second) => void): void;}\ninterface Second {then(cb: (value: First) => void): void;}\ndeclare const input: Awaited<First>;\nexport const value = input;\n",
+      "accepts": false
+    },
+    {
+      "id": "awaited-crlf-nonbmp-diagnostic",
+      "source": "// \ud83d\ude00\r\ntype Thenable = {then(cb: (value: number) => void): void};\r\nexport const value: Awaited<Thenable> = \"bad\";\r\n",
+      "accepts": false
+    },
+    {
+      "id": "nonnull-crlf-nonbmp-diagnostic",
+      "source": "// \ud83d\ude00\r\nexport const value: NonNullable<string | null> = 7;\r\n",
+      "accepts": false
+    },
+    {
+      "id": "es5-static-promiselike",
+      "source": "export declare const value: PromiseLike<number>;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: PromiseLike<number> = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      }
+    },
+    {
+      "id": "es5-static-promise",
+      "source": "export declare const value: Promise<number>;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: Promise<number> = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      }
+    },
+    {
+      "id": "es5-static-promiseconstructorlike",
+      "source": "export declare const value: PromiseConstructorLike;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: PromiseConstructorLike = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      }
+    },
+    {
+      "id": "promise-runtime-constructor-authority",
+      "source": "export const value = Promise;\n",
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: typeof Promise = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      },
+      "acceptsByProfile": {
+        "es5-commonjs-strict": false,
+        "es5-commonjs-loose-null": false,
+        "es2022-commonjs-strict": true,
+        "es2022-esnext-es5lib-strict": false
+      }
+    },
+    {
+      "id": "promise-runtime-resolve",
+      "source": "export const value = Promise.resolve(7);\n",
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: Promise<number> = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: Promise<string> = value;\n"
+      },
+      "acceptsByProfile": {
+        "es5-commonjs-strict": false,
+        "es5-commonjs-loose-null": false,
+        "es2022-commonjs-strict": true,
+        "es2022-esnext-es5lib-strict": false
+      }
+    },
+    {
+      "id": "promise-runtime-new",
+      "source": "export const value = new Promise<number>((resolve) => resolve(7));\n",
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: Promise<number> = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: Promise<string> = value;\n"
+      },
+      "acceptsByProfile": {
+        "es5-commonjs-strict": false,
+        "es5-commonjs-loose-null": false,
+        "es2022-commonjs-strict": true,
+        "es2022-esnext-es5lib-strict": false
+      }
+    },
+    {
+      "id": "nonnull-runtime-name-reject",
+      "source": "export const value = NonNullable;\n",
+      "accepts": false
+    },
+    {
+      "id": "awaited-runtime-name-reject",
+      "source": "export const value = Awaited;\n",
+      "accepts": false
+    },
+    {
+      "id": "promiselike-runtime-name-reject",
+      "source": "export const value = PromiseLike;\n",
+      "accepts": false
+    },
+    {
+      "id": "promiseconstructorlike-runtime-name-reject",
+      "source": "export const value = PromiseConstructorLike;\n",
+      "accepts": false
+    },
+    {
+      "id": "owner-local-nonnullable",
+      "source": "type NonNullable<T> = {owned: T};\nexport const value: NonNullable<number> = {owned: 7};\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: {owned: number} = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      }
+    },
+    {
+      "id": "owner-local-awaited",
+      "source": "type Awaited<T> = {owned: T};\nexport const value: Awaited<number> = {owned: 7};\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: {owned: number} = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      }
+    },
+    {
+      "id": "owner-imported-awaited",
+      "source": "import type { Awaited } from \"./types\";\nexport const value: Awaited<number> = {owned: 7};\n",
+      "accepts": true,
+      "files": {
+        "types.ts": "export type Awaited<T> = {owned: T};\n"
+      },
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: {owned: number} = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      }
+    },
+    {
+      "id": "owner-imported-nonnullable",
+      "source": "import type { NonNullable } from \"./types\";\nexport const value: NonNullable<number> = {owned: 7};\n",
+      "accepts": true,
+      "files": {
+        "types.ts": "export type NonNullable<T> = {owned: T};\n"
+      },
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: {owned: number} = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      }
+    },
+    {
+      "id": "noinfer-nonnullable-anchor",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<NonNullable<T | null>>): T;\nexport const value = choose(\"red\", \"red\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      }
+    },
+    {
+      "id": "noinfer-nonnullable-blocked-reject",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<NonNullable<T | null>>): T;\nexport const value = choose(\"red\", \"blue\");\n",
+      "accepts": false
+    },
+    {
+      "id": "noinfer-awaited-anchor",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<Awaited<PromiseLike<T>>>): T;\nexport const value = choose(\"red\", \"red\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: \"red\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: \"blue\" = value;\n"
+      }
+    },
+    {
+      "id": "noinfer-awaited-blocked-reject",
+      "source": "declare function choose<T extends string>(anchor: T, check: NoInfer<Awaited<PromiseLike<T>>>): T;\nexport const value = choose(\"red\", \"blue\");\n",
+      "accepts": false
+    },
+    {
+      "id": "nonnull-runtime-guard",
+      "source": "export function requireValue<T>(input: T): NonNullable<T> {if(input == null) throw 0; return input;}\nexport const value = requireValue(7);\nif (value !== 7) throw 1;\n",
+      "accepts": true,
+      "runtime": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: 7 = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "awaited-runtime-erasure",
+      "source": "export function identity(value: number): Awaited<number> {return value;}\nexport const value = identity(7);\nif (value !== 7) throw 1;\n",
+      "accepts": true,
+      "runtime": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "awaited-callable-object",
+      "source": "type Thenable = ((input: boolean) => void) & {then(onfulfilled: (value: number) => void): void};\ndeclare const input: Awaited<Thenable>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "awaited-generic-then",
+      "source": "type Thenable = {then<T>(onfulfilled: (value: T) => void): void};\ndeclare const input: Awaited<Thenable>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: unknown = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: number = value;\n"
+      }
+    },
+    {
+      "id": "awaited-union-fulfillment-handler",
+      "source": "type Thenable = {then(onfulfilled: ((value: number) => void) | number): void};\ndeclare const input: Awaited<Thenable>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "nonnull-after-awaited",
+      "source": "declare const input: NonNullable<Awaited<PromiseLike<number | null>>>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "awaited-after-nonnull",
+      "source": "declare const input: Awaited<NonNullable<PromiseLike<number> | null>>;\nexport const value = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    },
+    {
+      "id": "owner-runtime-promise-binding",
+      "source": "const Promise = {resolve(value: number) {return value;}};\nexport const value = Promise.resolve(7);\nif (value !== 7) throw 1;\n",
+      "accepts": true,
+      "runtime": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst observed: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst observed: string = value;\n"
+      }
+    }
+  ]
+}

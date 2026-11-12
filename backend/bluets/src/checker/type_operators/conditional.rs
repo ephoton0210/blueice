@@ -37,13 +37,17 @@ pub(super) fn resolve(
     let actual = &value.check;
     let mut bindings = MatchBindings::default();
     let mut matched = matches(actual, &value.extends, &mut bindings, aliases, budget);
-    if matched && bindings.saw_barrier {
+    if matched {
         for parameter in value.extends.infer_parameters() {
+            // A missing function position contributes no evidence. Native uses
+            // the infer constraint (or unknown), independently of error recovery.
             let fallback = parameter.constraint.unwrap_or(Type::StrictUnknown);
             bindings.values.entry(parameter.name).or_insert(fallback);
         }
-        let pattern = barriers::instantiate(&value.extends, &bindings.values, budget);
-        matched = is_assignable(actual, &pattern, aliases, &mut HashSet::new(), budget);
+        if bindings.saw_barrier {
+            let pattern = barriers::instantiate(&value.extends, &bindings.values, budget);
+            matched = is_assignable(actual, &pattern, aliases, &mut HashSet::new(), budget);
+        }
     }
     if budget.exhausted {
         return None;
@@ -69,6 +73,17 @@ pub(super) fn matches(
         bindings.saw_barrier = true;
         let mut ignored = bindings.clone();
         return matches(actual, base, &mut ignored, aliases, budget);
+    }
+    if let Type::Intersection(parts) = pattern {
+        let mut candidate = bindings.clone();
+        if parts
+            .iter()
+            .all(|part| matches(actual, part, &mut candidate, aliases, budget))
+        {
+            *bindings = candidate;
+            return true;
+        }
+        return false;
     }
     if let Type::Named {
         name: expected_name,
@@ -101,6 +116,8 @@ pub(super) fn matches(
         }
     }
     if let Type::Infer(parameter) = pattern {
+        let normalized = super::normalize_nullable_union(actual, budget.checking);
+        let actual = normalized.as_ref().unwrap_or(actual);
         if parameter.constraint.as_ref().is_some_and(|constraint| {
             !is_assignable(actual, constraint, aliases, &mut HashSet::new(), budget)
         }) {
@@ -225,13 +242,19 @@ pub(super) fn matches(
                 true
             }
         }
-        (Type::Record(actual), Type::Record(pattern)) => pattern.iter().all(|field| {
-            match actual.iter().find(|actual| actual.name == field.name) {
-                Some(actual) => {
-                    (!actual.optional || field.optional)
-                        && matches(&actual.value, &field.value, bindings, aliases, budget)
+        (Type::Record(fields), Type::Record(pattern)) => pattern.iter().all(|field| {
+            if fields
+                .iter()
+                .any(|actual| actual.name == field.name && actual.optional)
+                && !field.optional
+            {
+                return false;
+            }
+            match property_type(&actual, &field.name, aliases, &mut HashSet::new(), budget) {
+                PropertyType::Found { value, .. } => {
+                    matches(&value, &field.value, bindings, aliases, budget)
                 }
-                None => field.optional,
+                _ => field.optional,
             }
         }),
         (Type::Intersection(_) | Type::CallableRecord { .. }, Type::Record(pattern)) => {

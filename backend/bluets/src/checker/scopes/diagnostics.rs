@@ -113,8 +113,14 @@ impl ScopeModel<'_> {
         }
         if binding.is_none() {
             if let Some(edition) = crate::standard_library::presentation::global_edition(root) {
-                return diagnostic
-                    .with_typescript(2583, vec![root.into(), edition.as_str().into()]);
+                return diagnostic.with_typescript(
+                    if self.resolve(reference.scope, root, Meaning::Type).is_some() {
+                        2585
+                    } else {
+                        2583
+                    },
+                    vec![root.into(), edition.as_str().into()],
+                );
             }
             if root == "document" {
                 return diagnostic.with_typescript(2584, vec![root.into()]);

@@ -14,6 +14,12 @@ mod template_constants;
 pub(super) use records::record_member_end;
 
 impl<'a> ModuleChecker<'a> {
+    fn finish_copied_type(&self, value: Type) -> Type {
+        let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+        budget.checking = self.checking;
+        self.materialize_result(&value, &BTreeMap::new(), &mut budget)
+    }
+
     /// The type of a top-level chain of `+`/`-` or of `*`/`/`/`%`, folded from the
     /// left, or `None` when `tokens` is not such a chain.
     #[inline(never)]
@@ -71,7 +77,7 @@ impl<'a> ModuleChecker<'a> {
         Some(context.next_type.clone())
     }
 
-    pub(in crate::checker::module) fn infer_expression(
+    pub(in crate::checker::module) fn infer_expression_inner(
         &self,
         tokens: &[Token],
         scope: &BTreeMap<String, Type>,
@@ -83,7 +89,18 @@ impl<'a> ModuleChecker<'a> {
                     .as_ref()
                     .and_then(|flow| flow.query(self.scopes.as_ref()?, token))
                 {
-                    return value;
+                    let value = if self.checking.strict_null_checks
+                        && matches!(value, Type::Named { .. } | Type::StrictUnknown)
+                        && self.flow.as_ref().is_some_and(|flow| {
+                            self.scopes
+                                .as_ref()
+                                .is_some_and(|scopes| flow.excludes_nullish(scopes, token))
+                        }) {
+                        Type::Intersection(vec![value, Type::Record(Vec::new())])
+                    } else {
+                        value
+                    };
+                    return self.finish_copied_type(value);
                 }
             }
         }
@@ -272,6 +289,7 @@ impl<'a> ModuleChecker<'a> {
             }
             let base = self.infer_expression(call.receiver, scope);
             let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+            budget.checking = self.checking;
             let found = property_type(
                 &base,
                 &call.member.text,
@@ -282,12 +300,7 @@ impl<'a> ModuleChecker<'a> {
             if let PropertyType::Found { value, .. } = found {
                 match value {
                     Type::Function { result, .. } => {
-                        return crate::checker::inference::result_type(
-                            &result,
-                            &BTreeMap::new(),
-                            &self.types,
-                            &mut budget,
-                        )
+                        return self.materialize_result(&result, &BTreeMap::new(), &mut budget)
                     }
                     value @ Type::GenericFunction { .. } => {
                         let signatures = signatures::callable_signatures(&value, false)
@@ -553,6 +566,7 @@ impl<'a> ModuleChecker<'a> {
                 return Type::Unknown;
             };
             let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+            budget.checking = self.checking;
             return match property_type(
                 &owner,
                 property,
@@ -560,12 +574,9 @@ impl<'a> ModuleChecker<'a> {
                 &mut HashSet::new(),
                 &mut budget,
             ) {
-                PropertyType::Found { value, .. } => crate::checker::inference::result_type(
-                    &value,
-                    &BTreeMap::new(),
-                    &self.types,
-                    &mut budget,
-                ),
+                PropertyType::Found { value, .. } => {
+                    self.materialize_result(&value, &BTreeMap::new(), &mut budget)
+                }
                 PropertyType::Missing | PropertyType::Indeterminate | PropertyType::Exhausted => {
                     Type::Unknown
                 }
@@ -599,7 +610,7 @@ impl<'a> ModuleChecker<'a> {
                         );
                     }
                 }
-                scope.get(&first.text).cloned().unwrap_or(Type::Unknown)
+                self.finish_copied_type(scope.get(&first.text).cloned().unwrap_or(Type::Unknown))
             }
             _ => Type::Unknown,
         }

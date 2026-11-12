@@ -111,6 +111,41 @@ pub(super) fn assignable(
     if let Some(value) = normalized(expected, aliases) {
         return Some(is_assignable(actual, &value, aliases, visited, budget));
     }
+    if let Some(value) = super::intersections::normalized(actual, aliases, budget) {
+        return Some(is_assignable(&value, expected, aliases, visited, budget));
+    }
+    if let Some(value) = super::intersections::normalized(expected, aliases, budget) {
+        return Some(is_assignable(actual, &value, aliases, visited, budget));
+    }
+    if super::intersections::empty_record(expected) {
+        match actual {
+            Type::Named { .. } if !budget.checking.strict_null_checks => return Some(true),
+            Type::Null | Type::Undefined | Type::StrictUnknown => {
+                return Some(!budget.checking.strict_null_checks)
+            }
+            Type::Readonly(inner) => {
+                return Some(is_assignable(inner, expected, aliases, visited, budget))
+            }
+            Type::Any
+            | Type::Unknown
+            | Type::Never
+            | Type::String
+            | Type::Number
+            | Type::Boolean
+            | Type::BigInt
+            | Type::Symbol
+            | Type::UniqueSymbol(_)
+            | Type::Literal(_)
+            | Type::Array(_)
+            | Type::Tuple(_)
+            | Type::Record(_)
+            | Type::CallableRecord { .. }
+            | Type::IndexedRecord { .. }
+            | Type::Function { .. }
+            | Type::GenericFunction { .. } => return Some(true),
+            _ => {}
+        }
+    }
     if *expected == Type::StrictUnknown {
         return Some(true);
     }

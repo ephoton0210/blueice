@@ -541,6 +541,7 @@ impl ModuleChecker<'_> {
             }
         }
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+        budget.checking = self.checking;
         let display = super::super::super::type_operators::diagnostic_type(
             expected,
             &self.types,

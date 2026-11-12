@@ -35,10 +35,21 @@ fn expand(
         if preserve_barriers && matches!(value, Type::InferenceBarrier(_)) {
             break;
         }
+        if let Some(next) = normalize_nullable_union(&value, budget.checking) {
+            if !budget.consume() {
+                break;
+            }
+            value = next;
+            continue;
+        }
         if let Some(next) = super::type_relations::normalize_more_type(&value, aliases) {
             if !budget.consume() {
                 break;
             }
+            value = next;
+            continue;
+        }
+        if let Some(next) = super::type_relations::normalize_intersection(&value, aliases, budget) {
             value = next;
             continue;
         }
@@ -52,6 +63,40 @@ fn expand(
         value = next;
     }
     value
+}
+
+/// With loose null checking, nullish constituents disappear beside another
+/// union member. A wholly nullish union uses null ahead of undefined.
+pub(in crate::checker) fn normalize_nullable_union(
+    value: &Type,
+    checking: crate::CheckingOptions,
+) -> Option<Type> {
+    let Type::Union(parts) = value else {
+        return None;
+    };
+    if checking.strict_null_checks
+        || !parts
+            .iter()
+            .any(|part| matches!(part, Type::Null | Type::Undefined))
+    {
+        return None;
+    }
+    if parts
+        .iter()
+        .all(|part| matches!(part, Type::Null | Type::Undefined))
+    {
+        return Some(if parts.contains(&Type::Null) {
+            Type::Null
+        } else {
+            Type::Undefined
+        });
+    }
+    Some(union(
+        parts
+            .iter()
+            .filter(|part| !matches!(part, Type::Null | Type::Undefined))
+            .cloned(),
+    ))
 }
 
 pub(super) fn union(values: impl IntoIterator<Item = Type>) -> Type {
@@ -118,6 +163,10 @@ pub(super) fn diagnostic_type(
     aliases: &BTreeMap<String, TypeDefinition>,
     budget: &mut TypeExpansionBudget,
 ) -> Type {
+    if matches!(value, Type::Named { name, .. } if super::type_relations::non_null_alias(name, aliases))
+    {
+        return super::inference::result_type(value, &BTreeMap::new(), aliases, budget);
+    }
     let original = value.clone();
     if super::inference::symbolic_indexed_access(value, aliases) {
         return original;
@@ -209,6 +258,10 @@ pub(super) fn is_operator_context(
     let mut value = value;
     let mut visited = HashSet::new();
     loop {
+        if matches!(value, Type::Named { name, .. } if super::type_relations::non_null_alias(name, aliases))
+        {
+            return true;
+        }
         if value.operator_children().is_some()
             || matches!(value, Type::KeyOf(_) | Type::IndexedAccess { .. })
         {

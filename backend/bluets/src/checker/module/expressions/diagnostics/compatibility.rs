@@ -283,6 +283,29 @@ impl ModuleChecker<'_> {
         }
         let a = self.compatibility_shape(actual);
         let e = self.compatibility_shape(expected);
+        if let Type::Intersection(parts) = &e {
+            for part in parts {
+                let Type::Named { name, .. } = part else {
+                    continue;
+                };
+                if !self.bound_parameters.contains_key(name) {
+                    continue;
+                }
+                let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                budget.checking = self.checking;
+                if !is_assignable(actual, part, &self.types, &mut HashSet::new(), &mut budget)
+                    && !budget.exhausted
+                {
+                    let detail = self.compatibility_detail(actual, part).unwrap_or_default();
+                    let nested = detail.replace('\n', "\n  ");
+                    return Some(format!(
+                        "\n  Type '{}' is not assignable to type '{}'.{nested}",
+                        crate::diagnostic::type_text::render_in(actual, self.project),
+                        crate::parser::source_type_name(name),
+                    ));
+                }
+            }
+        }
         if let Some(detail) = self.callable_type_detail(&a, &e) {
             return Some(detail);
         }

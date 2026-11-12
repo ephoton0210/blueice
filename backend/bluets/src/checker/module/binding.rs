@@ -134,6 +134,7 @@ impl<'a> ModuleChecker<'a> {
             strict_catch_unknown: false,
             record_spread_inference_failure: Cell::new(None),
             generic_inference_failure: Cell::new(None),
+            instantiation: instantiation::Failures::default(),
             return_inference: Default::default(),
         }
     }
@@ -619,6 +620,7 @@ impl<'a> ModuleChecker<'a> {
             }
         }
         self.report_return_inference_failures();
+        self.report_instantiation_failures();
         if let Some(span) = self.generic_inference_failure.take() {
             self.type_error(
                 &span,

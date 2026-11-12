@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "typescript": "5.9.3",
-  "source_revision": "backend-tree:1b539964f6587dc42b42a87f53001f1ee6d5751f",
-  "source_graph_sha256": "866db4efa41bdb486b36ccd47e37ba010f204795e22e3b6f83c553e9273c8e4f",
+  "source_revision": "backend-tree:d93ce26e990e61e09dacab7a31fbcec822674030",
+  "source_graph_sha256": "4cf20d55364e10fb6be9dfea6522fe1af9f82265e97425d4383fa3b4ad84010e",
   "fixture_directories": 3392,
   "diagnostic_programs": 3182,
   "diagnostic_templates": 221,
@@ -1893,6 +1893,22 @@
         "backend/bluets/tests/fixtures/noinfer/keyof-diagnostics.json": "ac21fea7b9009c5c7d4df1c4641af2618e38bf8d",
         "backend/bluets/tests/fixtures/noinfer/reference.json": "0e107742789bfe1ad7718883d95ef87062b8eb66",
         "backend/bluets/tests/noinfer.rs": "269006da201294be0ab0016673d8a8a72b6ff5a9"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/nonnullable_awaited.rs",
+      "ignored_tests": [
+        "native_observations_consumers_syntax_and_runtime_are_reproducible"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/nonnullable_awaited/boundary-controls.json": "d88302c44614dfa8d3177ae82d8c1fc6c615ce10",
+        "backend/bluets/tests/fixtures/nonnullable_awaited/cases.json": "3ee1d8b134325eab3f214ea3cc625a13a022c17c",
+        "backend/bluets/tests/fixtures/nonnullable_awaited/demand-reference.json": "f9e218c1196cfa4143d1e5805710679b987ba40d",
+        "backend/bluets/tests/fixtures/nonnullable_awaited/demand-resource-controls.json": "54296bce732cea3bc0d6c8042fd5d24e82bfca73",
+        "backend/bluets/tests/fixtures/nonnullable_awaited/operator-cases.json": "eac1af9048acc38658b920b3521d966ac70e5cb9",
+        "backend/bluets/tests/fixtures/nonnullable_awaited/operator-reference.json": "a17f42070e4b54b388e104f3ca1469ce28e920da",
+        "backend/bluets/tests/fixtures/nonnullable_awaited/reference.json": "4fa504f18c43e6d8bb4477aa2cdddc31d5f3d6b3",
+        "backend/bluets/tests/nonnullable_awaited.rs": "c4dbe34ba40d08651bccbd2ee89e4f0b36b8b1b9"
       }
     },
     {

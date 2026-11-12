@@ -37,6 +37,13 @@ pub(in crate::checker) fn prepare(
             if !budget.consume() {
                 return None;
             }
+            // Materialize a nested operation once before repeatedly testing its
+            // conditional branches. Ordinary aliases keep their public identity.
+            let original = if super::is_operator_context(&original, aliases) {
+                crate::checker::inference::result_type(&original, &BTreeMap::new(), aliases, budget)
+            } else {
+                original
+            };
             match expanded(&original, aliases, &mut path, budget) {
                 Type::Union(values) => {
                     pending.extend(values.into_iter().rev().map(|value| (value, path.clone())))
@@ -50,7 +57,8 @@ pub(in crate::checker) fn prepare(
                 return None;
             }
         }
-        *argument = union(parts);
+        let combined = union(parts);
+        *argument = super::normalize_nullable_union(&combined, budget.checking).unwrap_or(combined);
     }
     (!budget.exhausted).then_some(arguments)
 }

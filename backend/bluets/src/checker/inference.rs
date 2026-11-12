@@ -12,10 +12,30 @@ mod collect;
 mod dependencies;
 mod indexed;
 mod mapped;
+mod result_parameters;
 mod results;
 mod surfaces;
 
-pub(crate) const VERSION: &str = "bluets-generic-inference/8";
+pub(crate) const VERSION: &str = "bluets-generic-inference/9";
+
+pub(in crate::checker) fn direct_result_parameter(
+    signature: &FunctionSignature,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    budget: &mut TypeExpansionBudget,
+) -> Option<String> {
+    let parameters = signature
+        .type_parameters
+        .iter()
+        .map(|p| p.name.clone())
+        .collect();
+    result_parameters::naked(
+        &signature.return_type,
+        &parameters,
+        aliases,
+        &mut HashSet::new(),
+        budget,
+    )
+}
 
 pub(super) fn symbolic_indexed_access(
     value: &Type,
@@ -128,12 +148,13 @@ pub(super) fn infer_contextual_result(
             collector.collect(annotation, actual, false);
         }
     }
-    let naked = match &signature.return_type {
-        Type::Named { name, arguments } if arguments.is_empty() && parameters.contains(name) => {
-            Some(name.as_str())
-        }
-        _ => None,
-    };
+    let naked = result_parameters::naked(
+        &signature.return_type,
+        &parameters,
+        aliases,
+        &mut HashSet::new(),
+        collector.budget,
+    );
     for parameter in &signature.type_parameters {
         let literal_constraint = parameter.constraint.as_ref().is_some_and(|constraint| {
             if matches!(constraint, Type::KeyOf(_) | Type::Literal(_)) {
@@ -162,7 +183,7 @@ pub(super) fn infer_contextual_result(
         });
         let preserve = parameter.is_const
             || literal_constraint
-            || (naked == Some(parameter.name.as_str())
+            || (naked.as_deref() == Some(parameter.name.as_str())
                 && context.is_none_or(|value| matches!(value, Type::Literal(_))));
         if let Some(value) = collector
             .candidates

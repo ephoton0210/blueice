@@ -7,6 +7,7 @@ mod substitution;
 pub(super) use substitution::type_identity;
 pub(crate) use substitution::{complete_type_arguments, substitute_type, type_label};
 mod compatibility;
+mod intersections;
 mod more_types;
 mod parameters;
 mod surfaces;
@@ -14,6 +15,8 @@ mod variance;
 use crate::checker::type_operators::union;
 pub(super) use compatibility::constructor_relation_type;
 pub(super) use compatibility::record_fields_assignable;
+pub(super) use intersections::has_alias as non_null_alias;
+pub(super) use intersections::normalized as normalize_intersection;
 pub(super) use more_types::normalized as normalize_more_type;
 pub(super) use parameters::canonical_parameter_references;
 
@@ -261,6 +264,33 @@ fn assignable_inner(
         )
     {
         return true;
+    }
+    // A restriction of a rigid parameter must compare each component before
+    // replacing the source parameter with its (potentially wider) constraint.
+    if let Type::Named { name, .. } = expected {
+        if intersections::has_alias(name, aliases) {
+            let mut path = visited.clone();
+            if let Some(expanded) = instantiate_named(
+                expected,
+                aliases,
+                &mut path,
+                budget,
+                "expected non-null restriction",
+            ) {
+                return is_assignable(actual, &expanded, aliases, &mut path, budget);
+            }
+        }
+    }
+    if let Type::Intersection(parts) = expected {
+        if parts.iter().any(intersections::empty_record) {
+            if let Some(reduced) = intersections::normalized(expected, aliases, budget) {
+                return is_assignable(actual, &reduced, aliases, visited, budget);
+            }
+            return budget.consume()
+                && parts.iter().all(|part| {
+                    is_assignable(actual, part, aliases, &mut visited.clone(), budget)
+                });
+        }
     }
     if let Some(result) = variance::assignable(actual, expected, aliases, visited, budget) {
         return result;

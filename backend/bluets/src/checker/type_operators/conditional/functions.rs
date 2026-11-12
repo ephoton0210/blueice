@@ -85,6 +85,59 @@ pub(super) fn matches(
             return super::matches(result, expected, bindings, aliases, budget);
         }
     }
+    if let Some(rest_index) = pattern.iter().position(|parameter| parameter.rest) {
+        let positional = actual
+            .iter()
+            .map(|parameter| TupleTypeElement {
+                annotation: parameter.annotation.clone().unwrap_or(Type::Any),
+                optional: parameter.optional,
+                label: Some(parameter.name.clone()),
+                rest: parameter.rest,
+            })
+            .collect::<Vec<_>>();
+        let Ok(positional) =
+            expand_concrete_tuple_spreads(&positional, aliases, &mut HashSet::new(), budget)
+        else {
+            return false;
+        };
+        let mut consumed = 0;
+        for parameter in &pattern[..rest_index] {
+            let Some(actual) = positional.get(consumed) else {
+                // A shorter function can ignore the caller's extra arguments.
+                // resolve supplies defaults for infer slots with no evidence.
+                continue;
+            };
+            let annotation = if actual.rest {
+                match &actual.annotation {
+                    Type::Array(item) => item.as_ref(),
+                    _ => return false,
+                }
+            } else {
+                consumed += 1;
+                &actual.annotation
+            };
+            if !super::matches(
+                annotation,
+                parameter.annotation.as_ref().unwrap_or(&Type::Any),
+                bindings,
+                aliases,
+                budget,
+            ) {
+                return false;
+            }
+        }
+        let tail = Type::Tuple(positional[consumed..].to_vec());
+        return super::matches(
+            &tail,
+            pattern[rest_index]
+                .annotation
+                .as_ref()
+                .unwrap_or(&Type::Any),
+            bindings,
+            aliases,
+            budget,
+        ) && super::matches(result, expected, bindings, aliases, budget);
+    }
     actual.len() == pattern.len()
         && actual.iter().zip(pattern).all(|(actual, pattern)| {
             super::matches(

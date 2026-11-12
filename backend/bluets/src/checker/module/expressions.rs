@@ -103,12 +103,7 @@ impl<'a> ModuleChecker<'a> {
             &mut budget,
         )
         .expect("selected function signature has valid substitutions");
-        crate::checker::inference::result_type(
-            &signature.return_type,
-            &substitutions,
-            &self.types,
-            &mut budget,
-        )
+        self.materialize_result(&signature.return_type, &substitutions, &mut budget)
     }
 
     pub(super) fn check_function_call(
@@ -362,6 +357,17 @@ impl<'a> ModuleChecker<'a> {
             rejected_constraint = inferred.rejected_constraint;
             inferred.substitutions
         };
+        let mut result_budget = TypeExpansionBudget::new(self.max_type_expansions);
+        result_budget.checking = self.checking;
+        self.materialize_result_at(
+            &signature.return_type,
+            &substitutions,
+            &mut result_budget,
+            tokens
+                .first()
+                .zip(tokens.last())
+                .map(|(first, last)| SourceSpan::new(&self.module.id, first.start, last.end)),
+        );
         let rest_pack = self.check_resolved_rest_pack(
             &signature,
             &substitutions,
@@ -687,7 +693,7 @@ impl<'a> ModuleChecker<'a> {
                             (!budget.exhausted && matches!(concrete, Some(Type::Literal(_) | Type::Null))) || matches!(annotation,
                                 Some(Type::Named { name, arguments }) if arguments.is_empty()
                                     && signature.type_parameters.iter().any(|parameter| parameter.name == *name
-                                        && (matches!(&signature.return_type, Type::Named { name: result, arguments } if arguments.is_empty() && result == name)
+                                        && (crate::checker::inference::direct_result_parameter(signature, &self.types, &mut budget).as_deref() == Some(name.as_str())
                                             || parameter.constraint.as_ref().is_some_and(|constraint| matches!(constraint, Type::String | Type::Number | Type::Boolean | Type::BigInt | Type::Symbol | Type::Literal(_))))))
                         });
                         let contextual_callback = preserving.is_some_and(|signature| {
@@ -925,6 +931,11 @@ impl<'a> ModuleChecker<'a> {
         expected: &Type,
         span: &SourceSpan,
     ) -> bool {
+        // Preserve the failed type and its primary diagnostic; do not create a
+        // second assignability error from an operation that has no result.
+        if self.instantiation.contains(actual) || self.instantiation.contains(expected) {
+            return true;
+        }
         let actual = canonical_parameter_references(actual, &self.types);
         let expected = canonical_parameter_references(expected, &self.types);
         let (actual, expected) = (&actual, &expected);

@@ -142,6 +142,23 @@ impl FlowModel {
             })
     }
 
+    pub(in crate::checker) fn excludes_nullish(
+        &self,
+        scopes: &ScopeModel<'_>,
+        token: &Token,
+    ) -> bool {
+        scopes
+            .flow_binding(&token.text, token.start)
+            .and_then(|id| {
+                self.facts
+                    .get(&token.start)?
+                    .nullish_exclusions
+                    .get(&id)
+                    .copied()
+            })
+            .is_some_and(|bits| bits & 3 == 3)
+    }
+
     pub(in crate::checker) fn property(
         &self,
         scopes: &ScopeModel<'_>,

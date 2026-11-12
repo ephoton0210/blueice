@@ -135,12 +135,14 @@ pub(super) struct ModuleChecker<'a> {
     /// Inference uses `&self`; checked validation emits its first failure.
     record_spread_inference_failure: Cell<Option<(usize, usize, RecordSpreadFailure)>>,
     generic_inference_failure: Cell<Option<SourceSpan>>,
+    instantiation: instantiation::Failures,
     return_inference: return_inference::ReturnInference,
 }
 
 mod binding;
 mod decorators;
 mod expressions;
+mod instantiation;
 mod jsx;
 mod return_inference;
 pub(in crate::checker) use binding::{

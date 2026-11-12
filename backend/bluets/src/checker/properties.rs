@@ -44,6 +44,10 @@ pub(super) struct TypeExpansionBudget {
     pub(super) checking: crate::CheckingOptions,
     remaining: usize,
     pub(super) exhausted: bool,
+    active_instantiations: HashSet<String>,
+    /// A repeated demanded operation is a semantic error, independent of the
+    /// owner's configured work limit. Keep its type identity for error recovery.
+    pub(super) instantiation_failure: Option<Type>,
 }
 
 impl TypeExpansionBudget {
@@ -52,10 +56,15 @@ impl TypeExpansionBudget {
             checking: crate::CheckingOptions::legacy(),
             remaining: limit,
             exhausted: false,
+            active_instantiations: HashSet::new(),
+            instantiation_failure: None,
         }
     }
 
     pub(super) fn consume(&mut self) -> bool {
+        if self.instantiation_failure.is_some() {
+            return false;
+        }
         if let Some(remaining) = self.remaining.checked_sub(1) {
             self.remaining = remaining;
             true
@@ -63,6 +72,22 @@ impl TypeExpansionBudget {
             self.exhausted = true;
             false
         }
+    }
+
+    pub(super) fn enter_instantiation(&mut self, value: &Type) -> Option<String> {
+        if self.exhausted || self.instantiation_failure.is_some() {
+            return None;
+        }
+        let key = super::type_relations::type_identity(value);
+        if !self.active_instantiations.insert(key.clone()) {
+            self.instantiation_failure = Some(value.clone());
+            return None;
+        }
+        Some(key)
+    }
+
+    pub(super) fn leave_instantiation(&mut self, key: &str) {
+        self.active_instantiations.remove(key);
     }
 }
 

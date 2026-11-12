@@ -14,6 +14,11 @@ pub(super) fn sources(target: EcmaTarget) -> Vec<(&'static str, &'static str)> {
         ),
         (
             EcmaTarget::Es5,
+            "ecma-thenable.v3.d.ts",
+            include_str!("ecma-thenable.v3.d.ts"),
+        ),
+        (
+            EcmaTarget::Es5,
             "ecma-buffers.v3.d.ts",
             include_str!("ecma-buffers.v3.d.ts"),
         ),

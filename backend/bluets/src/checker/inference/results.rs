@@ -4,8 +4,61 @@
 
 //! Materialize concrete library operator arguments without expanding interfaces.
 use super::*;
+mod non_null;
+
+fn conditional_alias(name: &str, aliases: &BTreeMap<String, TypeDefinition>) -> bool {
+    let mut name = name;
+    let mut active = HashSet::new();
+    while active.insert(name) {
+        let Some(definition) = aliases
+            .get(name)
+            .filter(|d| d.kind == TypeDefinitionKind::Alias)
+        else {
+            return false;
+        };
+        match &definition.value {
+            Type::Conditional(_) => return true,
+            Type::Named { name: next, .. } => name = next,
+            _ => return false,
+        }
+    }
+    false
+}
 
 pub(super) fn finish(
+    value: Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    budget: &mut TypeExpansionBudget,
+) -> Type {
+    let operation = match &value {
+        Type::Named { name, .. } => {
+            super::barriers::alias_has_barrier(name, aliases)
+                || crate::checker::type_relations::non_null_alias(name, aliases)
+                || conditional_alias(name, aliases)
+        }
+        Type::Mapped(_)
+        | Type::Conditional(_)
+        | Type::KeyOf(_)
+        | Type::IndexedAccess { .. }
+        | Type::TemplateLiteral(_) => true,
+        _ => false,
+    };
+    if !operation {
+        return finish_inner(value, aliases, budget);
+    }
+    let Some(key) = budget.enter_instantiation(&value) else {
+        return value;
+    };
+    let result = finish_inner(value.clone(), aliases, budget);
+    budget.leave_instantiation(&key);
+    if budget.instantiation_failure.is_some() {
+        value
+    } else {
+        result
+    }
+}
+
+fn finish_inner(
     value: Type,
     aliases: &BTreeMap<String, TypeDefinition>,
     budget: &mut TypeExpansionBudget,
@@ -14,6 +67,10 @@ pub(super) fn finish(
         return value;
     }
     match value {
+        // Copying a function value retains its declared signature. Operations
+        // inside parameter constraints/annotations are demanded by the call or
+        // relation that uses them, preserving diagnostic names such as keyof E.
+        value @ (Type::Function { .. } | Type::GenericFunction { .. }) => value,
         Type::InferenceBarrier(value) => Type::inference_barrier(finish(*value, aliases, budget)),
         value @ (Type::Mapped(_)
         | Type::Conditional(_)
@@ -36,9 +93,8 @@ pub(super) fn finish(
         }
         Type::Named { name, arguments } => {
             if super::barriers::alias_has_barrier(&name, aliases)
-                || aliases
-                    .get(&name)
-                    .is_some_and(|definition| matches!(&definition.value, Type::Conditional(_)))
+                || crate::checker::type_relations::non_null_alias(&name, aliases)
+                || conditional_alias(&name, aliases)
             {
                 let parameters = aliases
                     .iter()
@@ -56,6 +112,9 @@ pub(super) fn finish(
                 });
                 if !open {
                     let value = Type::Named { name, arguments };
+                    if let Some(value) = non_null::materialize(&value, aliases, budget) {
+                        return value;
+                    }
                     let expanded = instantiate_named(
                         &value,
                         aliases,
@@ -121,7 +180,10 @@ pub(super) fn finish(
                         | Type::Null
                         | Type::Undefined
                 )
-            }) {
+            }) && values
+                .iter()
+                .any(|value| !matches!(value, Type::Null | Type::Undefined))
+            {
                 values.sort_by_key(|value| match value {
                     Type::String => 0,
                     Type::Number => 1,

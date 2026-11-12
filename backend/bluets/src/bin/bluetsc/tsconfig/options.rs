@@ -278,8 +278,15 @@ pub(super) fn checking(
         exact_optional_property_types: flag("exactOptionalPropertyTypes"),
         no_unchecked_indexed_access: flag("noUncheckedIndexedAccess"),
     };
+    // Native validates this dependency for an explicit true. An inherited
+    // strict flag may coexist with an explicit strictNullChecks: false;
+    // retain that inherited value for checking and effective configuration.
+    let explicit_property_initialization = raw
+        .get("strictPropertyInitialization")
+        .and_then(Value::as_bool)
+        == Some(true);
     if !options.strict_null_checks
-        && (options.strict_property_initialization || options.exact_optional_property_types)
+        && (explicit_property_initialization || options.exact_optional_property_types)
     {
         return Err(
             "strictPropertyInitialization and exactOptionalPropertyTypes require strictNullChecks"
