@@ -761,3 +761,32 @@ fn vertical_text_is_copied_whole_and_its_characters_run_down_the_page() {
         TextResult::Range(Some(TextRange { location: 2, length: 1 }))
     );
 }
+
+#[test]
+fn text_that_runs_up_the_page_is_copied_in_order_and_its_characters_climb() {
+    let mut page = page(
+        "<div id='v' style='writing-mode:sideways-lr;width:100px;height:200px'>ABCD</div>",
+    );
+    apply(&mut page, TextInputAction::DocumentSelectAll);
+    assert_eq!(selection(&page)["selected_text"], "ABCD");
+    let v = page.script_get_element_by_id("v").unwrap();
+    let context = context(&page, v);
+    let bounds = |page: &mut Page, location: u32| {
+        let TextResult::Bounds(Some(b)) = page
+            .accessibility_text(
+                &context,
+                17,
+                Action::Bounds { range: TextRange { location, length: 1 } },
+            )
+            .unwrap()
+            .1
+        else {
+            panic!()
+        };
+        b
+    };
+    let (a, b, d) = (bounds(&mut page, 0), bounds(&mut page, 1), bounds(&mut page, 3));
+    assert!(b.y + b.height <= a.y + 0.5, "B is above A: {a:?} {b:?}");
+    assert!(d.y < b.y, "and D higher still");
+    assert!(a.y + a.height > 190.0, "A starts at the bottom of the box: {a:?}");
+}

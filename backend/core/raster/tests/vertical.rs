@@ -98,3 +98,47 @@ fn upright_punctuation_takes_its_vertical_form() {
     assert_eq!(drawn, vertical_form);
     assert_ne!(drawn, plain);
 }
+
+#[test]
+fn counter_clockwise_text_is_the_horizontal_text_turned_a_quarter_the_other_way() {
+    let flat = ink(&run("Lag", TextOrient::Horizontal, 10.0, 10.0, 0.0));
+    // text that runs up starts at the bottom: y is the bottom of its box
+    let turned = ink(&run("Lag", TextOrient::SidewaysCcw, 10.0, 110.0, 40.0));
+    let (flat, fw, fh) = normalized(&flat);
+    let (turned, tw, th) = normalized(&turned);
+    assert_eq!((tw, th), (fh, fw), "width and height trade places");
+    // a point (x, y) of the flat shape lands at (y, fw - 1 - x) when turned counter-clockwise
+    let expected: BTreeSet<_> = flat.iter().map(|&(x, y)| (y, fw - 1 - x)).collect();
+    let common = expected.intersection(&turned).count();
+    assert!(common * 100 >= expected.len() * 93, "{common} of {} pixels agree", expected.len());
+}
+
+#[test]
+fn counter_clockwise_text_climbs_from_its_start_and_its_letters_face_left() {
+    let set = ink(&run("Hi", TextOrient::SidewaysCcw, 20.0, 120.0, 40.0));
+    assert!(set.iter().all(|&(x, y)| (20..=60).contains(&x) && y <= 120), "inside the column, above the start");
+    let (min_x, max_x) = (set.iter().map(|p| p.0).min().unwrap(), set.iter().map(|p| p.0).max().unwrap());
+    assert!(min_x < 20 + 12, "capitals reach toward the left edge: {min_x}");
+    assert!(max_x - min_x >= 12);
+    let (min_y, max_y) = (set.iter().map(|p| p.1).min().unwrap(), set.iter().map(|p| p.1).max().unwrap());
+    assert!(max_y > 120 - 6, "the H starts right at the start point");
+    assert!(min_y < 120 - 20, "and the text climbs");
+}
+
+#[test]
+fn combined_characters_are_squeezed_into_one_em_and_centred_in_the_column() {
+    let wide = ink(&run("2026", TextOrient::Horizontal, 10.0, 10.0, 0.0));
+    let (_, wide_w, _) = normalized(&wide);
+    assert!(wide_w > 40, "four digits are wider than an em on a line: {wide_w}");
+    let set = ink(&run("2026", TextOrient::Combined, 20.0, 20.0, 40.0));
+    let (left, right) = (set.iter().map(|p| p.0).min().unwrap(), set.iter().map(|p| p.0).max().unwrap());
+    let (top, bottom) = (set.iter().map(|p| p.1).min().unwrap(), set.iter().map(|p| p.1).max().unwrap());
+    assert!(right - left + 1 <= 24, "within one em (24px) across: {}", right - left + 1);
+    assert!(top >= 20 && bottom <= 20 + 24, "within the one-em cell down the page: {top}..{bottom}");
+    let middle = (left + right) as f64 / 2.0;
+    assert!((middle - 40.0).abs() <= 3.0, "centred in the 40px column that starts at 20: {middle}");
+    // a run that already fits is not shrunk: one digit is narrower than an em
+    let one = ink(&run("5", TextOrient::Combined, 20.0, 20.0, 40.0));
+    let flat = ink(&run("5", TextOrient::Horizontal, 10.0, 10.0, 0.0));
+    assert_eq!(normalized(&one).1, normalized(&flat).1);
+}

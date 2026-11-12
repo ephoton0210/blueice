@@ -243,6 +243,58 @@ impl Pixmap {
         }
     }
 
+    /// A few characters set side by side in the room of one upright character (`text-combine-
+    /// upright`): the run is drawn horizontally, shrunk to fit one em when it is wider, and
+    /// centred in the box across the line and in the em-high cell at its top.
+    fn draw_combined_text(
+        &mut self,
+        run: &TextRun<'_>,
+        smear: i64,
+        clip: PixelClip,
+        (r, g, b, a): (u8, u8, u8, u8),
+    ) {
+        let em = run.font_size_px;
+        let shaped = blueice_font::shape_in(run.text, run.bold, run.italic, run.face);
+        let width_at = |size: f64| -> f64 {
+            shaped
+                .chars()
+                .map(|c| {
+                    font_for_char_in(c, run.bold, run.italic, run.face)
+                        .metrics(c, size as f32)
+                        .advance_width as f64
+                })
+                .sum()
+        };
+        let natural = width_at(em);
+        let size = if natural > em { em * em / natural } else { em };
+        let width = width_at(size);
+        let mut pen_x = run.x + run.breadth / 2.0 - width / 2.0;
+        let baseline = run.y + (em - size) / 2.0 + size * UPRIGHT_ASCENT_RATIO;
+        for ch in shaped.chars() {
+            let f = font_for_char_in(ch, run.bold, run.italic, run.face);
+            let (metrics, bitmap) = f.rasterize(ch, size as f32);
+            for row in 0..metrics.height {
+                for col in 0..metrics.width {
+                    let coverage = bitmap[row * metrics.width + col] as u32;
+                    if coverage == 0 {
+                        continue;
+                    }
+                    let px = (pen_x + metrics.xmin as f64 + col as f64).round() as i64;
+                    let py = (baseline - (metrics.ymin as f64 + metrics.height as f64) + row as f64).round() as i64;
+                    for extra in 0..=smear {
+                        self.set_pixel_blended(
+                            px + extra,
+                            py,
+                            [r, g, b, ((coverage * a as u32) / 255) as u8],
+                            clip,
+                        );
+                    }
+                }
+            }
+            pen_x += metrics.advance_width as f64;
+        }
+    }
+
     /// Text in a vertical line. Sideways, the run is the horizontal text turned a quarter
     /// clockwise: its baseline is a vertical line `ascent` inside the right edge of the run's
     /// box, the letters' tops face right and the text runs down from the box's top. Upright, each
@@ -256,9 +308,18 @@ impl Pixmap {
         clip: PixelClip,
         (r, g, b, a): (u8, u8, u8, u8),
     ) {
-        let sideways = run.orient == blueice_paint::TextOrient::Sideways;
+        if run.orient == blueice_paint::TextOrient::Combined {
+            self.draw_combined_text(run, smear, clip, (r, g, b, a));
+            return;
+        }
+        let ccw = run.orient == blueice_paint::TextOrient::SidewaysCcw;
+        let sideways = run.orient != blueice_paint::TextOrient::Upright;
         let shaped = blueice_font::shape_in(run.text, run.bold, run.italic, run.face);
-        let baseline_x = run.x + run.breadth - ascent;
+        // Turned clockwise the letters' tops face right, so the baseline is `ascent` inside the
+        // right edge and the text runs down from the top of the box; turned the other way the
+        // tops face left, the baseline is `ascent` inside the left edge and the text climbs from
+        // the bottom (`run.y`).
+        let baseline_x = if ccw { run.x + ascent } else { run.x + run.breadth - ascent };
         let mut pen = run.y;
         for original in shaped.chars() {
             let ch = if sideways {
@@ -293,7 +354,9 @@ impl Pixmap {
                     }
                     let dx = metrics.xmin as f64 + col as f64;
                     let up = (metrics.ymin as f64 + metrics.height as f64) - row as f64;
-                    let (px, py) = if sideways {
+                    let (px, py) = if ccw {
+                        ((origin_x - up).round() as i64, (origin_y - dx - 1.0).round() as i64)
+                    } else if sideways {
                         ((origin_x + up - 1.0).round() as i64, (origin_y + dx).round() as i64)
                     } else {
                         ((origin_x + dx).round() as i64, (origin_y - up).round() as i64)
@@ -308,7 +371,11 @@ impl Pixmap {
                     }
                 }
             }
-            pen += advance;
+            if ccw {
+                pen -= advance;
+            } else {
+                pen += advance;
+            }
         }
     }
 

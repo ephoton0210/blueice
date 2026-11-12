@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Vertical writing modes (`writing-mode: vertical-rl | vertical-lr`).
+//! Vertical writing modes (`writing-mode: vertical-rl | vertical-lr | sideways-lr`).
 //!
 //! A vertical box is laid out in a turned frame and then turned back. Inside it, `Ctx::writing`
 //! makes every style read name the sides the turned frame sees (its `width` is the page's
@@ -12,15 +12,80 @@
 //! laid out by the box's parent as for any block.
 //!
 //! In the turned frame a line is a row; in the page it is a column. Blocks stack from the right
-//! (`vertical-rl`) or the left (`vertical-lr`); inside a line, the side letters grow toward is
-//! the page's right in both. Text runs are cut where their orientation changes: ideographs,
-//! kana, hangul and fullwidth forms stand upright, everything else lies on its side (clockwise),
-//! as `text-orientation: mixed` says; `upright` and `sideways` force one.
+//! (`vertical-rl`) or the left (`vertical-lr`, `sideways-lr`); inside a line, the side letters
+//! grow toward is the page's right, except in `sideways-lr`, where the text is turned the other
+//! way, runs up the page and its letters grow toward the left. Text runs are cut where their
+//! orientation changes: ideographs, kana, hangul and fullwidth forms stand upright, everything
+//! else lies on its side (clockwise), as `text-orientation: mixed` says; `upright` and
+//! `sideways` force one, and `sideways-*` writing modes are all sideways.
+//!
+//! A horizontal box inside a vertical one is an orthogonal flow: it is laid out whole in the
+//! page's own frame and turned into the vertical box's frame, so turning that frame back leaves
+//! it as it was written. Form controls are always such boxes.
 
-use crate::block::{layout_flow, PendingAbs};
-use crate::ctx::{Ctx, Writing};
+use crate::block::{layout_block_level, layout_flow, Constraint, Forced, Margin, PendingAbs, Placed};
+use crate::ctx::{Combine, Ctx, Writing};
 use crate::fragment::{Fragment, FragmentKind, TextOrient};
 use blueice_dom::NodeId;
+
+/// `text` cut into the stretches `text-combine-upright` sets in one em each (`true`) and the
+/// stretches that are laid out as usual (`false`).
+pub(crate) fn combine_runs(text: &str, rule: Combine) -> Vec<(String, bool)> {
+    match rule {
+        Combine::All => vec![(text.to_string(), true)],
+        Combine::Digits(most) => {
+            let mut out: Vec<(String, bool)> = Vec::new();
+            let mut chars = text.chars().peekable();
+            while let Some(c) = chars.next() {
+                if c.is_ascii_digit() {
+                    let mut digits = String::from(c);
+                    while let Some(d) = chars.next_if(char::is_ascii_digit) {
+                        digits.push(d);
+                    }
+                    let fits = digits.len() as u32 <= most;
+                    out.push((digits, fits));
+                } else {
+                    match out.last_mut() {
+                        Some((run, false)) => run.push(c),
+                        _ => out.push((c.to_string(), false)),
+                    }
+                }
+            }
+            out
+        }
+    }
+}
+
+/// How a writing mode's turned frame maps onto the page.
+#[derive(Clone, Copy)]
+struct Turn {
+    /// Blocks stack from the page's right (the turned frame's top is the page's right).
+    block_reverse: bool,
+    /// Inside a line, the turned frame's top is the page's right.
+    line_reverse: bool,
+    /// The inline direction runs up the page.
+    inline_reverse: bool,
+}
+
+impl Turn {
+    fn of(mode: Writing) -> Turn {
+        match mode {
+            Writing::VerticalRl => Turn { block_reverse: true, line_reverse: true, inline_reverse: false },
+            Writing::VerticalLr => Turn { block_reverse: false, line_reverse: true, inline_reverse: false },
+            Writing::SidewaysLr => Turn { block_reverse: false, line_reverse: false, inline_reverse: true },
+            Writing::Horizontal => Turn { block_reverse: false, line_reverse: false, inline_reverse: false },
+        }
+    }
+
+    /// Where a point of the turned frame lies in the page, inside a content box `block` across
+    /// and `length` down.
+    fn point(self, (x, y): (f64, f64), block: f64, length: f64) -> (f64, f64) {
+        (
+            if self.block_reverse { block - y } else { y },
+            if self.inline_reverse { length - x } else { x },
+        )
+    }
+}
 
 /// What laying out a vertical box's content produced, in the page's frame, relative to the
 /// box's content box.
@@ -42,17 +107,29 @@ pub(crate) fn layout_vertical_flow(
     content_height: Option<f64>,
     inline_room: f64,
 ) -> VerticalFlow {
-    let length = content_height.unwrap_or(inline_room);
+    let room = content_height.unwrap_or(inline_room);
     let previous = ctx.writing.replace(mode);
-    let flow = layout_flow(ctx, node, length, None, true, true, &[]);
+    let previous_room = ctx.orth_room.replace(content_width);
+    let flow = layout_flow(ctx, node, room, None, true, true, &[]);
+    let height = content_height.unwrap_or_else(|| flow.extent.clamp(0.0, room));
+    let turn = Turn::of(mode);
     let mut children = flow.children;
-    rotate(ctx, &mut children, content_width, mode == Writing::VerticalRl, mode);
+    // Where the text of a box with no height of its own starts down the page (the bottom, in
+    // `sideways-lr`) is the end of the longest line, so that is the length that is turned about.
+    rotate(ctx, &mut children, content_width, height, false, turn);
+    ctx.orth_room.set(previous_room);
     ctx.writing.set(previous);
-    VerticalFlow {
-        children,
-        height: content_height.unwrap_or_else(|| flow.extent.clamp(0.0, length)),
-        pending_abs: Vec::new(),
-    }
+    // Boxes positioned against a containing block are placed later in the page's frame: their
+    // static positions turn with everything else.
+    let pending_abs = flow
+        .pending_abs
+        .into_iter()
+        .map(|p| {
+            let (x, y) = turn.point((p.x, p.y), content_width, height);
+            PendingAbs { node: p.node, x, y }
+        })
+        .collect();
+    VerticalFlow { children, height, pending_abs }
 }
 
 /// Whether `c` stands upright in a vertical line under `text-orientation: mixed`.
@@ -64,7 +141,7 @@ fn upright_in_mixed(c: char) -> bool {
         | 0x1F000..=0x1FAFF | 0x20000..=0x2FA1F)
 }
 
-/// The orientation a character of `style` takes in a vertical line.
+/// The orientation a character takes in a vertical line.
 fn orient_of(c: char, text_orientation: Option<&str>) -> TextOrient {
     match text_orientation {
         Some("upright") => TextOrient::Upright,
@@ -74,42 +151,49 @@ fn orient_of(c: char, text_orientation: Option<&str>) -> TextOrient {
     }
 }
 
+/// The room a child's content box has in the turned frame: across the lines, and along them.
+fn content_room(ctx: &Ctx<'_>, child: &Fragment) -> (f64, f64) {
+    let style = ctx.style_of_fragment(child);
+    let (pad, border) = (style.padding(0.0), style.border(0.0));
+    (
+        (child.height - pad.top - pad.bottom - border.top - border.bottom).max(0.0),
+        (child.width - pad.left - pad.right - border.left - border.right).max(0.0),
+    )
+}
+
 /// Turns `children` (laid out in the turned frame, positions relative to their parent's content
-/// box, which is `block_size` thick across the lines) into the page's frame. `reverse` is
-/// whether blocks stack from the far side, as they do from the right in `vertical-rl`, and
-/// inside every line.
-fn rotate(ctx: &Ctx<'_>, children: &mut Vec<Fragment>, block_size: f64, reverse: bool, mode: Writing) {
+/// box) into the page's frame. The parent's content box is `block` thick across the lines and
+/// `length` long down them; `line` says it is a line box, inside which the frame is turned the
+/// way lines are, not the way blocks are.
+fn rotate(ctx: &Ctx<'_>, children: &mut Vec<Fragment>, block: f64, length: f64, line: bool, turn: Turn) {
+    let reverse = if line { turn.line_reverse } else { turn.block_reverse };
     let mut out = Vec::with_capacity(children.len());
     for mut child in std::mem::take(children) {
-        let across = if reverse {
-            block_size - (child.y + child.height)
-        } else {
-            child.y
-        };
-        let (along, length, thick) = (child.x, child.width, child.height);
+        let across = if reverse { block - (child.y + child.height) } else { child.y };
+        let along = if turn.inline_reverse { length - (child.x + child.width) } else { child.x };
+        let (run, thick) = (child.width, child.height);
         // What is inside the child is turned relative to the child's own content box.
-        let (inner_block, inner_reverse) = match &child.kind {
-            FragmentKind::Line => (child.height, true),
+        let (inner_block, inner_length, inner_line) = match &child.kind {
+            FragmentKind::Line => (child.height, child.width, true),
             _ => {
-                let style = ctx.style_of_fragment(&child);
-                let (pad, border) = (style.padding(0.0), style.border(0.0));
-                (
-                    (child.height - pad.top - pad.bottom - border.top - border.bottom).max(0.0),
-                    mode == Writing::VerticalRl,
-                )
+                let (b, l) = content_room(ctx, &child);
+                (b, l, false)
             }
         };
-        if let FragmentKind::Text(text) = &child.kind {
+        if child.turned_back {
+            // Laid out in the page's own frame by a horizontal box and turned for the layout
+            // around it; this turns it back.
+            child.turned_back = false;
+        } else if let FragmentKind::Text(text) = &child.kind {
             let text = text.clone();
-            let line_across = across;
-            out.extend(split_runs(ctx, &child, &text, along, length, thick, line_across));
+            out.extend(split_runs(ctx, &child, &text, (along, run, thick, across), turn));
             continue;
         }
-        rotate(ctx, &mut child.children, inner_block, inner_reverse, mode);
+        rotate(ctx, &mut child.children, inner_block, inner_length, inner_line, turn);
         child.x = across;
         child.y = along;
         child.width = thick;
-        child.height = length;
+        child.height = run;
         child.baseline = None;
         out.push(child);
     }
@@ -118,26 +202,57 @@ fn rotate(ctx: &Ctx<'_>, children: &mut Vec<Fragment>, block_size: f64, reverse:
 
 /// A text fragment of the turned frame as the runs it is made of in the page's frame: one
 /// fragment for each stretch of characters that share an orientation, one below the other.
+/// `(along, run, thick, across)` is where the fragment starts down the page, how long it is, how
+/// wide its column is and where that starts across the page.
 fn split_runs(
     ctx: &Ctx<'_>,
     f: &Fragment,
     text: &str,
-    along: f64,
-    length: f64,
-    thick: f64,
-    across: f64,
+    (along, run, thick, across): (f64, f64, f64, f64),
+    turn: Turn,
 ) -> Vec<Fragment> {
     let style = f.node.map(|n| ctx.style(n));
-    let orientation = style.as_ref().and_then(|s| s.keyword("text-orientation"));
+    // `sideways-lr` writes everything turned the other way, one run to the line.
+    let ccw = turn.inline_reverse;
+    let mode_keyword = style
+        .as_ref()
+        .and_then(|s| s.style.and_then(|st| st.other.get("writing-mode")))
+        .and_then(|v| match v {
+            blueice_css::Value::Keyword(k) => Some(k.as_str()),
+            _ => None,
+        });
+    let forced_sideways = mode_keyword.is_some_and(|k| k.starts_with("sideways"));
+    let orientation = if forced_sideways {
+        Some("sideways")
+    } else {
+        style.as_ref().and_then(|s| s.keyword("text-orientation"))
+    };
+    let combine = style.as_ref().and_then(|s| s.combine_upright());
     let mut runs: Vec<(String, TextOrient)> = Vec::new();
-    for c in text.chars() {
-        let o = orient_of(c, orientation);
-        match runs.last_mut() {
-            Some((run, last)) if *last == o => run.push(c),
-            _ => runs.push((c.to_string(), o)),
+    if ccw {
+        runs.push((text.to_string(), TextOrient::SidewaysCcw));
+    } else {
+        let pieces = match combine {
+            Some(rule) => combine_runs(text, rule),
+            None => vec![(text.to_string(), false)],
+        };
+        for (piece, combined) in pieces {
+            if combined {
+                runs.push((piece, TextOrient::Combined));
+                continue;
+            }
+            for c in piece.chars() {
+                let o = orient_of(c, orientation);
+                match runs.last_mut() {
+                    Some((run, last)) if *last == o => run.push(c),
+                    _ => runs.push((c.to_string(), o)),
+                }
+            }
         }
     }
-    let measure = |run: &str| match &style {
+    let em = style.as_ref().map_or(16.0, |s| s.font_size());
+    let measure = |run: &str, orient: TextOrient| match &style {
+        _ if orient == TextOrient::Combined => em,
         Some(s) => blueice_font::measure_text_width_in(
             run,
             s.font_size(),
@@ -148,30 +263,113 @@ fn split_runs(
         None => blueice_font::measure_text_width(run, 16.0, false, false),
     };
     let count = runs.len();
-    let mut cursor = along;
+    // Down the page from `along`; up from its far end when the text runs up.
+    let mut cursor = if ccw { along + run } else { along };
     runs.into_iter()
-        .enumerate()
-        .map(|(i, (run, orient))| {
+        .map(|(text, orient)| {
             // A single run is the whole fragment, so its length is exactly the layout's.
-            let w = if count == 1 { length } else { measure(&run) };
-            let fragment = Fragment {
-                kind: FragmentKind::Text(run),
+            let w = if count == 1 { run } else { measure(&text, orient) };
+            let y = if ccw { cursor - w } else { cursor };
+            cursor = if ccw { y } else { cursor + w };
+            Fragment {
+                kind: FragmentKind::Text(text),
                 x: across,
-                y: cursor,
+                y,
                 width: thick,
                 height: w,
                 orient,
                 rtl: false,
-                ..f.clone()
-            };
-            cursor += w;
-            let _ = i;
-            Fragment {
                 children: Vec::new(),
-                ..fragment
+                ..f.clone()
             }
         })
         .collect()
+}
+
+/// A horizontal box inside a vertical one. It is laid out whole in the page's own frame, at the
+/// width its own style asks for or the room the vertical box leaves across the page, and then
+/// turned into the frame the vertical box is laid out in, so that turning that frame back sets
+/// it right again.
+pub(crate) fn layout_orthogonal(ctx: &Ctx<'_>, node: NodeId, c: &Constraint, forced: Forced) -> Placed {
+    let outer = ctx.writing.get();
+    let turn = Turn::of(outer);
+    ctx.writing.set(Writing::Horizontal);
+    let inner = Constraint {
+        cb_width: ctx.orth_room.get(),
+        cb_height: Some(c.cb_width),
+        root: false,
+    };
+    let mut placed = layout_block_level(
+        ctx,
+        node,
+        &inner,
+        Forced { width: forced.height, height: forced.width },
+    );
+    let (page_width, page_height) = (placed.fragment.width, placed.fragment.height);
+    let style = ctx.style_of_fragment(&placed.fragment);
+    let (pad, border) = (style.padding(0.0), style.border(0.0));
+    let block = (page_width - pad.left - pad.right - border.left - border.right).max(0.0);
+    let length = (page_height - pad.top - pad.bottom - border.top - border.bottom).max(0.0);
+    placed.fragment.width = page_height;
+    placed.fragment.height = page_width;
+    unrotate(ctx, &mut placed.fragment.children, block, length, false, turn);
+    ctx.writing.set(outer);
+    // The page's margins on the sides the turned frame names differently.
+    let (left, right) = (placed.margin_left, placed.margin_right);
+    let (top, bottom) = (placed.margin_top.value(), placed.margin_bottom.value());
+    let (turned_left, turned_right) = if turn.inline_reverse { (bottom, top) } else { (top, bottom) };
+    let (turned_top, turned_bottom) = match (turn.block_reverse, turn.inline_reverse) {
+        (true, _) => (right, left),
+        (false, true) => (left, right),
+        (false, false) => (left, right),
+    };
+    placed.margin_left = turned_left;
+    placed.margin_right = turned_right;
+    placed.margin_top = Margin::of(turned_top);
+    placed.margin_bottom = Margin::of(turned_bottom);
+    placed.pending_abs = placed
+        .pending_abs
+        .into_iter()
+        .map(|p| PendingAbs {
+            node: p.node,
+            x: if turn.inline_reverse { page_height - p.y } else { p.y },
+            y: if turn.block_reverse { page_width - p.x } else { p.x },
+        })
+        .collect();
+    placed.preferred_width = placed.fragment.width;
+    placed.content_extent = placed.fragment.width;
+    placed.shift = 0.0;
+    placed
+}
+
+/// The inverse of [`rotate`]: `children`, in the page's frame and relative to their parent's
+/// content box that is `block` wide and `length` tall, put into the turned frame.
+fn unrotate(ctx: &Ctx<'_>, children: &mut [Fragment], block: f64, length: f64, line: bool, turn: Turn) {
+    let reverse = if line { turn.line_reverse } else { turn.block_reverse };
+    for child in children.iter_mut() {
+        let (x, y, w, h) = (child.x, child.y, child.width, child.height);
+        let (inner_block, inner_length, inner_line) = match &child.kind {
+            FragmentKind::Line => (w, h, true),
+            _ => {
+                let style = ctx.style_of_fragment(child);
+                let (pad, border) = (style.padding(0.0), style.border(0.0));
+                (
+                    (w - pad.left - pad.right - border.left - border.right).max(0.0),
+                    (h - pad.top - pad.bottom - border.top - border.bottom).max(0.0),
+                    false,
+                )
+            }
+        };
+        unrotate(ctx, &mut child.children, inner_block, inner_length, inner_line, turn);
+        child.y = if reverse { block - (x + w) } else { x };
+        child.x = if turn.inline_reverse { length - (y + h) } else { y };
+        child.width = h;
+        child.height = w;
+        child.baseline = None;
+        if matches!(child.kind, FragmentKind::Text(_)) {
+            child.turned_back = true;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -346,6 +544,219 @@ mod tests {
         assert!(t.2 + t.4 <= 70.01, "the column ends 30px short of the right edge: {} + {}", t.2, t.4);
     }
 
+    /// Every fragment under `f` as `(node tag or kind, x, y, width, height)` in the coordinates
+    /// of `f`'s content box.
+    fn boxes(f: &Fragment) -> Vec<(f64, f64, f64, f64)> {
+        fn walk(f: &Fragment, (ox, oy): (f64, f64), out: &mut Vec<(f64, f64, f64, f64)>) {
+            let (x, y) = (ox + f.x, oy + f.y);
+            out.push((x, y, f.width, f.height));
+            for c in &f.children {
+                walk(c, (x, y), out);
+            }
+        }
+        let mut out = Vec::new();
+        for c in &f.children {
+            walk(c, (0.0, 0.0), &mut out);
+        }
+        out
+    }
+
+    const VBOX: &str = "div.v { writing-mode: vertical-rl; width: 300px; height: 240px }";
+
+    #[test]
+    fn a_replaced_element_in_a_vertical_box_keeps_its_page_size() {
+        let f = body("<div class=v>a<img width=40 height=20>b</div>", VBOX);
+        let found = boxes(div(&f)).into_iter().any(|b| (b.2, b.3) == (40.0, 20.0));
+        assert!(found, "an image 40 wide and 20 tall is 40 wide and 20 tall on the page");
+    }
+
+    #[test]
+    fn a_horizontal_inline_block_in_a_vertical_line_keeps_its_text_horizontal() {
+        let f = body(
+            "<div class=v>\u{65e5}<span style='display:inline-block;writing-mode:horizontal-tb;width:80px'>abc def</span></div>",
+            VBOX,
+        );
+        let t = texts(div(&f));
+        let horizontal: Vec<_> = t.iter().filter(|r| r.0 == "abc" || r.0 == "def").collect();
+        assert_eq!(horizontal.len(), 2, "{t:?}");
+        assert!(horizontal.iter().all(|r| r.1 == TextOrient::Horizontal));
+        // "abc" is as wide across the page as it is when written horizontally
+        let flat = body("<div>abc</div>", "div { width: 200px }");
+        let w = texts(div(&flat))[0].4;
+        assert!((horizontal[0].4 - w).abs() < 0.01, "{} vs {w}", horizontal[0].4);
+        assert!(horizontal[0].5 < 40.0, "and one line high, not as long as the word");
+    }
+
+    #[test]
+    fn a_horizontal_block_in_a_vertical_box_flows_across_the_page() {
+        let f = body(
+            "<div class=v><p style='writing-mode:horizontal-tb;width:120px'>aaa bbb ccc ddd eee fff</p></div>",
+            VBOX,
+        );
+        let t = texts(div(&f));
+        assert!(t.len() >= 6 && t.iter().all(|r| r.1 == TextOrient::Horizontal), "{t:?}");
+        // wrapped in 120px: several rows, each starting at the same x, stacked downward
+        let mut rows: Vec<f64> = t.iter().map(|r| r.3).collect();
+        rows.dedup();
+        assert!(rows.len() >= 2, "more than one row: {rows:?}");
+        assert!(rows.windows(2).all(|w| w[1] > w[0]), "rows go down the page: {rows:?}");
+        assert!(t.iter().all(|r| r.2 + r.4 <= 300.01), "inside the box");
+        let right = t.iter().map(|r| r.2 + r.4).fold(0.0, f64::max);
+        assert!((100.0..=300.01).contains(&right));
+    }
+
+    #[test]
+    fn an_absolutely_positioned_box_in_a_vertical_box_uses_page_offsets() {
+        let f = body(
+            "<div class=v style='position:relative'>text<span style='position:absolute;left:10px;top:20px;width:30px;height:35px;background:red'></span></div>",
+            VBOX,
+        );
+        let found = boxes(div(&f)).into_iter().any(|b| b == (10.0, 20.0, 30.0, 35.0));
+        assert!(found, "{:?}", boxes(div(&f)));
+    }
+
+    #[test]
+    fn a_float_in_a_vertical_box_goes_to_the_line_left_which_is_the_top() {
+        let f = body(
+            "<div class=v><div style='float:left;width:50px;height:30px'></div>text</div>",
+            VBOX,
+        );
+        let float = boxes(div(&f)).into_iter().find(|b| (b.2, b.3) == (50.0, 30.0)).expect("the float");
+        assert_eq!(float.1, 0.0, "at the top of the box");
+        assert!(float.0 + 50.0 > 299.0, "in the first column, which is at the right");
+    }
+
+    #[test]
+    fn a_table_in_a_vertical_box_runs_its_columns_down_the_page() {
+        let f = body("<div class=v><table><tr><td>aa</td><td>bb</td></tr></table></div>", VBOX);
+        let t = texts(div(&f));
+        let (a, b) = (&t[0], &t[1]);
+        assert_eq!((a.0.as_str(), b.0.as_str()), ("aa", "bb"));
+        assert!(b.3 > a.3 + 10.0, "the second cell is below the first: {a:?} {b:?}");
+        assert!((a.2 - b.2).abs() < 1.0, "in the same column of the page");
+    }
+
+    #[test]
+    fn a_flex_row_in_a_vertical_box_runs_down_the_page() {
+        let f = body(
+            "<div class=v><div style='display:flex'><i style='display:block;width:20px;height:30px'></i><i style='display:block;width:20px;height:30px'></i></div></div>",
+            VBOX,
+        );
+        let items: Vec<_> = boxes(div(&f)).into_iter().filter(|b| (b.2, b.3) == (20.0, 30.0)).collect();
+        assert_eq!(items.len(), 2, "{items:?}");
+        assert!(items[1].1 > items[0].1 + 19.0, "the second item is below the first: {items:?}");
+    }
+
+    #[test]
+    fn sideways_lr_runs_up_the_page_and_stacks_its_lines_from_the_left() {
+        let css = "div { writing-mode: sideways-lr; width: 200px; height: 80px; line-height: 20px }";
+        let f = body(&format!("<div>{LATIN}</div>"), css);
+        let t = texts(div(&f));
+        assert!(t.iter().all(|r| r.1 == TextOrient::SidewaysCcw), "{t:?}");
+        // each line starts at the bottom of the box and its words climb
+        let first_line: Vec<_> = t.iter().filter(|r| r.2 == t[0].2).collect();
+        assert!(first_line.len() >= 2);
+        assert!(first_line.windows(2).all(|w| w[1].3 < w[0].3), "each word is above the one before");
+        let bottom = first_line[0].3 + first_line[0].5;
+        assert!((bottom - 80.0).abs() < 0.01, "the line starts at the bottom: {bottom}");
+        let mut columns: Vec<f64> = t.iter().map(|r| r.2).collect();
+        columns.dedup();
+        assert!(columns.len() >= 2 && columns.windows(2).all(|w| w[1] > w[0]), "lines go rightward: {columns:?}");
+        assert!(columns[0] < 1.0, "the first line is at the left edge");
+    }
+
+    #[test]
+    fn sideways_lr_takes_its_inline_start_from_the_bottom_padding() {
+        let f = body(
+            "<div>x</div>",
+            "div { writing-mode: sideways-lr; width: 100px; height: 200px; padding: 0 0 15px 0; box-sizing: border-box }",
+        );
+        let t = &texts(div(&f))[0];
+        assert!((t.3 + t.5 - 185.0).abs() < 0.01, "starts 15px above the bottom: {}", t.3 + t.5);
+    }
+
+    #[test]
+    fn a_horizontal_box_in_a_sideways_lr_box_is_still_upright_on_the_page() {
+        let f = body(
+            "<div style='writing-mode:sideways-lr;width:300px;height:200px'><p style='writing-mode:horizontal-tb;width:100px'>abc def</p></div>",
+            "",
+        );
+        let t = texts(div(&f));
+        assert!(t.iter().all(|r| r.1 == TextOrient::Horizontal), "{t:?}");
+        let flat = body("<div>abc</div>", "div { width: 200px }");
+        assert!((t[0].4 - texts(div(&flat))[0].4).abs() < 0.01, "as wide as it is written");
+    }
+
+    #[test]
+    fn text_combine_upright_sets_digits_upright_in_one_em() {
+        let f = body(
+            "<div>\u{5e73}\u{6210}<span style='text-combine-upright:all'>2026</span></div>",
+            "div { writing-mode: vertical-rl; width: 60px; height: 300px }",
+        );
+        let t = texts(div(&f));
+        let year = t.iter().find(|r| r.0 == "2026").expect("the digits");
+        assert_eq!(year.1, TextOrient::Combined);
+        assert!((year.5 - 16.0).abs() < 0.01, "one em long, not four digits: {}", year.5);
+        // and the line is as long as 平成 plus one em
+        let era = t.iter().find(|r| r.0 == "\u{5e73}\u{6210}").unwrap();
+        assert!((year.3 - (era.3 + era.5)).abs() < 0.01);
+    }
+
+    #[test]
+    fn digits_n_combines_runs_of_up_to_n_digits_and_leaves_longer_ones_sideways() {
+        let css = "div { writing-mode: vertical-rl; width: 60px; height: 300px; text-combine-upright: digits 2 }";
+        let f = body("<div>\u{7b2c}12\u{6708}</div>", css);
+        let t = texts(div(&f));
+        let runs: Vec<(&str, TextOrient)> = t.iter().map(|r| (r.0.as_str(), r.1)).collect();
+        assert_eq!(
+            runs,
+            [("\u{7b2c}", TextOrient::Upright), ("12", TextOrient::Combined), ("\u{6708}", TextOrient::Upright)]
+        );
+        let f = body("<div>\u{7b2c}123\u{6708}</div>", css);
+        let t = texts(div(&f));
+        assert!(t.iter().any(|r| r.0 == "123" && r.1 == TextOrient::Sideways), "{t:?}");
+        // a single digit is combined too, which stands it upright
+        let f = body("<div>\u{7b2c}5\u{6708}</div>", css);
+        assert!(texts(div(&f)).iter().any(|r| r.0 == "5" && r.1 == TextOrient::Combined));
+    }
+
+    #[test]
+    fn without_text_combine_upright_digits_lie_down() {
+        let f = body("<div>12</div>", "div { writing-mode: vertical-rl; width: 60px; height: 300px }");
+        assert_eq!(texts(div(&f))[0].1, TextOrient::Sideways);
+    }
+
+    #[test]
+    fn a_form_control_in_a_vertical_line_keeps_its_page_size_and_the_line_goes_on() {
+        let f = body(
+            "<div class=v>\u{65e5}<input value=\"abc\" style=\"width:60px\">\u{672c}</div>",
+            VBOX,
+        );
+        let flat = body("<div style='width:400px'><input value=\"abc\" style=\"width:60px\"></div>", "");
+        let control = |f: &Fragment| -> (f64, f64) {
+            fn find(f: &Fragment) -> Option<(f64, f64)> {
+                if matches!(f.kind, FragmentKind::NativeControl { .. }) {
+                    return Some((f.width, f.height));
+                }
+                f.children.iter().find_map(find)
+            }
+            find(f).expect("the control")
+        };
+        let (v, h) = (control(&f), control(&flat));
+        assert!((v.0 - h.0).abs() < 0.5 && (v.1 - h.1).abs() < 0.5, "{v:?} vs {h:?}");
+        let t = texts(div(&f));
+        assert!(t.iter().any(|r| r.0 == "\u{672c}"), "the text after the control is still there: {t:?}");
+        let (before, after) = (
+            t.iter().find(|r| r.0 == "\u{65e5}").unwrap(),
+            t.iter().find(|r| r.0 == "\u{672c}").unwrap(),
+        );
+        // on a vertical line a horizontal box takes room along the line by its height; its width
+        // reaches across the column
+        let gap = after.3 - (before.3 + before.5);
+        assert!(gap >= h.1 - 0.5 && gap < h.1 + 12.0, "the control takes its {} of height: {t:?}", h.1);
+        assert!(h.0 <= v.0 + 0.5, "and still its {} across", h.0);
+    }
+
     #[test]
     fn horizontal_content_around_a_vertical_box_is_untouched() {
         let f = body(
@@ -358,3 +769,4 @@ mod tests {
         assert!(texts(&f.children[0]).iter().all(|t| t.1 == TextOrient::Horizontal));
     }
 }
+

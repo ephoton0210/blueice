@@ -146,7 +146,8 @@ pub enum PaintCommand {
         rtl: bool,
         /// In a vertical line: how the characters are turned (see [`TextOrient`]). Then `x`,
         /// `y` are the top-left of the run's box, which is `breadth` wide across the line and
-        /// as long as the run is down the page.
+        /// as long as the run is down the page; for `SidewaysCcw`, text that runs up the page, `y` is
+        /// the bottom, where the text starts.
         orient: TextOrient,
         breadth: f64,
     },
@@ -293,6 +294,8 @@ pub fn dump_frame(frame: &Frame) -> String {
                     TextOrient::Horizontal => "",
                     TextOrient::Sideways => " sideways",
                     TextOrient::Upright => " upright",
+                    TextOrient::SidewaysCcw => " sideways-ccw",
+                    TextOrient::Combined => " combined",
                 }
             )),
         }
@@ -910,6 +913,8 @@ fn paint_fragment(
                 let rtl = fragment.rtl;
                 let (orient, breadth) = (fragment.orient, fragment.width);
                 let spacing = spacing.filter(|_| orient == TextOrient::Horizontal);
+                // Text that runs up the page starts at the bottom of its box.
+                let y = if orient == TextOrient::SidewaysCcw { y + fragment.height } else { y };
                 let mut emit = |x: f64, text: String, rtl: bool| {
                     out.push(PaintCommand::Text {
                         x,
@@ -1489,6 +1494,32 @@ mod tests {
         )));
         let dump = dump_frame(&f);
         assert!(dump.contains(" upright") && dump.contains(" sideways"), "{dump}");
+    }
+
+    #[test]
+    fn text_that_runs_up_starts_at_the_bottom_and_combined_digits_are_marked() {
+        let up = paint_html(
+            "<div>abc</div>",
+            "div { writing-mode: sideways-lr; width: 60px; height: 200px }",
+            320.0,
+        );
+        let (orient, y) = up
+            .commands
+            .iter()
+            .find_map(|c| match c {
+                PaintCommand::Text { orient, y, .. } => Some((*orient, *y)),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(orient, TextOrient::SidewaysCcw);
+        assert!((y - 200.0).abs() < 0.01, "the run starts at the bottom of the box: {y}");
+        assert!(dump_frame(&up).contains(" sideways-ccw"));
+        let tcy = paint_html(
+            "<div>\u{5e73}<span style='text-combine-upright:all'>26</span></div>",
+            "div { writing-mode: vertical-rl; width: 60px; height: 200px }",
+            320.0,
+        );
+        assert!(dump_frame(&tcy).contains(" combined"));
     }
 
     #[test]

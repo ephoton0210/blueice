@@ -52,6 +52,12 @@ pub enum TextOrient {
     Sideways,
     /// In a vertical line, each character upright, one below the other.
     Upright,
+    /// In a vertical line that runs up the page (`sideways-lr`), rotated a quarter turn
+    /// counter-clockwise: the baseline runs up the page and the top of the letters faces left.
+    SidewaysCcw,
+    /// In a vertical line, a few characters (`text-combine-upright`) set horizontally, side by
+    /// side, within the room of one upright character.
+    Combined,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -130,6 +136,9 @@ pub struct Fragment {
     /// For a text run in a vertical line: how its characters are turned. The fragment's box is
     /// physical (`height` is the run's length down the page).
     pub orient: TextOrient,
+    /// Text that a horizontal box nested in a vertical one laid out in the page's own frame and
+    /// handed back turned: it is turned again when the vertical box is, which restores it.
+    pub turned_back: bool,
 }
 
 impl Fragment {
@@ -153,6 +162,7 @@ impl Fragment {
             rtl: false,
             logical: 0,
             orient: TextOrient::Horizontal,
+            turned_back: false,
         }
     }
 }

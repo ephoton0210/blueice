@@ -139,6 +139,7 @@ const OTHER_INHERITED_PROPERTIES: &[&str] = &[
     "text-transform",
     "text-indent",
     "text-align-last",
+    "hanging-punctuation",
     "writing-mode",
     "text-orientation",
     "text-shadow",
@@ -875,6 +876,8 @@ bdi, output { unicode-bidi: isolate; }
 bdo { unicode-bidi: bidi-override; }
 bdo[dir] { unicode-bidi: isolate-override; }
 textarea[dir=auto], pre[dir=auto] { unicode-bidi: plaintext; }
+/* Form controls and their text always run horizontally. */
+button, input, select, textarea { writing-mode: horizontal-tb; }
 "#;
 
 pub fn ua_stylesheet() -> Vec<Rule> {

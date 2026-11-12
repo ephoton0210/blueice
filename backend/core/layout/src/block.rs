@@ -667,6 +667,10 @@ pub(crate) fn layout_block_level(
     c: &Constraint,
     forced: Forced,
 ) -> Placed {
+    // A horizontal box in a vertical one is laid out in the page's own frame and turned in.
+    if ctx.writing.get().is_vertical() && !ctx.style(node).writing_mode().is_vertical() {
+        return crate::vertical::layout_orthogonal(ctx, node, c, forced);
+    }
     let incoming = std::mem::take(&mut *ctx.floats.borrow_mut());
     let key = LayoutKey {
         node,
@@ -1326,6 +1330,7 @@ pub(crate) fn layout_block(
         floats: Default::default(),
         pseudo: crate::ctx::generated_nodes(doc, styles),
         writing: Default::default(),
+        orth_room: std::cell::Cell::new(available_width),
     };
     let c = Constraint {
         cb_width: available_width,
@@ -1361,6 +1366,7 @@ pub(crate) fn layout_root_with(
         floats: Default::default(),
         pseudo: crate::ctx::generated_nodes(doc, styles),
         writing: Default::default(),
+        orth_room: std::cell::Cell::new(viewport_width),
     };
     let c = Constraint {
         cb_width: viewport_width,

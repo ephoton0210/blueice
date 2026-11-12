@@ -37,6 +37,19 @@ pub(crate) struct Ctx<'a> {
     /// layout runs in a turned frame (inline axis across the page's height), and style reads
     /// name the sides that frame sees: see [`Writing`].
     pub writing: std::cell::Cell<Writing>,
+    /// How wide, across the page, a horizontal box nested in a vertical one may be when it sets
+    /// no width: the content width of the vertical box around it.
+    pub orth_room: std::cell::Cell<f64>,
+}
+
+/// `text-combine-upright`: which runs of characters in a vertical line are set side by side in
+/// the room of one upright character.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Combine {
+    /// All the characters of the box.
+    All,
+    /// Runs of up to this many ASCII digits.
+    Digits(u32),
 }
 
 /// A writing mode as layout flows it.
@@ -48,6 +61,9 @@ pub(crate) enum Writing {
     VerticalRl,
     /// Lines run down the page and stack from the left.
     VerticalLr,
+    /// Lines run up the page, their letters turned a quarter counter-clockwise, and stack from
+    /// the left.
+    SidewaysLr,
 }
 
 impl Writing {
@@ -64,10 +80,11 @@ impl Writing {
             return None;
         }
         let rl = self == Writing::VerticalRl;
+        let up = self == Writing::SidewaysLr;
         let side = |s: &str| -> &'static str {
             match s {
-            "left" => "top",
-            "right" => "bottom",
+            "left" => if up { "bottom" } else { "top" },
+            "right" => if up { "top" } else { "bottom" },
             "top" => {
                 if rl {
                     "right"
@@ -352,12 +369,50 @@ impl<'a> Style<'a> {
         }
     }
 
+    /// This box's `text-combine-upright`, where it means anything: in a vertical line.
+    pub fn combine_upright(&self) -> Option<Combine> {
+        if !self.ctx.writing.get().is_vertical() {
+            return None;
+        }
+        match self.raw("text-combine-upright")? {
+            Value::Keyword(k) if k == "all" => Some(Combine::All),
+            Value::Keyword(k) if k == "digits" => Some(Combine::Digits(2)),
+            Value::Unparsed(tokens) => {
+                let mut words = tokens.iter().filter(|t| !matches!(t, blueice_css::Token::Whitespace));
+                match (words.next(), words.next()) {
+                    (Some(blueice_css::Token::Ident(w)), n) if w.eq_ignore_ascii_case("digits") => {
+                        let n = match n {
+                            Some(blueice_css::Token::Number(n)) if (2.0..=4.0).contains(n) => *n as u32,
+                            None => 2,
+                            _ => return None,
+                        };
+                        Some(Combine::Digits(n))
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    /// Whether `hanging-punctuation` lets a stop or comma hang past the end of a line.
+    pub fn hangs_at_end(&self) -> bool {
+        match self.raw("hanging-punctuation") {
+            Some(Value::Keyword(k)) => matches!(k.as_str(), "allow-end" | "force-end"),
+            Some(Value::Unparsed(tokens)) => tokens.iter().any(|t| {
+                matches!(t, blueice_css::Token::Ident(w) if matches!(w.as_str(), "allow-end" | "force-end"))
+            }),
+            _ => false,
+        }
+    }
+
     /// This box's `writing-mode`, as layout flows it.
     pub fn writing_mode(&self) -> Writing {
         match self.style.and_then(|s| s.other.get("writing-mode")) {
             Some(Value::Keyword(k)) => match k.as_str() {
                 "vertical-rl" | "sideways-rl" => Writing::VerticalRl,
-                "vertical-lr" | "sideways-lr" => Writing::VerticalLr,
+                "vertical-lr" => Writing::VerticalLr,
+                "sideways-lr" => Writing::SidewaysLr,
                 _ => Writing::Horizontal,
             },
             _ => Writing::Horizontal,

@@ -195,6 +195,7 @@ impl Index {
                         // earlier one.
                         let leftward = previous.rtl && fragment.rtl && !boundary;
                         let down = previous.vertical
+                            && !previous.rtl
                             && fragment.orient != blueice_layout::TextOrient::Horizontal
                             && !boundary
                             && (previous.bounds.x - x).abs() < 0.01;
@@ -231,7 +232,9 @@ impl Index {
                     boundary = false;
                     let vertical = fragment.orient != blueice_layout::TextOrient::Horizontal;
                     let mut pen = if fragment.rtl { x + fragment.width } else { x };
-                    let mut pen_y = y;
+                    // Text that runs up the page starts at the bottom of its box.
+                    let upward = fragment.orient == blueice_layout::TextOrient::SidewaysCcw;
+                    let mut pen_y = if upward { y + fragment.height } else { y };
                     for cluster in text.graphemes(true) {
                         let width = blueice_font::measure_text_width(
                             cluster,
@@ -245,6 +248,9 @@ impl Index {
                         // A vertical run's characters run down its column; their advance is
                         // their length along it.
                         let bounds = if vertical {
+                            if upward {
+                                pen_y -= width;
+                            }
                             Bounds {
                                 x,
                                 y: pen_y,
@@ -259,9 +265,12 @@ impl Index {
                                 height: fragment.height,
                             }
                         };
-                        index.append(cluster, Some(node), line, bounds, (fragment.rtl, vertical));
+                        // For a vertical span, `rtl` says its start is the bottom.
+                        index.append(cluster, Some(node), line, bounds, (fragment.rtl || upward, vertical));
                         if vertical {
-                            pen_y += width;
+                            if !upward {
+                                pen_y += width;
+                            }
                         } else if !fragment.rtl {
                             pen += width;
                         }
@@ -361,7 +370,7 @@ impl Index {
         if span.vertical {
             // A caret in a vertical line is a bar across the column.
             return Some(Bounds {
-                y: if at_end { span.bounds.y + span.bounds.height } else { span.bounds.y },
+                y: if at_end != span.rtl { span.bounds.y + span.bounds.height } else { span.bounds.y },
                 height: 1.0,
                 ..span.bounds
             });
@@ -388,10 +397,17 @@ impl Index {
                 if span.vertical
                     && (last.x - span.bounds.x).abs() < 0.01
                     && (last.width - span.bounds.width).abs() < 0.01
-                    && (span.bounds.y - last.y - last.height).abs() < 0.01
                 {
-                    last.height += span.bounds.height;
-                    continue;
+                    if (span.bounds.y - last.y - last.height).abs() < 0.01 {
+                        last.height += span.bounds.height;
+                        continue;
+                    }
+                    // Text running up adds each character above the last.
+                    if span.rtl && (span.bounds.y + span.bounds.height - last.y).abs() < 0.01 {
+                        last.y = span.bounds.y;
+                        last.height += span.bounds.height;
+                        continue;
+                    }
                 }
                 if (last.y - span.bounds.y).abs() < 0.01
                     && (last.height - span.bounds.height).abs() < 0.01
@@ -425,10 +441,12 @@ impl Index {
             if span.vertical {
                 // Nearest column first, then nearest edge down it.
                 let dx = (x - span.bounds.x - span.bounds.width / 2.0).abs();
-                for (offset, cy) in [
-                    (span.start, span.bounds.y),
-                    (span.end, span.bounds.y + span.bounds.height),
-                ] {
+                let (top, bottom) = (span.bounds.y, span.bounds.y + span.bounds.height);
+                for (offset, cy) in if span.rtl {
+                    [(span.start, bottom), (span.end, top)]
+                } else {
+                    [(span.start, top), (span.end, bottom)]
+                } {
                     let d = (dx, (y - cy).abs());
                     if d.0
                         .total_cmp(&distance.0)

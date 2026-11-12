@@ -30,6 +30,8 @@ enum Piece {
         /// without a space (CJK text).
         can_break_before: bool,
         wrap: bool,
+        /// How much of its width (a stop or comma at its end) may hang past the end of a line.
+        hang: f64,
     },
     Space {
         width: f64,
@@ -98,6 +100,19 @@ fn is_cjk(c: char) -> bool {
         | 0x20000..=0x2FA1F)
 }
 
+/// Stops and commas, which `hanging-punctuation` lets hang past the end of a line.
+fn hangs_at_line_end(c: char) -> bool {
+    matches!(c, '，' | '。' | '、' | '．' | ',' | '.' | '､' | '｡')
+}
+
+/// Opening punctuation that must not end a line.
+fn no_line_end(c: char) -> bool {
+    matches!(
+        c,
+        '（' | '「' | '『' | '《' | '〈' | '【' | '〔' | '［' | '｛' | '“' | '‘' | '〝' | '(' | '['
+    )
+}
+
 /// Punctuation that must not start a line.
 fn no_line_start(c: char) -> bool {
     matches!(
@@ -151,6 +166,10 @@ struct TextProps {
     face: Option<blueice_font::web::WebFontId>,
     letter_spacing: f64,
     word_spacing: f64,
+    /// In a vertical line, which characters are set side by side in one em.
+    combine: Option<crate::ctx::Combine>,
+    /// A stop or comma may hang past the end of a line.
+    hangs: bool,
 }
 
 impl TextProps {
@@ -162,12 +181,33 @@ impl TextProps {
             face: style.web_face(),
             letter_spacing: style.px("letter-spacing", f64::NAN).unwrap_or(0.0),
             word_spacing: style.px("word-spacing", f64::NAN).unwrap_or(0.0),
+            combine: style.combine_upright(),
+            hangs: style.hangs_at_end(),
         }
     }
 
     fn width(&self, text: &str) -> f64 {
-        blueice_font::measure_text_width_in(text, self.font_size, self.bold, self.italic, self.face)
-            + self.letter_spacing * text.chars().count() as f64
+        let plain = |t: &str| {
+            blueice_font::measure_text_width_in(t, self.font_size, self.bold, self.italic, self.face)
+                + self.letter_spacing * t.chars().count() as f64
+        };
+        match self.combine {
+            // Combined characters take one em along the line between them.
+            Some(rule) => crate::vertical::combine_runs(text, rule)
+                .iter()
+                .map(|(run, combined)| if *combined { self.font_size } else { plain(run) })
+                .sum(),
+            None => plain(text),
+        }
+    }
+
+    /// How far the last character of `word` hangs past the end of a line, if it is a stop or
+    /// comma and hanging is allowed.
+    fn hang(&self, word: &str) -> f64 {
+        match word.chars().last() {
+            Some(c) if self.hangs && hangs_at_line_end(c) => self.width(&c.to_string()),
+            _ => 0.0,
+        }
     }
 
     fn space(&self) -> f64 {
@@ -198,12 +238,14 @@ fn push_text(
     let flush = |word: &mut String, pieces: &mut Vec<Piece>, can_break: bool| {
         if !word.is_empty() {
             let width = props.width(word);
+            let hang = props.hang(word);
             pieces.push(Piece::Word {
                 text: std::mem::take(word),
                 width,
                 style_node,
                 can_break_before: can_break,
                 wrap,
+                hang,
             });
         }
     };
@@ -244,7 +286,11 @@ fn push_text(
             state.last_space = false;
             let cjk = is_cjk(c);
             // Break between CJK characters (not before closing punctuation).
-            let boundary = wrap && (cjk || previous_cjk) && !word.is_empty() && !no_line_start(c);
+            let boundary = wrap
+                && (cjk || previous_cjk)
+                && !word.is_empty()
+                && !no_line_start(c)
+                && !word.chars().last().is_some_and(no_line_end);
             if boundary || (cjk && !word.is_empty()) {
                 flush(&mut word, pieces, break_before_next_word);
                 break_before_next_word = boundary;
@@ -256,8 +302,25 @@ fn push_text(
     flush(&mut word, pieces, break_before_next_word);
 }
 
-/// Intrinsic size of a replaced element, from CSS then attributes.
+/// Intrinsic size of a replaced element, from CSS then attributes: width and height as the
+/// layout frame sees them, so a picture on a vertical line has its sides traded.
 pub(crate) fn replaced_size(
+    ctx: &Ctx<'_>,
+    node: NodeId,
+    style: &Style<'_>,
+    cb_width: f64,
+) -> Option<(f64, f64)> {
+    if !ctx.writing.get().is_vertical() {
+        return replaced_page_size(ctx, node, style, cb_width);
+    }
+    let turned = ctx.writing.replace(crate::ctx::Writing::Horizontal);
+    let size = replaced_page_size(ctx, node, style, cb_width);
+    ctx.writing.set(turned);
+    size.map(|(w, h)| (h, w))
+}
+
+/// [`replaced_size`] in the page's own frame.
+fn replaced_page_size(
     ctx: &Ctx<'_>,
     node: NodeId,
     style: &Style<'_>,
@@ -380,6 +443,34 @@ fn atomic_for(ctx: &Ctx<'_>, node: NodeId, cb_width: f64) -> Atomic {
         };
         fragment.positioned = style.position() != crate::ctx::Position::Static;
         fragment.hidden = !style.is_visible();
+    } else if ctx.writing.get().is_vertical() && !style.writing_mode().is_vertical() {
+        // A horizontal box on a vertical line: its width is the width it has across the page, so
+        // it is worked out in the page's own frame and handed over as the height of the turned
+        // frame, which is how `layout_orthogonal` takes it.
+        let turned = ctx.writing.replace(crate::ctx::Writing::Horizontal);
+        let (page_padding, page_border) = (style.padding(cb_width), style.border(cb_width));
+        let page_pb_h = page_padding.horizontal() + page_border.horizontal();
+        let room = ctx.orth_room.get();
+        let specified = style
+            .px("width", room)
+            .map(|w| if style.is_border_box() { w } else { w + page_pb_h });
+        let width = specified.unwrap_or_else(|| {
+            let (min_content, max_content) = crate::intrinsic::preferred_widths(ctx, node);
+            max_content.min(room.max(min_content))
+        });
+        ctx.writing.set(turned);
+        let placed = layout_block_level(
+            ctx,
+            node,
+            &constraint,
+            Forced {
+                width: None,
+                height: Some(width),
+            },
+        );
+        pending = placed.pending_abs;
+        line_baseline = last_baseline(&placed.fragment);
+        fragment = placed.fragment;
     } else {
         let specified =
             style
@@ -853,7 +944,12 @@ fn break_lines(
         let first = lines.is_empty();
         let limit = line.avail - if first { first_indent } else { 0.0 };
         let has_content = !line.items.is_empty();
-        let fits = !has_content || line.width + chunk.lead + chunk.width <= limit + 0.01;
+        // A stop or comma at the end of the chunk may hang past the end of the line.
+        let hang = match chunk.items.last().map(|i| &pieces[*i]) {
+            Some(Piece::Word { hang, .. }) => *hang,
+            _ => 0.0,
+        };
+        let fits = !has_content || line.width + chunk.lead + chunk.width - hang <= limit + 0.01;
         if !fits {
             y_est += est_height;
             let next = Line::new(room(y_est), None);
@@ -955,6 +1051,7 @@ fn resolve_bidi(ctx: &Ctx<'_>, pieces: Vec<Piece>, base: Base) -> (Vec<Piece>, V
             can_break_before,
             wrap,
             width,
+            hang,
         } = piece
         else {
             levels.push(byte_levels.get(start).copied().unwrap_or(paragraph));
@@ -980,6 +1077,7 @@ fn resolve_bidi(ctx: &Ctx<'_>, pieces: Vec<Piece>, base: Base) -> (Vec<Piece>, V
                 style_node,
                 can_break_before,
                 wrap,
+                hang,
             });
             continue;
         }
@@ -994,6 +1092,7 @@ fn resolve_bidi(ctx: &Ctx<'_>, pieces: Vec<Piece>, base: Base) -> (Vec<Piece>, V
                 style_node,
                 can_break_before: can_break_before && k == 0,
                 wrap,
+                hang: if k + 2 == cuts.len() { props.hang(part) } else { 0.0 },
             });
         }
     }
@@ -1621,6 +1720,63 @@ mod tests {
         let r = runs(only_line(&f));
         assert_eq!(r.iter().map(|r| r.0.as_str()).collect::<Vec<_>>(), ["def", "abc"]);
         assert!(r.iter().all(|r| r.2), "overridden Latin is drawn reversed too");
+    }
+
+    fn run_texts(f: &Fragment) -> Vec<Vec<String>> {
+        f.children[0]
+            .children
+            .iter()
+            .map(|line| line.children.iter().filter_map(|c| match &c.kind {
+                FragmentKind::Text(t) => Some(t.clone()),
+                _ => None,
+            }).collect())
+            .collect()
+    }
+
+    #[test]
+    fn an_opening_bracket_is_not_left_at_the_end_of_a_line() {
+        // 3em wide: "あいう（" would put the bracket last; it goes to the next line with え
+        let f = body("<p>\u{3042}\u{3044}\u{3046}\u{ff08}\u{3048}</p>", "p { width: 48px }", 400.0);
+        let lines = run_texts(&f);
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert_eq!(lines[0].concat(), "\u{3042}\u{3044}\u{3046}");
+        assert_eq!(lines[1].concat(), "\u{ff08}\u{3048}");
+    }
+
+    #[test]
+    fn a_dash_or_ellipsis_pair_is_never_split() {
+        let f = body("<p>\u{3042}\u{3044}\u{2014}\u{2014}\u{3046}</p>", "p { width: 48px }", 400.0);
+        let lines = run_texts(&f);
+        assert!(
+            lines.iter().all(|l| {
+                let s = l.concat();
+                s.matches('\u{2014}').count() != 1
+            }),
+            "the two dashes stay together: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn a_stop_may_hang_past_the_end_of_a_line() {
+        let text = "<p>\u{3042}\u{3044}\u{3046}\u{3048}\u{3002}</p>";
+        // 4em of text and a stop in a 4em line: without hanging the stop pulls え down with it
+        let plain = body(text, "p { width: 64px }", 400.0);
+        assert_eq!(run_texts(&plain).len(), 2, "{:?}", run_texts(&plain));
+        let hanging = body(text, "p { width: 64px; hanging-punctuation: allow-end }", 400.0);
+        let lines = run_texts(&hanging);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert_eq!(lines[0].concat(), "\u{3042}\u{3044}\u{3046}\u{3048}\u{3002}");
+        let line = &hanging.children[0].children[0];
+        let last = line.children.last().unwrap();
+        assert!(last.x + last.width > 64.0 + 1.0, "the stop is outside the 64px line");
+    }
+
+    #[test]
+    fn hanging_does_not_apply_to_letters_or_without_the_property() {
+        let f = body("<p>aaaa bbbb.</p>", "p { width: 40px; hanging-punctuation: allow-end }", 400.0);
+        assert!(run_texts(&f).len() >= 2);
+        let f = body("<p>\u{3042}\u{3044}\u{3046}\u{3048}\u{3002}</p>", "p { width: 64px; hanging-punctuation: none }", 400.0);
+        assert_eq!(run_texts(&f).len(), 2);
     }
 
     #[test]
