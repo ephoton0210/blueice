@@ -1480,6 +1480,20 @@ impl Page {
     fn render_band(&self, band: Option<(f64, f64)>) -> Frame {
         let mut frame =
             blueice_paint::paint_band_with_images(&self.fragment, &self.styles, &self.images, band);
+        // The root's (or body's) background belongs to the whole canvas, not only to a root box
+        // as tall as the content: paint it first, over the viewport and the content alike.
+        if let Some(color) = blueice_paint::canvas_background(&self.fragment, &self.styles) {
+            let width = frame.width.max(self.viewport_width);
+            let top = band.map_or(0.0, |(top, _)| top.min(0.0));
+            let bottom = frame.height.max(self.scroll_y + self.viewport_height);
+            frame.commands.insert(
+                0,
+                blueice_paint::PaintCommand::Rect {
+                    rect: blueice_paint::Rect { x: 0.0, y: top, width, height: bottom - top },
+                    color,
+                },
+            );
+        }
         self.paint_native_editor(&mut frame);
         self.paint_document_selection(&mut frame);
         self.paint_native_focus(&mut frame);

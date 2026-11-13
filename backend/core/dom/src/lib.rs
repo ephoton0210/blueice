@@ -99,6 +99,8 @@ pub struct Document {
     // Counts every change made to this copy of the document, so a holder of another
     // copy can tell whether this one has moved on since it was copied.
     revision: u64,
+    // Parsed without a doctype (or with a legacy one): CSS and layout keep their historical quirks.
+    quirks: bool,
 }
 
 /// A node's data as it was before it was first touched in a journal period.
@@ -224,6 +226,15 @@ impl Document {
         let root = doc.create_node(NodeData::Document);
         doc.root = Some(root);
         doc
+    }
+
+    /// Whether the document is in quirks mode.
+    pub fn quirks_mode(&self) -> bool {
+        self.quirks
+    }
+
+    pub fn set_quirks_mode(&mut self, quirks: bool) {
+        self.quirks = quirks;
     }
 
     /// How many changes this copy of the document has had. Two copies of one

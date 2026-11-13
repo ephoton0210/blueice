@@ -260,6 +260,7 @@ pub fn parse(input: &str) -> Document {
 pub fn parse_continuing_from(input: &str, next_id: u64) -> Document {
     let mut tb = TreeBuilder::new(input, next_id);
     tb.run();
+    tb.document.set_quirks_mode(tb.quirks_mode);
     tb.document
 }
 

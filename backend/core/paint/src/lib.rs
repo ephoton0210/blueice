@@ -1102,7 +1102,7 @@ fn paint_decorations(
             rect: Rect {
                 x,
                 y: top,
-                width: fragment.width,
+                width: fragment.width + fragment.deco_after,
                 height: thickness,
             },
             color: decoration_color,
@@ -1251,6 +1251,31 @@ fn paint_native_form(
     });
 }
 
+/// The colour the whole canvas is painted with: the root element's `background-color`, or, if it
+/// has none, the `<body>`'s (CSS Backgrounds 3, 2.11.2: the root's background covers the canvas,
+/// not just the root box, which is only as tall as the content). `None` leaves the canvas as the
+/// host's own default.
+pub fn canvas_background(
+    fragment: &Fragment,
+    styles: &HashMap<NodeId, ComputedStyle>,
+) -> Option<Color> {
+    fn first_with_node(f: &Fragment) -> Option<&Fragment> {
+        if f.node.is_some() {
+            return Some(f);
+        }
+        f.children.iter().find_map(first_with_node)
+    }
+    let colour_of = |f: &Fragment| {
+        let style = styles.get(&f.node?)?;
+        let value = style.other.get("background-color")?;
+        as_color(value, style.color).filter(|c| !matches!(c, Color::Rgba(_, _, _, 0)))
+    };
+    // The first fragment with an element behind it is the root element; its first such child is
+    // the body.
+    let root = first_with_node(fragment)?;
+    colour_of(root).or_else(|| root.children.iter().find(|c| c.node.is_some()).and_then(colour_of))
+}
+
 /// Builds the paint command list for `fragment` (as produced by
 /// `blueice_layout::layout`), looking up each fragment's colors/fonts
 /// from `styles` (the same computed-style map layout was built from).
@@ -1393,6 +1418,34 @@ mod tests {
         let moved = rect_of("transform: translate(-50%, 10px)");
         assert_eq!((moved.x - at.x, moved.y - at.y), (-20.0, 10.0));
         assert_eq!((moved.width, moved.height), (at.width, at.height));
+    }
+
+    fn canvas(html: &str, css: &str) -> Option<Color> {
+        let doc = blueice_html::parse(html);
+        let ua = ua_stylesheet();
+        let author = blueice_css::parse(css).rules;
+        let sheets: Vec<(Origin, &[blueice_css::Rule])> =
+            vec![(Origin::Ua, &ua), (Origin::Author, &author)];
+        let styles = cascade(&doc, &sheets);
+        let fragment = blueice_layout::layout(
+            &doc,
+            doc.root(),
+            &styles,
+            Constraints { available_width: 320.0, viewport_height: 720.0 },
+        );
+        canvas_background(&fragment, &styles)
+    }
+
+    #[test]
+    fn the_canvas_takes_the_roots_background_or_else_the_bodys() {
+        let red = Some(Color::Rgba(255, 0, 0, 255));
+        assert_eq!(canvas("<p>x</p>", "html { background: red }"), red);
+        assert_eq!(canvas("<p>x</p>", "body { background-color: red }"), red);
+        // the root's wins over the body's
+        let blue = Some(Color::Rgba(0, 0, 255, 255));
+        assert_eq!(canvas("<p>x</p>", "html { background: blue } body { background: red }"), blue);
+        assert_eq!(canvas("<p>x</p>", "p { background: red }"), None);
+        assert_eq!(canvas("<p>x</p>", ""), None);
     }
 
     #[test]
@@ -2154,6 +2207,26 @@ mod tests {
             })
             .collect();
         assert_eq!(order, vec!["back", "flow", "lo", "hi"]);
+    }
+
+    #[test]
+    fn an_underline_runs_across_the_spaces_between_words() {
+        let f = paint_html("<p class=u>one two three</p>", ".u { text-decoration: underline; }", 400.0);
+        let mut strokes: Vec<Rect> = rects(&f).into_iter().map(|r| r.0).collect();
+        strokes.sort_by(|a, b| a.x.total_cmp(&b.x));
+        // joined end to end, with no gap
+        for pair in strokes.windows(2) {
+            assert!(
+                (pair[0].x + pair[0].width - pair[1].x).abs() < 0.01,
+                "a gap between {:?} and {:?}",
+                pair[0],
+                pair[1]
+            );
+        }
+        // from the start of the first word to the end of the last, and no further
+        let whole = blueice_font::measure_text_width("one two three", 16.0, false, false);
+        let covered = strokes.last().unwrap().x + strokes.last().unwrap().width - strokes[0].x;
+        assert!((covered - whole).abs() < 0.5, "{covered} vs {whole}");
     }
 
     #[test]

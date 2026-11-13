@@ -243,7 +243,14 @@ pub fn cascade_with_viewport(
     viewport_width: f64,
     viewport_height: f64,
 ) -> HashMap<NodeId, ComputedStyle> {
-    let index = RuleIndex::build(stylesheets);
+    // Quirks mode adds the UA rules that old pages were written against.
+    let quirks = doc.quirks_mode().then(|| parse(QUIRKS_STYLESHEET_SOURCE));
+    let mut with_quirks: Vec<(Origin, &[Rule])> = stylesheets.to_vec();
+    if let Some(quirks) = &quirks {
+        let at = with_quirks.iter().rposition(|(o, _)| *o == Origin::Ua).map_or(0, |i| i + 1);
+        with_quirks.insert(at, (Origin::Ua, quirks));
+    }
+    let index = RuleIndex::build(&with_quirks);
     let mut styles = HashMap::new();
     let environment = Environment {
         viewport_width,
@@ -678,7 +685,8 @@ fn compute_style_for(
                     None
                 }
             })
-            .or_else(|| fallback.clone())
+            // `initial` returns the property to its initial value, not to the parent's.
+            .or_else(|| (!reset.contains(property)).then(|| fallback.clone()).flatten())
     };
     style.font_family = inherited_keyword("font-family", &parent.font_family);
     style.font_style = inherited_keyword("font-style", &parent.font_style);
@@ -889,6 +897,11 @@ textarea[dir=auto], pre[dir=auto] { unicode-bidi: plaintext; }
 /* Form controls and their text always run horizontally. */
 button, input, select, textarea { writing-mode: horizontal-tb; }
 "#;
+
+/// What a quirks-mode document adds to the UA stylesheet: a table does not inherit the text
+/// properties of what surrounds it (the "tables inherit" quirk), so a `<center>`/`text-align` on an
+/// ancestor does not reach its cells' text.
+const QUIRKS_STYLESHEET_SOURCE: &str = "table { text-align: initial; line-height: normal; white-space: normal; font-weight: normal; font-style: normal; font-variant: normal; }";
 
 pub fn ua_stylesheet() -> Vec<Rule> {
     parse(UA_STYLESHEET_SOURCE)
@@ -1391,6 +1404,22 @@ mod tests {
 
     /// Cascades `css` against `html` and returns the style of the first element
     /// with the given tag.
+    #[test]
+    fn a_table_in_quirks_mode_does_not_inherit_its_surroundings_text_properties() {
+        let page = "<center style='text-align: center; font-weight: bold; white-space: pre'><table><tr><td>x</td></tr></table></center>";
+        // without a doctype the quirk applies: the cell is start-aligned, normal weight
+        let quirky = style_of(page, "", "td");
+        assert_eq!(quirky.text_align.as_deref(), None);
+        assert!(!quirky.is_bold());
+        // with one it inherits as usual
+        let standard = style_of(&format!("<!doctype html>{page}"), "", "td");
+        assert_eq!(standard.text_align.as_deref(), Some("center"));
+        assert!(standard.is_bold());
+        // an author rule on the table still wins over the quirk
+        let authored = style_of(page, "table { text-align: right }", "td");
+        assert_eq!(authored.text_align.as_deref(), Some("right"));
+    }
+
     fn style_of(html: &str, css: &str, tag: &str) -> ComputedStyle {
         let doc = blueice_html::parse(html);
         let ua = ua_stylesheet();

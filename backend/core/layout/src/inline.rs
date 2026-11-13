@@ -1938,6 +1938,20 @@ pub(crate) fn layout_run_around(
             }
         }
         flush(&mut run_text, &mut children);
+        // A space between two words of the same element is part of its text: decorations
+        // (underline, line-through) run across it.
+        for k in 1..children.len() {
+            let (before, after) = children.split_at_mut(k);
+            let (a, b) = (&mut before[k - 1], &after[0]);
+            if matches!(a.kind, FragmentKind::Text(_))
+                && matches!(b.kind, FragmentKind::Text(_))
+                && a.node == b.node
+                && a.rtl == b.rtl
+                && b.x > a.x + a.width + 0.01
+            {
+                a.deco_after = b.x - (a.x + a.width);
+            }
+        }
         for (n, start, order) in &open {
             decorations.push((*order, *n, *start, x));
         }
@@ -2489,6 +2503,18 @@ mod tests {
         assert!((line_width(framed, "") - (3.0 * a + open_full + close_full)).abs() < 0.01);
         // trim-all trims them wherever they are
         assert!((line_width(framed, "p { text-spacing-trim: trim-all }") - (3.0 * a + open_half + close_half)).abs() < 0.01);
+    }
+
+    #[test]
+    fn a_block_level_picture_with_auto_side_margins_is_centred() {
+        let x_of = |css: &str| {
+            let f = body("<img width=44 height=44 alt=x>", &format!("img {{ display: block; {css} }}"), 400.0);
+            f.children.iter().find(|c| c.width == 44.0).map(|c| c.x).unwrap_or(f64::NAN)
+        };
+        assert!((x_of("margin: 0 auto") - 178.0).abs() < 0.01, "{}", x_of("margin: 0 auto"));
+        assert!((x_of("margin-left: auto") - 356.0).abs() < 0.01);
+        assert!((x_of("margin-right: auto") - 0.0).abs() < 0.01);
+        assert!((x_of("margin: 0 10px") - 10.0).abs() < 0.01);
     }
 
     #[test]

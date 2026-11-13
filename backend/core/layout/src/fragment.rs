@@ -145,6 +145,9 @@ pub struct Fragment {
     /// A text run drawn with the font's half-width alternates (`halt`, or `vhal` on a vertical
     /// line): fullwidth punctuation with its blank half trimmed (`text-spacing-trim`).
     pub trim: bool,
+    /// The blank between this text and the next text of the same element on its line (a space),
+    /// which text decorations run across.
+    pub deco_after: f64,
 }
 
 impl Fragment {
@@ -171,6 +174,7 @@ impl Fragment {
             turned_back: false,
             size_scale: 1.0,
             trim: false,
+            deco_after: 0.0,
         }
     }
 }

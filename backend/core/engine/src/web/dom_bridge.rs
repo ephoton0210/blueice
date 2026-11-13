@@ -993,11 +993,16 @@ impl DomState {
                 self.doc.insert_before(parent, kid, reference);
             }
         } else {
+            // Inserting a node before itself keeps it where it is: the reference becomes the
+            // node's next sibling (DOM "pre-insert"), read before the node is detached.
+            let reference = if reference == Some(child) {
+                self.doc.next_sibling(child)
+            } else {
+                reference
+            };
             if self.doc.parent(child).is_some() {
                 self.doc.detach(child);
             }
-            // Inserting a node before itself keeps it where it is.
-            let reference = reference.filter(|&r| r != child);
             self.doc.insert_before(parent, child, reference);
         }
         self.dirty = true;
@@ -1442,6 +1447,21 @@ mod tests {
         let err = s.call("insertBefore", &[n(div), n(other), n(other)]);
         assert!(err.is_err());
         assert!(s.call("tag", &[Reply::Number(9.0e9)]).is_err());
+    }
+
+    #[test]
+    fn inserting_a_node_before_itself_keeps_it_where_it_is() {
+        let mut s = state("<div><p id=a></p><p id=b></p><p id=c></p></div>");
+        let div = id_of(s.call("query", &[n(s.doc.root()), text("div")]).unwrap());
+        let a = id_of(s.call("query", &[n(s.doc.root()), text("#a")]).unwrap());
+        let b = id_of(s.call("query", &[n(s.doc.root()), text("#b")]).unwrap());
+        let order = |s: &DomState| -> Vec<NodeId> { s.doc.children(div).collect() };
+        let before = order(&s);
+        // `prepend(first)` asks for exactly this: the first child before the first child.
+        s.call("insertBefore", &[n(div), n(a), n(a)]).unwrap();
+        assert_eq!(order(&s), before);
+        s.call("insertBefore", &[n(div), n(b), n(b)]).unwrap();
+        assert_eq!(order(&s), before);
     }
 
     #[test]

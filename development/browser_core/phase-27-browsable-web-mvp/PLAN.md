@@ -1008,3 +1008,36 @@ rate, and the page position and every tracked node's position were identical in 
   Phase 17 clients of the same core.
 - Declaring site compatibility. Passing M5 means one fixture works, not that
   arbitrary sites do.
+
+## Render gaps found against Safari (2026-11-12)
+
+Safari could not be driven in this session (screen recording, `safaridriver` remote automation and
+"JavaScript from Apple Events" are all off), so these were found by reading each page's source and
+comparing BlueIce's render with what the standards and Safari do, not by a side-by-side. Pages:
+example.com, Hacker News, and small probe pages.
+
+Fixed, each with a test:
+- `insertBefore(node, node)` (what `prepend` does to a first child) moved the node to the end
+  instead of leaving it; example.com's language picker came out reversed.
+- The root (or, failing that, body) background painted only the content height; it now covers the
+  whole canvas (`blueice_paint::canvas_background`, drawn first in `Page::render_band`).
+- A block-level picture with `margin: auto` (`svg`/`img { display: block; margin: 0 auto }`) was not
+  centred: the forced width skipped the auto margins.
+- Underline/line-through stopped at every space; the gap between two words of one element is now
+  covered (`Fragment.deco_after`).
+- Quirks mode (no doctype) was parsed but never reached CSS. `Document::quirks_mode` now carries it
+  and the cascade adds the "tables inherit" quirk (a table does not inherit `text-align`, font
+  weight/style/variant, `line-height`, `white-space`), which is why every cell of Hacker News was
+  centred under its `<center>`. Fixing it exposed that `initial` on a keyword property such as
+  `text-align` fell back to the parent's value; `initial` now resets it. A snapshot decoded for the
+  script process drops the flag (the script side does not style).
+
+Open, not fixed:
+- Hacker News's logo and vote arrows were not shown in the offline `render_html` check (it fetches no
+  images); not yet checked in a live page, so it is unknown whether images are really missing.
+- An inline link's AI-representation bounds cover only its first word.
+- `system-ui`, Verdana and similar fall back to DejaVu Sans, so line breaks and widths differ from
+  Safari's system font.
+- `get_console_messages` answered "Page console is unavailable" on a local test page.
+- Quirks mode is only "no doctype"; the legacy-doctype table, the quirks line-height and body-height
+  rules, and image-baseline quirks are not implemented.

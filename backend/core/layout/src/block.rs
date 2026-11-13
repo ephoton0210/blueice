@@ -718,7 +718,26 @@ fn layout_block_level_uncached(
                 width: Some(w + pb_h),
                 height: forced.height.or(Some(h + pb_v)),
             };
-            return layout_block_level_uncached(ctx, node, c, sized, incoming);
+            let mut placed = layout_block_level_uncached(ctx, node, c, sized, incoming);
+            // The forced width skipped the auto side margins below: a block-level picture
+            // with `margin: 0 auto` is centred, with one auto margin it is pushed to the other side.
+            let (auto_left, auto_right) = (style.is_auto("margin-left"), style.is_auto("margin-right"));
+            if auto_left || auto_right {
+                let fixed_left = if auto_left { 0.0 } else { style.side("margin-left", cbw) };
+                let fixed_right = if auto_right { 0.0 } else { style.side("margin-right", cbw) };
+                let free = (cbw - placed.fragment.width - fixed_left - fixed_right).max(0.0);
+                placed.margin_left = fixed_left;
+                placed.margin_right = fixed_right;
+                match (auto_left, auto_right) {
+                    (true, true) => {
+                        placed.margin_left += free / 2.0;
+                        placed.margin_right += free - free / 2.0;
+                    }
+                    (true, false) => placed.margin_left += free,
+                    _ => placed.margin_right += free,
+                }
+            }
+            return placed;
         }
     }
     let border_box = style.is_border_box();

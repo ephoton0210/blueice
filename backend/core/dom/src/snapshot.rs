@@ -215,6 +215,7 @@ impl Document {
             file_names,
             journal: Default::default(),
             revision: 0,
+            quirks: false,
         })
     }
 }

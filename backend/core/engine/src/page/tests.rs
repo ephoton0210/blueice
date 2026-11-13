@@ -1494,3 +1494,23 @@ fn bisect_a_saved_pages_width() {
         }
     }
 }
+
+#[test]
+fn the_root_background_paints_the_whole_viewport_not_only_the_content() {
+    let at = |html: &str| {
+        let mut page = Page::new(320.0, 200.0);
+        page.load_html_str(html, None);
+        let pixels = page.render_visible();
+        (pixels.get_pixel(5, 5), pixels.get_pixel(160, 195), pixels.get_pixel(315, 100))
+    };
+    let red = [255, 0, 0, 255];
+    // short content on a root background: the rest of the window carries it too
+    let (top, bottom, right) = at("<style>html{background:red}</style><p>short</p>");
+    assert_eq!((top, bottom, right), (red, red, red));
+    // a body background with no root one propagates to the canvas, margins included
+    let (top, bottom, right) = at("<style>body{background:red}</style><p>short</p>");
+    assert_eq!((top, bottom, right), (red, red, red));
+    // no background anywhere leaves the default
+    let (_, bottom, _) = at("<p>short</p>");
+    assert_eq!(bottom, [255, 255, 255, 255]);
+}
