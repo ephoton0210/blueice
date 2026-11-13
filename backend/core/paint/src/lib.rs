@@ -823,7 +823,11 @@ fn paint_fragment(
                     });
                 }
                 if let Some(Value::Unparsed(tokens)) = style.other.get("background-image") {
-                    if let Some(mut gradient) = blueice_css::parse_gradient(tokens) {
+                    // The first layer that is a gradient (the others may be pictures).
+                    if let Some(mut gradient) = blueice_css::background_layers(tokens)
+                        .into_iter()
+                        .find_map(blueice_css::parse_gradient)
+                    {
                         for stop in &mut gradient.stops {
                             let color = if stop.color == Color::CurrentColor {
                                 style.color
@@ -1446,6 +1450,18 @@ mod tests {
         assert_eq!(canvas("<p>x</p>", "html { background: blue } body { background: red }"), blue);
         assert_eq!(canvas("<p>x</p>", "p { background: red }"), None);
         assert_eq!(canvas("<p>x</p>", ""), None);
+    }
+
+    #[test]
+    fn a_gradient_in_a_multi_layer_background_is_painted_whichever_layer_it_is() {
+        let gradients = |rule: &str| {
+            let f = paint_html("<div></div>", &format!("div {{ width: 40px; height: 20px; {rule} }}"), 320.0);
+            f.commands.iter().filter(|c| matches!(c, PaintCommand::Gradient { .. })).count()
+        };
+        assert_eq!(gradients("background-image: linear-gradient(red, blue)"), 1);
+        assert_eq!(gradients("background-image: url(x.png), linear-gradient(red, blue)"), 1);
+        assert_eq!(gradients("background: url(x.png), linear-gradient(red, blue) no-repeat"), 1);
+        assert_eq!(gradients("background-image: url(x.png)"), 0);
     }
 
     #[test]

@@ -6,6 +6,32 @@
 
 use crate::tokenizer::Token;
 
+/// The layers of a comma-separated `background-image` value, each trimmed of whitespace.
+/// Commas inside a function (`linear-gradient(red, blue)`) do not separate layers.
+pub fn background_layers(tokens: &[Token]) -> Vec<&[Token]> {
+    let mut layers = Vec::new();
+    let (mut depth, mut start) = (0usize, 0usize);
+    fn trim(layer: &[Token]) -> &[Token] {
+        let from = layer.iter().position(|t| *t != Token::Whitespace).unwrap_or(layer.len());
+        let to = layer.iter().rposition(|t| *t != Token::Whitespace).map_or(from, |i| i + 1);
+        &layer[from..to]
+    }
+    for (i, token) in tokens.iter().enumerate() {
+        match token {
+            Token::LeftParen => depth += 1,
+            Token::RightParen => depth = depth.saturating_sub(1),
+            Token::Comma if depth == 0 => {
+                layers.push(trim(&tokens[start..i]));
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    layers.push(trim(&tokens[start..]));
+    layers.retain(|l| !l.is_empty());
+    layers
+}
+
 /// The address inside a `url(...)` value (`url(x)`, `url("x")`), if `tokens`
 /// are exactly that.
 pub fn url_of(tokens: &[Token]) -> Option<String> {

@@ -65,8 +65,12 @@ impl Page {
                     .get(&node)
                     .and_then(|s| s.other.get("background-image"))
                 {
-                    if let Some(loaded) =
-                        blueice_css::url_of(tokens).and_then(|u| self.linked_images.get(u.trim()))
+                    // Of a comma-separated list of layers, the first picture that loaded.
+                    if let Some(loaded) = blueice_css::background_layers(tokens)
+                        .into_iter()
+                        .find_map(|layer| {
+                            blueice_css::url_of(layer).and_then(|u| self.linked_images.get(u.trim()))
+                        })
                     {
                         images.background.insert(node, loaded.image.clone());
                     }
@@ -283,6 +287,27 @@ mod tests {
         let rects = image_commands(&page);
         assert_eq!(rects.len(), 1);
         assert_eq!((rects[0].2, rects[0].3), (10.0, 6.0));
+    }
+
+    #[test]
+    fn a_picture_in_a_multi_layer_background_still_finds_its_picture() {
+        // `background: url(x), linear-gradient(...)` is how pages (Hacker News's vote arrows)
+        // give a picture a fallback: the picture is one layer of a comma-separated list.
+        for rule in [
+            "background: url(bg.svg), linear-gradient(transparent, transparent) no-repeat",
+            "background-image: url(\"bg.svg\"), linear-gradient(transparent, transparent); background-repeat: no-repeat",
+            "background: linear-gradient(transparent, transparent), url(bg.svg) no-repeat",
+            "background: url(missing.png), url(bg.svg) no-repeat",
+        ] {
+            let mut page = Page::new(400.0, 300.0);
+            page.pending_linked_images
+                .insert("bg.svg".to_string(), loaded(RED_SVG));
+            page.load_html_str(
+                &format!("<style>div{{width:30px;height:12px;{rule}}}</style><body style='margin:0'><div></div></body>"),
+                None,
+            );
+            assert_eq!(image_commands(&page).len(), 1, "{rule}");
+        }
     }
 
     #[test]

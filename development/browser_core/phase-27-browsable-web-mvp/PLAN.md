@@ -1025,6 +1025,9 @@ Fixed, each with a test:
   centred: the forced width skipped the auto margins.
 - An inline element's bounds (AI representation, focus ring, scroll-into-view) covered only its first
   word; `find_fragment_bounds` now returns the union of all its fragments, like `getBoundingClientRect`.
+- A multi-layer background (`background: url(x), linear-gradient(...)`, Hacker News's vote arrows)
+  drew nothing: `url_of` wanted the whole value to be one url and the shorthand kept only its first
+  layer. Layers are now split at top-level commas (`blueice_css::background_layers`).
 - Underline/line-through stopped at every space; the gap between two words of one element is now
   covered (`Fragment.deco_after`).
 - Quirks mode (no doctype) was parsed but never reached CSS. `Document::quirks_mode` now carries it
@@ -1035,8 +1038,10 @@ Fixed, each with a test:
   script process drops the flag (the script side does not style).
 
 Open, not fixed:
-- Hacker News's logo and vote arrows were not shown in the offline `render_html` check (it fetches no
-  images); not yet checked in a live page, so it is unknown whether images are really missing.
+- Multi-layer backgrounds are only partly supported: the first loaded picture and the first gradient
+  of a layer list are drawn, not the full stack with per-layer size/position/repeat.
+- Hacker News's header: the gap between the logo and "Hacker News" is about 35px; whether Safari's is
+  smaller is unchecked (no Safari access).
 - `system-ui`, Verdana and similar fall back to DejaVu Sans, so line breaks and widths differ from
   Safari's system font.
 - `get_console_messages` answered "Page console is unavailable" on a local test page.

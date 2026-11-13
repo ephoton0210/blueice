@@ -326,14 +326,25 @@ fn expand_flex_flow(tokens: &[Token]) -> Vec<(String, Value)> {
 /// The colour of a `background` shorthand; a layer with none resets it.
 fn expand_background(tokens: &[Token]) -> Vec<(String, Value)> {
     let mut out = vec![("background-image".to_string(), keyword("none"))];
-    if let Some(image) = components(tokens).into_iter().find(|c| {
-        matches!(c.first(), Some(Token::Url(_)))
-            || matches!(c.first(), Some(Token::Ident(name))
-                if matches!(c.get(1), Some(Token::LeftParen))
-                    && (name.to_ascii_lowercase().ends_with("gradient")
-                        || name.eq_ignore_ascii_case("url")))
-    }) {
-        out[0].1 = Value::Unparsed(image.to_vec());
+    // Each comma-separated layer contributes its picture or gradient, in order, so a layer
+    // list like `url(x), linear-gradient(...)` keeps all of them.
+    let mut images: Vec<Token> = Vec::new();
+    for layer in crate::content::background_layers(tokens) {
+        if let Some(image) = components(layer).into_iter().find(|c| {
+            matches!(c.first(), Some(Token::Url(_)))
+                || matches!(c.first(), Some(Token::Ident(name))
+                    if matches!(c.get(1), Some(Token::LeftParen))
+                        && (name.to_ascii_lowercase().ends_with("gradient")
+                            || name.eq_ignore_ascii_case("url")))
+        }) {
+            if !images.is_empty() {
+                images.push(Token::Comma);
+            }
+            images.extend_from_slice(image);
+        }
+    }
+    if !images.is_empty() {
+        out[0].1 = Value::Unparsed(images);
     }
     let color = components(tokens)
         .into_iter()
