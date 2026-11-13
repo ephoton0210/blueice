@@ -1046,6 +1046,10 @@ Fixed, each with a test:
   script process drops the flag (the script side does not style).
 
 Open, not fixed:
+- Wikipedia (Vector 2022): the article title sits at y=238 with about 130px of empty space between
+  the header and it; the hidden "Main menu" dropdown's list is laid out at x=53, y=115..405 (its
+  nodes have bounds though nothing is painted there). Which box makes the gap is not yet found, and
+  how far down Safari puts the title is unchecked.
 - Wikipedia: the search box's placeholder text is not drawn and its "Search" button label sits at
   the top; some dropdown-arrow icons (e.g. beside "75 languages") are still solid squares.
 - Multi-layer backgrounds are only partly supported: the first loaded picture and the first gradient
