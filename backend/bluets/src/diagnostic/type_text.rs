@@ -70,6 +70,7 @@ fn text_options(
     let render = |value: &Type| text_options(value, depth + 1, project, exact_optional);
     match value {
         Type::Conditional(_)
+        | Type::StringMapping(_)
         | Type::InferenceBarrier(_)
         | Type::Infer(_)
         | Type::Mapped(_)
@@ -82,12 +83,14 @@ fn text_options(
         }
         Type::Predicate(predicate) => predicate.text(render),
         Type::Literal(value) => {
-            if value.starts_with('\'') && value.ends_with('\'') {
-                serde_json::to_string(&value[1..value.len() - 1]).unwrap()
+            if let Some(value) = crate::utf16::Utf16String::parse_literal(value) {
+                value.native_literal()
             } else {
                 value.clone()
             }
         }
+        Type::StringLiteral(value) => value.diagnostic_text(),
+        Type::Intrinsic(_) => "intrinsic".into(),
         Type::Named { name, arguments } => {
             if let Some(Type::Named { name, arguments }) =
                 project.and_then(|project| imports::display(value, project))
@@ -283,7 +286,7 @@ fn text_options(
             )
         }
         Type::Union(values) => {
-            let literal_union = values.iter().all(|value| matches!(value, Type::Literal(_)));
+            let literal_union = values.iter().all(Type::is_literal);
             let mut values = values
                 .iter()
                 .map(|value| {
@@ -349,9 +352,20 @@ fn text_options(
 
 pub(crate) fn argument(actual: &Type, expected: &Type) -> String {
     match (actual, expected) {
-        (Type::Literal(value), Type::Union(values))
-            if !values.iter().any(|value| matches!(value, Type::Literal(_))) =>
-        {
+        (Type::StringLiteral(_), Type::Union(values)) if !values.iter().any(Type::is_literal) => {
+            "string".into()
+        }
+        (
+            Type::StringLiteral(_),
+            Type::Number
+            | Type::String
+            | Type::Boolean
+            | Type::StringMapping(_)
+            | Type::Array(_)
+            | Type::Record(_)
+            | Type::Function { .. },
+        ) => "string".into(),
+        (Type::Literal(value), Type::Union(values)) if !values.iter().any(Type::is_literal) => {
             if value.starts_with(['\'', '"']) {
                 "string".into()
             } else if value.parse::<f64>().is_ok() {
@@ -365,6 +379,7 @@ pub(crate) fn argument(actual: &Type, expected: &Type) -> String {
             Type::Number
             | Type::String
             | Type::Boolean
+            | Type::StringMapping(_)
             | Type::Array(_)
             | Type::Record(_)
             | Type::Function { .. },
@@ -395,14 +410,14 @@ pub(crate) fn assignment_in(actual: &Type, expected: &Type, project: &crate::Pro
         if let Some(Type::Union(parts)) =
             crate::standard_library::presentation::alias_value(actual, project)
         {
-            if parts.iter().all(|part| matches!(part, Type::Literal(_))) {
+            if parts.iter().all(Type::is_literal) {
                 return assignment_in(&Type::Union(parts), expected, project);
             }
         }
     }
     if let Type::Union(parts) = actual {
         if matches!(expected, Type::String | Type::Number | Type::Boolean)
-            && parts.iter().all(|part| matches!(part, Type::Literal(_)))
+            && parts.iter().all(Type::is_literal)
         {
             let mut values = parts
                 .iter()
@@ -418,7 +433,8 @@ pub(crate) fn assignment_in(actual: &Type, expected: &Type, project: &crate::Pro
             return values.join(" | ");
         }
     }
-    if matches!(actual, Type::Literal(value) if value.starts_with(['\'', '"'])
+    if matches!(actual, Type::StringLiteral(_))
+        || matches!(actual, Type::Literal(value) if value.starts_with(['\'', '"'])
         || value.parse::<f64>().is_ok() || matches!(value.as_str(), "true" | "false"))
     {
         argument_in(actual, expected, project)

@@ -26,6 +26,9 @@ pub(super) fn alias_has_barrier(name: &str, aliases: &BTreeMap<String, TypeDefin
         };
         match &definition.value {
             Type::InferenceBarrier(_) => return true,
+            Type::Intrinsic(value) if value.kind == crate::parser::IntrinsicKind::NoInfer => {
+                return true
+            }
             Type::Named { name: next, .. } => name = next,
             _ => return false,
         }

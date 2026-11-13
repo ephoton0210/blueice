@@ -114,11 +114,13 @@ impl<'a> ModuleChecker<'a> {
         ) && (matches!(
             literal_display,
             Type::Literal(_)
+                | Type::StringLiteral(_)
+                | Type::StringMapping(_)
                 | Type::Never
                 | Type::Null
                 | Type::TemplateLiteral(_)
                 | Type::UniqueSymbol(_)
-        ) || matches!(&literal_display, Type::Union(parts) if parts.iter().any(|part| matches!(part, Type::Literal(_)))));
+        ) || matches!(&literal_display, Type::Union(parts) if parts.iter().any(Type::is_literal)));
         if literal_context {
             if let [literal] = strip_outer_parentheses(tokens) {
                 if matches!(literal.kind, TokenKind::String | TokenKind::Number)
@@ -130,6 +132,13 @@ impl<'a> ModuleChecker<'a> {
             }
         }
         match &contextual {
+            Type::StringLiteral(_) | Type::StringMapping(_) => {
+                if let [literal] = strip_outer_parentheses(tokens) {
+                    if literal.kind == TokenKind::String {
+                        return Type::Literal(literal.text.clone());
+                    }
+                }
+            }
             Type::GenericFunction {
                 type_parameters,
                 parameters,

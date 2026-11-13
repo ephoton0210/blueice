@@ -13,6 +13,7 @@ mod inference_candidates;
 mod more_types;
 mod operators;
 mod records;
+mod string_mapping;
 mod structural;
 
 fn diagnostic_expected(actual: &Type, expected: &Type) -> Type {

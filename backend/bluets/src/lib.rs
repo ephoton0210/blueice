@@ -37,6 +37,7 @@ mod strict_boundaries;
 mod symbol_keys;
 mod syntax;
 mod type_operator_profiles;
+mod utf16;
 
 pub use authorized_loader::{
     AuthorizedModule, AuthorizedModuleLoader, AuthorizedModuleLoaderError,
@@ -78,16 +79,18 @@ pub use parser::{
     ClassMethodGroup, ConditionalType, Declaration, Decorator, ElementBinding, EnumDeclaration,
     EnumMember, FunctionBodyItem, FunctionCatchClause, FunctionDeclaration, FunctionElseBranch,
     FunctionIfStatement, FunctionTryStatement, FunctionWhileStatement, ImportAttribute,
-    ImportAttributes, ImportDeclaration, IndexSignature, InterfaceDeclaration, MappedModifier,
-    MappedType, Module, NamespaceDeclaration, ObjectBinding, Parameter, ParameterProperty,
-    ParameterPropertyInsertion, ParserLimits, RawDeclaration, TemplateLiteralType,
-    TupleTypeElement, TypeAliasDeclaration, TypeExportDeclaration, TypeParameter, TypePredicate,
-    TypeSignature, UmdExportDeclaration, ValueExportBinding, ValueExportDeclaration,
-    VariableBindingPattern, VariableDeclaration, VariableKind, Variance, Visibility,
+    ImportAttributes, ImportDeclaration, IndexSignature, InterfaceDeclaration, IntrinsicKind,
+    IntrinsicType, MappedModifier, MappedType, Module, NamespaceDeclaration, ObjectBinding,
+    Parameter, ParameterProperty, ParameterPropertyInsertion, ParserLimits, RawDeclaration,
+    StringMappingType, TemplateLiteralType, TupleTypeElement, TypeAliasDeclaration,
+    TypeExportDeclaration, TypeParameter, TypePredicate, TypeSignature, UmdExportDeclaration,
+    ValueExportBinding, ValueExportDeclaration, VariableBindingPattern, VariableDeclaration,
+    VariableKind, Variance, Visibility,
 };
 pub use performance::CompilerPerformance;
 pub use syntax::parse_jsx;
 pub use syntax::{lex, Token, TokenKind};
+pub use utf16::{CaseMapping, StringLiteral, Utf16String};
 
 /// The pinned BlueTS language matrix exposed in emitted fingerprints and
 /// diagnostics.  This is not a claim of complete `tsc` compatibility.

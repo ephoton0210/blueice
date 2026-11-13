@@ -1,0 +1,262 @@
+{
+  "schema": 1,
+  "scope": "Separate BlueTS ambient-owner/runtime-authority/configured-resource policy controls. Excluded from direct Native agreement. Authored before production changes.",
+  "controls": [
+    {
+      "id": "uppercase-ambient-owner",
+      "kind": "ambient-owner",
+      "declaration": "type Uppercase<T> = { owner: T };",
+      "source": "export const value: Uppercase<number> = { owner: 1 };",
+      "expected": {
+        "diagnostics": 0,
+        "projectModules": [
+          "memory:///main.ts",
+          "memory:///owner.d.ts"
+        ]
+      }
+    },
+    {
+      "id": "uppercase-runtime-authority",
+      "kind": "runtime-authority",
+      "source": "export const value = Uppercase(\"word\");",
+      "expected": {
+        "rejected": true,
+        "published": false
+      }
+    },
+    {
+      "id": "uppercase-zero-work",
+      "kind": "resource-limit",
+      "source": "export const value: Uppercase<\"word\"> = \"WORD\";",
+      "limited": {
+        "max_type_expansions": 0
+      },
+      "expected": {
+        "normalAccepted": true,
+        "limitedCode": "ResourceLimit",
+        "nativeCounterpart": null,
+        "published": false
+      }
+    },
+    {
+      "id": "uppercase-one-work",
+      "kind": "resource-limit",
+      "source": "export const value: Uppercase<Uppercase<Uppercase<\"word\">>> = \"WORD\";",
+      "limited": {
+        "max_type_expansions": 1
+      },
+      "expected": {
+        "normalAccepted": true,
+        "limitedCode": "ResourceLimit",
+        "nativeCounterpart": null,
+        "published": false
+      }
+    },
+    {
+      "id": "uppercase-parser-depth",
+      "kind": "resource-limit",
+      "source": "export const value: Uppercase<Uppercase<Uppercase<\"word\">>> = \"WORD\";",
+      "limited": {
+        "parser.max_type_depth": 1
+      },
+      "expected": {
+        "normalAccepted": true,
+        "limitedCode": "ResourceLimit",
+        "nativeCounterpart": null,
+        "published": false
+      }
+    },
+    {
+      "id": "lowercase-ambient-owner",
+      "kind": "ambient-owner",
+      "declaration": "type Lowercase<T> = { owner: T };",
+      "source": "export const value: Lowercase<number> = { owner: 1 };",
+      "expected": {
+        "diagnostics": 0,
+        "projectModules": [
+          "memory:///main.ts",
+          "memory:///owner.d.ts"
+        ]
+      }
+    },
+    {
+      "id": "lowercase-runtime-authority",
+      "kind": "runtime-authority",
+      "source": "export const value = Lowercase(\"word\");",
+      "expected": {
+        "rejected": true,
+        "published": false
+      }
+    },
+    {
+      "id": "lowercase-zero-work",
+      "kind": "resource-limit",
+      "source": "export const value: Lowercase<\"word\"> = \"word\";",
+      "limited": {
+        "max_type_expansions": 0
+      },
+      "expected": {
+        "normalAccepted": true,
+        "limitedCode": "ResourceLimit",
+        "nativeCounterpart": null,
+        "published": false
+      }
+    },
+    {
+      "id": "lowercase-one-work",
+      "kind": "resource-limit",
+      "source": "export const value: Lowercase<Lowercase<Lowercase<\"word\">>> = \"word\";",
+      "limited": {
+        "max_type_expansions": 1
+      },
+      "expected": {
+        "normalAccepted": true,
+        "limitedCode": "ResourceLimit",
+        "nativeCounterpart": null,
+        "published": false
+      }
+    },
+    {
+      "id": "lowercase-parser-depth",
+      "kind": "resource-limit",
+      "source": "export const value: Lowercase<Lowercase<Lowercase<\"word\">>> = \"word\";",
+      "limited": {
+        "parser.max_type_depth": 1
+      },
+      "expected": {
+        "normalAccepted": true,
+        "limitedCode": "ResourceLimit",
+        "nativeCounterpart": null,
+        "published": false
+      }
+    },
+    {
+      "id": "capitalize-ambient-owner",
+      "kind": "ambient-owner",
+      "declaration": "type Capitalize<T> = { owner: T };",
+      "source": "export const value: Capitalize<number> = { owner: 1 };",
+      "expected": {
+        "diagnostics": 0,
+        "projectModules": [
+          "memory:///main.ts",
+          "memory:///owner.d.ts"
+        ]
+      }
+    },
+    {
+      "id": "capitalize-runtime-authority",
+      "kind": "runtime-authority",
+      "source": "export const value = Capitalize(\"word\");",
+      "expected": {
+        "rejected": true,
+        "published": false
+      }
+    },
+    {
+      "id": "capitalize-zero-work",
+      "kind": "resource-limit",
+      "source": "export const value: Capitalize<\"word\"> = \"Word\";",
+      "limited": {
+        "max_type_expansions": 0
+      },
+      "expected": {
+        "normalAccepted": true,
+        "limitedCode": "ResourceLimit",
+        "nativeCounterpart": null,
+        "published": false
+      }
+    },
+    {
+      "id": "capitalize-one-work",
+      "kind": "resource-limit",
+      "source": "export const value: Capitalize<Capitalize<Capitalize<\"word\">>> = \"Word\";",
+      "limited": {
+        "max_type_expansions": 1
+      },
+      "expected": {
+        "normalAccepted": true,
+        "limitedCode": "ResourceLimit",
+        "nativeCounterpart": null,
+        "published": false
+      }
+    },
+    {
+      "id": "capitalize-parser-depth",
+      "kind": "resource-limit",
+      "source": "export const value: Capitalize<Capitalize<Capitalize<\"word\">>> = \"Word\";",
+      "limited": {
+        "parser.max_type_depth": 1
+      },
+      "expected": {
+        "normalAccepted": true,
+        "limitedCode": "ResourceLimit",
+        "nativeCounterpart": null,
+        "published": false
+      }
+    },
+    {
+      "id": "uncapitalize-ambient-owner",
+      "kind": "ambient-owner",
+      "declaration": "type Uncapitalize<T> = { owner: T };",
+      "source": "export const value: Uncapitalize<number> = { owner: 1 };",
+      "expected": {
+        "diagnostics": 0,
+        "projectModules": [
+          "memory:///main.ts",
+          "memory:///owner.d.ts"
+        ]
+      }
+    },
+    {
+      "id": "uncapitalize-runtime-authority",
+      "kind": "runtime-authority",
+      "source": "export const value = Uncapitalize(\"word\");",
+      "expected": {
+        "rejected": true,
+        "published": false
+      }
+    },
+    {
+      "id": "uncapitalize-zero-work",
+      "kind": "resource-limit",
+      "source": "export const value: Uncapitalize<\"word\"> = \"word\";",
+      "limited": {
+        "max_type_expansions": 0
+      },
+      "expected": {
+        "normalAccepted": true,
+        "limitedCode": "ResourceLimit",
+        "nativeCounterpart": null,
+        "published": false
+      }
+    },
+    {
+      "id": "uncapitalize-one-work",
+      "kind": "resource-limit",
+      "source": "export const value: Uncapitalize<Uncapitalize<Uncapitalize<\"word\">>> = \"word\";",
+      "limited": {
+        "max_type_expansions": 1
+      },
+      "expected": {
+        "normalAccepted": true,
+        "limitedCode": "ResourceLimit",
+        "nativeCounterpart": null,
+        "published": false
+      }
+    },
+    {
+      "id": "uncapitalize-parser-depth",
+      "kind": "resource-limit",
+      "source": "export const value: Uncapitalize<Uncapitalize<Uncapitalize<\"word\">>> = \"word\";",
+      "limited": {
+        "parser.max_type_depth": 1
+      },
+      "expected": {
+        "normalAccepted": true,
+        "limitedCode": "ResourceLimit",
+        "nativeCounterpart": null,
+        "published": false
+      }
+    }
+  ]
+}

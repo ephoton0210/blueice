@@ -99,6 +99,9 @@ pub(super) fn assignable(
                 | Type::Symbol
                 | Type::UniqueSymbol(_)
                 | Type::Literal(_)
+                | Type::StringLiteral(_)
+                | Type::StringMapping(_)
+                | Type::TemplateLiteral(_)
                 | Type::Null
                 | Type::Undefined
         )
@@ -136,6 +139,9 @@ pub(super) fn assignable(
             | Type::Symbol
             | Type::UniqueSymbol(_)
             | Type::Literal(_)
+            | Type::StringLiteral(_)
+            | Type::StringMapping(_)
+            | Type::TemplateLiteral(_)
             | Type::Array(_)
             | Type::Tuple(_)
             | Type::Record(_)
@@ -210,10 +216,7 @@ pub(super) fn assignable(
                             })
                     }))
                 }
-                Type::String | Type::Literal(_)
-                    if matches!(actual, Type::String)
-                        || matches!(actual, Type::Literal(text) if text.starts_with(['\'', '"', '`'])) =>
-                {
+                _ if actual.is_string_like() => {
                     return Some(indices.iter().all(|index| {
                         index.key == Type::Number
                             && is_assignable(

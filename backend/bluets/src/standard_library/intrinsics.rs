@@ -11,19 +11,16 @@ pub(super) fn lower(module: &mut Module) {
         let Declaration::TypeAlias(alias) = declaration else {
             continue;
         };
-        if !matches!(&alias.value, Type::Named { name, arguments } if name == "intrinsic" && arguments.is_empty())
+        if !matches!(&alias.value, Type::Intrinsic(value) if value.kind == crate::parser::IntrinsicKind::NoInfer)
         {
             continue;
         }
         let [parameter] = alias.type_parameters.as_slice() else {
             panic!("embedded intrinsic must declare one type parameter");
         };
-        alias.value = match alias.name.as_str() {
-            "NoInfer" => Type::inference_barrier(Type::Named {
-                name: parameter.name.clone(),
-                arguments: Vec::new(),
-            }),
-            _ => panic!("unrecognized embedded library intrinsic"),
-        };
+        alias.value = Type::inference_barrier(Type::Named {
+            name: parameter.name.clone(),
+            arguments: Vec::new(),
+        });
     }
 }

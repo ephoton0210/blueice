@@ -16,7 +16,7 @@ mod result_parameters;
 mod results;
 mod surfaces;
 
-pub(crate) const VERSION: &str = "bluets-generic-inference/9";
+pub(crate) const VERSION: &str = "bluets-generic-inference/10";
 
 pub(in crate::checker) fn direct_result_parameter(
     signature: &FunctionSignature,
@@ -267,6 +267,7 @@ pub(super) fn infer_contextual_result(
 
 fn widen(value: &Type) -> Type {
     match value {
+        Type::StringLiteral(_) => Type::String,
         Type::Literal(text) if text.starts_with(['\'', '"', '`']) => Type::String,
         Type::Literal(text) if text.parse::<f64>().is_ok() => Type::Number,
         Type::Literal(text) if matches!(text.as_str(), "true" | "false") => Type::Boolean,

@@ -51,12 +51,12 @@ use properties::{
     contains_readonly_member, mutation_field_type, property_type, property_write_type,
     readonly_property, PropertyType, TypeExpansionBudget,
 };
-pub(crate) use type_relations::type_label;
 use type_relations::{
     accepts_strict_unknown, canonical_parameter_references, expand_concrete_tuple_spreads,
-    instantiate_named, is_assignable, tuple_type_at_length, type_identity, TupleSpreadError,
+    instantiate_named, is_assignable, tuple_type_at_length, TupleSpreadError,
 };
 pub(crate) use type_relations::{complete_type_arguments, substitute_type};
+pub(crate) use type_relations::{type_identity, type_label};
 
 const MAX_LITERAL_INFERENCE_CONTAINERS: usize = 128;
 const MAX_LOGICAL_ASSIGNMENT_INFERENCE_OPERATORS: usize = 128;

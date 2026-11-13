@@ -794,6 +794,11 @@ fn compile_with_cache(
         checker::CheckerPolicy {
             verbatim_module_syntax: options.verbatim_module_syntax,
             target: options.target,
+            library_mode: match &options.libraries {
+                None => "default",
+                Some(libraries) if libraries.is_empty() => "none",
+                Some(_) => "explicit",
+            },
             library_target: options
                 .library_target()
                 .into_iter()

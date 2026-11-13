@@ -251,8 +251,20 @@ fn substitute_parameters(
     result
 }
 
-pub(in crate::checker) fn type_identity(value: &Type) -> String {
+pub(crate) fn type_identity(value: &Type) -> String {
+    if let Some(value) = value.string_value() {
+        return format!("utf16:{:?}", value.units());
+    }
     match value {
+        Type::StringMapping(value) => format!(
+            "string-mapping({:?},{:?},{},{},{})",
+            value.operation,
+            value.origin.module,
+            value.origin.start,
+            value.origin.end,
+            type_identity(&value.operand)
+        ),
+        Type::Intrinsic(value) => format!("intrinsic:{value:?}"),
         Type::InferenceBarrier(base) => format!("inference-barrier({})", type_identity(base)),
         Type::IndexedRecord { indices, .. } => format!(
             "{};mapped-domains:[{}]",
@@ -271,11 +283,26 @@ pub(in crate::checker) fn type_identity(value: &Type) -> String {
             "unique symbol {}:{}:{}",
             origin.module, origin.start, origin.end
         ),
-        Type::Conditional(_)
-        | Type::Infer(_)
-        | Type::Mapped(_)
-        | Type::TemplateLiteral(_)
-        | Type::Readonly(_) => value.operator_text(type_identity).expect("operator type"),
+        Type::TemplateLiteral(value) => {
+            let chunk = |raw: &str| {
+                crate::utf16::Utf16String::parse_template_chunk(raw)
+                    .map(|value| format!("{:?}", value.units()))
+                    .unwrap_or_else(|| format!("raw:{raw:?}"))
+            };
+            format!(
+                "template({};{})",
+                chunk(&value.head),
+                value
+                    .spans
+                    .iter()
+                    .map(|(value, tail)| format!("{}:{}", type_identity(value), chunk(tail)))
+                    .collect::<Vec<_>>()
+                    .join(";")
+            )
+        }
+        Type::Conditional(_) | Type::Infer(_) | Type::Mapped(_) | Type::Readonly(_) => {
+            value.operator_text(type_identity).expect("operator type")
+        }
         Type::KeyOf(value) => format!("keyof {}", type_identity(value)),
         Type::IndexedAccess { object, index, .. } => {
             format!("{}[{}]", type_identity(object), type_identity(index))
@@ -296,8 +323,9 @@ pub(in crate::checker) fn type_identity(value: &Type) -> String {
                 .iter()
                 .map(|value| {
                     format!(
-                        "{}{}{}",
+                        "{}{:?}:{}{}",
                         if value.rest { "..." } else { "" },
+                        value.label,
                         type_identity(&value.annotation),
                         if value.optional { "?" } else { "" }
                     )
@@ -308,7 +336,7 @@ pub(in crate::checker) fn type_identity(value: &Type) -> String {
         Type::Record(_)
         | Type::CallableRecord { .. }
         | Type::Function { .. }
-        | Type::GenericFunction { .. } => crate::diagnostic::type_text::render(value),
+        | Type::GenericFunction { .. } => super::identity_shapes::render(value, type_identity),
         Type::Union(values) => values
             .iter()
             .map(type_identity)
@@ -326,6 +354,7 @@ pub(in crate::checker) fn type_identity(value: &Type) -> String {
 pub(crate) fn type_label(value: &Type) -> String {
     match value {
         Type::Conditional(_)
+        | Type::StringMapping(_)
         | Type::InferenceBarrier(_)
         | Type::Infer(_)
         | Type::Mapped(_)
@@ -351,6 +380,8 @@ pub(crate) fn type_label(value: &Type) -> String {
         Type::Number => "number".to_string(),
         Type::String => "string".to_string(),
         Type::Literal(value) => value.clone(),
+        Type::StringLiteral(value) => value.diagnostic_text(),
+        Type::Intrinsic(_) => "intrinsic".to_string(),
         Type::Named { name, .. } => crate::parser::source_type_name(name).to_string(),
         Type::Array(value) => value.array_element_text(type_label),
         Type::Tuple(values) => format!(

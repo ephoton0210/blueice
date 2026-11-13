@@ -12,6 +12,7 @@ use std::collections::BTreeSet;
 mod diagnostics;
 mod origins;
 mod render;
+mod string_mapping;
 mod unions;
 use origins::{
     declared_function, declares_symbol_value, exported_local, fresh_variable, public_type_name,
@@ -468,6 +469,14 @@ impl<'a> Context<'a> {
     }
 
     fn references(&mut self, value: &Type) {
+        if let Type::StringMapping(mapping) = value {
+            if let Some(reference) = self.string_mapping_reference(mapping) {
+                self.references(&reference);
+            } else {
+                self.references(&mapping.operand);
+            }
+            return;
+        }
         if let Some(children) = value.operator_children() {
             for child in children {
                 self.references(child);
@@ -517,7 +526,7 @@ impl<'a> Context<'a> {
                 }
             }
             Type::Named { name, arguments } => {
-                self.retain(name);
+                self.retain_type(name);
                 for argument in arguments {
                     self.references(argument);
                 }

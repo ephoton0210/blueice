@@ -16,6 +16,9 @@ pub fn primary(snapshot: &Snapshot, suite: &Suite) -> Result<Option<Vec<Case>>> 
     if stem == "nonnullable_awaited" {
         return super::case_nonnullable_awaited::primary(snapshot).map(Some);
     }
+    if stem == "string_intrinsics" {
+        return super::case_string_intrinsics::primary(snapshot).map(Some);
+    }
     if stem.starts_with("ge5_") {
         return super::case_ge5::primary(snapshot, suite).map(Some);
     }

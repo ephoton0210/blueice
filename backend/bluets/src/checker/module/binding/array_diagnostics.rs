@@ -47,6 +47,7 @@ impl ModuleChecker<'_> {
                 continue;
             };
             let span = SourceSpan::new(&self.module.id, first.start, last.end);
+            let contextual = expected.clone();
             let expected = crate::checker::inference::result_type(
                 &expected,
                 &BTreeMap::new(),
@@ -58,9 +59,9 @@ impl ModuleChecker<'_> {
                 &self.types,
                 &mut budget,
             );
-            let actual = self.infer_in_context(element, scope, &expected);
-            let literal_context = matches!(expected, Type::Literal(_))
-                || matches!(&expected, Type::Union(parts) if parts.iter().any(|part| matches!(part, Type::Literal(_))));
+            let actual = self.infer_in_context(element, scope, &contextual);
+            let literal_context = expected.is_literal()
+                || matches!(&expected, Type::Union(parts) if parts.iter().any(Type::is_literal));
             let actual = if literal_context {
                 actual
             } else {
@@ -93,20 +94,41 @@ impl ModuleChecker<'_> {
             };
             if !matches!(
                 expected,
-                Type::Number | Type::String | Type::Boolean | Type::Literal(_) | Type::Union(_)
+                Type::Number
+                    | Type::String
+                    | Type::Boolean
+                    | Type::Literal(_)
+                    | Type::StringLiteral(_)
+                    | Type::Union(_)
             ) || !matches!(
                 actual,
-                Type::Number | Type::String | Type::Boolean | Type::Literal(_)
+                Type::Number
+                    | Type::String
+                    | Type::Boolean
+                    | Type::Literal(_)
+                    | Type::StringLiteral(_)
             ) {
                 continue;
             }
+            let message = format!(
+                "initializer has type `{}`, which is not assignable to `{}`",
+                type_label(inferred),
+                type_label(annotation)
+            );
+            // Display normalization expands templates to unions. Retain their
+            // source context for the shared template spelling diagnostic first.
+            if self.operator_assignment_error(
+                &span,
+                &message,
+                DiagnosticCode::TypeMismatch,
+                &actual,
+                &contextual,
+            ) {
+                return true;
+            }
             self.assignment_error(
                 &span,
-                format!(
-                    "initializer has type `{}`, which is not assignable to `{}`",
-                    type_label(inferred),
-                    type_label(annotation)
-                ),
+                message,
                 DiagnosticCode::TypeMismatch,
                 &actual,
                 &expected,

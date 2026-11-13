@@ -144,7 +144,7 @@ pub(super) fn resolve(
     let keys = match keys {
         Type::Never => vec![],
         Type::Union(keys) => keys,
-        Type::Literal(_) => vec![keys],
+        Type::Literal(_) | Type::StringLiteral(_) => vec![keys],
         _ => return None,
     };
     let mut fields: Vec<TypeField> = Vec::new();

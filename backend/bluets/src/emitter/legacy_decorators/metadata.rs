@@ -46,7 +46,7 @@ impl Lowerer<'_, '_> {
                 self.serialize_at(class, &predicate.runtime_type(), span, depth + 1)?
             }
             Type::Number => "Number".to_string(),
-            Type::String => "String".to_string(),
+            Type::String | Type::StringLiteral(_) | Type::StringMapping(_) => "String".to_string(),
             Type::Boolean => "Boolean".to_string(),
             Type::Literal(text) => {
                 if text.starts_with(['"', '\'', '`']) {
@@ -67,6 +67,7 @@ impl Lowerer<'_, '_> {
             | Type::ConstAssertion
             | Type::Readonly(_)
             | Type::InferenceBarrier(_)
+            | Type::Intrinsic(_)
             | Type::IndexedRecord { .. }
             | Type::Record(_)
             | Type::CallableRecord { .. }

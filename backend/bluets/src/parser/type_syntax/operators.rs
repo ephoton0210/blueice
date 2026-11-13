@@ -200,6 +200,7 @@ impl Parser {
             head,
             spans,
             span: token.span(&self.id),
+            generated: false,
         })
     }
 }

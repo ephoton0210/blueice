@@ -350,6 +350,14 @@ fn lower(
         Type::Number => Ok(Contract::Number),
         Type::String => Ok(Contract::String),
         Type::Literal(value) => Ok(Contract::Literal(value.clone())),
+        Type::StringLiteral(value) => {
+            String::from_utf16(value.value().units()).map_err(|_| ContractError {
+                message:
+                    "the selected runtime contract format cannot represent unpaired UTF-16 units"
+                        .into(),
+            })?;
+            Ok(Contract::Literal(value.diagnostic_text()))
+        }
         Type::Array(value) => Ok(Contract::Array(Box::new(lower(
             value,
             named_types,
@@ -439,6 +447,8 @@ fn lower(
         | Type::ConstAssertion
         | Type::Readonly(_)
         | Type::InferenceBarrier(_)
+        | Type::Intrinsic(_)
+        | Type::StringMapping(_)
         | Type::IndexedRecord { .. }
         | Type::Conditional(_)
         | Type::Infer(_)

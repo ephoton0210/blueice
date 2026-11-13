@@ -346,6 +346,7 @@ fn typeof_filter(value: &Type, kind: &str, positive: bool) -> Option<Type> {
         };
     }
     let primitive = match value {
+        Type::StringLiteral(_) | Type::StringMapping(_) | Type::TemplateLiteral(_) => Type::String,
         Type::Literal(text) => literal_primitive(text),
         value => value.clone(),
     };
@@ -374,6 +375,9 @@ fn equality_filter(value: &Type, literal: &Token, positive: bool, loose: bool) -
         nullish
     } else {
         match (value, &expected) {
+            (left, right) if left.string_value().is_some() && right.string_value().is_some() => {
+                left.string_value() == right.string_value()
+            }
             (Type::Literal(left), Type::Literal(right)) => {
                 left.trim_matches(['\'', '"']) == right.trim_matches(['\'', '"'])
             }
@@ -396,7 +400,15 @@ fn truthy(value: &Type, positive: bool) -> Option<Type> {
         Type::Boolean => Some(Type::Literal(
             if positive { "true" } else { "false" }.into(),
         )),
-        Type::String | Type::Number | Type::Unknown | Type::Any => Some(value.clone()),
+        Type::String
+        | Type::StringMapping(_)
+        | Type::TemplateLiteral(_)
+        | Type::Number
+        | Type::Unknown
+        | Type::Any => Some(value.clone()),
+        Type::StringLiteral(literal) => {
+            (literal.value().units().is_empty() != positive).then(|| value.clone())
+        }
         Type::Literal(text) => {
             let truth = !matches!(
                 text.as_str(),

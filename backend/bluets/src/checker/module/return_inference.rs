@@ -863,6 +863,7 @@ fn contains_unknown(value: &Type) -> bool {
 
 pub(super) fn widen(value: Type) -> Type {
     match value {
+        Type::StringLiteral(_) => Type::String,
         Type::Literal(ref text) if text.starts_with(['\'', '"', '`']) => Type::String,
         Type::Literal(ref text) if text.parse::<f64>().is_ok() => Type::Number,
         Type::Literal(ref text) if matches!(text.as_str(), "true" | "false") => Type::Boolean,

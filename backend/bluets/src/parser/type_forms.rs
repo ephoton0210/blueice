@@ -69,6 +69,8 @@ pub struct TemplateLiteralType {
     pub head: String,
     pub spans: Vec<(Type, String)>,
     pub span: SourceSpan,
+    /// Generated chunks retain escaped semantic units until presentation.
+    pub generated: bool,
 }
 
 impl Type {
@@ -104,6 +106,7 @@ impl Type {
             | Self::Conditional(_)
             | Self::Infer(_)
             | Self::Mapped(_) => true,
+            Self::StringMapping(_) => true,
             _ => false,
         }
     }
@@ -136,6 +139,7 @@ impl Type {
     pub(crate) fn operator_children(&self) -> Option<Vec<&Type>> {
         Some(match self {
             Self::Readonly(value) | Self::InferenceBarrier(value) => vec![value],
+            Self::StringMapping(value) => vec![&value.operand],
             Self::IndexedRecord { object, indices } => std::iter::once(object.as_ref())
                 .chain(indices.iter().flat_map(|index| {
                     [&index.key, &index.value]
@@ -225,6 +229,10 @@ impl Type {
         Some(match self {
             Self::Readonly(value) => Self::Readonly(Box::new(map(value, &[]))),
             Self::InferenceBarrier(value) => Self::InferenceBarrier(Box::new(map(value, &[]))),
+            Self::StringMapping(value) => Self::StringMapping(Box::new(StringMappingType {
+                operand: map(&value.operand, &[]),
+                ..(**value).clone()
+            })),
             Self::IndexedRecord { object, indices } => Self::IndexedRecord {
                 object: Box::new(map(object, &[])),
                 indices: indices
@@ -288,6 +296,9 @@ impl Type {
     pub(crate) fn operator_text(&self, render: impl Fn(&Type) -> String) -> Option<String> {
         Some(match self {
             Self::InferenceBarrier(value) => format!("NoInfer<{}>", render(value)),
+            Self::StringMapping(value) => {
+                format!("{}<{}>", value.operation.name(), render(&value.operand))
+            }
             Self::Readonly(value) => format!("readonly {}", render(value)),
             Self::IndexedRecord { object, indices } => {
                 let members = indices
@@ -355,9 +366,18 @@ impl Type {
                 )
             }
             Self::TemplateLiteral(value) => {
-                let mut text = format!("`{}", value.head);
+                let chunk = |raw: &str| {
+                    if value.generated {
+                        crate::utf16::Utf16String::parse_template_chunk(raw)
+                            .expect("generated template units")
+                            .native_template_chunk()
+                    } else {
+                        raw.to_string()
+                    }
+                };
+                let mut text = format!("`{}", chunk(&value.head));
                 for (value, tail) in &value.spans {
-                    text.push_str(&format!("${{{}}}{tail}", render(value)));
+                    text.push_str(&format!("${{{}}}{}", render(value), chunk(tail)));
                 }
                 text.push('`');
                 text

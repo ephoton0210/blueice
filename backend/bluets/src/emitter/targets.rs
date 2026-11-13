@@ -17,6 +17,10 @@ mod mapped_fragments;
 mod object_rest;
 mod object_spread;
 mod optional;
+mod string_literals;
+
+pub(super) use string_literals::lower as lower_string_literals;
+pub(crate) const STRING_LITERAL_LOWERING_VERSION: &str = "bluets-string-literal-target/1";
 
 pub const TARGET_HELPER_V1_VERSION: &str = "blue-ts-target-helper-v1";
 pub(crate) const TARGET_HELPER_V1_SOURCE: &str = include_str!("targets/helpers.v1.js");

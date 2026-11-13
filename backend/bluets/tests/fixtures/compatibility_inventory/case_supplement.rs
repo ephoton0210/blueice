@@ -34,6 +34,7 @@ pub fn additional(snapshot: &Snapshot, suite: &Suite) -> Result<Vec<Case>> {
     let named_array = |scope: &str| array_cases(source, array(&facts, scope, "for@0")?);
     let mut cases = match stem {
         "nonnullable_awaited" => super::case_nonnullable_awaited::additional(snapshot)?,
+        "string_intrinsics" => super::case_string_intrinsics::additional(snapshot)?,
         "gc1_object_generic_methods" | "gm2_incremental_options" => {
             let path = format!("backend/bluets/tests/fixtures/{stem}/reference.json");
             let mut controls = super::case_sources::json_cases(

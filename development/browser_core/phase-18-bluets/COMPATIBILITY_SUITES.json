@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "typescript": "5.9.3",
-  "source_revision": "backend-tree:d93ce26e990e61e09dacab7a31fbcec822674030",
-  "source_graph_sha256": "4cf20d55364e10fb6be9dfea6522fe1af9f82265e97425d4383fa3b4ad84010e",
+  "source_revision": "backend-tree:687190197095253ff614e93a035b4e424b5e725a",
+  "source_graph_sha256": "f38b758dcfb2a6818a1b6511ecbe7cd92e52a723e3fd492630313911ea683713",
   "fixture_directories": 3392,
   "diagnostic_programs": 3182,
   "diagnostic_templates": 221,
@@ -2273,6 +2273,19 @@
       "inputs": {
         "backend/bluets/tests/fixtures/strictness/strictness-checker-matrix.tsv": "c7fac36c2e4026c792cefde0149a5a9585d7b5be",
         "backend/bluets/tests/strictness_flags.rs": "c08fe462ea56d269095b0ff3b7d0797e8774d089"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/string_intrinsics.rs",
+      "ignored_tests": [
+        "native_observations_consumers_syntax_and_runtime_are_reproducible"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/string_intrinsics/boundary-controls.json": "0233ae9b791ffc75872b042494574ccb2144932d",
+        "backend/bluets/tests/fixtures/string_intrinsics/cases.json": "f07d2ff6185e88f8d8ee2cb5ede25f7e26cfd3c7",
+        "backend/bluets/tests/fixtures/string_intrinsics/literal-context-regressions.json": "aec250d61e5f03aea46ad1bafb9e6bfb652ca35d",
+        "backend/bluets/tests/fixtures/string_intrinsics/reference.json": "c38c0a9408866fb4f18e7a8c80a08001cb822db8",
+        "backend/bluets/tests/string_intrinsics.rs": "73bd4c508bac78bcfa38dbe765fb8c35056d96cd"
       }
     },
     {

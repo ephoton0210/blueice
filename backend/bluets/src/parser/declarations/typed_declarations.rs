@@ -30,7 +30,25 @@ impl Parser {
         };
         let type_parameters = self.parse_type_parameters();
         self.expect("=");
-        let value = self.parse_type_until(&[";"]);
+        let value = if self.peek("intrinsic") {
+            let origin = self.current().span(&self.id);
+            self.bump();
+            if let Some(kind) = IntrinsicKind::alias(&name, type_parameters.len()) {
+                Type::Intrinsic(IntrinsicType { kind, origin })
+            } else {
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode::UnsupportedSyntax,
+                        origin,
+                        "The 'intrinsic' keyword can only be used to declare compiler provided intrinsic types.",
+                    )
+                    .with_typescript(2795, Vec::new()),
+                );
+                Type::Unknown
+            }
+        } else {
+            self.parse_type_until(&[";"])
+        };
         self.consume(";");
         let end = self.previous().end;
         self.edits.push(TextEdit {

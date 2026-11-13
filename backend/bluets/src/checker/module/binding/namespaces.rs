@@ -179,6 +179,7 @@ impl ModuleChecker<'_> {
             checking: self.explicit_checking.then_some(self.checking),
             target: self.target,
             library_target: self.library_target,
+            library_mode: self.library_mode,
             symbol_metadata: self.symbol_metadata,
             enforce_types: self.enforce_types,
             require_declared_global_calls: self.require_declared_global_calls,

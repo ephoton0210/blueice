@@ -50,7 +50,10 @@ impl Candidates {
         };
         let covariant = if self.covariant.is_empty() {
             None
-        } else if self.covariant.iter().all(|v| matches!(v, Type::Literal(_)))
+        } else if self
+            .covariant
+            .iter()
+            .all(|v| matches!(v, Type::Literal(_) | Type::StringLiteral(_)))
             && self
                 .covariant
                 .iter()

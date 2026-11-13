@@ -20,8 +20,8 @@ pub(crate) use module_wrappers::VERSION as MODULE_WRAPPERS_VERSION;
 pub use private_lowering::CLASS_HELPER_V1_VERSION;
 pub use source_map_lookup::{SourceMapLookupError, SourceMapOriginalPosition};
 pub(crate) use system::HELPER_SOURCE as SYSTEM_HELPER_SOURCE;
-pub(crate) use targets::TARGET_HELPER_V1_SOURCES;
 pub use targets::TARGET_HELPER_V1_VERSION;
+pub(crate) use targets::{STRING_LITERAL_LOWERING_VERSION, TARGET_HELPER_V1_SOURCES};
 
 mod callable_objects;
 mod class_expressions;
@@ -508,6 +508,7 @@ fn emit_javascript(
         emitted
     };
     let emitted = module_wrappers::wrap(emitted, module, options, wrapper);
+    let emitted = targets::lower_string_literals(emitted, module, options)?;
     let emitted = output_options::format_javascript(emitted, module, options)?;
     if let Some(record) = &mut strict_runtime {
         record.helper_import.expected_text =
@@ -730,6 +731,7 @@ fn apply_edits_with_anchors(
 fn type_to_ts(value: &Type) -> String {
     match value {
         Type::Conditional(_)
+        | Type::StringMapping(_)
         | Type::InferenceBarrier(_)
         | Type::Infer(_)
         | Type::Mapped(_)
@@ -755,6 +757,8 @@ fn type_to_ts(value: &Type) -> String {
         Type::Number => "number".to_string(),
         Type::String => "string".to_string(),
         Type::Literal(value) => value.clone(),
+        Type::StringLiteral(value) => value.declaration_text(),
+        Type::Intrinsic(_) => "intrinsic".to_string(),
         Type::Named { name, arguments } if arguments.is_empty() => {
             crate::parser::source_type_name(name).to_string()
         }

@@ -4,6 +4,7 @@
 
 //! Empty-record intersections restrict values without relying on alias spelling.
 use super::*;
+mod primitives;
 
 pub(in crate::checker) fn has_alias(
     name: &str,
@@ -39,6 +40,9 @@ pub(in crate::checker) fn normalized(
     let Type::Intersection(parts) = value else {
         return None;
     };
+    if let Some(result) = primitives::reduce(parts, budget) {
+        return (result != *value && !budget.exhausted).then_some(result);
+    }
     if !parts.iter().any(empty_record) {
         return None;
     }

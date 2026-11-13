@@ -11,8 +11,10 @@ use crate::syntax::{
 use std::collections::BTreeMap;
 
 mod assertions;
+mod string_types;
 mod type_forms;
 mod type_mapping;
+pub use string_types::{IntrinsicKind, IntrinsicType, StringMappingType};
 pub use type_forms::{
     ConditionalType, IndexSignature, MappedModifier, MappedType, TemplateLiteralType, Variance,
 };
@@ -1079,6 +1081,11 @@ pub enum Type {
     ConstAssertion,
     String,
     Literal(String),
+    /// Generated literals keep semantic UTF-16 units through checking.
+    StringLiteral(crate::utf16::StringLiteral),
+    /// A validated alias body; expansion uses the defining kind and origin.
+    Intrinsic(IntrinsicType),
+    StringMapping(Box<StringMappingType>),
     Named {
         name: String,
         arguments: Vec<Type>,

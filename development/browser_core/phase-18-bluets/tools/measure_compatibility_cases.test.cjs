@@ -59,6 +59,23 @@ test('the actual oracle scripts are content-bound rather than attributed to an o
   assert.deepEqual(toolHashes(), hashes);
 });
 
+test('nested oracle helper bytes are part of the measured tool identity', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'bluets-nested-oracle-'));
+  try {
+    fs.mkdirSync(path.join(directory, 'string_intrinsics'));
+    fs.writeFileSync(path.join(directory, 'main.cjs'), 'main bytes');
+    const helper = path.join(directory, 'string_intrinsics/consumers.cjs');
+    fs.writeFileSync(helper, 'first consumer bytes');
+    const before = toolHashes(directory);
+    assert.deepEqual(Object.keys(before), ['main.cjs', 'string_intrinsics/consumers.cjs']);
+    assert.equal(before['string_intrinsics/consumers.cjs'], crypto.createHash('sha256').update('first consumer bytes').digest('hex'));
+    fs.writeFileSync(helper, 'changed consumer bytes');
+    const after = toolHashes(directory);
+    assert.equal(after['main.cjs'], before['main.cjs']);
+    assert.notEqual(after['string_intrinsics/consumers.cjs'], before['string_intrinsics/consumers.cjs']);
+  } finally { fs.rmSync(directory, {recursive: true, force: true}); }
+});
+
 function compilerFixture() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ge5-cli-guard-'));
   const normal = path.join(directory, 'bluetsc'), unit = path.join(directory, 'bluetsc-unit-test');

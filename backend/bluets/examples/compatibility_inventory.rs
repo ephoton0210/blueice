@@ -18,6 +18,8 @@ mod case_registry;
 mod case_report;
 #[path = "../tests/fixtures/compatibility_inventory/case_sources.rs"]
 mod case_sources;
+#[path = "../tests/fixtures/compatibility_inventory/case_string_intrinsics.rs"]
+mod case_string_intrinsics;
 #[path = "../tests/fixtures/compatibility_inventory/case_supplement.rs"]
 mod case_supplement;
 #[path = "../tests/fixtures/compatibility_inventory/inventory.rs"]

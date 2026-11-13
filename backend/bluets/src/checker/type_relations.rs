@@ -4,12 +4,14 @@
 
 use super::*;
 mod substitution;
-pub(super) use substitution::type_identity;
+pub(crate) use substitution::type_identity;
 pub(crate) use substitution::{complete_type_arguments, substitute_type, type_label};
 mod compatibility;
+mod identity_shapes;
 mod intersections;
 mod more_types;
 mod parameters;
+mod string_mapping;
 mod surfaces;
 mod variance;
 use crate::checker::type_operators::union;
@@ -335,6 +337,9 @@ fn assignable_inner(
             }
         }
     }
+    if let (Some(actual), Some(expected)) = (actual.string_value(), expected.string_value()) {
+        return actual == expected;
+    }
     if let (Type::Literal(actual), Type::Literal(expected)) = (actual, expected) {
         if actual.starts_with(['\'', '"'])
             && expected.starts_with(['\'', '"'])
@@ -497,6 +502,9 @@ fn assignable_inner(
             .iter()
             .any(|option| is_assignable(actual, option, aliases, &mut visited.clone(), budget));
     }
+    if let Some(result) = string_mapping::assignable(actual, expected, aliases, visited, budget) {
+        return result;
+    }
     if let Some(expanded) = instantiate_named(actual, aliases, visited, budget, "actual") {
         return is_assignable(&expanded, expected, aliases, visited, budget);
     }
@@ -571,6 +579,7 @@ fn assignable_inner(
         (Type::Predicate(actual), _) => {
             is_assignable(&actual.runtime_type(), expected, aliases, visited, budget)
         }
+        (Type::StringLiteral(_) | Type::TemplateLiteral(_), Type::String) => true,
         (Type::Literal(value), Type::String) => {
             value.starts_with('\'')
                 || value.starts_with('\"')
@@ -949,13 +958,15 @@ pub(super) fn instantiate_named(
     if matches!(
         value,
         Type::Conditional(_)
+            | Type::StringMapping(_)
             | Type::Infer(_)
             | Type::Mapped(_)
             | Type::TemplateLiteral(_)
             | Type::KeyOf(_)
             | Type::IndexedAccess { .. }
     ) {
-        return super::type_operators::resolve(value, aliases, visited, budget);
+        return super::type_operators::resolve(value, aliases, visited, budget)
+            .filter(|resolved| !matches!(value, Type::StringMapping(_)) || resolved != value);
     }
     let Type::Named { name, arguments } = value else {
         return None;
@@ -972,6 +983,36 @@ pub(super) fn instantiate_named(
     }
     if !budget.consume() {
         return None;
+    }
+    if let Type::Intrinsic(intrinsic) = &definition.value {
+        use crate::parser::IntrinsicKind;
+        return match intrinsic.kind {
+            IntrinsicKind::StringMapping(operation) => {
+                let [operand] = arguments.as_slice() else {
+                    return None;
+                };
+                Some(Type::StringMapping(Box::new(
+                    crate::parser::StringMappingType {
+                        operation,
+                        origin: intrinsic.origin.clone(),
+                        operand: operand.clone(),
+                    },
+                )))
+            }
+            IntrinsicKind::NoInfer => {
+                let [operand] = arguments.as_slice() else {
+                    return None;
+                };
+                Some(Type::inference_barrier(operand.clone()))
+            }
+            IntrinsicKind::BuiltinIteratorReturn => {
+                Some(if budget.checking.strict_builtin_iterator_return {
+                    Type::Undefined
+                } else {
+                    Type::Any
+                })
+            }
+        };
     }
     let arguments =
         super::type_operators::arguments::prepare(definition, arguments, aliases, visited, budget)?;

@@ -1,0 +1,2117 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "scope": "Authored P0-C candidate matrix; freeze only after independent Native source/consumer calibration. No production changes yet.",
+  "options": {
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "newLine": "lf"
+  },
+  "profiles": [
+    {
+      "id": "es5-commonjs-strict",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "lib": [
+          "ES5"
+        ]
+      }
+    },
+    {
+      "id": "es5-commonjs-loose-null",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "lib": [
+          "ES5"
+        ],
+        "strictNullChecks": false
+      }
+    },
+    {
+      "id": "es2022-commonjs-strict",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES2022"
+        ]
+      }
+    },
+    {
+      "id": "es2022-esnext-es5lib-strict",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "lib": [
+          "ES5"
+        ]
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "uppercase-empty",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-ascii",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"wOrD\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"WORD\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-sharp-s",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"ßeta\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"SSETA\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-greek-sigma",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"ΟΣ\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"ΟΣ\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-dotted-i",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"İSTANBUL\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"İSTANBUL\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-supplementary-head",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"𐐨word\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"𐐀WORD\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-paired-escape",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"\\uD801\\uDC28word\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"𐐀WORD\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-lone-high-head",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"\\ud800word\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"�WORD\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-lone-low-head",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"\\udc00WORD\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"�WORD\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-malformed-middle",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\ud800𐐨z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A�𐐀Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-combining-head",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"́Word\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"́WORD\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-escaped-controls",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u0000\\n\\u000b\\\"\\\\z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u0000\\n\\u000b\\\"\\\\Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-general-valid",
+      "source": "export const value: Uppercase<string> = \"ABC\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: string = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"aBc\";\n"
+      }
+    },
+    {
+      "id": "uppercase-general-invalid",
+      "source": "export const value: Uppercase<string> = \"aBc\";\n",
+      "accepts": false
+    },
+    {
+      "id": "uppercase-general-inferred",
+      "source": "declare const input: string;\ndeclare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(input);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"ABC\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"aBc\";\n"
+      }
+    },
+    {
+      "id": "uppercase-generic-idempotence",
+      "source": "export function value<T extends string>(input: Uppercase<Uppercase<T>>): Uppercase<T> { return input; }\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"WORD\" = value<\"word\">(\"WORD\");\n",
+        "negative": "import { value } from \"./main\";\nvalue<\"word\">(\"invalid\");\n"
+      }
+    },
+    {
+      "id": "uppercase-generic-order",
+      "source": "export function value<T extends string>(input: Uppercase<Lowercase<T>>): Lowercase<Uppercase<T>> { return input; }\n",
+      "accepts": false
+    },
+    {
+      "id": "uppercase-generic-return-not-identity",
+      "source": "export function value<T extends string>(input: T): Uppercase<T> { return input; }\n",
+      "accepts": false
+    },
+    {
+      "id": "uppercase-generic-result-not-argument",
+      "source": "export function value<T extends string>(input: Uppercase<T>): T { return input; }\n",
+      "accepts": false
+    },
+    {
+      "id": "uppercase-generic-reverse-inference",
+      "source": "declare function map<T extends string>(input: Uppercase<T>): T;\nexport const value = map(\"ABC\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: string = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-never",
+      "source": "declare const input: never;\ndeclare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(input);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: never = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = 1;\n"
+      }
+    },
+    {
+      "id": "uppercase-any-number",
+      "source": "export const value: Uppercase<any> = 123;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = 123;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"aBc\";\n"
+      }
+    },
+    {
+      "id": "uppercase-any-invalid-string",
+      "source": "export const value: Uppercase<any> = \"aBc\";\n",
+      "accepts": false
+    },
+    {
+      "id": "uppercase-unknown-constraint",
+      "source": "export declare const value: Uppercase<unknown>;\n",
+      "accepts": false
+    },
+    {
+      "id": "uppercase-number-constraint",
+      "source": "export declare const value: Uppercase<number>;\n",
+      "accepts": false
+    },
+    {
+      "id": "uppercase-null-constraint",
+      "source": "export declare const value: Uppercase<null>;\n",
+      "accepts": false,
+      "acceptsByProfile": {
+        "es5-commonjs-strict": false,
+        "es5-commonjs-loose-null": true,
+        "es2022-commonjs-strict": false,
+        "es2022-esnext-es5lib-strict": false
+      },
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = null;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = 1;\n"
+      }
+    },
+    {
+      "id": "uppercase-literal-union",
+      "source": "declare const input: \"word\" | \"other\";\ndeclare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(input);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"WORD\" | \"OTHER\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-ordinary-local-owner",
+      "source": "type Uppercase<T> = { owner: T };\nexport const value: Uppercase<number> = { owner: 1 };\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: number = value.owner;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value.owner;\n"
+      }
+    },
+    {
+      "id": "uppercase-ordinary-imported-owner",
+      "source": "import type { Uppercase as Owned } from \"./types\";\nexport const value: Owned<number> = { owner: 1 };\n",
+      "accepts": true,
+      "files": {
+        "types.ts": "export type Uppercase<T> = { owner: T };\n"
+      },
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: number = value.owner;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value.owner;\n"
+      }
+    },
+    {
+      "id": "uppercase-source-intrinsic",
+      "source": "export type Uppercase<T extends string> = intrinsic;\nexport const value: Uppercase<\"word\"> = \"WORD\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"WORD\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-renamed-source-intrinsic",
+      "source": "import type { Uppercase as Mapping } from \"./types\";\nexport const value: Mapping<\"word\"> = \"WORD\";\n",
+      "accepts": true,
+      "files": {
+        "types.ts": "export type Uppercase<T extends string> = intrinsic;\n"
+      },
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"WORD\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-invalid-intrinsic-arity",
+      "source": "export type Uppercase<T, U> = intrinsic;\n",
+      "accepts": false
+    },
+    {
+      "id": "uppercase-unconstrained-number",
+      "source": "type Uppercase<T> = intrinsic;\nexport const value: Uppercase<number> = \"1E+21\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"1E+21\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"not-number\";\n"
+      }
+    },
+    {
+      "id": "uppercase-unconstrained-number-literal",
+      "source": "type Uppercase<T> = intrinsic;\nexport const value: Uppercase<123> = 123;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: 123 = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-unconstrained-unknown",
+      "source": "type Uppercase<T> = intrinsic;\nexport const value: Uppercase<unknown> = \"anything\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: unknown = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-unconstrained-object",
+      "source": "type Uppercase<T> = intrinsic;\nexport const value: Uppercase<{ key: number }> = { key: 1 };\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: number = value.key;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value.key;\n"
+      }
+    },
+    {
+      "id": "uppercase-type-value-namespaces",
+      "source": "const Uppercase = (input: number) => input + 1;\nexport const value: Uppercase<\"word\"> = \"WORD\";\nexport const runtime = Uppercase(1);\n",
+      "accepts": true,
+      "runtime": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"WORD\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-runtime-type-only",
+      "source": "export const value = Uppercase(\"word\");\n",
+      "accepts": false
+    },
+    {
+      "id": "uppercase-conditional-fixed-point",
+      "source": "type IsMapped<T extends string> = T extends Uppercase<T> ? true : false;\nexport const value: [IsMapped<\"ABC\">, IsMapped<\"aBc\">] = [true, false];\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: [true, false] = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = [false, true];\n"
+      }
+    },
+    {
+      "id": "uppercase-mapped-key",
+      "source": "type MapKeys<T> = { [K in keyof T as Uppercase<string & K>]: T[K] };\ndeclare function map<T>(input: T): MapKeys<T>;\nconst mapped = map({ word: 1 });\nexport const value = mapped[\"WORD\"];\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-identity-high-vs-replacement",
+      "source": "declare const input: Uppercase<\"\\uD800a\">;\nexport const value: Uppercase<\"\\uFFFDa\"> = input;\n",
+      "accepts": false
+    },
+    {
+      "id": "uppercase-identity-low-vs-replacement",
+      "source": "declare const input: Uppercase<\"\\uDC00a\">;\nexport const value: Uppercase<\"\\uFFFDa\"> = input;\n",
+      "accepts": false
+    },
+    {
+      "id": "uppercase-identity-high-vs-low",
+      "source": "declare const input: Uppercase<\"\\uD800a\">;\nexport const value: Uppercase<\"\\uDC00a\"> = input;\n",
+      "accepts": false
+    },
+    {
+      "id": "uppercase-identity-pair-vs-scalar",
+      "source": "declare const input: Uppercase<\"\\uD801\\uDC28a\">;\nexport const value: Uppercase<\"𐐨a\"> = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"𐐀A\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-open-template",
+      "source": "export const value: Uppercase<`pre-${string}`> = \"PRE-ABC\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"PRE-ABC\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"wrong-prefix\";\n"
+      }
+    },
+    {
+      "id": "uppercase-empty-head-template",
+      "source": "export const value: Uppercase<`${string}-post`> = \"ABC-POST\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"ABC-POST\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"aBc-POST\";\n"
+      }
+    },
+    {
+      "id": "uppercase-numeric-template",
+      "source": "export const value: Uppercase<`${number}`> = \"1E+21\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"1E+21\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"not-number\";\n"
+      }
+    },
+    {
+      "id": "uppercase-owned-inferred-number",
+      "source": "type Uppercase<T> = intrinsic;\ndeclare function map<T>(input: T): Uppercase<T>;\ndeclare const input: number;\nexport const value = map(input);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"1E+21\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"not-number\";\n"
+      }
+    },
+    {
+      "id": "uppercase-owned-inferred-string",
+      "source": "type Uppercase<T> = intrinsic;\ndeclare function map<T>(input: T): Uppercase<T>;\ndeclare const input: string;\nexport const value = map(input);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"ABC\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"aBc\";\n"
+      }
+    },
+    {
+      "id": "lowercase-empty",
+      "source": "declare function map<T extends string>(input: T): Lowercase<T>;\nexport const value = map(\"\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "lowercase-ascii",
+      "source": "declare function map<T extends string>(input: T): Lowercase<T>;\nexport const value = map(\"wOrD\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"word\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "lowercase-sharp-s",
+      "source": "declare function map<T extends string>(input: T): Lowercase<T>;\nexport const value = map(\"ßeta\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"ßeta\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "lowercase-greek-sigma",
+      "source": "declare function map<T extends string>(input: T): Lowercase<T>;\nexport const value = map(\"ΟΣ\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"ος\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "lowercase-dotted-i",
+      "source": "declare function map<T extends string>(input: T): Lowercase<T>;\nexport const value = map(\"İSTANBUL\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"i̇stanbul\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "lowercase-supplementary-head",
+      "source": "declare function map<T extends string>(input: T): Lowercase<T>;\nexport const value = map(\"𐐨word\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"𐐨word\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "lowercase-paired-escape",
+      "source": "declare function map<T extends string>(input: T): Lowercase<T>;\nexport const value = map(\"\\uD801\\uDC28word\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"𐐨word\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "lowercase-lone-high-head",
+      "source": "declare function map<T extends string>(input: T): Lowercase<T>;\nexport const value = map(\"\\ud800word\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"�word\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "lowercase-lone-low-head",
+      "source": "declare function map<T extends string>(input: T): Lowercase<T>;\nexport const value = map(\"\\udc00WORD\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"�word\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "lowercase-malformed-middle",
+      "source": "declare function map<T extends string>(input: T): Lowercase<T>;\nexport const value = map(\"a\\ud800𐐨z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"a�𐐨z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "lowercase-combining-head",
+      "source": "declare function map<T extends string>(input: T): Lowercase<T>;\nexport const value = map(\"́Word\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"́word\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "lowercase-escaped-controls",
+      "source": "declare function map<T extends string>(input: T): Lowercase<T>;\nexport const value = map(\"a\\u0000\\n\\u000b\\\"\\\\z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"a\\u0000\\n\\u000b\\\"\\\\z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "lowercase-general-valid",
+      "source": "export const value: Lowercase<string> = \"abc\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: string = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"aBc\";\n"
+      }
+    },
+    {
+      "id": "lowercase-general-invalid",
+      "source": "export const value: Lowercase<string> = \"aBc\";\n",
+      "accepts": false
+    },
+    {
+      "id": "lowercase-general-inferred",
+      "source": "declare const input: string;\ndeclare function map<T extends string>(input: T): Lowercase<T>;\nexport const value = map(input);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"abc\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"aBc\";\n"
+      }
+    },
+    {
+      "id": "lowercase-generic-idempotence",
+      "source": "export function value<T extends string>(input: Lowercase<Lowercase<T>>): Lowercase<T> { return input; }\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"word\" = value<\"word\">(\"word\");\n",
+        "negative": "import { value } from \"./main\";\nvalue<\"word\">(\"invalid\");\n"
+      }
+    },
+    {
+      "id": "lowercase-generic-order",
+      "source": "export function value<T extends string>(input: Lowercase<Uppercase<T>>): Uppercase<Lowercase<T>> { return input; }\n",
+      "accepts": false
+    },
+    {
+      "id": "lowercase-generic-return-not-identity",
+      "source": "export function value<T extends string>(input: T): Lowercase<T> { return input; }\n",
+      "accepts": false
+    },
+    {
+      "id": "lowercase-generic-result-not-argument",
+      "source": "export function value<T extends string>(input: Lowercase<T>): T { return input; }\n",
+      "accepts": false
+    },
+    {
+      "id": "lowercase-generic-reverse-inference",
+      "source": "declare function map<T extends string>(input: Lowercase<T>): T;\nexport const value = map(\"abc\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: string = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "lowercase-never",
+      "source": "declare const input: never;\ndeclare function map<T extends string>(input: T): Lowercase<T>;\nexport const value = map(input);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: never = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = 1;\n"
+      }
+    },
+    {
+      "id": "lowercase-any-number",
+      "source": "export const value: Lowercase<any> = 123;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = 123;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"aBc\";\n"
+      }
+    },
+    {
+      "id": "lowercase-any-invalid-string",
+      "source": "export const value: Lowercase<any> = \"aBc\";\n",
+      "accepts": false
+    },
+    {
+      "id": "lowercase-unknown-constraint",
+      "source": "export declare const value: Lowercase<unknown>;\n",
+      "accepts": false
+    },
+    {
+      "id": "lowercase-number-constraint",
+      "source": "export declare const value: Lowercase<number>;\n",
+      "accepts": false
+    },
+    {
+      "id": "lowercase-null-constraint",
+      "source": "export declare const value: Lowercase<null>;\n",
+      "accepts": false,
+      "acceptsByProfile": {
+        "es5-commonjs-strict": false,
+        "es5-commonjs-loose-null": true,
+        "es2022-commonjs-strict": false,
+        "es2022-esnext-es5lib-strict": false
+      },
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = null;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = 1;\n"
+      }
+    },
+    {
+      "id": "lowercase-literal-union",
+      "source": "declare const input: \"word\" | \"other\";\ndeclare function map<T extends string>(input: T): Lowercase<T>;\nexport const value = map(input);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"word\" | \"other\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "lowercase-ordinary-local-owner",
+      "source": "type Lowercase<T> = { owner: T };\nexport const value: Lowercase<number> = { owner: 1 };\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: number = value.owner;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value.owner;\n"
+      }
+    },
+    {
+      "id": "lowercase-ordinary-imported-owner",
+      "source": "import type { Lowercase as Owned } from \"./types\";\nexport const value: Owned<number> = { owner: 1 };\n",
+      "accepts": true,
+      "files": {
+        "types.ts": "export type Lowercase<T> = { owner: T };\n"
+      },
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: number = value.owner;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value.owner;\n"
+      }
+    },
+    {
+      "id": "lowercase-source-intrinsic",
+      "source": "export type Lowercase<T extends string> = intrinsic;\nexport const value: Lowercase<\"word\"> = \"word\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"word\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "lowercase-renamed-source-intrinsic",
+      "source": "import type { Lowercase as Mapping } from \"./types\";\nexport const value: Mapping<\"word\"> = \"word\";\n",
+      "accepts": true,
+      "files": {
+        "types.ts": "export type Lowercase<T extends string> = intrinsic;\n"
+      },
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"word\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "lowercase-invalid-intrinsic-arity",
+      "source": "export type Lowercase<T, U> = intrinsic;\n",
+      "accepts": false
+    },
+    {
+      "id": "lowercase-unconstrained-number",
+      "source": "type Lowercase<T> = intrinsic;\nexport const value: Lowercase<number> = \"1e+21\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"1e+21\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"not-number\";\n"
+      }
+    },
+    {
+      "id": "lowercase-unconstrained-number-literal",
+      "source": "type Lowercase<T> = intrinsic;\nexport const value: Lowercase<123> = 123;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: 123 = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value;\n"
+      }
+    },
+    {
+      "id": "lowercase-unconstrained-unknown",
+      "source": "type Lowercase<T> = intrinsic;\nexport const value: Lowercase<unknown> = \"anything\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: unknown = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value;\n"
+      }
+    },
+    {
+      "id": "lowercase-unconstrained-object",
+      "source": "type Lowercase<T> = intrinsic;\nexport const value: Lowercase<{ key: number }> = { key: 1 };\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: number = value.key;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value.key;\n"
+      }
+    },
+    {
+      "id": "lowercase-type-value-namespaces",
+      "source": "const Lowercase = (input: number) => input + 1;\nexport const value: Lowercase<\"word\"> = \"word\";\nexport const runtime = Lowercase(1);\n",
+      "accepts": true,
+      "runtime": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"word\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "lowercase-runtime-type-only",
+      "source": "export const value = Lowercase(\"word\");\n",
+      "accepts": false
+    },
+    {
+      "id": "lowercase-conditional-fixed-point",
+      "source": "type IsMapped<T extends string> = T extends Lowercase<T> ? true : false;\nexport const value: [IsMapped<\"abc\">, IsMapped<\"aBc\">] = [true, false];\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: [true, false] = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = [false, true];\n"
+      }
+    },
+    {
+      "id": "lowercase-mapped-key",
+      "source": "type MapKeys<T> = { [K in keyof T as Lowercase<string & K>]: T[K] };\ndeclare function map<T>(input: T): MapKeys<T>;\nconst mapped = map({ word: 1 });\nexport const value = mapped[\"word\"];\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value;\n"
+      }
+    },
+    {
+      "id": "lowercase-identity-high-vs-replacement",
+      "source": "declare const input: Lowercase<\"\\uD800a\">;\nexport const value: Lowercase<\"\\uFFFDa\"> = input;\n",
+      "accepts": false
+    },
+    {
+      "id": "lowercase-identity-low-vs-replacement",
+      "source": "declare const input: Lowercase<\"\\uDC00a\">;\nexport const value: Lowercase<\"\\uFFFDa\"> = input;\n",
+      "accepts": false
+    },
+    {
+      "id": "lowercase-identity-high-vs-low",
+      "source": "declare const input: Lowercase<\"\\uD800a\">;\nexport const value: Lowercase<\"\\uDC00a\"> = input;\n",
+      "accepts": false
+    },
+    {
+      "id": "lowercase-identity-pair-vs-scalar",
+      "source": "declare const input: Lowercase<\"\\uD801\\uDC28a\">;\nexport const value: Lowercase<\"𐐨a\"> = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"𐐨a\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "lowercase-open-template",
+      "source": "export const value: Lowercase<`pre-${string}`> = \"pre-abc\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"pre-abc\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"wrong-prefix\";\n"
+      }
+    },
+    {
+      "id": "lowercase-empty-head-template",
+      "source": "export const value: Lowercase<`${string}-post`> = \"abc-post\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"abc-post\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"aBc-post\";\n"
+      }
+    },
+    {
+      "id": "lowercase-numeric-template",
+      "source": "export const value: Lowercase<`${number}`> = \"1e+21\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"1e+21\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"not-number\";\n"
+      }
+    },
+    {
+      "id": "lowercase-owned-inferred-number",
+      "source": "type Lowercase<T> = intrinsic;\ndeclare function map<T>(input: T): Lowercase<T>;\ndeclare const input: number;\nexport const value = map(input);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"1e+21\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"not-number\";\n"
+      }
+    },
+    {
+      "id": "lowercase-owned-inferred-string",
+      "source": "type Lowercase<T> = intrinsic;\ndeclare function map<T>(input: T): Lowercase<T>;\ndeclare const input: string;\nexport const value = map(input);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"abc\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"aBc\";\n"
+      }
+    },
+    {
+      "id": "capitalize-empty",
+      "source": "declare function map<T extends string>(input: T): Capitalize<T>;\nexport const value = map(\"\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "capitalize-ascii",
+      "source": "declare function map<T extends string>(input: T): Capitalize<T>;\nexport const value = map(\"wOrD\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"WOrD\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "capitalize-sharp-s",
+      "source": "declare function map<T extends string>(input: T): Capitalize<T>;\nexport const value = map(\"ßeta\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"SSeta\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "capitalize-greek-sigma",
+      "source": "declare function map<T extends string>(input: T): Capitalize<T>;\nexport const value = map(\"ΟΣ\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"ΟΣ\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "capitalize-dotted-i",
+      "source": "declare function map<T extends string>(input: T): Capitalize<T>;\nexport const value = map(\"İSTANBUL\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"İSTANBUL\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "capitalize-supplementary-head",
+      "source": "declare function map<T extends string>(input: T): Capitalize<T>;\nexport const value = map(\"𐐨word\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"𐐨word\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "capitalize-paired-escape",
+      "source": "declare function map<T extends string>(input: T): Capitalize<T>;\nexport const value = map(\"\\uD801\\uDC28word\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"𐐨word\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "capitalize-lone-high-head",
+      "source": "declare function map<T extends string>(input: T): Capitalize<T>;\nexport const value = map(\"\\ud800word\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"�word\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "capitalize-lone-low-head",
+      "source": "declare function map<T extends string>(input: T): Capitalize<T>;\nexport const value = map(\"\\udc00WORD\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"�WORD\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "capitalize-malformed-middle",
+      "source": "declare function map<T extends string>(input: T): Capitalize<T>;\nexport const value = map(\"a\\ud800𐐨z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A�𐐨z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "capitalize-combining-head",
+      "source": "declare function map<T extends string>(input: T): Capitalize<T>;\nexport const value = map(\"́Word\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"́Word\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "capitalize-escaped-controls",
+      "source": "declare function map<T extends string>(input: T): Capitalize<T>;\nexport const value = map(\"a\\u0000\\n\\u000b\\\"\\\\z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u0000\\n\\u000b\\\"\\\\z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "capitalize-general-valid",
+      "source": "export const value: Capitalize<string> = \"Word\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: string = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"word\";\n"
+      }
+    },
+    {
+      "id": "capitalize-general-invalid",
+      "source": "export const value: Capitalize<string> = \"word\";\n",
+      "accepts": false
+    },
+    {
+      "id": "capitalize-general-inferred",
+      "source": "declare const input: string;\ndeclare function map<T extends string>(input: T): Capitalize<T>;\nexport const value = map(input);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"Word\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"word\";\n"
+      }
+    },
+    {
+      "id": "capitalize-generic-idempotence",
+      "source": "export function value<T extends string>(input: Capitalize<Capitalize<T>>): Capitalize<T> { return input; }\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"Word\" = value<\"word\">(\"Word\");\n",
+        "negative": "import { value } from \"./main\";\nvalue<\"word\">(\"invalid\");\n"
+      }
+    },
+    {
+      "id": "capitalize-generic-order",
+      "source": "export function value<T extends string>(input: Capitalize<Uncapitalize<T>>): Uncapitalize<Capitalize<T>> { return input; }\n",
+      "accepts": false
+    },
+    {
+      "id": "capitalize-generic-return-not-identity",
+      "source": "export function value<T extends string>(input: T): Capitalize<T> { return input; }\n",
+      "accepts": false
+    },
+    {
+      "id": "capitalize-generic-result-not-argument",
+      "source": "export function value<T extends string>(input: Capitalize<T>): T { return input; }\n",
+      "accepts": false
+    },
+    {
+      "id": "capitalize-generic-reverse-inference",
+      "source": "declare function map<T extends string>(input: Capitalize<T>): T;\nexport const value = map(\"Word\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: string = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "capitalize-never",
+      "source": "declare const input: never;\ndeclare function map<T extends string>(input: T): Capitalize<T>;\nexport const value = map(input);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: never = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = 1;\n"
+      }
+    },
+    {
+      "id": "capitalize-any-number",
+      "source": "export const value: Capitalize<any> = 123;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = 123;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"word\";\n"
+      }
+    },
+    {
+      "id": "capitalize-any-invalid-string",
+      "source": "export const value: Capitalize<any> = \"word\";\n",
+      "accepts": false
+    },
+    {
+      "id": "capitalize-unknown-constraint",
+      "source": "export declare const value: Capitalize<unknown>;\n",
+      "accepts": false
+    },
+    {
+      "id": "capitalize-number-constraint",
+      "source": "export declare const value: Capitalize<number>;\n",
+      "accepts": false
+    },
+    {
+      "id": "capitalize-null-constraint",
+      "source": "export declare const value: Capitalize<null>;\n",
+      "accepts": false,
+      "acceptsByProfile": {
+        "es5-commonjs-strict": false,
+        "es5-commonjs-loose-null": true,
+        "es2022-commonjs-strict": false,
+        "es2022-esnext-es5lib-strict": false
+      },
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = null;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = 1;\n"
+      }
+    },
+    {
+      "id": "capitalize-literal-union",
+      "source": "declare const input: \"word\" | \"other\";\ndeclare function map<T extends string>(input: T): Capitalize<T>;\nexport const value = map(input);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"Word\" | \"Other\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "capitalize-ordinary-local-owner",
+      "source": "type Capitalize<T> = { owner: T };\nexport const value: Capitalize<number> = { owner: 1 };\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: number = value.owner;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value.owner;\n"
+      }
+    },
+    {
+      "id": "capitalize-ordinary-imported-owner",
+      "source": "import type { Capitalize as Owned } from \"./types\";\nexport const value: Owned<number> = { owner: 1 };\n",
+      "accepts": true,
+      "files": {
+        "types.ts": "export type Capitalize<T> = { owner: T };\n"
+      },
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: number = value.owner;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value.owner;\n"
+      }
+    },
+    {
+      "id": "capitalize-source-intrinsic",
+      "source": "export type Capitalize<T extends string> = intrinsic;\nexport const value: Capitalize<\"word\"> = \"Word\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"Word\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "capitalize-renamed-source-intrinsic",
+      "source": "import type { Capitalize as Mapping } from \"./types\";\nexport const value: Mapping<\"word\"> = \"Word\";\n",
+      "accepts": true,
+      "files": {
+        "types.ts": "export type Capitalize<T extends string> = intrinsic;\n"
+      },
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"Word\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "capitalize-invalid-intrinsic-arity",
+      "source": "export type Capitalize<T, U> = intrinsic;\n",
+      "accepts": false
+    },
+    {
+      "id": "capitalize-unconstrained-number",
+      "source": "type Capitalize<T> = intrinsic;\nexport const value: Capitalize<number> = \"1e+21\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"1e+21\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"not-number\";\n"
+      }
+    },
+    {
+      "id": "capitalize-unconstrained-number-literal",
+      "source": "type Capitalize<T> = intrinsic;\nexport const value: Capitalize<123> = 123;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: 123 = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value;\n"
+      }
+    },
+    {
+      "id": "capitalize-unconstrained-unknown",
+      "source": "type Capitalize<T> = intrinsic;\nexport const value: Capitalize<unknown> = \"anything\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: unknown = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value;\n"
+      }
+    },
+    {
+      "id": "capitalize-unconstrained-object",
+      "source": "type Capitalize<T> = intrinsic;\nexport const value: Capitalize<{ key: number }> = { key: 1 };\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: number = value.key;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value.key;\n"
+      }
+    },
+    {
+      "id": "capitalize-type-value-namespaces",
+      "source": "const Capitalize = (input: number) => input + 1;\nexport const value: Capitalize<\"word\"> = \"Word\";\nexport const runtime = Capitalize(1);\n",
+      "accepts": true,
+      "runtime": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"Word\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "capitalize-runtime-type-only",
+      "source": "export const value = Capitalize(\"word\");\n",
+      "accepts": false
+    },
+    {
+      "id": "capitalize-conditional-fixed-point",
+      "source": "type IsMapped<T extends string> = T extends Capitalize<T> ? true : false;\nexport const value: [IsMapped<\"Word\">, IsMapped<\"word\">] = [true, false];\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: [true, false] = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = [false, true];\n"
+      }
+    },
+    {
+      "id": "capitalize-mapped-key",
+      "source": "type MapKeys<T> = { [K in keyof T as Capitalize<string & K>]: T[K] };\ndeclare function map<T>(input: T): MapKeys<T>;\nconst mapped = map({ word: 1 });\nexport const value = mapped[\"Word\"];\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value;\n"
+      }
+    },
+    {
+      "id": "capitalize-identity-high-vs-replacement",
+      "source": "declare const input: Capitalize<\"\\uD800a\">;\nexport const value: Capitalize<\"\\uFFFDa\"> = input;\n",
+      "accepts": false
+    },
+    {
+      "id": "capitalize-identity-low-vs-replacement",
+      "source": "declare const input: Capitalize<\"\\uDC00a\">;\nexport const value: Capitalize<\"\\uFFFDa\"> = input;\n",
+      "accepts": false
+    },
+    {
+      "id": "capitalize-identity-high-vs-low",
+      "source": "declare const input: Capitalize<\"\\uD800a\">;\nexport const value: Capitalize<\"\\uDC00a\"> = input;\n",
+      "accepts": false
+    },
+    {
+      "id": "capitalize-identity-pair-vs-scalar",
+      "source": "declare const input: Capitalize<\"\\uD801\\uDC28a\">;\nexport const value: Capitalize<\"𐐨a\"> = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"𐐨a\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "capitalize-open-template",
+      "source": "export const value: Capitalize<`pre-${string}`> = \"Pre-mixed\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"Pre-mixed\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"wrong-prefix\";\n"
+      }
+    },
+    {
+      "id": "capitalize-empty-head-template",
+      "source": "export const value: Capitalize<`${string}-post`> = \"Word-post\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"Word-post\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"word-post\";\n"
+      }
+    },
+    {
+      "id": "capitalize-numeric-template",
+      "source": "export const value: Capitalize<`${number}`> = \"1e+21\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"1e+21\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"not-number\";\n"
+      }
+    },
+    {
+      "id": "capitalize-owned-inferred-number",
+      "source": "type Capitalize<T> = intrinsic;\ndeclare function map<T>(input: T): Capitalize<T>;\ndeclare const input: number;\nexport const value = map(input);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"1e+21\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"not-number\";\n"
+      }
+    },
+    {
+      "id": "capitalize-owned-inferred-string",
+      "source": "type Capitalize<T> = intrinsic;\ndeclare function map<T>(input: T): Capitalize<T>;\ndeclare const input: string;\nexport const value = map(input);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"Word\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"word\";\n"
+      }
+    },
+    {
+      "id": "uncapitalize-empty",
+      "source": "declare function map<T extends string>(input: T): Uncapitalize<T>;\nexport const value = map(\"\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-ascii",
+      "source": "declare function map<T extends string>(input: T): Uncapitalize<T>;\nexport const value = map(\"wOrD\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"wOrD\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-sharp-s",
+      "source": "declare function map<T extends string>(input: T): Uncapitalize<T>;\nexport const value = map(\"ßeta\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"ßeta\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-greek-sigma",
+      "source": "declare function map<T extends string>(input: T): Uncapitalize<T>;\nexport const value = map(\"ΟΣ\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"οΣ\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-dotted-i",
+      "source": "declare function map<T extends string>(input: T): Uncapitalize<T>;\nexport const value = map(\"İSTANBUL\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"i̇STANBUL\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-supplementary-head",
+      "source": "declare function map<T extends string>(input: T): Uncapitalize<T>;\nexport const value = map(\"𐐨word\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"𐐨word\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-paired-escape",
+      "source": "declare function map<T extends string>(input: T): Uncapitalize<T>;\nexport const value = map(\"\\uD801\\uDC28word\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"𐐨word\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-lone-high-head",
+      "source": "declare function map<T extends string>(input: T): Uncapitalize<T>;\nexport const value = map(\"\\ud800word\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"�word\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-lone-low-head",
+      "source": "declare function map<T extends string>(input: T): Uncapitalize<T>;\nexport const value = map(\"\\udc00WORD\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"�WORD\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-malformed-middle",
+      "source": "declare function map<T extends string>(input: T): Uncapitalize<T>;\nexport const value = map(\"a\\ud800𐐨z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"a�𐐨z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-combining-head",
+      "source": "declare function map<T extends string>(input: T): Uncapitalize<T>;\nexport const value = map(\"́Word\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"́Word\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-escaped-controls",
+      "source": "declare function map<T extends string>(input: T): Uncapitalize<T>;\nexport const value = map(\"a\\u0000\\n\\u000b\\\"\\\\z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"a\\u0000\\n\\u000b\\\"\\\\z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-general-valid",
+      "source": "export const value: Uncapitalize<string> = \"word\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: string = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"Word\";\n"
+      }
+    },
+    {
+      "id": "uncapitalize-general-invalid",
+      "source": "export const value: Uncapitalize<string> = \"Word\";\n",
+      "accepts": false
+    },
+    {
+      "id": "uncapitalize-general-inferred",
+      "source": "declare const input: string;\ndeclare function map<T extends string>(input: T): Uncapitalize<T>;\nexport const value = map(input);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"word\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"Word\";\n"
+      }
+    },
+    {
+      "id": "uncapitalize-generic-idempotence",
+      "source": "export function value<T extends string>(input: Uncapitalize<Uncapitalize<T>>): Uncapitalize<T> { return input; }\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"word\" = value<\"word\">(\"word\");\n",
+        "negative": "import { value } from \"./main\";\nvalue<\"word\">(\"invalid\");\n"
+      }
+    },
+    {
+      "id": "uncapitalize-generic-order",
+      "source": "export function value<T extends string>(input: Uncapitalize<Capitalize<T>>): Capitalize<Uncapitalize<T>> { return input; }\n",
+      "accepts": false
+    },
+    {
+      "id": "uncapitalize-generic-return-not-identity",
+      "source": "export function value<T extends string>(input: T): Uncapitalize<T> { return input; }\n",
+      "accepts": false
+    },
+    {
+      "id": "uncapitalize-generic-result-not-argument",
+      "source": "export function value<T extends string>(input: Uncapitalize<T>): T { return input; }\n",
+      "accepts": false
+    },
+    {
+      "id": "uncapitalize-generic-reverse-inference",
+      "source": "declare function map<T extends string>(input: Uncapitalize<T>): T;\nexport const value = map(\"word\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: string = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-never",
+      "source": "declare const input: never;\ndeclare function map<T extends string>(input: T): Uncapitalize<T>;\nexport const value = map(input);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: never = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = 1;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-any-number",
+      "source": "export const value: Uncapitalize<any> = 123;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = 123;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"Word\";\n"
+      }
+    },
+    {
+      "id": "uncapitalize-any-invalid-string",
+      "source": "export const value: Uncapitalize<any> = \"Word\";\n",
+      "accepts": false
+    },
+    {
+      "id": "uncapitalize-unknown-constraint",
+      "source": "export declare const value: Uncapitalize<unknown>;\n",
+      "accepts": false
+    },
+    {
+      "id": "uncapitalize-number-constraint",
+      "source": "export declare const value: Uncapitalize<number>;\n",
+      "accepts": false
+    },
+    {
+      "id": "uncapitalize-null-constraint",
+      "source": "export declare const value: Uncapitalize<null>;\n",
+      "accepts": false,
+      "acceptsByProfile": {
+        "es5-commonjs-strict": false,
+        "es5-commonjs-loose-null": true,
+        "es2022-commonjs-strict": false,
+        "es2022-esnext-es5lib-strict": false
+      },
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = null;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = 1;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-literal-union",
+      "source": "declare const input: \"word\" | \"other\";\ndeclare function map<T extends string>(input: T): Uncapitalize<T>;\nexport const value = map(input);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"word\" | \"other\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-ordinary-local-owner",
+      "source": "type Uncapitalize<T> = { owner: T };\nexport const value: Uncapitalize<number> = { owner: 1 };\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: number = value.owner;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value.owner;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-ordinary-imported-owner",
+      "source": "import type { Uncapitalize as Owned } from \"./types\";\nexport const value: Owned<number> = { owner: 1 };\n",
+      "accepts": true,
+      "files": {
+        "types.ts": "export type Uncapitalize<T> = { owner: T };\n"
+      },
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: number = value.owner;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value.owner;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-source-intrinsic",
+      "source": "export type Uncapitalize<T extends string> = intrinsic;\nexport const value: Uncapitalize<\"word\"> = \"word\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"word\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-renamed-source-intrinsic",
+      "source": "import type { Uncapitalize as Mapping } from \"./types\";\nexport const value: Mapping<\"word\"> = \"word\";\n",
+      "accepts": true,
+      "files": {
+        "types.ts": "export type Uncapitalize<T extends string> = intrinsic;\n"
+      },
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"word\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-invalid-intrinsic-arity",
+      "source": "export type Uncapitalize<T, U> = intrinsic;\n",
+      "accepts": false
+    },
+    {
+      "id": "uncapitalize-unconstrained-number",
+      "source": "type Uncapitalize<T> = intrinsic;\nexport const value: Uncapitalize<number> = \"1e+21\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"1e+21\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"not-number\";\n"
+      }
+    },
+    {
+      "id": "uncapitalize-unconstrained-number-literal",
+      "source": "type Uncapitalize<T> = intrinsic;\nexport const value: Uncapitalize<123> = 123;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: 123 = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-unconstrained-unknown",
+      "source": "type Uncapitalize<T> = intrinsic;\nexport const value: Uncapitalize<unknown> = \"anything\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: unknown = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-unconstrained-object",
+      "source": "type Uncapitalize<T> = intrinsic;\nexport const value: Uncapitalize<{ key: number }> = { key: 1 };\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: number = value.key;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value.key;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-type-value-namespaces",
+      "source": "const Uncapitalize = (input: number) => input + 1;\nexport const value: Uncapitalize<\"word\"> = \"word\";\nexport const runtime = Uncapitalize(1);\n",
+      "accepts": true,
+      "runtime": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"word\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-runtime-type-only",
+      "source": "export const value = Uncapitalize(\"word\");\n",
+      "accepts": false
+    },
+    {
+      "id": "uncapitalize-conditional-fixed-point",
+      "source": "type IsMapped<T extends string> = T extends Uncapitalize<T> ? true : false;\nexport const value: [IsMapped<\"word\">, IsMapped<\"Word\">] = [true, false];\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: [true, false] = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = [false, true];\n"
+      }
+    },
+    {
+      "id": "uncapitalize-mapped-key",
+      "source": "type MapKeys<T> = { [K in keyof T as Uncapitalize<string & K>]: T[K] };\ndeclare function map<T>(input: T): MapKeys<T>;\nconst mapped = map({ word: 1 });\nexport const value = mapped[\"word\"];\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-identity-high-vs-replacement",
+      "source": "declare const input: Uncapitalize<\"\\uD800a\">;\nexport const value: Uncapitalize<\"\\uFFFDa\"> = input;\n",
+      "accepts": false
+    },
+    {
+      "id": "uncapitalize-identity-low-vs-replacement",
+      "source": "declare const input: Uncapitalize<\"\\uDC00a\">;\nexport const value: Uncapitalize<\"\\uFFFDa\"> = input;\n",
+      "accepts": false
+    },
+    {
+      "id": "uncapitalize-identity-high-vs-low",
+      "source": "declare const input: Uncapitalize<\"\\uD800a\">;\nexport const value: Uncapitalize<\"\\uDC00a\"> = input;\n",
+      "accepts": false
+    },
+    {
+      "id": "uncapitalize-identity-pair-vs-scalar",
+      "source": "declare const input: Uncapitalize<\"\\uD801\\uDC28a\">;\nexport const value: Uncapitalize<\"𐐨a\"> = input;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"𐐨a\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uncapitalize-open-template",
+      "source": "export const value: Uncapitalize<`pre-${string}`> = \"pre-Mixed\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"pre-Mixed\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"wrong-prefix\";\n"
+      }
+    },
+    {
+      "id": "uncapitalize-empty-head-template",
+      "source": "export const value: Uncapitalize<`${string}-post`> = \"word-post\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"word-post\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"Word-post\";\n"
+      }
+    },
+    {
+      "id": "uncapitalize-numeric-template",
+      "source": "export const value: Uncapitalize<`${number}`> = \"1e+21\";\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"1e+21\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"not-number\";\n"
+      }
+    },
+    {
+      "id": "uncapitalize-owned-inferred-number",
+      "source": "type Uncapitalize<T> = intrinsic;\ndeclare function map<T>(input: T): Uncapitalize<T>;\ndeclare const input: number;\nexport const value = map(input);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"1e+21\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"not-number\";\n"
+      }
+    },
+    {
+      "id": "uncapitalize-owned-inferred-string",
+      "source": "type Uncapitalize<T> = intrinsic;\ndeclare function map<T>(input: T): Uncapitalize<T>;\ndeclare const input: string;\nexport const value = map(input);\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = \"word\";\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = \"Word\";\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-0000",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u0000z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u0000Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-0001",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u0001z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u0001Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-0002",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u0002z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u0002Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-0003",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u0003z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u0003Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-0004",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u0004z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u0004Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-0005",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u0005z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u0005Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-0006",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u0006z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u0006Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-0007",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u0007z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u0007Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-0008",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\bz\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\bZ\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-0009",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\tz\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\tZ\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-000a",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\nz\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\nZ\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-000b",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u000bz\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u000bZ\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-000c",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\fz\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\fZ\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-000d",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\rz\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\rZ\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-000e",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u000ez\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u000eZ\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-000f",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u000fz\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u000fZ\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-0010",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u0010z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u0010Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-0011",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u0011z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u0011Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-0012",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u0012z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u0012Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-0013",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u0013z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u0013Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-0014",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u0014z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u0014Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-0015",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u0015z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u0015Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-0016",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u0016z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u0016Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-0017",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u0017z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u0017Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-0018",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u0018z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u0018Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-0019",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u0019z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u0019Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-001a",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u001az\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u001aZ\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-001b",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u001bz\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u001bZ\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-001c",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u001cz\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u001cZ\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-001d",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u001dz\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u001dZ\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-001e",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u001ez\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u001eZ\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-control-001f",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u001fz\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u001fZ\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-nul-digit",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\u00001z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\u00001Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-del",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"az\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"AZ\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-c1",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"az\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"AZ\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-nbsp",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-line-separator",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-paragraph-separator",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-bom",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a﻿z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A﻿Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-noncharacter-fffe",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a￾z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A￾Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-noncharacter-ffff",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a￿z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A￿Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-quote",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\\"z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\\"Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-single-quote",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a'z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A'Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-backslash",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a\\\\z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A\\\\Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-backtick",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a`z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A`Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "uppercase-printer-dollar-brace",
+      "source": "declare function map<T extends string>(input: T): Uppercase<T>;\nexport const value = map(\"a${z\");\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: \"A${Z\" = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: number = value;\n"
+      }
+    },
+    {
+      "id": "source-fake-intrinsic",
+      "source": "export type Fake<T> = intrinsic;\n",
+      "accepts": false
+    },
+    {
+      "id": "source-noinfer-regression",
+      "source": "export type NoInfer<T> = intrinsic;\nexport const value: NoInfer<number> = 1;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: number = value;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: string = value;\n"
+      }
+    },
+    {
+      "id": "source-builtin-iterator-regression",
+      "source": "export type BuiltinIteratorReturn = intrinsic;\nexport declare const value: BuiltinIteratorReturn;\n",
+      "accepts": true,
+      "consumer": {
+        "positive": "import { value } from \"./main\";\nconst proof: typeof value = undefined;\n",
+        "negative": "import { value } from \"./main\";\nconst proof: typeof value = 1;\n"
+      }
+    }
+  ]
+}

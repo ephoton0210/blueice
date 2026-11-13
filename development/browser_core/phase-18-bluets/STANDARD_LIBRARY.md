@@ -122,8 +122,15 @@ Promise, PromiseConstructorLike and structural Awaited declarations in a separat
 ES5 layer. Runtime Promise authority stays in the ES2015 layer. Complete
 396-comparison/four-profile acceptance includes exact declarations, 630 isolated
 consumers and semantic recursive-demand controls. Six owner/runtime and fifteen
-resource controls remain separate. Uppercase, Lowercase, Capitalize,
-Uncapitalize and broader library compositions remain open.
+resource controls remain separate. Broader library compositions remain open.
+
+The [string-intrinsic follow-up](STRING_INTRINSIC_ACCEPTANCE.md) supplies Uppercase,
+Lowercase, Capitalize and Uncapitalize through shared bounded UTF-16 operations.
+Its980 complete comparisons require804 exact declaration files,1544 isolated
+consumers,804 parses and16 executions per actual compiler. Four ambient owners,
+four runtime-authority refusals and12 resource controls remain separate. Ten
+supplementary context regressions add no inventory credit. No runtime binding
+is installed; wider utility/catalog compositions remain open.
 
 Broader generic inference, structural protocols, overloads, index signatures
 and declaration precision remain K.4/K.8 and the compatibility inventory.

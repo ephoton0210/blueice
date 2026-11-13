@@ -185,7 +185,7 @@ pub(super) fn declares_symbol_value(module: &Module) -> bool {
 
 pub(super) fn record_annotation(value: &Type) -> bool {
     match value {
-        Type::Record(_) | Type::Mapped(_) => true,
+        Type::Record(_) | Type::Mapped(_) | Type::StringMapping(_) => true,
         Type::Named { arguments, .. } => arguments.iter().any(record_annotation),
         Type::Array(element) | Type::Readonly(element) => record_annotation(element),
         Type::Tuple(elements) => elements
@@ -193,6 +193,8 @@ pub(super) fn record_annotation(value: &Type) -> bool {
             .any(|element| record_annotation(&element.annotation)),
         Type::Predicate(predicate) => predicate.target.as_deref().is_some_and(record_annotation),
         Type::Union(parts) | Type::Intersection(parts) => parts.iter().any(record_annotation),
-        _ => false,
+        _ => value
+            .operator_children()
+            .is_some_and(|children| children.into_iter().any(record_annotation)),
     }
 }

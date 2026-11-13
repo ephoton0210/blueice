@@ -148,6 +148,9 @@ fn same_argument(actual: &Type, expected: &Type) -> bool {
     if actual == expected {
         return true;
     }
+    if let (Some(actual), Some(expected)) = (actual.string_value(), expected.string_value()) {
+        return actual == expected;
+    }
     if let (Type::Literal(actual), Type::Literal(expected)) = (actual, expected) {
         if actual.starts_with(['\'', '"']) && expected.starts_with(['\'', '"']) {
             if let (Some(actual), Some(expected)) = (

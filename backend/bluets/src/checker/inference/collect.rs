@@ -51,6 +51,14 @@ impl Collector<'_> {
     }
 
     fn inner(&mut self, template: &Type, actual: &Type, contra: bool) {
+        if let Type::StringMapping(template) = template {
+            if let Type::StringMapping(actual) = actual {
+                if template.origin == actual.origin && template.operation == actual.operation {
+                    self.collect(&template.operand, &actual.operand, contra);
+                }
+            }
+            return;
+        }
         if let Type::Named { name, arguments } = template {
             if arguments.is_empty() && self.parameters.contains(name) {
                 if *actual != Type::Unknown {

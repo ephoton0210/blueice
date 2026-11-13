@@ -7,7 +7,7 @@ use super::*;
 use crate::checker::type_operators;
 
 impl ModuleChecker<'_> {
-    pub(super) fn operator_assignment_error(
+    pub(in crate::checker::module) fn operator_assignment_error(
         &mut self,
         span: &SourceSpan,
         message: &str,
@@ -115,23 +115,27 @@ impl ModuleChecker<'_> {
             return false;
         };
         let display = type_operators::diagnostic_type(expected, &self.types, &mut budget);
-        let (Type::Literal(actual), Type::Union(parts)) = (actual, &display) else {
+        let Type::Union(parts) = &display else {
             return false;
         };
-        let actual_name = actual.trim_matches(['\'', '"']);
+        let Some(actual_name) = actual
+            .string_value()
+            .and_then(|value| String::from_utf16(value.units()).ok())
+        else {
+            return false;
+        };
         let names = parts
             .iter()
             .filter_map(|value| {
-                if let Type::Literal(name) = value {
-                    Some(name.trim_matches(['\'', '"']))
-                } else {
-                    None
-                }
+                value
+                    .string_value()
+                    .and_then(|value| String::from_utf16(value.units()).ok())
             })
             .collect::<Vec<_>>();
-        let Some(suggestion) =
-            crate::diagnostic::spelling::literal_suggestion(actual_name, names.iter().copied())
-        else {
+        let Some(suggestion) = crate::diagnostic::spelling::literal_suggestion(
+            &actual_name,
+            names.iter().map(String::as_str),
+        ) else {
             return false;
         };
         self.typescript_type_error(

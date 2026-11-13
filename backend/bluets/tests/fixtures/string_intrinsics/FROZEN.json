@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "frozenAt": "2026-11-12T13:17:18.194055+00:00",
+  "scope": "Authored inputs, complete Native expectations and separate policy controls frozen before C production changes. This is not BlueTS acceptance.",
+  "candidateBSource": "backend-tree:d93ce26e990e61e09dacab7a31fbcec822674030",
+  "candidateBAcceptancePending": true,
+  "forms": 245,
+  "profiles": 4,
+  "directComparisons": 980,
+  "acceptedInventories": 772,
+  "declarationFiles": 804,
+  "isolatedConsumers": 1544,
+  "selectedEditionParsesRequired": 804,
+  "executions": 16,
+  "separateBoundaryControls": 20,
+  "sha256": {
+    "cases.json": "207dc94343b3baf6b4fbf22aec53f040f6a1897204e38c2113c51907ece22eb7",
+    "reference.json": "8edcaacd4711bd30cec21f0d18e1e4b5524bdf4e4d3fbd4d5ffc8289ddddb1c3",
+    "boundary-controls.json": "e6faf88af1373f4163391be8295dee5a3dc9e1c23d0035212e8329becfd0f83a"
+  }
+}

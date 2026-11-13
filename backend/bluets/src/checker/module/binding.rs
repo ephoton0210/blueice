@@ -74,6 +74,7 @@ impl<'a> ModuleChecker<'a> {
             explicit_checking: policy.checking.is_some(),
             target: policy.target,
             library_target: policy.library_target,
+            library_mode: policy.library_mode,
             symbol_metadata: policy.symbol_metadata,
             project,
             scopes: None,

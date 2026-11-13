@@ -4,7 +4,7 @@
 
 //! Static TypeScript debugger metadata independent of a JavaScript VM.
 
-use crate::checker::{type_label, CheckedProject, SymbolKind, Type};
+use crate::checker::{type_identity, type_label, CheckedProject, SymbolKind, Type};
 use crate::compiler::CompilerOptions;
 use crate::contracts::ContractPlan;
 use crate::diagnostic::SourceSpan;
@@ -450,11 +450,12 @@ fn intern_type(
     types: &mut Vec<DebugType>,
 ) -> TypeId {
     let display = type_label(value);
-    if let Some(id) = interned_types.get(&display) {
+    let identity = type_identity(value);
+    if let Some(id) = interned_types.get(&identity) {
         return *id;
     }
     let id = TypeId(types.len() as u32);
-    interned_types.insert(display.clone(), id);
+    interned_types.insert(identity, id);
     types.push(DebugType { id, display });
     id
 }
@@ -496,6 +497,25 @@ fn hash(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{source_hash, source_locations_for_spans, SourceId};
+
+    #[test]
+    fn opaque_type_ids_keep_distinct_values_with_identical_display_text() {
+        use crate::{StringLiteral, Type, Utf16String};
+        let high = Type::StringLiteral(StringLiteral::generated(Utf16String::from_units(vec![
+            0xd800,
+        ])));
+        let replacement =
+            Type::StringLiteral(StringLiteral::generated(Utf16String::from_units(vec![
+                0xfffd,
+            ])));
+        let mut ids = std::collections::BTreeMap::new();
+        let mut types = Vec::new();
+        let first = super::intern_type(&high, &mut ids, &mut types);
+        let second = super::intern_type(&replacement, &mut ids, &mut types);
+        assert_ne!(first, second);
+        assert_eq!(types[0].display, types[1].display);
+        assert_eq!(super::intern_type(&high, &mut ids, &mut types), first);
+    }
     use crate::{compile, CompilerOptions, MapLoader, ModuleSource, SourceSpan};
 
     #[test]

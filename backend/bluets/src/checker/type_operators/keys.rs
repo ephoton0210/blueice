@@ -14,6 +14,9 @@ pub(super) fn literal_key(name: &str) -> Type {
 }
 
 pub(super) fn key_name(value: &Type) -> Option<String> {
+    if let Some(value) = value.string_value() {
+        return String::from_utf16(value.units()).ok();
+    }
     let Type::Literal(text) = value else {
         return None;
     };
@@ -28,7 +31,7 @@ pub(super) fn keyof(
 ) -> Option<Type> {
     let value = expanded(value, aliases, visited, budget);
     let owner = match &value {
-        Type::String => Some("String"),
+        Type::String | Type::StringLiteral(_) | Type::StringMapping(_) => Some("String"),
         Type::Number => Some("Number"),
         Type::Boolean => Some("Boolean"),
         Type::BigInt => Some("BigInt"),

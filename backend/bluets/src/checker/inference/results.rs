@@ -73,6 +73,7 @@ fn finish_inner(
         value @ (Type::Function { .. } | Type::GenericFunction { .. }) => value,
         Type::InferenceBarrier(value) => Type::inference_barrier(finish(*value, aliases, budget)),
         value @ (Type::Mapped(_)
+        | Type::StringMapping(_)
         | Type::Conditional(_)
         | Type::KeyOf(_)
         | Type::IndexedAccess { .. }
@@ -93,6 +94,9 @@ fn finish_inner(
         }
         Type::Named { name, arguments } => {
             if super::barriers::alias_has_barrier(&name, aliases)
+                || aliases
+                    .get(&name)
+                    .is_some_and(|definition| matches!(definition.value, Type::Intrinsic(_)))
                 || crate::checker::type_relations::non_null_alias(&name, aliases)
                 || conditional_alias(&name, aliases)
             {

@@ -273,6 +273,14 @@ impl ModuleChecker<'_> {
         }
         self.bind_library_keys(&protected_types, &protected_values);
         if let Some(target) = self.library_target {
+            self.types.insert(
+                crate::checker::type_operators::STRING_LITERAL_PROFILE.into(),
+                TypeDefinition {
+                    kind: TypeDefinitionKind::Alias,
+                    parameters: Vec::new(),
+                    value: Type::Literal(format!("{}:{}", target.as_str(), self.library_mode)),
+                },
+            );
             for (owner, value) in crate::type_operator_profiles::keys(target) {
                 if self.types.get(&owner).is_some_and(|definition| {
                     definition.kind == TypeDefinitionKind::LibraryInterface

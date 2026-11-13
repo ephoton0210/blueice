@@ -235,11 +235,17 @@ impl ModuleChecker<'_> {
                 let name = crate::parser::source_type_name(name);
                 let source = crate::diagnostic::type_text::render_in(actual, self.project);
                 return Some(if let Some(constraint) = &parameter.constraint {
-                    format!("\n  '{source}' is assignable to the constraint of type '{name}', but '{name}' could be instantiated with a different subtype of constraint '{}'.",crate::diagnostic::type_text::render_in(constraint,self.project))
+                    let mut detail = format!("\n  '{source}' is assignable to the constraint of type '{name}', but '{name}' could be instantiated with a different subtype of constraint '{}'.",crate::diagnostic::type_text::render_in(constraint,self.project));
+                    detail
+                        .push_str(&self.string_mapping_parameter_causes(actual, name, constraint));
+                    detail
                 } else {
                     format!("\n  '{name}' could be instantiated with an arbitrary type which could be unrelated to '{source}'.")
                 });
             }
+        }
+        if let Some(detail) = self.string_mapping_source_constraint_detail(actual, expected) {
+            return Some(detail);
         }
         if let (
             Type::Named {

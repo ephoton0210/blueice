@@ -12,7 +12,10 @@ mod conditional;
 mod keys;
 mod literal_order;
 mod mapped;
+mod string_mapping;
 mod templates;
+
+pub(in crate::checker) const STRING_LITERAL_PROFILE: &str = "\0bluets:string-literal-profile";
 
 pub(super) fn expanded(
     value: &Type,
@@ -137,6 +140,7 @@ pub(super) fn resolve(
         Type::Conditional(value) => conditional::resolve(value, aliases, visited, budget),
         Type::Mapped(value) => mapped::resolve(value, aliases, visited, budget),
         Type::TemplateLiteral(value) => templates::resolve(value, aliases, visited, budget),
+        Type::StringMapping(value) => string_mapping::resolve(value, aliases, visited, budget),
         _ => None,
     }
 }
@@ -196,6 +200,7 @@ pub(super) fn diagnostic_type(
         operator |= matches!(
             value,
             Type::Conditional(_)
+                | Type::StringMapping(_)
                 | Type::KeyOf(_)
                 | Type::IndexedAccess { .. }
                 | Type::TemplateLiteral(_)
@@ -263,7 +268,10 @@ pub(super) fn is_operator_context(
             return true;
         }
         if value.operator_children().is_some()
-            || matches!(value, Type::KeyOf(_) | Type::IndexedAccess { .. })
+            || matches!(
+                value,
+                Type::KeyOf(_) | Type::IndexedAccess { .. } | Type::Intrinsic(_)
+            )
         {
             return true;
         }

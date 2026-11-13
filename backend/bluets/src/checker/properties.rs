@@ -219,7 +219,9 @@ fn property_type_with_access(
         }
     }
     let boxed = match value {
-        Type::String => Some(("String", Vec::new())),
+        Type::String | Type::StringLiteral(_) | Type::StringMapping(_) => {
+            Some(("String", Vec::new()))
+        }
         Type::Number => Some(("Number", Vec::new())),
         Type::BigInt => Some(("BigInt", Vec::new())),
         Type::Symbol | Type::UniqueSymbol(_) => Some(("Symbol", Vec::new())),

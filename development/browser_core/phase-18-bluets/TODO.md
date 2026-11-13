@@ -11,21 +11,21 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 **Current BlueTS / BlueTSC compatibility status (2026-11-12).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 40,636 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 41,636 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 39,773/39,779 (99.9849%); 3 open, 3 refused observations |
-| Separate controls | 633 native-reference + 224 BlueTS owner = 857; excluded from direct agreement |
-| Case labels | 40,630 scoped closed (including controls), 3 open, 3 refused |
-| Suite inventory | 186 suites / 391 ignored Rust functions; not a case denominator |
-| Suite labels | 182 scoped closed, 1 open, 3 refused |
+| Direct agreement | 40,753/40,759 (99.9853%); 3 open, 3 refused observations |
+| Separate controls | 633 native-reference + 244 BlueTS owner = 877; excluded from direct agreement |
+| Case labels | 41,630 scoped closed (including controls), 3 open, 3 refused |
+| Suite inventory | 187 suites / 392 ignored Rust functions; not a case denominator |
+| Suite labels | 183 scoped closed, 1 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
-| Source refusal sites | 227 in 11 areas; condition-specific locations, not extra failing cases |
+| Source refusal sites | 230 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 40,636 recorded case expectations pass; expected differences/refusals are not
+All 41,636 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,8 +33,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:d93ce26e990e61e09dacab7a31fbcec822674030`.
-Input graph SHA-256: `4cf20d55364e10fb6be9dfea6522fe1af9f82265e97425d4383fa3b4ad84010e`.
+Compiler/oracle source: `backend-tree:687190197095253ff614e93a035b4e424b5e725a`.
+Input graph SHA-256: `f38b758dcfb2a6818a1b6511ecbe7cd92e52a723e3fd492630313911ea683713`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -60,13 +60,13 @@ broader G-C1 inventory row remains open for unmeasured CLI/recovery coverage;
 the finite checklist does not claim full parity. See the
 [acceptance record](PLAN.md#phase-l--g-c1-implementation).
 
-**Latest completed follow-up:** P0-B supplies NonNullable through ordinary
-intersection semantics and ES5 Awaited through shared structural conditional/infer
-paths, preserving runtime/owner and semantic/resource boundaries.
-[Acceptance](NONNULLABLE_AWAITED_ACCEPTANCE.md) binds complete Native/local/Windows
-gates, exact declarations, isolated consumers, maps and project regressions to
-its source. P0-A and earlier packages retain their dated evidence.
-All 22 broader rows remain open; continue with P0-C.
+**Latest completed follow-up:** P0-C supplies the four string intrinsics through
+shared bounded UTF-16 operations, preserving source-owner identity and separate
+runtime/resource boundaries. [Acceptance](STRING_INTRINSIC_ACCEPTANCE.md) binds
+the complete Native/local/Windows gates, exact declarations, consumers, maps and
+project regressions to its source. P0-A/P0-B retain their dated evidence.
+All22 broader rows remain open; continue prioritizing shared inference/operator/
+library compositions using newly frozen counterexamples.
 
 ## Open gaps and implementation priority — 2026-11-11
 
@@ -94,7 +94,7 @@ alone do not establish arbitrary TypeScript compatibility.
 | G-T4 | Overload resolution: candidate isolation/order, contextual callbacks, imported/computed chains and variance/nullability combinations. | P0 |
 | G-T5 | Advanced type compositions: computed keys, unions/intersections, optional/rest/variadic tuples, const/satisfies and scope/flag interactions. | P0 |
 | G-T6 | Structural compatibility: computed/non-literal members, callback/generic protocols, optional/rest parameters and library/variance relations. | P0 |
-| G-T7 | Standard library: four string-intrinsic names in both selected presence profiles, wider catalogs and compositions. | P0 |
+| G-T7 | Standard library: wider catalogs and inference/operator compositions beyond the accepted NoInfer, NonNullable, Awaited and four string-intrinsic packages. | P0 |
 | G-T8 | Return/context inference: nested/imported/recursive returns, async/generator/getter results, flow and operator/library compositions. | P0 |
 | G-T9 | Classes: recursive/imported getters and merges, computed generic calls, constructor contexts and decorated class expressions. | P3 |
 | G-T10 | Module types: declaration merging, import queries/attributes/resolution modes, private/generic/ambient compositions and metadata import retention. | P1 |
@@ -118,7 +118,7 @@ obligations; they are not three additional implementation fixes per feature.
 
 | Order | Shared work and overlap | Concrete reason for this order |
 | --- | --- | --- |
-| P0 | Inference/type operators/library semantics: G-T2 through G-T8. NoInfer directly connects G-T2/G-T4/G-T6/G-T7/G-T8; union, intersection, template and thenable work connects G-T3/G-T5. | The accepted name probe supplies concrete failures, and the code shares candidate collection, substitution and bounded operator expansion. Continue with P0-C. |
+| P0 | Inference/type operators/library semantics: G-T2 through G-T8. NoInfer directly connects G-T2/G-T4/G-T6/G-T7/G-T8; union, intersection, template and thenable work connects G-T3/G-T5. | The accepted name probe supplies concrete failures, and the code shares candidate collection, substitution and bounded operator expansion. Continue with newly frozen shared inference/operator/library counterexamples. |
 | P1 | Flow, imported identities and exact declarations: G-T1/G-T10/G-D1/G-D2/G-E4, with G-T8/G-T9 interactions. | Stable inferred types and retained identities feed both public declarations and declaration maps. Freeze new cross-file/flow counterexamples before extending the existing accepted forms. |
 | P2 | One dependency graph across resolution, modules, build/watch and tracing: G-M1/G-M2/G-E2/G-C1, with G-T10 interactions. | Canonical resolved/missing inputs, package decisions and their fingerprints drive invalidation and explainFiles. Share those facts while preserving owner confinement. |
 | P3 | Class/decorator/JSX and target lowering: G-T9/G-E1/G-E3/G-E5/G-C3, with G-E2/G-E4 interactions. | These compositions depend on earlier type/identity work and involve several separate lowering/runtime paths. Add new mapping families with the corresponding constructs; retain the already accepted 572 corrections. |
@@ -146,12 +146,10 @@ Code supporting these dependencies:
 
 ### Next implementation packages — P0 first
 
-The [current presence witnesses](NONNULLABLE_AWAITED_MEASUREMENT.json#/presenceInventory/corrected)
-retain Uppercase, Lowercase, Capitalize and Uncapitalize as missing in both
-selected profiles. NoInfer, NonNullable and the Awaited/PromiseLike witness now
-pass; P0-B separately isolates ES5 Awaited and PromiseLike visibility. The
-22-name/two-profile probe carries no semantic-denominator credit; broader
-catalogs remain open.
+The [current presence witnesses](STRING_INTRINSIC_MEASUREMENT.json#/presenceInventory/corrected)
+pass all22 names in both selected profiles. These44 witnesses carry no semantic
+denominator credit; broader catalogs and compositions remain open. The three
+finite packages below have complete source-bound acceptance.
 
 - [x] **P0-A — NoInfer and shared candidate boundaries.** Delivered the frozen
   282 primary and four supplementary diagnostic comparisons across
@@ -169,12 +167,15 @@ catalogs remain open.
   project and tooling gates pass. All previous cases remain unchanged; 423 new
   assertions bring N to 40,636. [Acceptance](NONNULLABLE_AWAITED_ACCEPTANCE.md) ·
   [measurement](NONNULLABLE_AWAITED_MEASUREMENT.json). Broader rows remain open.
-- [ ] **P0-C — One string-intrinsic implementation for four utilities.** Freeze
-  Uppercase/Lowercase/Capitalize/Uncapitalize across empty/literal/general
-  strings, Unicode/UTF-16 boundaries, unions, templates, constraints and
-  generic/owner aliases. Preserve Native rejection and distribution behavior.
-  Implement their common semantics once; this targets G-T3/G-T5/G-T7, with
-  generic-context regressions in G-T2/G-T8.
+- [x] **P0-C — One string-intrinsic implementation for four utilities.** Delivered
+  245 forms × four profiles =980 complete comparisons, with772 accepted exact
+  inventories /804 declaration files,1544 isolated consumers,804 syntax checks
+  and16 executions per actual compiler. Twenty owner/runtime/resource controls
+  remain separate; ten supplemental context regressions add no inventory credit.
+  Complete same-source Native/local/Windows, maps, projects and tooling pass.
+  All40636 earlier cases/classes remain unchanged;1000 new assertions bring N to
+  41636. [Acceptance](STRING_INTRINSIC_ACCEPTANCE.md) ·
+  [measurement](STRING_INTRINSIC_MEASUREMENT.json). Broader rows remain open.
 
 Each package needs frozen authored inputs and Native expectations before
 production changes, complete primary/related diagnostics and UTF-16 positions,

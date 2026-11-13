@@ -67,7 +67,19 @@ function command(executable, args, options = {}) {
 }
 
 function toolHashes(directory = __dirname) {
-  return Object.fromEntries(fs.readdirSync(directory).filter(name => /\.(cjs|py)$/.test(name)).sort()
+  const files = [];
+  function collect(relative) {
+    for (const entry of fs.readdirSync(path.join(directory, relative), {withFileTypes: true})) {
+      const name = relative ? relative + '/' + entry.name : entry.name;
+      if (entry.isDirectory()) collect(name);
+      else if (/\.(cjs|py)$/.test(entry.name)) {
+        if (!entry.isFile()) throw Error('oracle tool must be a regular file: ' + name);
+        files.push(name);
+      }
+    }
+  }
+  collect('');
+  return Object.fromEntries(files.sort()
     .map(name => [name, crypto.createHash('sha256').update(fs.readFileSync(path.join(directory, name))).digest('hex')]));
 }
 

@@ -36,6 +36,9 @@ impl Context<'_> {
         indent: usize,
         span: &SourceSpan,
     ) -> Option<Result<String, Diagnostic>> {
+        if let Type::StringMapping(mapping) = value {
+            return Some(self.render_string_mapping(mapping, indent, span));
+        }
         if let Type::IndexedRecord { object, indices } = value {
             return Some((|| {
                 let mut indices = indices.clone();
@@ -390,7 +393,7 @@ impl Context<'_> {
                         format!("import(\"{specifier}\").{public}{suffix}")
                     }
                 } else {
-                    self.retain(name);
+                    self.retain_type(name);
                     crate::parser::source_type_name(name).to_string()
                 };
                 if arguments.is_empty() {
