@@ -256,18 +256,26 @@ impl<'a> ProjectBuilder<'a> {
         } else {
             self.parsed_modules.insert(module_id.to_string());
             let failed_source = source.text.clone();
-            let parsed = if self.limits.parser == ParserLimits::default() {
-                parse_module(source.id.clone(), source.text)
-            } else {
-                parse_module_with_limits(source.id.clone(), source.text, self.limits.parser.clone())
-            };
+            let parsed = crate::parser::parse_module_for_compilation(
+                source.id.clone(),
+                source.text,
+                self.limits.parser.clone(),
+            );
             match parsed {
                 Ok(module) => module,
-                Err(mut parse_diagnostics) => {
+                Err(failure) => {
                     self.project
                         .failed_sources
                         .insert(module_id.to_string(), failed_source);
-                    self.diagnostics.append(&mut parse_diagnostics);
+                    self.diagnostics.extend(failure.diagnostics);
+                    if let Some(recovered) = failure.recovered {
+                        self.diagnostics.extend(checker::recovery_value_diagnostics(
+                            &self.project,
+                            &recovered.module,
+                            &recovered.primitive_values,
+                            self.limits.max_type_expansions,
+                        ));
+                    }
                     self.state.insert(module_id.to_string(), VisitState::Done);
                     return;
                 }

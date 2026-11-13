@@ -26,6 +26,7 @@ impl Parser {
     fn collect_runtime_type_edits(&mut self, start: usize, end: usize, statement_range: bool) {
         let mut index = start;
         let mut postfix_bang = false;
+        let mut assertion_end = None;
         while index < end {
             if let Some(next) = self.collect_catch_annotation(index, end) {
                 index = next;
@@ -103,12 +104,16 @@ impl Parser {
                 }
             }
             if (self.tokens[index].is("as") || self.tokens[index].is("satisfies"))
-                && !index.checked_sub(1).is_some_and(|previous| {
-                    matches!(self.tokens[previous].text.as_str(), "." | "?.")
-                })
+                && (assertion_end == Some(index)
+                    || index
+                        .checked_sub(1)
+                        .is_some_and(|previous| self.tokens[previous].can_end_expression()))
                 && !self.tokens.get(index + 1).is_some_and(|next| next.is(":"))
             {
                 index = self.erase_assertion(index, end);
+                // A following assertion continues the same expression even
+                // when the erased type ends with the reserved word `const`.
+                assertion_end = Some(index);
                 continue;
             }
             if self.tokens[index].is(":") && is_typed_arrow_parameter(&self.tokens, index, end) {

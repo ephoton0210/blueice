@@ -55,6 +55,7 @@ impl ModuleChecker<'_> {
                 },
             );
         }
+        self.types.extend(scopes.flow_type_parameters());
         self.scopes = Some(scopes);
         let flow = scopes::flow::FlowModel::build(
             self.scopes.as_ref().expect("lexical scopes are bound"),

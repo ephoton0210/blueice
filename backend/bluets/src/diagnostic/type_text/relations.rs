@@ -83,6 +83,18 @@ pub(super) fn reason(
     if let (Type::Array(actual), Type::Array(expected)) = (actual, expected) {
         return mismatch(actual, expected, project, depth);
     }
+    if matches!(actual, Type::Readonly(value) if matches!(value.as_ref(), Type::Array(_) | Type::Tuple(_)))
+        && matches!(expected, Type::Array(_) | Type::Tuple(_))
+    {
+        return line(
+            depth,
+            format!(
+                "The type '{}' is 'readonly' and cannot be assigned to the mutable type '{}'.",
+                render_in(actual, project),
+                render_in(expected, project),
+            ),
+        );
+    }
     if let Some(detail) = tuples::reason(actual, expected, project, depth) {
         return detail;
     }

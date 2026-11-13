@@ -12,6 +12,38 @@ pub(super) struct Candidates {
 }
 
 impl Candidates {
+    /// Reverse mapped slots combine covariant property evidence before using
+    /// contravariant-only evidence. A call's candidate-selection policy is
+    /// separate from reconstruction of its individual mapped properties.
+    pub(super) fn reverse(
+        &self,
+        aliases: &BTreeMap<String, TypeDefinition>,
+        budget: &mut TypeExpansionBudget,
+    ) -> Option<Type> {
+        if budget.exhausted {
+            return None;
+        }
+        if !self.covariant.is_empty() {
+            // Fresh property values were widened while reading the argument.
+            // Reconstruction must retain explicit literal annotations/assertions.
+            return Some(super::super::type_operators::union(self.covariant.clone()));
+        }
+        if self.contravariant.is_empty() {
+            return Some(Type::StrictUnknown);
+        }
+        let value = if self.contravariant.len() == 1 {
+            self.contravariant[0].clone()
+        } else {
+            super::super::type_operators::expanded(
+                &Type::Intersection(self.contravariant.clone()),
+                aliases,
+                &mut HashSet::new(),
+                budget,
+            )
+        };
+        (!budget.exhausted).then_some(value)
+    }
+
     /// Constituents of one covariant union argument are one union-valued
     /// candidate, not competing independent call arguments. Contravariant
     /// constraints retain their original directed comparison.

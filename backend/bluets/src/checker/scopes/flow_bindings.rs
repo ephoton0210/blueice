@@ -23,6 +23,37 @@ impl ScopeModel<'_> {
         Some((!binding.annotated).then(|| self.flow_alias(&id)).flatten())
     }
 
+    /// A const payload is transparent only before any other runtime observer
+    /// can write or retain it. Compare lexical bindings, including captures,
+    /// rather than equating same-spelled names in different scopes.
+    pub(in crate::checker) fn unobserved_const_initializer(
+        &self,
+        token: &Token,
+        budget: &mut TypeExpansionBudget,
+    ) -> Option<Vec<Token>> {
+        let id = self.flow_binding(&token.text, token.start)?;
+        if id.0 == 0 || self.flow_annotated(&id) {
+            return None;
+        }
+        let initializer = self.flow_alias(&id)?;
+        for reference in self
+            .references
+            .iter()
+            .filter(|reference| reference.meaning == Meaning::Value)
+        {
+            let name = reference.name.split('.').next().unwrap_or(&reference.name);
+            if name == id.1 && reference.span.start != token.start {
+                if !budget.consume() {
+                    return None;
+                }
+                if self.flow_binding(name, reference.span.start).as_ref() == Some(&id) {
+                    return None;
+                }
+            }
+        }
+        Some(initializer)
+    }
+
     pub(in crate::checker) fn arguments_reads_at(&self, creation: usize) -> &[SourceSpan] {
         self.arguments_reads
             .get(&self.flow_execution(creation))
@@ -153,7 +184,9 @@ impl ScopeModel<'_> {
                 self.merged_members(id.0)
                     .and_then(|members| members.values.get(&id.1))
             })
-            .map_or(Type::Unknown, |binding| binding.declared_type.clone())
+            .map_or(Type::Unknown, |binding| {
+                self.flow_parameter_type(&binding.declared_type, id.0)
+            })
     }
 
     pub(super) fn flow_values(&self, offset: usize) -> BTreeMap<String, Type> {
@@ -164,7 +197,7 @@ impl ScopeModel<'_> {
                 if !binding.type_only {
                     result
                         .entry(name.clone())
-                        .or_insert_with(|| binding.declared_type.clone());
+                        .or_insert_with(|| self.flow_parameter_type(&binding.declared_type, id));
                 }
             }
             scope = self.scopes[id].parent;

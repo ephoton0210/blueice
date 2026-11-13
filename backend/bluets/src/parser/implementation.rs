@@ -21,6 +21,7 @@ pub(super) struct Parser {
     expression_variable_types: BTreeMap<usize, Type>,
     type_assertions: BTreeMap<usize, Type>,
     diagnostics: Vec<Diagnostic>,
+    recovered_primitive_values: Vec<Token>,
     max_type_depth: usize,
     type_depth: usize,
     infer_depth: usize,

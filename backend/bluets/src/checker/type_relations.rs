@@ -184,6 +184,11 @@ fn assignable_inner(
     if actual == expected {
         return true;
     }
+    // Preserve a symbolic key set's declaration identity before approximation
+    // as broad property keys can expand the parameter's constraint.
+    if variance::same_keyof_parameter(actual, expected, aliases) {
+        return budget.consume();
+    }
     // Explicit any constituents retain their TypeScript union/intersection
     // meaning even against a rigid parameter. Normalize that existing evidence
     // before rigidity; unresolved/unknown types never acquire any here.

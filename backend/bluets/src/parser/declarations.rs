@@ -9,6 +9,8 @@ use super::*;
 
 #[path = "declarations/ambient.rs"]
 mod ambient;
+#[path = "declarations/binding_recovery.rs"]
+mod binding_recovery;
 #[path = "declarations/statement_diagnostics.rs"]
 mod statement_diagnostics;
 
@@ -40,6 +42,7 @@ impl Parser {
             expression_variable_types: BTreeMap::new(),
             type_assertions: BTreeMap::new(),
             diagnostics: Vec::new(),
+            recovered_primitive_values: Vec::new(),
             max_type_depth,
             type_depth: 0,
             infer_depth: 0,
@@ -63,7 +66,12 @@ impl Parser {
         self
     }
 
-    pub(crate) fn parse_module(mut self) -> Result<Module, Vec<Diagnostic>> {
+    pub(crate) fn parse_module(self) -> Result<Module, Vec<Diagnostic>> {
+        self.parse_module_recovered()
+            .map_err(|failure| failure.diagnostics)
+    }
+
+    pub(crate) fn parse_module_recovered(mut self) -> Result<Module, ParseFailure> {
         self.diagnose_unparenthesized_nullish_logical_mixing();
         self.diagnose_unparenthesized_unary_exponentiation();
         self.parse_items();
@@ -72,25 +80,33 @@ impl Parser {
         if self.diagnostics.is_empty() {
             self.audit_erased_function_annotations();
         }
+        self.edits.sort_by_key(|edit| (edit.start, edit.end));
+        let mut module = Module {
+            id: self.id,
+            source: self.source,
+            declarations: self.declarations,
+            edits: self.edits,
+            generic_call_type_arguments: self.generic_call_type_arguments,
+            nested_functions: self.nested_functions,
+            class_expressions: self.class_expressions,
+            type_references: self.type_references,
+            import_types: self.import_types,
+            expression_variable_types: self.expression_variable_types,
+            type_assertions: self.type_assertions,
+        };
         if self.diagnostics.is_empty() {
-            self.edits.sort_by_key(|edit| (edit.start, edit.end));
-            let mut module = Module {
-                id: self.id,
-                source: self.source,
-                declarations: self.declarations,
-                edits: self.edits,
-                generic_call_type_arguments: self.generic_call_type_arguments,
-                nested_functions: self.nested_functions,
-                class_expressions: self.class_expressions,
-                type_references: self.type_references,
-                import_types: self.import_types,
-                expression_variable_types: self.expression_variable_types,
-                type_assertions: self.type_assertions,
-            };
             module.bind_class_expression_captures();
             Ok(module)
         } else {
-            Err(self.diagnostics)
+            Err(ParseFailure {
+                diagnostics: self.diagnostics,
+                recovered: (!self.recovered_primitive_values.is_empty()).then(|| {
+                    Box::new(RecoveredSyntax {
+                        module,
+                        primitive_values: self.recovered_primitive_values,
+                    })
+                }),
+            })
         }
     }
 

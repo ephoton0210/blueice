@@ -1150,7 +1150,10 @@ pub(crate) struct TextEdit {
 
 mod entry;
 pub use entry::parse_module;
-pub(crate) use entry::{parse_module_with_limits, parse_module_with_namespaces};
+pub(crate) use entry::{
+    parse_module_for_compilation, parse_module_with_limits, parse_module_with_namespaces,
+    ParseFailure, RecoveredSyntax,
+};
 mod jsdoc;
 pub(crate) use jsdoc::{checking_directive, is_javascript};
 

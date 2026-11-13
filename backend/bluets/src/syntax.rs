@@ -39,6 +39,55 @@ pub struct Token {
 }
 
 impl Token {
+    /// TypeScript contextual words are identifiers in binding/value positions.
+    /// JavaScript reserved words retain their keyword grammar.
+    pub(crate) fn is_binding_identifier(&self) -> bool {
+        self.kind == TokenKind::Identifier
+            || matches!(
+                self.text.as_str(),
+                "abstract"
+                    | "any"
+                    | "as"
+                    | "asserts"
+                    | "async"
+                    | "boolean"
+                    | "constructor"
+                    | "declare"
+                    | "from"
+                    | "infer"
+                    | "is"
+                    | "keyof"
+                    | "module"
+                    | "namespace"
+                    | "never"
+                    | "number"
+                    | "of"
+                    | "override"
+                    | "readonly"
+                    | "satisfies"
+                    | "string"
+                    | "symbol"
+                    | "type"
+                    | "unknown"
+            )
+    }
+
+    pub(crate) fn can_end_expression(&self) -> bool {
+        self.is_binding_identifier()
+            || matches!(
+                self.kind,
+                TokenKind::Number
+                    | TokenKind::String
+                    | TokenKind::Template
+                    | TokenKind::RegExp
+                    | TokenKind::JsxElement
+            )
+            || matches!(
+                self.text.as_str(),
+                ")" | "]" | "}" | "this" | "super" | "true" | "false" | "null" | "undefined" | "!"
+            )
+    }
+
     pub fn is(&self, text: &str) -> bool {
         self.text == text
     }

@@ -8,7 +8,7 @@ use crate::checker;
 use crate::debug_info;
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::emitter;
-use crate::parser::{parse_module, parse_module_with_limits, Module, ParserLimits};
+use crate::parser::{parse_module, Module, ParserLimits};
 use crate::strict_boundaries;
 use crate::{Compilation, LANGUAGE_VERSION};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};

@@ -142,7 +142,14 @@ impl<'a> ModuleChecker<'a> {
                     .map(|field| &field.value);
                 (
                     match context {
-                        Some(context) => self.infer_in_context(value_tokens, scope, context),
+                        Some(context) => {
+                            let value = self.infer_in_context(value_tokens, scope, context);
+                            if self.property_context_preserves_literals(context) {
+                                value
+                            } else {
+                                self.array_element_type(value_tokens, scope, value)
+                            }
+                        }
                         None => self.array_element_type(
                             value_tokens,
                             scope,
@@ -185,6 +192,23 @@ impl<'a> ModuleChecker<'a> {
             index = value_end.saturating_add(1);
         }
         Type::Record(fields)
+    }
+
+    fn property_context_preserves_literals(&self, context: &Type) -> bool {
+        if crate::checker::type_operators::is_operator_context(context, &self.types) {
+            return true;
+        }
+        let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+        budget.checking = self.checking;
+        let context = crate::checker::type_operators::expanded(
+            context,
+            &self.types,
+            &mut HashSet::new(),
+            &mut budget,
+        );
+        budget.exhausted
+            || context.is_literal()
+            || matches!(&context, Type::Union(parts) if parts.iter().any(Type::is_literal))
     }
 
     /// A structured method, getter or setter member starting at `index`, as

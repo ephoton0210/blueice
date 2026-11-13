@@ -137,7 +137,8 @@ impl ModuleChecker<'_> {
         }
         // A closed conditional alias computes its diagnostic shape. Other
         // operators retain their native source spelling (such as keyof Events).
-        let resolved = if matches!(expected, Type::Named {name, ..}
+        let resolved = if matches!(expected, Type::Mapped(_))
+            || matches!(expected, Type::Named {name, ..}
             if self.types.get(name).is_some_and(|definition| matches!(definition.value, Type::Conditional(_))))
         {
             crate::checker::inference::result_type(
@@ -179,6 +180,18 @@ impl ModuleChecker<'_> {
             return;
         }
         if argument.first().is_some_and(|token| token.is("{")) {
+            if let (Some(first), Some(last)) = (argument.first(), argument.last()) {
+                let point = SourceSpan::new(&self.module.id, first.start, last.end);
+                if self.nested_record_assignment_error(
+                    &point,
+                    &message,
+                    DiagnosticCode::TypeMismatch,
+                    actual,
+                    expected,
+                ) {
+                    return;
+                }
+            }
             let (Some(actual_fields), false) = self.expanded_record_fields(actual.clone()) else {
                 self.typescript_type_error(
                     span,

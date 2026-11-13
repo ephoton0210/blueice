@@ -1,0 +1,563 @@
+{
+  "schema": 1,
+  "options": {
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "lib": [
+      "ES5"
+    ]
+  },
+  "profiles": [
+    {
+      "id": "es5-commonjs-strict",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS"
+      }
+    },
+    {
+      "id": "es5-esnext-strict",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "ESNext"
+      }
+    },
+    {
+      "id": "es2022-commonjs-strict",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "CommonJS"
+      }
+    },
+    {
+      "id": "es2022-esnext-strict",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext"
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "boxed-record",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack({name: {value: \"Ada\"}, count: {value: 3}});\n",
+      "family": "original-discovery"
+    },
+    {
+      "id": "boxed-array",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack([{value: \"Ada\"}, {value: 3}]);\n",
+      "family": "original-discovery"
+    },
+    {
+      "id": "boxed-tuple",
+      "source": "declare function unpack<T extends unknown[]>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack([{value: \"Ada\"}, {value: 3}]);\n",
+      "family": "original-discovery"
+    },
+    {
+      "id": "boxed-readonly-tuple",
+      "source": "declare function unpack<T extends readonly unknown[]>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack([{value: \"Ada\"}, {value: 3}] as const);\n",
+      "family": "original-discovery"
+    },
+    {
+      "id": "boxed-readonly-array",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\ndeclare const input: readonly {value: string}[];\nexport const result = unpack(input);\n",
+      "family": "original-discovery"
+    },
+    {
+      "id": "nested-box-record",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {inner: {value: T[K]}}}): T;\nexport const result = unpack({name: {inner: {value: \"Ada\"}}, count: {inner: {value: 3}}});\n",
+      "family": "original-discovery"
+    },
+    {
+      "id": "optional-box-record",
+      "source": "declare function unpack<T>(x: {[K in keyof T]?: {value: T[K]}}): T;\nexport const result = unpack({name: {value: \"Ada\"}, count: {value: 3}});\n",
+      "family": "original-discovery"
+    },
+    {
+      "id": "readonly-box-record",
+      "source": "declare function unpack<T>(x: {readonly [K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack({name: {value: \"Ada\"}, count: {value: 3}});\n",
+      "family": "original-discovery"
+    },
+    {
+      "id": "callback-box-record",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]; consume: (value: T[K]) => void}}): T;\nexport const result = unpack({name: {value: \"Ada\", consume: value => { const text: string = value; }}, count: {value: 3, consume: value => { const number: number = value; }}});\n",
+      "family": "original-discovery"
+    },
+    {
+      "id": "alias-box-array",
+      "source": "type Box<T> = {value: T};\ntype Boxes<T> = {[K in keyof T]: Box<T[K]>};\ndeclare function unpack<T>(x: Boxes<T>): T;\nexport const result = unpack([{value: \"Ada\"}, {value: 3}]);\n",
+      "family": "original-discovery"
+    },
+    {
+      "id": "identity-array-control",
+      "source": "declare function identity<T>(x: {[K in keyof T]: T[K]}): T;\nexport const result = identity([\"Ada\", 3]);\n",
+      "family": "original-discovery"
+    },
+    {
+      "id": "identity-tuple-control",
+      "source": "declare function identity<T extends unknown[]>(x: {[K in keyof T]: T[K]}): T;\nexport const result = identity([\"Ada\", 3]);\n",
+      "family": "original-discovery"
+    },
+    {
+      "id": "optional-identity-record-control",
+      "source": "declare function identity<T>(x: {[K in keyof T]?: T[K]}): T;\nexport const result = identity({name: \"Ada\", count: 3});\n",
+      "family": "original-discovery"
+    },
+    {
+      "id": "boxed-empty-tuple",
+      "source": "declare function unpack<T extends unknown[]>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack([]);\n",
+      "family": "original-discovery"
+    },
+    {
+      "id": "boxed-invalid-explicit",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack<[string, number]>([{value: \"Ada\"}, {value: false}]);\n",
+      "family": "original-discovery"
+    },
+    {
+      "id": "boxed-explicit-tuple-control",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack<[string, number]>([{value: \"Ada\"}, {value: 3}]);\n",
+      "family": "original-discovery"
+    },
+    {
+      "id": "empty-unconstrained",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack([]);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "homogeneous-literal",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack([{value: 1}, {value: 2}]);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "single-literal",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack([{value: \"Ada\"}]);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "ordinary-array-variable",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\ndeclare const input: {value: string}[];\nexport const result = unpack(input);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "heterogeneous-array-variable",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\ndeclare const input: ({value: string} | {value: number})[];\nexport const result = unpack(input);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "mutable-tuple-variable",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\ndeclare const input: [{value: string}, {value: number}];\nexport const result = unpack(input);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "labeled-tuple-variable",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\ndeclare const input: [name: {value: string}, count: {value: number}];\nexport const result = unpack(input);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "optional-tuple-variable",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\ndeclare const input: [name: {value: string}, count?: {value: number}];\nexport const result = unpack(input);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "readonly-labeled-tuple",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\ndeclare const input: readonly [name: {value: string}, count: {value: number}];\nexport const result = unpack(input);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "readonly-optional-tuple",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\ndeclare const input: readonly [name: {value: string}, count?: {value: number}];\nexport const result = unpack(input);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "rest-tuple-variable",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\ndeclare const input: [head: {value: string}, ...tail: {value: number}[]];\nexport const result = unpack(input);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "readonly-rest-tuple",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\ndeclare const input: readonly [head: {value: string}, ...tail: {value: number}[]];\nexport const result = unpack(input);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "leading-rest-tuple",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\ndeclare const input: [...prefix: {value: string}[], last: {value: number}];\nexport const result = unpack(input);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "optional-rest-tuple",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\ndeclare const input: [first?: {value: string}, ...tail: {value: number}[]];\nexport const result = unpack(input);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "spread-fixed-tuple",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\ndeclare const input: [{value: string}, {value: number}];\nexport const result = unpack([...input]);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "spread-variable-array",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\ndeclare const input: {value: number}[];\nexport const result = unpack([{value: \"Ada\"}, ...input]);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "nested-wrapper-array",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack([{value: {inner: \"Ada\"}}, {value: {inner: 3}}]);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "add-readonly-literal",
+      "source": "declare function unpack<T>(x: {readonly [K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack([{value: \"Ada\"}, {value: 3}]);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "add-readonly-readonly-tuple",
+      "source": "declare function unpack<T>(x: {readonly [K in keyof T]: {value: T[K]}}): T;\ndeclare const input: readonly [name: {value: string}, count: {value: number}];\nexport const result = unpack(input);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "add-readonly-record",
+      "source": "declare function unpack<T>(x: {readonly [K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack({name: {value: \"Ada\"}, count: {value: 3}});\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "remove-readonly-literal",
+      "source": "declare function unpack<T>(x: {-readonly [K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack([{value: \"Ada\"}, {value: 3}]);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "remove-readonly-readonly-tuple",
+      "source": "declare function unpack<T>(x: {-readonly [K in keyof T]: {value: T[K]}}): T;\ndeclare const input: readonly [name: {value: string}, count: {value: number}];\nexport const result = unpack(input);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "remove-readonly-record",
+      "source": "declare function unpack<T>(x: {-readonly [K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack({name: {value: \"Ada\"}, count: {value: 3}});\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "add-optional-literal",
+      "source": "declare function unpack<T>(x: {[K in keyof T]?: {value: T[K]}}): T;\nexport const result = unpack([{value: \"Ada\"}, {value: 3}]);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "add-optional-readonly-tuple",
+      "source": "declare function unpack<T>(x: {[K in keyof T]?: {value: T[K]}}): T;\ndeclare const input: readonly [name: {value: string}, count: {value: number}];\nexport const result = unpack(input);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "add-optional-record",
+      "source": "declare function unpack<T>(x: {[K in keyof T]?: {value: T[K]}}): T;\nexport const result = unpack({name: {value: \"Ada\"}, count: {value: 3}});\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "remove-optional-literal",
+      "source": "declare function unpack<T>(x: {[K in keyof T]-?: {value: T[K]}}): T;\nexport const result = unpack([{value: \"Ada\"}, {value: 3}]);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "remove-optional-readonly-tuple",
+      "source": "declare function unpack<T>(x: {[K in keyof T]-?: {value: T[K]}}): T;\ndeclare const input: readonly [name: {value: string}, count: {value: number}];\nexport const result = unpack(input);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "remove-optional-record",
+      "source": "declare function unpack<T>(x: {[K in keyof T]-?: {value: T[K]}}): T;\nexport const result = unpack({name: {value: \"Ada\"}, count: {value: 3}});\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "nested-value-tuple",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {inner: {value: T[K]}}}): T;\nexport const result = unpack([{inner: {value: \"Ada\"}}, {inner: {value: 3}}]);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "callback-return-tuple",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: () => T[K]}}): T;\nexport const result = unpack([{value: () => \"Ada\"}, {value: () => 3}]);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "array-element-wrapper",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: T[K][]}): T;\nexport const result = unpack([[\"Ada\"], [3]]);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "tuple-element-wrapper",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: [T[K]]}): T;\nexport const result = unpack([[\"Ada\"], [3]]);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "constraint-mutable",
+      "source": "declare function unpack<T extends unknown[]>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack([{value: \"Ada\"}, {value: 3}]);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "constraint-readonly",
+      "source": "declare function unpack<T extends readonly unknown[]>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack([{value: \"Ada\"}, {value: 3}]);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "constraint-record-rejects-array",
+      "source": "declare function unpack<T extends {name: string}>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack([{value: \"Ada\"}, {value: 3}]);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "literal-union-elements",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack([{value: \"Ada\" as \"Ada\" | \"Grace\"}, {value: 1 as 1 | 2}]);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "null-undefined-elements",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack([{value: null}, {value: undefined}]);\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "empty-record",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack({});\n",
+      "family": "sequence-shapes"
+    },
+    {
+      "id": "optional-exact-flag",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\ndeclare const input: [name: {value: string}, count?: {value: number}];\nexport const result = unpack(input);\n",
+      "family": "sequence-shapes",
+      "compilerOptions": {
+        "exactOptionalPropertyTypes": true
+      }
+    },
+    {
+      "id": "unchecked-index-flag",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\ndeclare const input: [head: {value: string}, ...tail: {value: number}[]];\nexport const result = unpack(input);\n",
+      "family": "sequence-shapes",
+      "compilerOptions": {
+        "noUncheckedIndexedAccess": true
+      }
+    },
+    {
+      "id": "imported-box-alias",
+      "source": "import {unpack} from \"./helper\";\nexport const result = unpack([{value: \"Ada\"}, {value: 3}]);\n",
+      "family": "aliases",
+      "files": {
+        "helper.ts": "export type Box<T> = {value: T};\nexport type Boxes<T> = {[K in keyof T]: Box<T[K]>};\nexport declare function unpack<T>(x: Boxes<T>): T;\n"
+      }
+    },
+    {
+      "id": "imported-generic-return",
+      "source": "import {unpack} from \"./helper\";\nexport function result() { return unpack([{value: \"Ada\"}, {value: 3}]); }\n",
+      "family": "aliases",
+      "files": {
+        "helper.ts": "export declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\n"
+      },
+      "resultKind": "function"
+    },
+    {
+      "id": "nested-alias-tuple",
+      "source": "type Inner<T> = {value: T};\ntype Outer<T> = {inner: Inner<T>};\ndeclare function unpack<T>(x: {[K in keyof T]: Outer<T[K]>}): T;\nexport const result = unpack([{inner: {value: \"Ada\"}}, {inner: {value: 3}}]);\n",
+      "family": "aliases"
+    },
+    {
+      "id": "callback-array-context",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]; consume: (value: T[K]) => void}}): T;\nexport const result = unpack([{value: \"Ada\", consume: value => { const checked: string = value; }}, {value: 3, consume: value => { const checked: number = value; }}]);\n",
+      "family": "callbacks"
+    },
+    {
+      "id": "callback-record-incompatible",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]; consume: (value: T[K]) => void}}): T;\nexport const result = unpack({name: {value: \"Ada\", consume: (value: number) => {}}});\n",
+      "family": "callbacks"
+    },
+    {
+      "id": "explicit-wrong-box-key",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack<[string, number]>([{missing: \"Ada\"}, {value: 3}]);\n",
+      "family": "rejections"
+    },
+    {
+      "id": "explicit-too-short",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack<[string, number]>([{value: \"Ada\"}]);\n",
+      "family": "rejections"
+    },
+    {
+      "id": "explicit-too-long",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack<[string]>([{value: \"Ada\"}, {value: 3}]);\n",
+      "family": "rejections"
+    },
+    {
+      "id": "identity-runtime",
+      "source": "function identity<T>(x: {[K in keyof T]: T[K]}): T { return x as T; }\nexport const result = identity([\"Ada\", 3]);\nexport const runtime = result[0] === \"Ada\" && result[1] === 3 ? 2 : 0;\n",
+      "family": "runtime",
+      "runtime": true
+    },
+    {
+      "id": "boxed-runtime",
+      "source": "function unpack<T extends unknown[]>(x: {[K in keyof T]: {value: T[K]}}): T { return [x[0].value, x[1].value] as unknown as T; }\nexport const result = unpack([{value: \"Ada\"}, {value: 3}]);\nexport const runtime = result[0] === \"Ada\" && result[1] === 3 ? 2 : 0;\n",
+      "family": "runtime",
+      "runtime": true
+    },
+    {
+      "id": "binding-number",
+      "source": "const number: number = 3;\nexport const result = number;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-string",
+      "source": "const string: number = 3;\nexport const result = string;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-boolean",
+      "source": "const boolean: number = 3;\nexport const result = boolean;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-bigint",
+      "source": "const bigint: number = 3;\nexport const result = bigint;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-symbol",
+      "source": "const symbol: number = 3;\nexport const result = symbol;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-any",
+      "source": "const any: number = 3;\nexport const result = any;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-unknown",
+      "source": "const unknown: number = 3;\nexport const result = unknown;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-never",
+      "source": "const never: number = 3;\nexport const result = never;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-object",
+      "source": "const object: number = 3;\nexport const result = object;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-readonly",
+      "source": "const readonly: number = 3;\nexport const result = readonly;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-keyof",
+      "source": "const keyof: number = 3;\nexport const result = keyof;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-infer",
+      "source": "const infer: number = 3;\nexport const result = infer;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-as",
+      "source": "const as: number = 3;\nexport const result = as;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-is",
+      "source": "const is: number = 3;\nexport const result = is;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-asserts",
+      "source": "const asserts: number = 3;\nexport const result = asserts;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-type",
+      "source": "const type: number = 3;\nexport const result = type;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-of",
+      "source": "const of: number = 3;\nexport const result = of;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-satisfies",
+      "source": "const satisfies: number = 3;\nexport const result = satisfies;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-namespace",
+      "source": "const namespace: number = 3;\nexport const result = namespace;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-module",
+      "source": "const module: number = 3;\nexport const result = module;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-declare",
+      "source": "const declare: number = 3;\nexport const result = declare;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-abstract",
+      "source": "const abstract: number = 3;\nexport const result = abstract;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-override",
+      "source": "const override: number = 3;\nexport const result = override;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-async",
+      "source": "const async: number = 3;\nexport const result = async;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-from",
+      "source": "const from: number = 3;\nexport const result = from;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-get",
+      "source": "const get: number = 3;\nexport const result = get;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-set",
+      "source": "const set: number = 3;\nexport const result = set;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-constructor",
+      "source": "const constructor: number = 3;\nexport const result = constructor;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-require",
+      "source": "const require: number = 3;\nexport const result = require;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "binding-global",
+      "source": "const global: number = 3;\nexport const result = global;\n",
+      "family": "contextual-bindings"
+    },
+    {
+      "id": "reserved-binding-class",
+      "source": "const class: number = 3;\nexport const result = 3;\n",
+      "family": "reserved-rejections"
+    },
+    {
+      "id": "reserved-binding-return",
+      "source": "const return: number = 3;\nexport const result = 3;\n",
+      "family": "reserved-rejections"
+    },
+    {
+      "id": "reserved-binding-true",
+      "source": "const true: number = 3;\nexport const result = 3;\n",
+      "family": "reserved-rejections"
+    },
+    {
+      "id": "reserved-binding-this",
+      "source": "const this: number = 3;\nexport const result = 3;\n",
+      "family": "reserved-rejections"
+    }
+  ]
+}

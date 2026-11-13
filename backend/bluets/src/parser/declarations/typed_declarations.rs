@@ -138,6 +138,9 @@ impl Parser {
         declared: bool,
         kind: VariableKind,
     ) -> VariableDeclaration {
+        if let Some(declaration) = self.recover_reserved_variable(start, exported, declared, kind) {
+            return declaration;
+        }
         let (name, pattern) = if self.peek("{") || self.peek("[") {
             let open = self.index;
             match patterns::parse_variable_pattern(

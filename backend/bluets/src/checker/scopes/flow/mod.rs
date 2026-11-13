@@ -16,7 +16,7 @@ mod predicates;
 mod properties;
 pub(in crate::checker) use predicates::truthy_type;
 
-pub(crate) const VERSION: &str = "lexical-flow-v14";
+pub(crate) const VERSION: &str = "lexical-flow-v17";
 #[derive(Clone, Debug, PartialEq)]
 struct State {
     reachable: bool,

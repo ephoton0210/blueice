@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "forms": 101,
+  "profiles": 4,
+  "comparisons": 404,
+  "accepted": 358,
+  "rejected": 46,
+  "declarationFiles": 366,
+  "consumers": 716,
+  "runtime": 8,
+  "sha256": {
+    "cases.json": "d5e41300bb0f5a74fae0aeaf639d4e68463ef482014d853b624f54824fac7f2e",
+    "reference.json": "e6eee4d7a56a1c88d46fb4fb9c688365f444c7f0ffb8b95ec6b9999ec291dd36",
+    "boundary-controls.json": "e92a17ab43498a02995ce9e33e61605fd53dc1900f53f669251fdca60505cdec"
+  },
+  "scope": "Finite reverse mapped inference, contextual sequence shapes and calibrated binding-name prerequisites; all broader G rows remain open.",
+  "boundaryControls": 12,
+  "supplementarySha256": {
+    "literal-preservation-controls.json": "071ba6d38172f0994e2c5e69e0a2147b7e183dec8682e7addd74bee4d682457b",
+    "projection-owner-controls.json": "8a1a81f5608ac08426df6579b2bc5b99bebffd22cdb8e2f1af1cd9f07fdca98d",
+    "projection-identity-controls.json": "97bacb8e04f7b792c83cc6e8ecd32b60497d9853026c340f17dd9be73632c43c",
+    "projection-mutation-controls.json": "b7bd97cd46d4dda9cdbe235e41a78cc92874686c276a2b55dcbcf4b7c13bef54",
+    "callback-context-controls.json": "9ae3633304c929873acd790577a3defbcaa58eb2d99bb700efa575f56fdc6d16",
+    "generic-argument-controls.json": "b484776848efa3611f918f617a25ffb767e7cda281d6e8ecc1ef7e253339093c"
+  },
+  "supplementaryLiteralComparisons": 4,
+  "supplementaryInventoryCredit": 0,
+  "supplementaryProjectionControls": 5,
+  "supplementaryIdentityControls": 4,
+  "supplementaryMutationControls": 4,
+  "supplementaryCallbackComparisons": 4,
+  "supplementaryGenericArgumentComparisons": 12
+}

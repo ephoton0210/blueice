@@ -19,6 +19,9 @@ pub fn primary(snapshot: &Snapshot, suite: &Suite) -> Result<Option<Vec<Case>>> 
     if stem == "string_intrinsics" {
         return super::case_string_intrinsics::primary(snapshot).map(Some);
     }
+    if stem == "mapped_inference" {
+        return super::case_mapped_inference::primary(snapshot).map(Some);
+    }
     if stem.starts_with("ge5_") {
         return super::case_ge5::primary(snapshot, suite).map(Some);
     }

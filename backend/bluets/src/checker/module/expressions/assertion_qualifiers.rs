@@ -4,6 +4,7 @@
 
 //! Static assertions cannot erase the existing runtime readonly/opaque policy.
 use super::*;
+mod projections;
 
 /// Matching mutable standard containers share their readonly API metadata;
 /// their data arguments can still carry authority that an annotation must not

@@ -7,14 +7,14 @@ use super::*;
 
 pub(super) fn naked(
     value: &Type,
-    parameters: &BTreeSet<String>,
+    parameters: &[TypeParameter],
     aliases: &BTreeMap<String, TypeDefinition>,
     active: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> Option<String> {
     match value {
-        Type::Named { name, arguments } if arguments.is_empty() && parameters.contains(name) => {
-            Some(name.clone())
+        Type::Named { .. } if declared_parameter(value, parameters).is_some() => {
+            Some(declared_parameter(value, parameters)?.name.clone())
         }
         Type::Intersection(parts)
             if parts

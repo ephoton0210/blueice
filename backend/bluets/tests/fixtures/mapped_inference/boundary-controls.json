@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "scope": "Separate owner/runtime and configured budget controls; no Native comparison credit.",
+  "controls": [
+    {
+      "id": "boxed-record-work-0",
+      "kind": "resource-limit",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack({name: {value: \"Ada\"}, count: {value: 3}});\n",
+      "limited": {
+        "max_type_expansions": 0
+      }
+    },
+    {
+      "id": "boxed-record-work-1",
+      "kind": "resource-limit",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack({name: {value: \"Ada\"}, count: {value: 3}});\n",
+      "limited": {
+        "max_type_expansions": 1
+      }
+    },
+    {
+      "id": "boxed-tuple-work-0",
+      "kind": "resource-limit",
+      "source": "declare function unpack<T extends unknown[]>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack([{value: \"Ada\"}, {value: 3}]);\n",
+      "limited": {
+        "max_type_expansions": 0
+      }
+    },
+    {
+      "id": "boxed-tuple-work-1",
+      "kind": "resource-limit",
+      "source": "declare function unpack<T extends unknown[]>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack([{value: \"Ada\"}, {value: 3}]);\n",
+      "limited": {
+        "max_type_expansions": 1
+      }
+    },
+    {
+      "id": "boxed-readonly-array-work-0",
+      "kind": "resource-limit",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\ndeclare const input: readonly {value: string}[];\nexport const result = unpack(input);\n",
+      "limited": {
+        "max_type_expansions": 0
+      }
+    },
+    {
+      "id": "boxed-readonly-array-work-1",
+      "kind": "resource-limit",
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\ndeclare const input: readonly {value: string}[];\nexport const result = unpack(input);\n",
+      "limited": {
+        "max_type_expansions": 1
+      }
+    },
+    {
+      "id": "nested-mapped-parser-0",
+      "kind": "resource-limit",
+      "source": "type Boxes<T> = {[K in keyof T]: {nested: {value: T[K]}}};\nexport const result: Boxes<[string]> = [{nested: {value: \"Ada\"}}];\n",
+      "limited": {
+        "parser.max_type_depth": 0
+      }
+    },
+    {
+      "id": "nested-mapped-parser-1",
+      "kind": "resource-limit",
+      "source": "type Boxes<T> = {[K in keyof T]: {nested: {value: T[K]}}};\nexport const result: Boxes<[string]> = [{nested: {value: \"Ada\"}}];\n",
+      "limited": {
+        "parser.max_type_depth": 1
+      }
+    },
+    {
+      "id": "ambient-Box",
+      "kind": "ambient-owner",
+      "declaration": "type Box<T> = {value: T};",
+      "source": "export const result: Box<string> = {value: \"Ada\"};\n"
+    },
+    {
+      "id": "runtime-Box",
+      "kind": "runtime-authority",
+      "declaration": "type Box<T> = {value: T};",
+      "source": "Box({value: \"Ada\"});\n"
+    },
+    {
+      "id": "ambient-Boxes",
+      "kind": "ambient-owner",
+      "declaration": "type Boxes<T> = {[K in keyof T]: {value: T[K]}};",
+      "source": "export const result: Boxes<[string]> = [{value: \"Ada\"}];\n"
+    },
+    {
+      "id": "runtime-Boxes",
+      "kind": "runtime-authority",
+      "declaration": "type Boxes<T> = {[K in keyof T]: {value: T[K]}};",
+      "source": "Boxes({value: \"Ada\"});\n"
+    }
+  ]
+}

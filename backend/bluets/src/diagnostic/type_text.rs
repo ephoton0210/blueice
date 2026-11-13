@@ -287,6 +287,10 @@ fn text_options(
         }
         Type::Union(values) => {
             let literal_union = values.iter().all(Type::is_literal);
+            let inferred_records = values.iter().all(|value| {
+                matches!(value, Type::Record(fields)
+                if fields.iter().all(|field| field.span.module == "<inferred>"))
+            });
             let mut values = values
                 .iter()
                 .map(|value| {
@@ -297,7 +301,7 @@ fn text_options(
                     }
                 })
                 .collect::<Vec<_>>();
-            if !literal_union {
+            if !literal_union && !inferred_records {
                 values.sort_by_key(|value| {
                     (
                         match value.as_str() {

@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "typescript": "5.9.3",
-  "source_revision": "backend-tree:687190197095253ff614e93a035b4e424b5e725a",
-  "source_graph_sha256": "f38b758dcfb2a6818a1b6511ecbe7cd92e52a723e3fd492630313911ea683713",
+  "source_revision": "backend-tree:bfee3b4ec32820c6c242798b6d2d90fdb6e00600",
+  "source_graph_sha256": "d84b284d71cfe2d42b8140d43081fdede20560000ad3a3c52aba4ae00da74d90",
   "fixture_directories": 3392,
   "diagnostic_programs": 3182,
   "diagnostic_templates": 221,
@@ -1766,6 +1766,24 @@
       ],
       "inputs": {
         "backend/bluets/tests/legacy_decorators_oracle.rs": "2af0b9802e560c0587003ca1306c3d6cca14727a"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/mapped_inference.rs",
+      "ignored_tests": [
+        "native_observations_consumers_syntax_and_runtime_are_reproducible"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/mapped_inference/boundary-controls.json": "36d9ca13fcb958f71e8d8f0aab1fad945e22108b",
+        "backend/bluets/tests/fixtures/mapped_inference/callback-context-controls.json": "c52be9a00cdf7c5d236ba0abcfbcb3a66a5db0f4",
+        "backend/bluets/tests/fixtures/mapped_inference/cases.json": "fe4601218bb70491b2aaa568b1bcf388c706bafa",
+        "backend/bluets/tests/fixtures/mapped_inference/generic-argument-controls.json": "144d3901eb9e68e0523e7c8dfaa4d7ac041ae45d",
+        "backend/bluets/tests/fixtures/mapped_inference/literal-preservation-controls.json": "88d4d423878f86c8e336728210a8feee22406298",
+        "backend/bluets/tests/fixtures/mapped_inference/projection-identity-controls.json": "74ad8b213ccb9b2cca3bb419bb72dbd347c7921f",
+        "backend/bluets/tests/fixtures/mapped_inference/projection-mutation-controls.json": "2d0440dc931850a566e5acd64a2b2bb43ab428b4",
+        "backend/bluets/tests/fixtures/mapped_inference/projection-owner-controls.json": "e9279afab492da962b2a6428b778854f14eb35af",
+        "backend/bluets/tests/fixtures/mapped_inference/reference.json": "b155e2c553907e052ae65f2d95441eda1bb7fd43",
+        "backend/bluets/tests/mapped_inference.rs": "8425bdd5325b6b684f1e1dcdc9b439f44d2ebb41"
       }
     },
     {

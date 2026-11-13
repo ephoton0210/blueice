@@ -146,9 +146,7 @@ impl ScopeModel<'_> {
             span.start = last.end;
         }
         let scope = self.child(Some(parent), span, true, true);
-        self.scopes[scope]
-            .types
-            .extend(function.type_parameters.iter().map(|p| p.name.clone()));
+        self.declare_type_parameters(scope, &function.type_parameters);
         if function.kind != NestedFunctionKind::Arrow {
             self.value(scope, "arguments", 0, false, false, Type::Unknown);
             self.value(scope, "this", 0, false, false, Type::Unknown);
@@ -488,6 +486,8 @@ pub(super) fn is_value_name(token: &Token) -> bool {
                 && matches!(
                     token.text.as_str(),
                     "any"
+                        | "as"
+                        | "satisfies"
                         | "asserts"
                         | "constructor"
                         | "from"

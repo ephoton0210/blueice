@@ -16,21 +16,51 @@ mod result_parameters;
 mod results;
 mod surfaces;
 
-pub(crate) const VERSION: &str = "bluets-generic-inference/10";
+pub(crate) const VERSION: &str = "bluets-generic-inference/12";
+
+pub(in crate::checker) fn reverse_mapped_object(
+    mapped: &crate::parser::MappedType,
+    actual: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    budget: &mut TypeExpansionBudget,
+) -> Option<Type> {
+    let Type::KeyOf(object) = mapped.parameter.constraint.as_ref()? else {
+        return None;
+    };
+    let Type::Named { name, arguments } = object.as_ref() else {
+        return None;
+    };
+    if !arguments.is_empty() {
+        return None;
+    }
+    let parameters = BTreeSet::from([name.clone()]);
+    mapped::infer(mapped, actual, &parameters, aliases, budget).map(|(_, value)| value)
+}
+
+/// A signature owns both the lexical spelling and its scoped declaration ID.
+pub(in crate::checker) fn declared_parameter<'a>(
+    value: &Type,
+    parameters: &'a [TypeParameter],
+) -> Option<&'a TypeParameter> {
+    let Type::Named { name, arguments } = value else {
+        return None;
+    };
+    if !arguments.is_empty() {
+        return None;
+    }
+    parameters.iter().find(|parameter| {
+        parameter.name == *name || crate::parser::type_parameter_identity(parameter) == *name
+    })
+}
 
 pub(in crate::checker) fn direct_result_parameter(
     signature: &FunctionSignature,
     aliases: &BTreeMap<String, TypeDefinition>,
     budget: &mut TypeExpansionBudget,
 ) -> Option<String> {
-    let parameters = signature
-        .type_parameters
-        .iter()
-        .map(|p| p.name.clone())
-        .collect();
     result_parameters::naked(
         &signature.return_type,
-        &parameters,
+        &signature.type_parameters,
         aliases,
         &mut HashSet::new(),
         budget,
@@ -150,7 +180,7 @@ pub(super) fn infer_contextual_result(
     }
     let naked = result_parameters::naked(
         &signature.return_type,
-        &parameters,
+        &signature.type_parameters,
         aliases,
         &mut HashSet::new(),
         collector.budget,

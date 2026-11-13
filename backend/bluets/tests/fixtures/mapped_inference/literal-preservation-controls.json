@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "scope": "Four supplemental Native literal-precision controls; no primary or inventory credit. Calibrated before the literal reconstruction repair.",
+  "options": {
+    "target": "ES5",
+    "module": "CommonJS",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "lib": [
+      "ES5"
+    ],
+    "outDir": "dist"
+  },
+  "typescript": "5.9.3",
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "libraries": {
+    "lib.es5.d.ts": "c430d44666289dae81f30fa7b2edebf186ecc91a2d4c71266ea6ae76388792e1",
+    "lib.decorators.d.ts": "8e7f8264d0fb4c5339605a15daadb037bf238c10b654bb3eee14208f860a32ea",
+    "lib.decorators.legacy.d.ts": "782dec38049b92d4e85c1585fbea5474a219c6984a35b004963b00beb1aab538"
+  },
+  "nativeInputSha256": "dd96a85faca76fa3ac63d654524b1bd4c3ab2ab09bea16ae08d6da83ff89345d",
+  "nativeReferenceSha256": "4bcb3f8e169cc32bae160223976c3a440946560f791922c3249255c673647da1",
+  "cases": [
+    {
+      "id": "explicit-const-elements",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: [\"Ada\", 3];\n"
+      },
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack([{value: \"Ada\" as const}, {value: 3 as const}]);\n"
+    },
+    {
+      "id": "declared-literal-tuple",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: [\"Ada\", 3];\n"
+      },
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\ndeclare const input: [{value: \"Ada\"}, {value: 3}];\nexport const result = unpack(input);\n"
+    },
+    {
+      "id": "readonly-const-record",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: {\n    readonly name: \"Ada\";\n    readonly count: 3;\n};\n"
+      },
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack({name: {value: \"Ada\"}, count: {value: 3}} as const);\n"
+    },
+    {
+      "id": "ordinary-const-copies",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+      },
+      "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\nconst name = \"Ada\"; const count = 3;\nexport const result = unpack({name: {value: name}, count: {value: count}});\n"
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Homomorphic mapped inputs infer one owned property at a time.
+//! Homomorphic reverse inference retains each property's or sequence slot's shape.
 use super::*;
 
 pub(super) fn infer(
@@ -21,54 +21,116 @@ pub(super) fn infer(
     if !arguments.is_empty() || !parameters.contains(name) || mapped.name_type.is_some() {
         return None;
     }
-    if matches!(&mapped.value, Type::IndexedAccess {object, index, ..} if matches!(object.as_ref(), Type::Named {name: object, arguments} if object == name && arguments.is_empty()) && matches!(index.as_ref(), Type::Named {name, arguments} if name == &mapped.parameter.name && arguments.is_empty()))
-        && matches!(actual, Type::Array(_) | Type::Tuple(_))
-    {
-        return Some((name.clone(), actual.clone()));
-    }
-    let Type::Record(actuals) = actual else {
-        return None;
+    let (actual, readonly) = match actual {
+        Type::Readonly(value) => (value.as_ref(), true),
+        value => (value, false),
     };
-    let slot = "\0bluets:reverse-mapped-slot";
-    let locals = BTreeSet::from([slot.to_string()]);
-    let mut fields = Vec::new();
-    for field in actuals {
-        if !budget.consume() {
+    let mut reverse = Reverser {
+        mapped,
+        name,
+        aliases,
+        budget,
+    };
+    let value = match actual {
+        Type::Record(actuals) if !actuals.is_empty() => {
+            let mut fields = Vec::new();
+            for field in actuals {
+                let object = Type::Record(vec![TypeField {
+                    value: slot(),
+                    ..field.clone()
+                }]);
+                let value = reverse.at(
+                    Type::Literal(format!("{:?}", field.name)),
+                    object,
+                    &field.value,
+                )?;
+                fields.push(TypeField {
+                    value,
+                    ..field.clone()
+                });
+            }
+            Type::Record(fields)
+        }
+        Type::Array(element) => Type::Array(Box::new(reverse.at(
+            Type::Number,
+            Type::Array(Box::new(slot())),
+            element,
+        )?)),
+        Type::Tuple(elements) => {
+            let mut values = Vec::new();
+            for (index, element) in elements.iter().enumerate() {
+                let actual = element.indexed_type();
+                let value = reverse.at(
+                    Type::Literal(format!("\"{index}\"")),
+                    Type::Array(Box::new(slot())),
+                    &actual,
+                )?;
+                values.push(TupleTypeElement {
+                    annotation: if element.rest {
+                        Type::Array(Box::new(value))
+                    } else {
+                        value
+                    },
+                    ..element.clone()
+                });
+            }
+            Type::Tuple(values)
+        }
+        _ => return None,
+    };
+    Some((
+        name.clone(),
+        if readonly {
+            Type::Readonly(Box::new(value))
+        } else {
+            value
+        },
+    ))
+}
+
+const SLOT: &str = "\0bluets:reverse-mapped-slot";
+
+fn slot() -> Type {
+    Type::Named {
+        name: SLOT.into(),
+        arguments: vec![],
+    }
+}
+
+struct Reverser<'a> {
+    mapped: &'a crate::parser::MappedType,
+    name: &'a String,
+    aliases: &'a BTreeMap<String, TypeDefinition>,
+    budget: &'a mut TypeExpansionBudget,
+}
+
+impl Reverser<'_> {
+    fn at(&mut self, key: Type, object: Type, actual: &Type) -> Option<Type> {
+        if !self.budget.consume() {
             return None;
         }
-        let member = TypeField {
-            value: Type::Named {
-                name: slot.into(),
-                arguments: vec![],
-            },
-            ..field.clone()
-        };
+        let locals = BTreeSet::from([SLOT.to_string()]);
         let substitutions = BTreeMap::from([
-            (name.clone(), Type::Record(vec![member])),
-            (
-                mapped.parameter.name.clone(),
-                Type::Literal(format!("{:?}", field.name)),
-            ),
+            (self.name.clone(), object),
+            (self.mapped.parameter.name.clone(), key),
         ]);
-        let template = substitute_type(&mapped.value, &substitutions);
+        let template = substitute_type(&self.mapped.value, &substitutions);
         let mut collector = collect::Collector {
             parameters: &locals,
             candidates: BTreeMap::new(),
-            aliases,
-            budget,
+            aliases: self.aliases,
+            budget: self.budget,
             active: HashSet::new(),
             dependencies: BTreeMap::new(),
             evidence: 0,
         };
-        collector.collect(&template, &field.value, false);
-        let value = collector
-            .candidates
-            .get(slot)?
-            .solve(false, aliases, collector.budget)?;
-        fields.push(TypeField {
-            value,
-            ..field.clone()
-        });
+        collector.collect(&template, actual, false);
+        if collector.budget.exhausted {
+            return None;
+        }
+        match collector.candidates.get(SLOT) {
+            Some(candidates) => candidates.reverse(self.aliases, collector.budget),
+            None => Some(Type::StrictUnknown),
+        }
     }
-    Some((name.clone(), Type::Record(fields)))
 }

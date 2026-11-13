@@ -4,6 +4,7 @@
 
 //! Homomorphic modifiers survive key remapping and bounded property expansion.
 use super::*;
+mod materialize;
 
 fn modifier(value: MappedModifier, inherited: bool) -> bool {
     match value {
@@ -20,11 +21,12 @@ fn sequence_value(
     visited: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> Type {
-    if mapped.span.module.starts_with("<builtin:") {
+    let value = if mapped.span.module.starts_with("<builtin:") {
         super::super::inference::result_type(value, &BTreeMap::new(), aliases, budget)
     } else {
         expanded(value, aliases, visited, budget)
-    }
+    };
+    materialize::indexed(&value, aliases, budget)
 }
 
 pub(super) fn resolve(
@@ -73,14 +75,19 @@ pub(super) fn resolve(
                             value.parameter.name.clone(),
                             Type::Literal(format!("\"{index}\"")),
                         )]);
+                        let annotation = sequence_value(
+                            &substitute_type(&value.value, &substitutions),
+                            value,
+                            aliases,
+                            &mut visited.clone(),
+                            budget,
+                        );
                         result.push(TupleTypeElement {
-                            annotation: sequence_value(
-                                &substitute_type(&value.value, &substitutions),
-                                value,
-                                aliases,
-                                &mut visited.clone(),
-                                budget,
-                            ),
+                            annotation: if item.rest {
+                                Type::Array(Box::new(annotation))
+                            } else {
+                                annotation
+                            },
                             optional: modifier(value.optional, item.optional),
                             ..item.clone()
                         });
@@ -172,6 +179,7 @@ pub(super) fn resolve(
         };
         let property = substitute_type(&value.value, &substitutions);
         let mut property = expanded(&property, aliases, &mut visited.clone(), budget);
+        property = materialize::indexed(&property, aliases, budget);
         if value.optional == MappedModifier::Remove && inherited.is_some_and(|field| field.optional)
         {
             if let Type::Union(parts) = property {

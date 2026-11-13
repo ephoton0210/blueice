@@ -32,24 +32,33 @@ impl ModuleChecker<'_> {
         let signature = self
             .select_function_signature(&signatures, &actuals, None)
             .ok()??;
-        let Type::Named {
-            name,
-            arguments: types,
-        } = &signature.return_type
-        else {
+        let Some(result_parameter) = crate::checker::inference::declared_parameter(
+            &signature.return_type,
+            &signature.type_parameters,
+        ) else {
             return Some(false);
         };
-        if !types.is_empty()
-            || !signature
-                .type_parameters
-                .iter()
-                .any(|p| p.name == *name && !p.is_const && p.constraint.is_none())
-        {
+        if result_parameter.is_const || result_parameter.constraint.is_some() {
             return Some(false);
         }
-        Some(signature.parameters.iter().zip(arguments).any(|(parameter,argument)| {
-            matches!(&parameter.annotation,Some(Type::Named {name:n,arguments}) if n == name && arguments.is_empty())
-                && self.fresh_array_element(argument,scope,&mut seen.clone(),depth+1)
-        }))
+        Some(
+            signature
+                .parameters
+                .iter()
+                .zip(arguments)
+                .any(|(parameter, argument)| {
+                    parameter
+                        .annotation
+                        .as_ref()
+                        .and_then(|value| {
+                            crate::checker::inference::declared_parameter(
+                                value,
+                                &signature.type_parameters,
+                            )
+                        })
+                        .is_some_and(|parameter| std::ptr::eq(parameter, result_parameter))
+                        && self.fresh_array_element(argument, scope, &mut seen.clone(), depth + 1)
+                }),
+        )
     }
 }

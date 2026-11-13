@@ -194,7 +194,11 @@ impl ModuleChecker<'_> {
             }
         }
         let mut fresh = BTreeSet::new();
-        for parameter in self.return_parameters(parameters, outer) {
+        for (parameter, declared_parameter) in self
+            .return_parameters(parameters, outer)
+            .into_iter()
+            .zip(parameters)
+        {
             let value = parameter.annotation.clone().or_else(|| {
                 parameter
                     .default
@@ -203,6 +207,12 @@ impl ModuleChecker<'_> {
                     .map(widen)
             });
             let value = value.unwrap_or(Type::Unknown);
+            // Authored annotations share flow's declaring parameter identities.
+            // Inferred contextual types already belong to the context's binders.
+            let value = match (&self.scopes, &declared_parameter.annotation) {
+                (Some(scopes), Some(_)) => scopes.parameter_type_at(&value, parameter.span.start),
+                _ => value,
+            };
             if let Some(pattern) = &parameter.pattern {
                 self.infer_return_pattern(pattern, &value, &mut scope);
             } else {

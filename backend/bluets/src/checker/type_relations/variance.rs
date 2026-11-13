@@ -144,6 +144,47 @@ pub(super) fn assignable(
     )
 }
 
+pub(super) fn same_keyof_parameter(
+    actual: &Type,
+    expected: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+) -> bool {
+    let (Type::KeyOf(actual), Type::KeyOf(expected)) = (actual, expected) else {
+        return false;
+    };
+    // Lexical spelling and scoped declaration identity denote the same keys.
+    // Resolve only direct parameter references; constraints stay opaque.
+    parameter_reference(actual, aliases)
+        .is_some_and(|identity| parameter_reference(expected, aliases) == Some(identity))
+}
+
+fn parameter_reference<'a>(
+    value: &Type,
+    aliases: &'a BTreeMap<String, TypeDefinition>,
+) -> Option<&'a str> {
+    let Type::Named { name, arguments } = value else {
+        return None;
+    };
+    if !arguments.is_empty() {
+        return None;
+    }
+    let (name, definition) = aliases.get_key_value(name)?;
+    if definition.kind == TypeDefinitionKind::Parameter {
+        return Some(name);
+    }
+    if definition.kind != TypeDefinitionKind::Alias || !definition.parameters.is_empty() {
+        return None;
+    }
+    let Type::Named { name, arguments } = &definition.value else {
+        return None;
+    };
+    if !arguments.is_empty() {
+        return None;
+    }
+    let (name, definition) = aliases.get_key_value(name)?;
+    (definition.kind == TypeDefinitionKind::Parameter).then_some(name.as_str())
+}
+
 fn same_argument(actual: &Type, expected: &Type) -> bool {
     if actual == expected {
         return true;

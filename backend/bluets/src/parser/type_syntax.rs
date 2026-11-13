@@ -719,9 +719,7 @@ impl Parser {
 
     pub(super) fn consume_identifier(&mut self) -> Option<String> {
         // Contextual TypeScript words can still name a binding or a type.
-        if self.current().kind == TokenKind::Identifier
-            || matches!(self.current().text.as_str(), "of" | "type")
-        {
+        if self.current().is_binding_identifier() {
             let value = self.current().text.clone();
             self.bump();
             Some(value)

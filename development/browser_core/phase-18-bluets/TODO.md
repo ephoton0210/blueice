@@ -8,24 +8,24 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-11-12).**
+**Current BlueTS / BlueTSC compatibility status (2026-11-13).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 41,636 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 42,052 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 40,753/40,759 (99.9853%); 3 open, 3 refused observations |
-| Separate controls | 633 native-reference + 244 BlueTS owner = 877; excluded from direct agreement |
-| Case labels | 41,630 scoped closed (including controls), 3 open, 3 refused |
-| Suite inventory | 187 suites / 392 ignored Rust functions; not a case denominator |
-| Suite labels | 183 scoped closed, 1 open, 3 refused |
+| Direct agreement | 41,157/41,163 (99.9854%); 3 open, 3 refused observations |
+| Separate controls | 633 native-reference + 256 BlueTS owner = 889; excluded from direct agreement |
+| Case labels | 42,046 scoped closed (including controls), 3 open, 3 refused |
+| Suite inventory | 188 suites / 393 ignored Rust functions; not a case denominator |
+| Suite labels | 184 scoped closed, 1 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 230 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 41,636 recorded case expectations pass; expected differences/refusals are not
+All 42,052 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,8 +33,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:687190197095253ff614e93a035b4e424b5e725a`.
-Input graph SHA-256: `f38b758dcfb2a6818a1b6511ecbe7cd92e52a723e3fd492630313911ea683713`.
+Compiler/oracle source: `backend-tree:bfee3b4ec32820c6c242798b6d2d90fdb6e00600`.
+Input graph SHA-256: `d84b284d71cfe2d42b8140d43081fdede20560000ad3a3c52aba4ae00da74d90`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -60,13 +60,12 @@ broader G-C1 inventory row remains open for unmeasured CLI/recovery coverage;
 the finite checklist does not claim full parity. See the
 [acceptance record](PLAN.md#phase-l--g-c1-implementation).
 
-**Latest completed follow-up:** P0-C supplies the four string intrinsics through
-shared bounded UTF-16 operations, preserving source-owner identity and separate
-runtime/resource boundaries. [Acceptance](STRING_INTRINSIC_ACCEPTANCE.md) binds
-the complete Native/local/Windows gates, exact declarations, consumers, maps and
-project regressions to its source. P0-A/P0-B retain their dated evidence.
-All22 broader rows remain open; continue prioritizing shared inference/operator/
-library compositions using newly frozen counterexamples.
+**Latest completed follow-up:** P0-D repairs shared reverse-mapped and contextual
+array/tuple inference, preserving literal widening, generic identities and bounded
+owner/resource behavior. [Acceptance](MAPPED_INFERENCE_ACCEPTANCE.md) binds all
+Native/local/Windows gates, exact declarations, consumers, maps and projects to
+its source. P0-A/P0-B/P0-C retain their dated evidence. All 22 broader rows remain
+open; freeze new cross-file and generic-flow counterexamples before extending it.
 
 ## Open gaps and implementation priority — 2026-11-11
 
@@ -118,7 +117,7 @@ obligations; they are not three additional implementation fixes per feature.
 
 | Order | Shared work and overlap | Concrete reason for this order |
 | --- | --- | --- |
-| P0 | Inference/type operators/library semantics: G-T2 through G-T8. NoInfer directly connects G-T2/G-T4/G-T6/G-T7/G-T8; union, intersection, template and thenable work connects G-T3/G-T5. | The accepted name probe supplies concrete failures, and the code shares candidate collection, substitution and bounded operator expansion. Continue with newly frozen shared inference/operator/library counterexamples. |
+| P0 | Inference/type operators/library semantics: G-T2 through G-T8. NoInfer directly connects G-T2/G-T4/G-T6/G-T7/G-T8; union, intersection, template and thenable work connects G-T3/G-T5. | The original name-probe failures led to accepted P0-A/B/C. The new mapped-inference discovery reproduces lost array/tuple candidates and contextual shape widening through shared collection/substitution paths. P0-D completes that finite contract; prioritize newly frozen cross-file and generic-flow counterexamples next. |
 | P1 | Flow, imported identities and exact declarations: G-T1/G-T10/G-D1/G-D2/G-E4, with G-T8/G-T9 interactions. | Stable inferred types and retained identities feed both public declarations and declaration maps. Freeze new cross-file/flow counterexamples before extending the existing accepted forms. |
 | P2 | One dependency graph across resolution, modules, build/watch and tracing: G-M1/G-M2/G-E2/G-C1, with G-T10 interactions. | Canonical resolved/missing inputs, package decisions and their fingerprints drive invalidation and explainFiles. Share those facts while preserving owner confinement. |
 | P3 | Class/decorator/JSX and target lowering: G-T9/G-E1/G-E3/G-E5/G-C3, with G-E2/G-E4 interactions. | These compositions depend on earlier type/identity work and involve several separate lowering/runtime paths. Add new mapping families with the corresponding constructs; retain the already accepted 572 corrections. |
@@ -148,8 +147,8 @@ Code supporting these dependencies:
 
 The [current presence witnesses](STRING_INTRINSIC_MEASUREMENT.json#/presenceInventory/corrected)
 pass all22 names in both selected profiles. These44 witnesses carry no semantic
-denominator credit; broader catalogs and compositions remain open. The three
-finite packages below have complete source-bound acceptance.
+denominator credit; broader catalogs and compositions remain open. P0-A/B/C/D have
+complete source-bound acceptance within their frozen contracts.
 
 - [x] **P0-A — NoInfer and shared candidate boundaries.** Delivered the frozen
   282 primary and four supplementary diagnostic comparisons across
@@ -176,6 +175,16 @@ finite packages below have complete source-bound acceptance.
   All40636 earlier cases/classes remain unchanged;1000 new assertions bring N to
   41636. [Acceptance](STRING_INTRINSIC_ACCEPTANCE.md) ·
   [measurement](STRING_INTRINSIC_MEASUREMENT.json). Broader rows remain open.
+
+- [x] **P0-D — Reverse mapped inference and contextual array shapes.** Delivered
+  101 forms × four profiles =404 complete comparisons, with 358 accepts /46
+  rejects, 366 exact declaration files, 716 consumers, 366 parses and eight
+  executions per actual compiler. Twelve policy controls remain separate;
+  33 supplemental observations include ten intentional owner refusals and add
+  no inventory credit. Complete same-source Native/local/Windows, maps,
+  projects and tooling pass. All 41636 earlier case classes remain unchanged;
+  416 new assertions bring N to 42052. [Acceptance](MAPPED_INFERENCE_ACCEPTANCE.md) ·
+  [measurement](MAPPED_INFERENCE_MEASUREMENT.json). Broader rows remain open.
 
 Each package needs frozen authored inputs and Native expectations before
 production changes, complete primary/related diagnostics and UTF-16 positions,

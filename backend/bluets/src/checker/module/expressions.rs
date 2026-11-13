@@ -768,7 +768,7 @@ impl<'a> ModuleChecker<'a> {
             let substitutions =
                 infer_call_substitutions(signature, &evidence, &self.types, &mut budget);
             let mapped = parameter.annotation.as_ref().and_then(|annotation| {
-                self.mapped_sequence_argument(argument, scope, annotation, signature)
+                self.mapped_sequence_argument(argument, scope, annotation, signature, &mut budget)
             });
             // Later context-independent arguments can rule out an overload
             // before its callback supplies a provisional parameter context.

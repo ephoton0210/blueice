@@ -32,16 +32,18 @@ use member_calls::{
 mod decorator_types;
 pub(crate) use decorator_types::replacement_type as decorator_replacement_type;
 mod properties;
+mod recovery;
 mod scopes;
+pub(crate) use recovery::recovery_value_diagnostics;
 pub(crate) use scopes::emission::{
     lexical_emission, module_value_reference_positions, non_namespace_value_ranges,
     runtime_import_uses, LexicalEmission,
 };
 pub(crate) use scopes::flow::VERSION as FLOW_VERSION;
 pub(crate) const CLASS_SURFACE_VERSION: &str = "class-surface-v5";
-pub(crate) const MODULE_EXPORTS_VERSION: &str = "module-exports-v9";
-pub(crate) const STRUCTURAL_BOUNDARIES_VERSION: &str = "bluets-structural-boundaries/3";
-pub(crate) const OVERLOAD_CHAINS_VERSION: &str = "bluets-overload-chains/1";
+pub(crate) const MODULE_EXPORTS_VERSION: &str = "module-exports-v11";
+pub(crate) const STRUCTURAL_BOUNDARIES_VERSION: &str = "bluets-structural-boundaries/4";
+pub(crate) const OVERLOAD_CHAINS_VERSION: &str = "bluets-overload-chains/2";
 pub(crate) const RETURN_CONTEXT_VERSION: &str = "bluets-return-context/5";
 mod computed_keys;
 pub(crate) mod tuple_compositions;
@@ -700,7 +702,7 @@ struct DirectCall<'a> {
 
 fn direct_call_parts(tokens: &[Token]) -> Option<DirectCall<'_>> {
     let callee = tokens.first()?;
-    if callee.kind != TokenKind::Identifier {
+    if !callee.is_binding_identifier() {
         return None;
     }
     if tokens.get(1).is_some_and(|token| token.is("(")) {
@@ -846,7 +848,7 @@ fn infer_simple(tokens: &[Token], scope: &BTreeMap<String, Type>) -> Type {
         Type::Null
     } else if first.text == "undefined" {
         scope.get("undefined").cloned().unwrap_or(Type::Undefined)
-    } else if first.kind == TokenKind::Identifier {
+    } else if first.is_binding_identifier() {
         scope.get(&first.text).cloned().unwrap_or(Type::Unknown)
     } else {
         Type::Unknown

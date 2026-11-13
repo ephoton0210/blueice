@@ -1,0 +1,875 @@
+{
+  "schema": 1,
+  "scope": "Discovery only; no TODO completion, inventory additions or full-parity credit. Native observations were frozen before BlueTSC replay; no production source changed.",
+  "rawEvidenceRoot": "target/p0-shared-inference-discovery-20261113",
+  "filesSha256": {
+    "inputs.json": "e5e1fd9640f9d2a742b07158b37c998f73663af8b3bda8e2199c1b9bb7cb0c15",
+    "native-reference.json": "13f6ec01f7c828dd097d299f0f1a109f1efb71acf5d62e16cc59356fda278b67",
+    "discovery-report.json": "6c23fc9855330e7204d9f186ab8f13f6622fe793d097775134e4d46a2021455e",
+    "discover.cjs": "faa8d467165be3cdbde51e0ca81c9167607af0931de2966b18dcc19df8b57e1d"
+  },
+  "inputs": {
+    "schema": 1,
+    "scope": "Exploratory reverse mapped inference; no acceptance or inventory credit",
+    "compilerOptions": {
+      "target": "ES5",
+      "module": "CommonJS",
+      "strict": true,
+      "declaration": true,
+      "noEmitOnError": true,
+      "lib": [
+        "ES5"
+      ],
+      "outDir": "dist"
+    },
+    "cases": [
+      {
+        "id": "boxed-record",
+        "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack({name: {value: \"Ada\"}, count: {value: 3}});\n"
+      },
+      {
+        "id": "boxed-array",
+        "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack([{value: \"Ada\"}, {value: 3}]);\n"
+      },
+      {
+        "id": "boxed-tuple",
+        "source": "declare function unpack<T extends unknown[]>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack([{value: \"Ada\"}, {value: 3}]);\n"
+      },
+      {
+        "id": "boxed-readonly-tuple",
+        "source": "declare function unpack<T extends readonly unknown[]>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack([{value: \"Ada\"}, {value: 3}] as const);\n"
+      },
+      {
+        "id": "boxed-readonly-array",
+        "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\ndeclare const input: readonly {value: string}[];\nexport const result = unpack(input);\n"
+      },
+      {
+        "id": "nested-box-record",
+        "source": "declare function unpack<T>(x: {[K in keyof T]: {inner: {value: T[K]}}}): T;\nexport const result = unpack({name: {inner: {value: \"Ada\"}}, count: {inner: {value: 3}}});\n"
+      },
+      {
+        "id": "optional-box-record",
+        "source": "declare function unpack<T>(x: {[K in keyof T]?: {value: T[K]}}): T;\nexport const result = unpack({name: {value: \"Ada\"}, count: {value: 3}});\n"
+      },
+      {
+        "id": "readonly-box-record",
+        "source": "declare function unpack<T>(x: {readonly [K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack({name: {value: \"Ada\"}, count: {value: 3}});\n"
+      },
+      {
+        "id": "callback-box-record",
+        "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]; consume: (value: T[K]) => void}}): T;\nexport const result = unpack({name: {value: \"Ada\", consume: value => { const text: string = value; }}, count: {value: 3, consume: value => { const number: number = value; }}});\n"
+      },
+      {
+        "id": "alias-box-array",
+        "source": "type Box<T> = {value: T};\ntype Boxes<T> = {[K in keyof T]: Box<T[K]>};\ndeclare function unpack<T>(x: Boxes<T>): T;\nexport const result = unpack([{value: \"Ada\"}, {value: 3}]);\n"
+      },
+      {
+        "id": "identity-array-control",
+        "source": "declare function identity<T>(x: {[K in keyof T]: T[K]}): T;\nexport const result = identity([\"Ada\", 3]);\n"
+      },
+      {
+        "id": "identity-tuple-control",
+        "source": "declare function identity<T extends unknown[]>(x: {[K in keyof T]: T[K]}): T;\nexport const result = identity([\"Ada\", 3]);\n"
+      },
+      {
+        "id": "optional-identity-record-control",
+        "source": "declare function identity<T>(x: {[K in keyof T]?: T[K]}): T;\nexport const result = identity({name: \"Ada\", count: 3});\n"
+      },
+      {
+        "id": "boxed-empty-tuple",
+        "source": "declare function unpack<T extends unknown[]>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack([]);\n"
+      },
+      {
+        "id": "boxed-invalid-explicit",
+        "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack<[string, number]>([{value: \"Ada\"}, {value: false}]);\n"
+      },
+      {
+        "id": "boxed-explicit-tuple-control",
+        "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]}}): T;\nexport const result = unpack<[string, number]>([{value: \"Ada\"}, {value: 3}]);\n"
+      }
+    ]
+  },
+  "nativeReference": {
+    "schema": 1,
+    "typescript": "5.9.3",
+    "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+    "libraries": {
+      "lib.es5.d.ts": "c430d44666289dae81f30fa7b2edebf186ecc91a2d4c71266ea6ae76388792e1",
+      "lib.decorators.d.ts": "8e7f8264d0fb4c5339605a15daadb037bf238c10b654bb3eee14208f860a32ea",
+      "lib.decorators.legacy.d.ts": "782dec38049b92d4e85c1585fbea5474a219c6984a35b004963b00beb1aab538"
+    },
+    "inputSha256": "e5e1fd9640f9d2a742b07158b37c998f73663af8b3bda8e2199c1b9bb7cb0c15",
+    "cases": [
+      {
+        "id": "boxed-record",
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+        }
+      },
+      {
+        "id": "boxed-array",
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: [string, number];\n"
+        }
+      },
+      {
+        "id": "boxed-tuple",
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: [string, number];\n"
+        }
+      },
+      {
+        "id": "boxed-readonly-tuple",
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: readonly [\"Ada\", 3];\n"
+        }
+      },
+      {
+        "id": "boxed-readonly-array",
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: readonly string[];\n"
+        }
+      },
+      {
+        "id": "nested-box-record",
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+        }
+      },
+      {
+        "id": "optional-box-record",
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+        }
+      },
+      {
+        "id": "readonly-box-record",
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+        }
+      },
+      {
+        "id": "callback-box-record",
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+        }
+      },
+      {
+        "id": "alias-box-array",
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: [string, number];\n"
+        }
+      },
+      {
+        "id": "identity-array-control",
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: [string, number];\n"
+        }
+      },
+      {
+        "id": "identity-tuple-control",
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: [string, number];\n"
+        }
+      },
+      {
+        "id": "optional-identity-record-control",
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+        }
+      },
+      {
+        "id": "boxed-empty-tuple",
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: [];\n"
+        }
+      },
+      {
+        "id": "boxed-invalid-explicit",
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'boolean' is not assignable to type 'number'.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 66,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type '{ value: number; }'",
+                "file": "main.ts",
+                "position": {
+                  "line": 1,
+                  "column": 49,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ],
+        "declarations": {}
+      },
+      {
+        "id": "boxed-explicit-tuple-control",
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: [string, number];\n"
+        }
+      }
+    ]
+  },
+  "blueComparison": {
+    "schema": 1,
+    "scope": "Exploratory reverse mapped inference; no acceptance or inventory credit",
+    "sourceCommit": "c971f5f5c4dff02f04fa2b3199cf337b6cb71f5f",
+    "sourceRevision": "backend-tree:687190197095253ff614e93a035b4e424b5e725a",
+    "compilerSha256": "ce7f338d40d759da3fbd69777405f41b707ff9b60ff2ddf0927c4deafa3b4fb8",
+    "inputSha256": "e5e1fd9640f9d2a742b07158b37c998f73663af8b3bda8e2199c1b9bb7cb0c15",
+    "nativeReferenceSha256": "13f6ec01f7c828dd097d299f0f1a109f1efb71acf5d62e16cc59356fda278b67",
+    "comparisons": 16,
+    "agreements": 8,
+    "rows": [
+      {
+        "id": "boxed-record",
+        "agrees": true,
+        "differences": [],
+        "observed": {
+          "id": "boxed-record",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+          }
+        },
+        "expected": {
+          "id": "boxed-record",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+          }
+        }
+      },
+      {
+        "id": "boxed-array",
+        "agrees": false,
+        "differences": [
+          "declarations"
+        ],
+        "observed": {
+          "id": "boxed-array",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: unknown;\n"
+          }
+        },
+        "expected": {
+          "id": "boxed-array",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: [string, number];\n"
+          }
+        }
+      },
+      {
+        "id": "boxed-tuple",
+        "agrees": false,
+        "differences": [
+          "declarations"
+        ],
+        "observed": {
+          "id": "boxed-tuple",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: unknown[];\n"
+          }
+        },
+        "expected": {
+          "id": "boxed-tuple",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: [string, number];\n"
+          }
+        }
+      },
+      {
+        "id": "boxed-readonly-tuple",
+        "agrees": false,
+        "differences": [
+          "declarations"
+        ],
+        "observed": {
+          "id": "boxed-readonly-tuple",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: readonly unknown[];\n"
+          }
+        },
+        "expected": {
+          "id": "boxed-readonly-tuple",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: readonly [\"Ada\", 3];\n"
+          }
+        }
+      },
+      {
+        "id": "boxed-readonly-array",
+        "agrees": false,
+        "differences": [
+          "declarations"
+        ],
+        "observed": {
+          "id": "boxed-readonly-array",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: unknown;\n"
+          }
+        },
+        "expected": {
+          "id": "boxed-readonly-array",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: readonly string[];\n"
+          }
+        }
+      },
+      {
+        "id": "nested-box-record",
+        "agrees": true,
+        "differences": [],
+        "observed": {
+          "id": "nested-box-record",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+          }
+        },
+        "expected": {
+          "id": "nested-box-record",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+          }
+        }
+      },
+      {
+        "id": "optional-box-record",
+        "agrees": true,
+        "differences": [],
+        "observed": {
+          "id": "optional-box-record",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+          }
+        },
+        "expected": {
+          "id": "optional-box-record",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+          }
+        }
+      },
+      {
+        "id": "readonly-box-record",
+        "agrees": true,
+        "differences": [],
+        "observed": {
+          "id": "readonly-box-record",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+          }
+        },
+        "expected": {
+          "id": "readonly-box-record",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+          }
+        }
+      },
+      {
+        "id": "callback-box-record",
+        "agrees": false,
+        "differences": [
+          "accepts",
+          "diagnostics",
+          "declarations"
+        ],
+        "observed": {
+          "id": "callback-box-record",
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 1134,
+              "message": "Variable declaration expected.",
+              "file": "main.ts",
+              "position": {
+                "column": 148,
+                "length": 6,
+                "line": 2
+              },
+              "relatedInformation": []
+            }
+          ],
+          "declarations": {}
+        },
+        "expected": {
+          "id": "callback-box-record",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+          }
+        }
+      },
+      {
+        "id": "alias-box-array",
+        "agrees": false,
+        "differences": [
+          "declarations"
+        ],
+        "observed": {
+          "id": "alias-box-array",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: unknown;\n"
+          }
+        },
+        "expected": {
+          "id": "alias-box-array",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: [string, number];\n"
+          }
+        }
+      },
+      {
+        "id": "identity-array-control",
+        "agrees": false,
+        "differences": [
+          "declarations"
+        ],
+        "observed": {
+          "id": "identity-array-control",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: (string | number)[];\n"
+          }
+        },
+        "expected": {
+          "id": "identity-array-control",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: [string, number];\n"
+          }
+        }
+      },
+      {
+        "id": "identity-tuple-control",
+        "agrees": true,
+        "differences": [],
+        "observed": {
+          "id": "identity-tuple-control",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: [string, number];\n"
+          }
+        },
+        "expected": {
+          "id": "identity-tuple-control",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: [string, number];\n"
+          }
+        }
+      },
+      {
+        "id": "optional-identity-record-control",
+        "agrees": true,
+        "differences": [],
+        "observed": {
+          "id": "optional-identity-record-control",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+          }
+        },
+        "expected": {
+          "id": "optional-identity-record-control",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+          }
+        }
+      },
+      {
+        "id": "boxed-empty-tuple",
+        "agrees": false,
+        "differences": [
+          "declarations"
+        ],
+        "observed": {
+          "id": "boxed-empty-tuple",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: unknown[];\n"
+          }
+        },
+        "expected": {
+          "id": "boxed-empty-tuple",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: [];\n"
+          }
+        }
+      },
+      {
+        "id": "boxed-invalid-explicit",
+        "agrees": true,
+        "differences": [],
+        "observed": {
+          "id": "boxed-invalid-explicit",
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'boolean' is not assignable to type 'number'.",
+              "file": "main.ts",
+              "position": {
+                "column": 66,
+                "length": 5,
+                "line": 2
+              },
+              "relatedInformation": [
+                {
+                  "code": 6500,
+                  "message": "The expected type comes from property 'value' which is declared here on type '{ value: number; }'",
+                  "file": "main.ts",
+                  "position": {
+                    "column": 49,
+                    "length": 5,
+                    "line": 1
+                  },
+                  "relatedInformation": []
+                }
+              ]
+            }
+          ],
+          "declarations": {}
+        },
+        "expected": {
+          "id": "boxed-invalid-explicit",
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'boolean' is not assignable to type 'number'.",
+              "file": "main.ts",
+              "position": {
+                "line": 2,
+                "column": 66,
+                "length": 5
+              },
+              "relatedInformation": [
+                {
+                  "code": 6500,
+                  "message": "The expected type comes from property 'value' which is declared here on type '{ value: number; }'",
+                  "file": "main.ts",
+                  "position": {
+                    "line": 1,
+                    "column": 49,
+                    "length": 5
+                  },
+                  "relatedInformation": []
+                }
+              ]
+            }
+          ],
+          "declarations": {}
+        }
+      },
+      {
+        "id": "boxed-explicit-tuple-control",
+        "agrees": true,
+        "differences": [],
+        "observed": {
+          "id": "boxed-explicit-tuple-control",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: [string, number];\n"
+          }
+        },
+        "expected": {
+          "id": "boxed-explicit-tuple-control",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: [string, number];\n"
+          }
+        }
+      }
+    ]
+  },
+  "callbackIsolation": {
+    "scope": "Four independent controls isolate the contextual binding-name defect; no additional primary or inventory credit.",
+    "rawEvidenceRoot": "target/p0-mapped-callback-isolation-20261113",
+    "filesSha256": {
+      "inputs.json": "2b73e85fbf02eeac6ec1ab87f2a3deb51f8d303a47f3b7e043245a1386779992",
+      "native-reference.json": "dd0ec76e5fd68c3f3052eae56ebaa16d0ebf480a75224be0966ce7e0c10cf4a0",
+      "discovery-report.json": "9dcf3d1b14dc6c17bf6768fd92c72760b9407d0a2dd02de6414e624b9bf8121e",
+      "discover.cjs": "07ff26babfae11d390853f5bc3d5af7d55f98a4e67afff1acb1c1854636c9f19"
+    },
+    "inputs": {
+      "schema": 1,
+      "scope": "Exploratory reverse mapped inference; no acceptance or inventory credit",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "strict": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "lib": [
+          "ES5"
+        ],
+        "outDir": "dist"
+      },
+      "cases": [
+        {
+          "id": "number-binding",
+          "source": "export const number: number = 3;\n"
+        },
+        {
+          "id": "ordinary-binding",
+          "source": "export const checked: number = 3;\n"
+        },
+        {
+          "id": "callback-ordinary-binding",
+          "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]; consume: (value: T[K]) => void}}): T;\nexport const result = unpack({name: {value: \"Ada\", consume: value => { const text: string = value; }}, count: {value: 3, consume: value => { const checked: number = value; }}});\n"
+        },
+        {
+          "id": "callback-empty-bodies",
+          "source": "declare function unpack<T>(x: {[K in keyof T]: {value: T[K]; consume: (value: T[K]) => void}}): T;\nexport const result = unpack({name: {value: \"Ada\", consume: value => {}}, count: {value: 3, consume: value => {}}});\n"
+        }
+      ]
+    },
+    "nativeReference": {
+      "schema": 1,
+      "typescript": "5.9.3",
+      "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+      "libraries": {
+        "lib.es5.d.ts": "c430d44666289dae81f30fa7b2edebf186ecc91a2d4c71266ea6ae76388792e1",
+        "lib.decorators.d.ts": "8e7f8264d0fb4c5339605a15daadb037bf238c10b654bb3eee14208f860a32ea",
+        "lib.decorators.legacy.d.ts": "782dec38049b92d4e85c1585fbea5474a219c6984a35b004963b00beb1aab538"
+      },
+      "inputSha256": "2b73e85fbf02eeac6ec1ab87f2a3deb51f8d303a47f3b7e043245a1386779992",
+      "cases": [
+        {
+          "id": "number-binding",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const number: number;\n"
+          }
+        },
+        {
+          "id": "ordinary-binding",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const checked: number;\n"
+          }
+        },
+        {
+          "id": "callback-ordinary-binding",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+          }
+        },
+        {
+          "id": "callback-empty-bodies",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+          }
+        }
+      ]
+    },
+    "blueComparison": {
+      "schema": 1,
+      "scope": "Exploratory reverse mapped inference; no acceptance or inventory credit",
+      "sourceCommit": "c971f5f5c4dff02f04fa2b3199cf337b6cb71f5f",
+      "sourceRevision": "backend-tree:687190197095253ff614e93a035b4e424b5e725a",
+      "compilerSha256": "ce7f338d40d759da3fbd69777405f41b707ff9b60ff2ddf0927c4deafa3b4fb8",
+      "inputSha256": "2b73e85fbf02eeac6ec1ab87f2a3deb51f8d303a47f3b7e043245a1386779992",
+      "nativeReferenceSha256": "dd0ec76e5fd68c3f3052eae56ebaa16d0ebf480a75224be0966ce7e0c10cf4a0",
+      "comparisons": 4,
+      "agreements": 3,
+      "rows": [
+        {
+          "id": "number-binding",
+          "agrees": false,
+          "differences": [
+            "accepts",
+            "diagnostics",
+            "declarations"
+          ],
+          "observed": {
+            "id": "number-binding",
+            "accepts": false,
+            "diagnostics": [
+              {
+                "code": 1134,
+                "message": "Variable declaration expected.",
+                "file": "main.ts",
+                "position": {
+                  "column": 14,
+                  "length": 6,
+                  "line": 1
+                },
+                "relatedInformation": []
+              }
+            ],
+            "declarations": {}
+          },
+          "expected": {
+            "id": "number-binding",
+            "accepts": true,
+            "diagnostics": [],
+            "declarations": {
+              "main.d.ts": "export declare const number: number;\n"
+            }
+          }
+        },
+        {
+          "id": "ordinary-binding",
+          "agrees": true,
+          "differences": [],
+          "observed": {
+            "id": "ordinary-binding",
+            "accepts": true,
+            "diagnostics": [],
+            "declarations": {
+              "main.d.ts": "export declare const checked: number;\n"
+            }
+          },
+          "expected": {
+            "id": "ordinary-binding",
+            "accepts": true,
+            "diagnostics": [],
+            "declarations": {
+              "main.d.ts": "export declare const checked: number;\n"
+            }
+          }
+        },
+        {
+          "id": "callback-ordinary-binding",
+          "agrees": true,
+          "differences": [],
+          "observed": {
+            "id": "callback-ordinary-binding",
+            "accepts": true,
+            "diagnostics": [],
+            "declarations": {
+              "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+            }
+          },
+          "expected": {
+            "id": "callback-ordinary-binding",
+            "accepts": true,
+            "diagnostics": [],
+            "declarations": {
+              "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+            }
+          }
+        },
+        {
+          "id": "callback-empty-bodies",
+          "agrees": true,
+          "differences": [],
+          "observed": {
+            "id": "callback-empty-bodies",
+            "accepts": true,
+            "diagnostics": [],
+            "declarations": {
+              "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+            }
+          },
+          "expected": {
+            "id": "callback-empty-bodies",
+            "accepts": true,
+            "diagnostics": [],
+            "declarations": {
+              "main.d.ts": "export declare const result: {\n    name: string;\n    count: number;\n};\n"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

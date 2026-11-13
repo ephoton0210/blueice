@@ -83,7 +83,7 @@ impl<'a> ModuleChecker<'a> {
         scope: &BTreeMap<String, Type>,
     ) -> Type {
         if let [token] = tokens {
-            if token.kind == TokenKind::Identifier || token.is("this") {
+            if token.is_binding_identifier() || token.is("this") {
                 if let Some(value) = self
                     .flow
                     .as_ref()
@@ -426,7 +426,10 @@ impl<'a> ModuleChecker<'a> {
                     return annotation.clone();
                 }
                 let actual = self.infer_expression(value, scope);
-                return if self.assertion_preserves_runtime_qualifiers(&actual) {
+                return if self.assertion_preserves_runtime_qualifiers(&actual)
+                    && !self
+                        .assertion_retains_parameter_projection(value, &actual, annotation, scope)
+                {
                     actual
                 } else {
                     annotation.clone()
@@ -591,7 +594,7 @@ impl<'a> ModuleChecker<'a> {
             "undefined" => Type::Undefined,
             "[" => self.infer_array(tokens, scope),
             "{" => self.infer_record(tokens, scope),
-            _ if first.kind == TokenKind::Identifier => {
+            _ if first.is_binding_identifier() => {
                 // A value in scope (a parameter, a local, a catch binding)
                 // shadows a module function of the same name.
                 if tokens.len() == 1 {

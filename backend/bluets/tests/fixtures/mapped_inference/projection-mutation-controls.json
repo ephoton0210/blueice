@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "scope": "Four supplemental provenance controls: one unobserved const and three owner refusals after writes/escapes. Native accepts all; owner refusals have no Native/primary/inventory agreement credit.",
+  "options": {
+    "target": "ES5",
+    "module": "CommonJS",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "lib": [
+      "ES5"
+    ],
+    "outDir": "dist"
+  },
+  "typescript": "5.9.3",
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "libraries": {
+    "lib.es5.d.ts": "c430d44666289dae81f30fa7b2edebf186ecc91a2d4c71266ea6ae76388792e1",
+    "lib.decorators.d.ts": "8e7f8264d0fb4c5339605a15daadb037bf238c10b654bb3eee14208f860a32ea",
+    "lib.decorators.legacy.d.ts": "782dec38049b92d4e85c1585fbea5474a219c6984a35b004963b00beb1aab538"
+  },
+  "nativeReferenceSha256": "3050f24658b6f3c150cc818067deccb70ac9a017b66876b1dcf8d51b4bc747c3",
+  "cases": [
+    {
+      "id": "untouched-const-alias",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare function result<T extends unknown[]>(value: T): T;\n"
+      },
+      "source": "export function result<T extends unknown[]>(value:T):T { const projected=[value[0]]; return projected as unknown as T; }\n",
+      "blueAccepts": true
+    },
+    {
+      "id": "written-const-alias",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare function result<T extends unknown[]>(value: T, protectedValue: readonly string[]): T;\n"
+      },
+      "source": "export function result<T extends unknown[]>(value:T, protectedValue:readonly string[]):T { const projected=[value[0]]; projected[0]=protectedValue; return projected as unknown as T; }\n",
+      "blueAccepts": false
+    },
+    {
+      "id": "escaped-const-alias",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare function result<T extends unknown[]>(value: T, protectedValue: readonly string[]): T;\n"
+      },
+      "source": "declare function mutate(input:unknown[], payload:readonly string[]):void;\nexport function result<T extends unknown[]>(value:T, protectedValue:readonly string[]):T { const projected=[value[0]]; mutate(projected, protectedValue); return projected as unknown as T; }\n",
+      "blueAccepts": false
+    },
+    {
+      "id": "written-through-const-chain",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare function result<T extends unknown[]>(value: T, protectedValue: readonly string[]): T;\n"
+      },
+      "source": "export function result<T extends unknown[]>(value:T, protectedValue:readonly string[]):T { const projected=[value[0]]; const alias=projected; projected[0]=protectedValue; return alias as unknown as T; }\n",
+      "blueAccepts": false
+    }
+  ]
+}

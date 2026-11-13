@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "scope": "Supplementary same-parameter provenance acceptance and four intentional owner refusals. No primary or inventory credit. Native accepts all inputs; owner refusals are not Native agreements.",
+  "options": {
+    "target": "ES5",
+    "module": "CommonJS",
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "lib": [
+      "ES5"
+    ],
+    "outDir": "dist"
+  },
+  "typescript": "5.9.3",
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "libraries": {
+    "lib.es5.d.ts": "c430d44666289dae81f30fa7b2edebf186ecc91a2d4c71266ea6ae76388792e1",
+    "lib.decorators.d.ts": "8e7f8264d0fb4c5339605a15daadb037bf238c10b654bb3eee14208f860a32ea",
+    "lib.decorators.legacy.d.ts": "782dec38049b92d4e85c1585fbea5474a219c6984a35b004963b00beb1aab538"
+  },
+  "nativeReferenceSha256": "f824dc44d33642531097ef1ce7bbffdd409ffb5d4fc01999b6490bd09bc75fd5",
+  "cases": [
+    {
+      "id": "same-parameter-projection",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare function result<T extends unknown[]>(value: T): T;\n"
+      },
+      "source": "export function result<T extends unknown[]>(value: T): T { return [value[0]] as unknown as T; }\n",
+      "blueAccepts": true
+    },
+    {
+      "id": "unknown-cannot-acquire-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare function result<T>(value: unknown): T;\n"
+      },
+      "source": "export function result<T>(value: unknown): T { return value as unknown as T; }\n",
+      "blueAccepts": false
+    },
+    {
+      "id": "readonly-cannot-acquire-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare function result<T>(value: readonly string[]): T;\n"
+      },
+      "source": "export function result<T>(value: readonly string[]): T { return value as unknown as T; }\n",
+      "blueAccepts": false
+    },
+    {
+      "id": "unrelated-parameter-projection",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare function result<T extends unknown[], U>(value: T): U;\n"
+      },
+      "source": "export function result<T extends unknown[], U>(value: T): U { return [value[0]] as unknown as U; }\n",
+      "blueAccepts": false
+    },
+    {
+      "id": "mixed-concrete-readonly-payload",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare function result<T extends unknown[]>(value: T, protectedValue: readonly string[]): T;\n"
+      },
+      "source": "export function result<T extends unknown[]>(value: T, protectedValue: readonly string[]): T { return [value[0], protectedValue] as unknown as T; }\n",
+      "blueAccepts": false
+    }
+  ]
+}

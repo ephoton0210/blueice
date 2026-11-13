@@ -300,6 +300,8 @@ impl ScopeModel<'_> {
         parameters: &[TypeParameter],
     ) -> ScopeId {
         let scope = self.child(Some(parent), span.clone(), false, false);
+        // Alias/interface binders belong to their type instantiation, rather
+        // than the function/class parameter identities used by runtime flow.
         self.scopes[scope]
             .types
             .extend(parameters.iter().map(|parameter| parameter.name.clone()));
@@ -419,9 +421,7 @@ impl ScopeModel<'_> {
 
     pub(super) fn function(&mut self, function: &FunctionDeclaration, parent: ScopeId) {
         let scope = self.child(Some(parent), function.span.clone(), true, true);
-        self.scopes[scope]
-            .types
-            .extend(function.type_parameters.iter().map(|p| p.name.clone()));
+        self.declare_type_parameters(scope, &function.type_parameters);
         self.value(scope, "arguments", 0, false, false, Type::Unknown);
         self.parameters(&function.parameters, scope);
         if let Some(result) = &function.return_type {
@@ -536,9 +536,7 @@ impl ScopeModel<'_> {
         }
         let scope = self.child(Some(parent), class.span.clone(), false, false);
         self.private_class(class, scope);
-        for parameter in &class.type_parameters {
-            self.scopes[scope].types.insert(parameter.name.clone());
-        }
+        self.declare_type_parameters(scope, &class.type_parameters);
         let constructor = self.scopes[parent]
             .values
             .get(&class.name)
@@ -611,12 +609,7 @@ impl ScopeModel<'_> {
             }
             if let Some(method) = &member.method {
                 let inner = self.child(Some(scope), method.span.clone(), true, true);
-                self.scopes[inner].types.extend(
-                    method
-                        .type_parameters
-                        .iter()
-                        .map(|parameter| parameter.name.clone()),
-                );
+                self.declare_type_parameters(inner, &method.type_parameters);
                 self.class_this(inner, &class.name, method.is_static);
                 self.value(inner, "arguments", 0, false, false, Type::Unknown);
                 self.parameters(&method.parameters, inner);

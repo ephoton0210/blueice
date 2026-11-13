@@ -31,6 +31,34 @@ impl ModuleChecker<'_> {
         }
         let a = self.compatibility_shape(actual);
         let e = self.compatibility_shape(expected);
+        if matches!(&a, Type::Array(_) | Type::Tuple(_))
+            || matches!(&a, Type::Readonly(value) if matches!(value.as_ref(), Type::Array(_) | Type::Tuple(_)))
+        {
+            if let Type::Record(fields) = &e {
+                for field in fields.iter().filter(|field| !field.optional) {
+                    if matches!(
+                        property_type(
+                            &a,
+                            &field.name,
+                            &self.types,
+                            &mut HashSet::new(),
+                            &mut budget
+                        ),
+                        PropertyType::Missing
+                    ) && !budget.exhausted
+                    {
+                        return Some(self.missing_reason(
+                            &Missing {
+                                source: actual.clone(),
+                                target: expected.clone(),
+                                field: field.clone(),
+                            },
+                            1,
+                        ));
+                    }
+                }
+            }
+        }
         let (Type::Record(af), Type::Record(ef)) = (&a, &e) else {
             return None;
         };

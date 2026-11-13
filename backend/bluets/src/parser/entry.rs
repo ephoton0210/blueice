@@ -6,6 +6,51 @@
 
 use super::*;
 
+pub(crate) struct ParseFailure {
+    pub diagnostics: Vec<Diagnostic>,
+    pub recovered: Option<Box<RecoveredSyntax>>,
+}
+
+pub(crate) struct RecoveredSyntax {
+    pub module: Module,
+    pub primitive_values: Vec<Token>,
+}
+
+/// Fatal syntax remains excluded from the graph. Only recovery references are
+/// retained for the compiler's separate, owner-supplied diagnostic context.
+pub(crate) fn parse_module_for_compilation(
+    id: String,
+    source: String,
+    limits: ParserLimits,
+) -> Result<Module, ParseFailure> {
+    match parse_module_with_limits(id.clone(), source.clone(), limits.clone()) {
+        Ok(module) => Ok(module),
+        Err(diagnostics) => {
+            let recovered = if diagnostics.iter().any(|diagnostic| {
+                diagnostic
+                    .typescript
+                    .as_ref()
+                    .is_some_and(|value| value.code == 1389)
+            }) {
+                lex_with_limits(&id, &source, limits.max_source_bytes, limits.max_tokens)
+                    .ok()
+                    .and_then(|tokens| {
+                        Parser::new(id, source, tokens, limits.max_type_depth)
+                            .parse_module_recovered()
+                            .err()
+                    })
+                    .and_then(|failure| failure.recovered)
+            } else {
+                None
+            };
+            Err(ParseFailure {
+                diagnostics,
+                recovered,
+            })
+        }
+    }
+}
+
 /// Parses one source record.  The caller owns resolution and can decide which
 /// source records are authorized to participate in the project.
 pub fn parse_module(

@@ -16,6 +16,7 @@ pub(super) mod emission;
 mod expressions;
 pub(super) mod flow;
 mod flow_bindings;
+mod generic_parameters;
 mod mutations;
 mod private;
 mod switches;
@@ -113,6 +114,8 @@ pub(super) struct ScopeModel<'a> {
     constructor_fields: BTreeMap<ScopeId, BTreeSet<String>>,
     private_classes: BTreeMap<ScopeId, private::PrivateClass>,
     parameters: BTreeMap<(ScopeId, String), SourceSpan>,
+    generic_parameters: BTreeMap<(ScopeId, String), TypeParameter>,
+    parameter_substitution_cache: BTreeMap<ScopeId, BTreeMap<String, Type>>,
     catch_bindings: BTreeMap<(ScopeId, String), bool>,
     type_declarations: BTreeMap<(ScopeId, String), (SourceSpan, bool)>,
     flow_failure: std::cell::RefCell<Option<Diagnostic>>,
@@ -168,6 +171,8 @@ impl<'a> ScopeModel<'a> {
             constructor_fields: BTreeMap::new(),
             private_classes: BTreeMap::new(),
             parameters: BTreeMap::new(),
+            generic_parameters: BTreeMap::new(),
+            parameter_substitution_cache: BTreeMap::new(),
             catch_bindings: BTreeMap::new(),
             type_declarations: BTreeMap::new(),
             flow_failure: std::cell::RefCell::new(None),
@@ -266,6 +271,7 @@ impl<'a> ScopeModel<'a> {
                 },
             });
         }
+        model.cache_parameter_substitutions();
         model
     }
 
