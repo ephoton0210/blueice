@@ -39,7 +39,7 @@ pub(crate) struct ImageLimits {
 }
 
 pub(crate) const DEFAULT_IMAGE_LIMITS: ImageLimits = ImageLimits {
-    images: 48,
+    images: 160,
     bytes_each: 8 * 1024 * 1024,
     bytes_total: 24 * 1024 * 1024,
     redirects: 3,
@@ -181,6 +181,80 @@ pub(crate) fn css_urls(css: &str) -> Vec<String> {
     out
 }
 
+/// What a page's elements are called: the ids, classes and tag names its rules can match.
+#[derive(Default)]
+struct DocumentKeys {
+    ids: std::collections::HashSet<String>,
+    classes: std::collections::HashSet<String>,
+    tags: std::collections::HashSet<String>,
+}
+
+impl DocumentKeys {
+    fn of(doc: &blueice_dom::Document) -> Self {
+        let mut keys = DocumentKeys::default();
+        let mut stack = vec![doc.root()];
+        while let Some(node) = stack.pop() {
+            if let blueice_dom::NodeData::Element { tag_name, attributes } = doc.data(node) {
+                keys.tags.insert(tag_name.to_ascii_lowercase());
+                for (name, value) in attributes {
+                    match name.as_str() {
+                        "id" => {
+                            keys.ids.insert(value.clone());
+                        }
+                        "class" => keys.classes.extend(value.split_whitespace().map(str::to_string)),
+                        _ => {}
+                    }
+                }
+            }
+            stack.extend(doc.children(node));
+        }
+        keys
+    }
+
+    /// Whether a selector's most selective rightmost part is something the page has (a rule with
+    /// a pseudo-class or a pseudo-element still counts: it may apply later).
+    fn has(&self, key: blueice_css::SelectorKey<'_>) -> bool {
+        use blueice_css::SelectorKey;
+        match key {
+            SelectorKey::Id(id) => self.ids.contains(id),
+            SelectorKey::Class(class) => self.classes.contains(class),
+            SelectorKey::Type(tag) => self.tags.contains(&tag.to_ascii_lowercase()),
+            SelectorKey::Universal => true,
+        }
+    }
+}
+
+/// The addresses in the declarations of `css`'s rules whose selectors can match something in the
+/// page: an icon set's sheet lists hundreds of pictures, of which a page uses a few.
+fn used_css_urls(css: &str, keys: &DocumentKeys) -> Vec<String> {
+    use blueice_css::{Token, Value};
+    let mut out = Vec::new();
+    for rule in blueice_css::parse(css).rules {
+        if !rule.selectors.iter().any(|s| keys.has(s.key())) {
+            continue;
+        }
+        for declaration in &rule.declarations {
+            let Value::Unparsed(tokens) = &declaration.value else { continue };
+            let mut i = 0;
+            while i < tokens.len() {
+                match &tokens[i] {
+                    Token::Url(u) => out.push(u.clone()),
+                    Token::Ident(name) if name.eq_ignore_ascii_case("url") => {
+                        if let (Some(Token::LeftParen), Some(Token::QuotedString(u))) =
+                            (tokens.get(i + 1), tokens.get(i + 2))
+                        {
+                            out.push(u.clone());
+                        }
+                    }
+                    _ => {}
+                }
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
 /// Records one reference found while walking a page.
 type AddReference<'a> = dyn FnMut(&str, &Url, &mut Vec<(String, String)>) + 'a;
 
@@ -269,6 +343,16 @@ pub(crate) fn image_references(
         }
     }
     walk(doc, doc.root(), document_base, &mut add, &mut found);
+    // The pictures of rules the page can use come first, so a limit cuts the unused ones.
+    let keys = DocumentKeys::of(doc);
+    for (href, css) in linked {
+        let sheet_base = document_base
+            .join(href)
+            .unwrap_or_else(|_| document_base.clone());
+        for url in used_css_urls(css, &keys) {
+            add(&url, &sheet_base, &mut found);
+        }
+    }
     for (href, css) in linked {
         let sheet_base = document_base
             .join(href)
@@ -657,6 +741,33 @@ mod tests {
             image_references(&doc, &LinkedStyles::new(), &base, 2).len(),
             2
         );
+    }
+
+    #[test]
+    fn pictures_of_rules_that_match_the_page_are_requested_first() {
+        // A large sheet lists far more pictures (an icon set) than the limit allows; the ones
+        // the page uses must be the ones fetched, not the first in the file.
+        let doc = blueice_html::parse("<p class=used>x</p><p id=also>y</p>");
+        let base = Url::parse("http://h/").unwrap();
+        let mut linked = LinkedStyles::new();
+        linked.insert(
+            "s.css".to_string(),
+            ".u1{mask-image:url(a.png)} .u2 .x{background:url(b.png)} \
+             .used{-webkit-mask-image:url(c.png);mask-image:url(c.png)} \
+             #also{background-image:url(d.png), linear-gradient(red, blue)} \
+             .u3{background:url(e.png)}"
+                .to_string(),
+        );
+        let refs = |limit| -> Vec<String> {
+            image_references(&doc, &linked, &base, limit).into_iter().map(|r| r.0).collect()
+        };
+        assert_eq!(refs(2), ["c.png", "d.png"]);
+        // the rest still follow, so nothing a sheet asks for is lost under a larger limit
+        let all = refs(10);
+        assert_eq!(&all[..2], ["c.png", "d.png"]);
+        for other in ["a.png", "b.png", "e.png"] {
+            assert!(all.contains(&other.to_string()), "{other} in {all:?}");
+        }
     }
 
     fn styled(

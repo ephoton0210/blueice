@@ -19,10 +19,35 @@ use std::sync::Arc;
 /// Renders kept per page before the cache starts over.
 const SVG_CACHE_LIMIT: usize = 256;
 
+/// The colour a masked box's `background-color` resolves to (`currentColor` is the text colour),
+/// as straight RGBA; `None` when it has no background colour, so the mask shows nothing to cut.
+fn background_tint(style: &blueice_css::ComputedStyle) -> Option<[u8; 4]> {
+    use blueice_css::Color;
+    match style.other.get("background-color")? {
+        Value::Color(Color::Rgba(r, g, b, a)) => Some([*r, *g, *b, *a]),
+        Value::Color(Color::CurrentColor) => match style.color {
+            Color::Rgba(r, g, b, a) => Some([r, g, b, a]),
+            Color::CurrentColor => None,
+        },
+        _ => None,
+    }
+}
+
+/// `mask`'s pixels coloured `tint`: the mask's alpha times the colour's own.
+fn tinted(mask: &blueice_image::RasterImage, tint: [u8; 4]) -> blueice_image::RasterImage {
+    let mut rgba = Vec::with_capacity(mask.rgba.len());
+    for px in mask.rgba.chunks_exact(4) {
+        let alpha = (u32::from(px[3]) * u32::from(tint[3]) + 127) / 255;
+        rgba.extend_from_slice(&[tint[0], tint[1], tint[2], alpha as u8]);
+    }
+    blueice_image::RasterImage::new(mask.width, mask.height, rgba).with_natural(mask.natural())
+}
+
 impl Page {
     pub(super) fn rebuild_images(&mut self) {
         let mut images = blueice_paint::ImageMap::default();
         let mut sizes: Vec<(NodeId, (f64, f64))> = Vec::new();
+        let mut masked: Vec<NodeId> = Vec::new();
         let mut stack = vec![(self.doc.root(), false)];
         while let Some((node, in_svg)) = stack.pop() {
             let mut inside = in_svg;
@@ -76,8 +101,31 @@ impl Page {
                     }
                 }
             }
+            // `mask-image`: the picture's alpha cuts the background colour into its shape, which is
+            // how icon fonts' replacements are drawn. The tinted picture is drawn as the
+            // background (sized, placed and repeated by the `mask-*` properties).
+            if let Some(style) = self.styles.get(&node) {
+                if let Some(Value::Unparsed(tokens)) = style.other.get("mask-image") {
+                    if let Some(loaded) = blueice_css::background_layers(tokens)
+                        .into_iter()
+                        .find_map(|layer| {
+                            blueice_css::url_of(layer).and_then(|u| self.linked_images.get(u.trim()))
+                        })
+                    {
+                        if let Some(tint) = background_tint(style) {
+                            images.background.insert(node, Arc::new(tinted(&loaded.image, tint)));
+                            masked.push(node);
+                        }
+                    }
+                }
+            }
             for child in self.doc.children(node) {
                 stack.push((child, inside));
+            }
+        }
+        for node in masked {
+            if let Some(style) = self.styles.get_mut(&node) {
+                style.other.insert("-blueice-masked".to_string(), Value::Number(1.0));
             }
         }
         for (node, (w, h)) in sizes {
@@ -287,6 +335,8 @@ mod tests {
         let rects = image_commands(&page);
         assert_eq!(rects.len(), 1);
         assert_eq!((rects[0].2, rects[0].3), (10.0, 6.0));
+        // with no position given the picture sits at the top left, not vertically centred
+        assert_eq!((rects[0].0, rects[0].1), (0.0, 0.0));
     }
 
     #[test]
@@ -308,6 +358,40 @@ mod tests {
             );
             assert_eq!(image_commands(&page).len(), 1, "{rule}");
         }
+    }
+
+    #[test]
+    fn a_mask_image_shapes_the_background_colour() {
+        // Icons are drawn this way: a flat `background-color` seen through a picture's alpha.
+        let pixel = |css: &str, x: u32, y: u32| {
+            let mut page = Page::new(100.0, 60.0);
+            page.pending_linked_images
+                .insert("m.svg".to_string(), loaded(RED_SVG));
+            page.load_html_str(
+                &format!("<style>body{{margin:0}} div{{width:30px;height:30px;background:rgb(0,0,255);{css}}}</style><div></div>"),
+                None,
+            );
+            page.render_visible().get_pixel(x, y)
+        };
+        let blue = [0, 0, 255, 255];
+        let white = [255, 255, 255, 255];
+        // no mask: the whole box is blue
+        assert_eq!(pixel("", 25, 25), blue);
+        for mask in [
+            "mask-image: url(m.svg); mask-repeat: no-repeat",
+            "-webkit-mask-image: url(m.svg); -webkit-mask-repeat: no-repeat",
+            "mask: url(m.svg) no-repeat",
+        ] {
+            // the 10x6 picture is opaque: blue shows through it, and nowhere else
+            assert_eq!(pixel(mask, 3, 3), blue, "{mask}");
+            assert_eq!(pixel(mask, 25, 25), white, "{mask}");
+        }
+        // the mask can be sized and placed like a background
+        let sized = "mask-image: url(m.svg); mask-repeat: no-repeat; mask-size: 30px 30px";
+        assert_eq!(pixel(sized, 25, 25), blue);
+        let centred = "mask-image: url(m.svg); mask-repeat: no-repeat; mask-position: center";
+        assert_eq!(pixel(centred, 15, 15), blue);
+        assert_eq!(pixel(centred, 3, 3), white);
     }
 
     #[test]

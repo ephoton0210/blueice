@@ -446,8 +446,11 @@ fn paint_background_image(
     rect: Rect,
     image: &Arc<RasterImage>,
     opacity: f32,
+    masked: bool,
     out: &mut Vec<PaintCommand>,
 ) {
+    // A mask is sized, placed and repeated by its own properties.
+    let prefix = if masked { "mask" } else { "background" };
     if rect.width <= 0.0 || rect.height <= 0.0 {
         return;
     }
@@ -460,7 +463,7 @@ fn paint_background_image(
         }
     };
     // Size.
-    let size = parts(style.other.get("background-size"));
+    let size = parts(style.other.get(&format!("{prefix}-size")));
     let axis = |v: Option<&Value>, whole: f64| -> Option<f64> {
         match v {
             Some(Value::Percentage(p)) => Some(whole * p / 100.0),
@@ -488,7 +491,7 @@ fn paint_background_image(
         return;
     }
     // Position of the first tile.
-    let position = parts(style.other.get("background-position"));
+    let position = parts(style.other.get(&format!("{prefix}-position")));
     let place = |v: Option<&Value>, free: f64, default: f64| -> f64 {
         match v {
             Some(Value::Keyword(k)) => match k.as_str() {
@@ -517,10 +520,13 @@ fn paint_background_image(
             rect,
             image,
             opacity,
-            (w, h),
+            masked,
             (
-                place(Some(&center), rect.width - w, 0.5),
-                place(position.first(), rect.height - h, 0.0),
+                (w, h),
+                (
+                    place(Some(&center), rect.width - w, 0.5),
+                    place(position.first(), rect.height - h, 0.0),
+                ),
             ),
             out,
         );
@@ -533,10 +539,13 @@ fn paint_background_image(
             rect,
             image,
             opacity,
-            (w, h),
+            masked,
             (
-                place(position.first(), rect.width - w, 0.0),
-                place(Some(&center), rect.height - h, 0.5),
+                (w, h),
+                (
+                    place(position.first(), rect.width - w, 0.0),
+                    place(Some(&center), rect.height - h, 0.5),
+                ),
             ),
             out,
         );
@@ -550,7 +559,7 @@ fn paint_background_image(
         place(Some(px), rect.width - w, 0.0),
         place(Some(py), rect.height - h, 0.0),
     );
-    paint_tiles(style, rect, image, opacity, (w, h), origin, out);
+    paint_tiles(style, rect, image, opacity, masked, ((w, h), origin), out);
 }
 
 fn paint_tiles(
@@ -558,11 +567,12 @@ fn paint_tiles(
     rect: Rect,
     image: &Arc<RasterImage>,
     opacity: f32,
-    (w, h): (f64, f64),
-    (ox, oy): (f64, f64),
+    masked: bool,
+    ((w, h), (ox, oy)): ((f64, f64), (f64, f64)),
     out: &mut Vec<PaintCommand>,
 ) {
-    let repeat = match style.other.get("background-repeat") {
+    let prefix = if masked { "mask" } else { "background" };
+    let repeat = match style.other.get(&format!("{prefix}-repeat")) {
         Some(Value::Keyword(k)) => (k.clone(), k.clone()),
         Some(Value::List(list)) => {
             let word = |v: Option<&Value>| match v {
@@ -810,10 +820,13 @@ fn paint_fragment(
                         });
                     }
                 }
+                // A masked box's colour is already in its tinted picture.
+                let masked = style.other.contains_key("-blueice-masked");
                 if let Some(bg) = style
                     .other
                     .get("background-color")
                     .and_then(|v| as_color(v, style.color))
+                    .filter(|_| !masked)
                 {
                     let color = apply_opacity(bg, opacity);
                     out.push(if rounded {
@@ -844,7 +857,7 @@ fn paint_fragment(
                     }
                 }
                 if let Some(image) = fragment.node.and_then(|n| images.background.get(&n)) {
-                    paint_background_image(style, rect, image, opacity, out);
+                    paint_background_image(style, rect, image, opacity, masked, out);
                 }
                 let sides: Vec<Option<(Rect, f64)>> = BORDER_SIDES
                     .iter()

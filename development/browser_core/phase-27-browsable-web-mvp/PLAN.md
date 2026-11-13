@@ -1028,6 +1028,14 @@ Fixed, each with a test:
 - A multi-layer background (`background: url(x), linear-gradient(...)`, Hacker News's vote arrows)
   drew nothing: `url_of` wanted the whole value to be one url and the shorthand kept only its first
   layer. Layers are now split at top-level commas (`blueice_css::background_layers`).
+- `mask-image` (and `-webkit-mask-*`, the `mask` shorthand) was ignored, so every icon drawn as a
+  coloured mask (Wikipedia's menu, search, language icons) was a solid square. The mask picture's
+  alpha now cuts the `background-color` into its shape (`mask-size/position/repeat` apply).
+- A `background` shorthand with no position put its picture vertically centred (a lone `0%` means
+  "x = 0, y = centre"); the default is now `0% 0%`.
+- Only 48 pictures were fetched per page, taken in file order from every stylesheet, so a page with
+  an icon set (Wikipedia: 273 `url()`s) lost the ones it used. The limit is 160 and the pictures of
+  rules whose selector key (id, class, tag) occurs in the page come first.
 - Underline/line-through stopped at every space; the gap between two words of one element is now
   covered (`Fragment.deco_after`).
 - Quirks mode (no doctype) was parsed but never reached CSS. `Document::quirks_mode` now carries it
@@ -1038,6 +1046,8 @@ Fixed, each with a test:
   script process drops the flag (the script side does not style).
 
 Open, not fixed:
+- Wikipedia: the search box's placeholder text is not drawn and its "Search" button label sits at
+  the top; some dropdown-arrow icons (e.g. beside "75 languages") are still solid squares.
 - Multi-layer backgrounds are only partly supported: the first loaded picture and the first gradient
   of a layer list are drawn, not the full stack with per-layer size/position/repeat.
 - Hacker News's header: the gap between the logo and "Hacker News" is about 35px; whether Safari's is

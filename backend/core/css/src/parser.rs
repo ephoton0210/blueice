@@ -452,7 +452,9 @@ fn expand_background(tokens: &[Token]) -> Vec<(String, Value)> {
     ));
     out.push((
         "background-position".to_string(),
-        pack(position).unwrap_or(Value::Percentage(0.0)),
+        // A lone value leaves the other axis centred, so the default names both.
+        pack(position)
+            .unwrap_or_else(|| Value::List(vec![Value::Percentage(0.0), Value::Percentage(0.0)])),
     ));
     out.push((
         "background-size".to_string(),
@@ -684,6 +686,19 @@ fn logical_longhands(property: &str) -> Option<&'static [&'static str]> {
 }
 
 pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(String, Value)> {
+    // `-webkit-mask-*` is the same property as `mask-*`.
+    let property = match property.strip_prefix("-webkit-") {
+        Some(rest) if rest.starts_with("mask") => rest,
+        _ => property,
+    };
+    // `mask` takes a background's layers without its colour.
+    if property == "mask" {
+        return expand_background(value_tokens)
+            .into_iter()
+            .filter(|(name, _)| name != "background-color")
+            .map(|(name, value)| (name.replacen("background-", "mask-", 1), value))
+            .collect();
+    }
     if let Some(longhands) = logical_longhands(property) {
         let values: Option<Vec<Value>> = components(value_tokens)
             .iter()
@@ -717,6 +732,7 @@ pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(St
             | "grid-area"
             | "box-shadow"
             | "background-image"
+            | "mask-image"
             | "content"
             | "animation"
             | "transform"
@@ -1138,6 +1154,20 @@ mod tests {
     use super::*;
     use crate::selector::SimpleSelector;
     use crate::value::{Color, Length};
+
+    #[test]
+    fn mask_shorthand_and_webkit_prefix_become_mask_longhands() {
+        let names = |property: &str, value: &str| -> Vec<String> {
+            expand_property(property, &tokenize(value)).into_iter().map(|(n, _)| n).collect()
+        };
+        let mask = names("mask", "url(m.svg) no-repeat center / 10px");
+        assert!(mask.contains(&"mask-image".to_string()), "{mask:?}");
+        assert!(mask.contains(&"mask-repeat".to_string()), "{mask:?}");
+        assert!(mask.iter().all(|n| !n.starts_with("background")), "{mask:?}");
+        assert_eq!(names("-webkit-mask-image", "url(m.svg)"), ["mask-image"]);
+        assert_eq!(names("-webkit-mask-size", "contain"), ["mask-size"]);
+        assert_eq!(names("-webkit-mask", "url(m.svg)")[0], "mask-image");
+    }
 
     #[test]
     fn transform_and_translate_keep_their_tokens_for_layout() {
