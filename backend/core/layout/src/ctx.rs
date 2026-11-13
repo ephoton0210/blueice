@@ -73,6 +73,23 @@ pub(crate) struct Hanging {
     pub end: HangEnd,
 }
 
+/// `text-spacing-trim`: where the blank half of fullwidth punctuation is trimmed.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub(crate) enum SpacingTrim {
+    /// Never.
+    SpaceAll,
+    /// Adjacent pairs are collapsed; a closing mark at a line's end is trimmed if it does not fit.
+    #[default]
+    Normal,
+    SpaceFirst,
+    /// Also an opening mark at the start of a line.
+    TrimStart,
+    /// Also a closing mark at the end of a line, always.
+    TrimBoth,
+    /// All opening, closing and middle-dot marks, wherever they are.
+    TrimAll,
+}
+
 /// A writing mode as layout flows it.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub(crate) enum Writing {
@@ -387,6 +404,18 @@ impl<'a> Style<'a> {
         match self.ctx.writing.get().physical(property) {
             Some(physical) => style.other.get(&physical),
             None => style.other.get(property),
+        }
+    }
+
+    /// This box's `text-spacing-trim` (`auto` is `normal`).
+    pub fn text_spacing_trim(&self) -> SpacingTrim {
+        match self.keyword("text-spacing-trim") {
+            Some("space-all") => SpacingTrim::SpaceAll,
+            Some("space-first") => SpacingTrim::SpaceFirst,
+            Some("trim-start") => SpacingTrim::TrimStart,
+            Some("trim-both") => SpacingTrim::TrimBoth,
+            Some("trim-all") => SpacingTrim::TrimAll,
+            _ => SpacingTrim::Normal,
         }
     }
 

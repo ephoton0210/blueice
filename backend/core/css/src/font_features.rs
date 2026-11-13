@@ -110,86 +110,132 @@ fn variant_keyword(word: &str) -> &'static [(&'static str, u32)] {
     }
 }
 
-/// `font-variant-alternates`: `historical-forms` and the functions that pick a feature by number
-/// (`stylistic(2)`, `styleset(1, 3)`, `character-variant(5)`, `swash(2)`, `ornaments(1)`,
-/// `annotation(3)`). A name that `@font-feature-values` would give a number to is not read.
+/// `font-variant-alternates`: `historical-forms` needs no name. The functions that pick a feature
+/// by name (`stylistic()`, `styleset()`...) are resolved against `@font-feature-values` into
+/// `-blueice-alternates` (see [`crate::FeatureValues::resolve`]).
 fn alternates(value: &Value) -> Vec<(String, u32)> {
-    let tokens: Vec<Token> = match value {
-        Value::Keyword(k) => vec![Token::Ident(k.clone())],
-        Value::Unparsed(tokens) => tokens.clone(),
-        _ => return Vec::new(),
-    };
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < tokens.len() {
-        let Token::Ident(name) = &tokens[i] else {
-            i += 1;
-            continue;
-        };
-        let name = name.to_ascii_lowercase();
-        if name == "historical-forms" {
-            out.push(("hist".to_string(), 1));
-            i += 1;
-            continue;
-        }
-        if !matches!(tokens.get(i + 1), Some(Token::LeftParen)) {
-            i += 1;
-            continue;
-        }
-        let end = tokens[i + 2..]
+    let mentions_historical = match value {
+        Value::Keyword(k) => k.eq_ignore_ascii_case("historical-forms"),
+        Value::Unparsed(tokens) => tokens
             .iter()
-            .position(|t| matches!(t, Token::RightParen))
-            .map_or(tokens.len(), |p| i + 2 + p);
-        for token in &tokens[i + 2..end] {
-            let Token::Number(n) = token else { continue };
-            if *n < 0.0 {
-                continue;
-            }
-            let n = *n as u32;
-            match name.as_str() {
-                "stylistic" | "styleset" => out.push((format!("ss{n:02}"), 1)),
-                "character-variant" => out.push((format!("cv{n:02}"), 1)),
-                "swash" => out.push(("swsh".to_string(), n)),
-                "ornaments" => out.push(("ornm".to_string(), n)),
-                "annotation" => out.push(("nalt".to_string(), n)),
-                _ => {}
-            }
-        }
-        i = end + 1;
+            .any(|t| matches!(t, Token::Ident(w) if w.eq_ignore_ascii_case("historical-forms"))),
+        _ => false,
+    };
+    if mentions_historical {
+        vec![("hist".to_string(), 1)]
+    } else {
+        Vec::new()
     }
-    out
 }
 
-/// Whether `style` asks for small capitals the face may have to make: `Some(false)` for
-/// `small-caps`, `Some(true)` for `all-small-caps` (capitals shrunk too), `None` when it asks for
-/// neither or `font-synthesis` does not allow making them.
-pub fn small_caps_request(style: &ComputedStyle) -> Option<bool> {
+/// The kind of capitals a style asks for with `font-variant-caps` (or the `font-variant`
+/// shorthand).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CapsKind {
+    Small,
+    AllSmall,
+    Petite,
+    AllPetite,
+    Unicase,
+    Titling,
+}
+
+/// The capitals `style` asks for, `None` for `normal` or none.
+pub fn caps_kind(style: &ComputedStyle) -> Option<CapsKind> {
     let other = &style.other;
-    let mut caps = None;
+    let mut kind = None;
     for name in ["font-variant", "font-variant-caps"] {
         if let Some(value) = other.get(name) {
             for word in words(value) {
                 match word.as_str() {
-                    "small-caps" => caps = Some(false),
-                    "all-small-caps" => caps = Some(true),
-                    "normal" | "none" => caps = None,
+                    "small-caps" => kind = Some(CapsKind::Small),
+                    "all-small-caps" => kind = Some(CapsKind::AllSmall),
+                    "petite-caps" => kind = Some(CapsKind::Petite),
+                    "all-petite-caps" => kind = Some(CapsKind::AllPetite),
+                    "unicase" => kind = Some(CapsKind::Unicase),
+                    "titling-caps" => kind = Some(CapsKind::Titling),
+                    "normal" | "none" => kind = None,
                     _ => {}
                 }
             }
         }
     }
-    let caps = caps?;
+    kind
+}
+
+/// Whether `font-synthesis` lets small capitals be made when a face has none.
+fn small_caps_synthesis_allowed(style: &ComputedStyle) -> bool {
+    let other = &style.other;
     if other.get("font-synthesis-small-caps").is_some_and(|v| words(v).first().is_some_and(|w| w == "none")) {
-        return None;
+        return false;
     }
     if let Some(value) = other.get("font-synthesis") {
         let listed = words(value);
         // `none`, or a list that does not name small caps, refuses it.
         if !listed.is_empty() && !listed.iter().any(|w| w == "small-caps") {
-            return None;
+            return false;
         }
     }
-    Some(caps)
+    true
+}
+
+/// Capitals made by drawing letters as scaled capitals.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct SynthesizedCaps {
+    /// Capitals shrink too (`all-small-caps`), not only lowercase letters.
+    pub all: bool,
+    /// Only the capitals are drawn small and lowercase stays as it is (`unicase`).
+    pub unicase: bool,
+}
+
+/// The features a style's text asks for given what its face supports, and the capitals to make
+/// by scaling where it cannot supply them (the spec's fallbacks: small capitals without `pcap`,
+/// capitals as small capitals for `unicase` without `unic`; none for titling caps).
+/// `supports(tag)` says whether the face has an OpenType feature.
+pub struct TextFeatures {
+    pub features: Vec<Feature>,
+    pub synthesized_caps: Option<SynthesizedCaps>,
+}
+
+pub fn text_features(style: &ComputedStyle, supports: &dyn Fn([u8; 4]) -> bool) -> TextFeatures {
+    let mut features = font_features(style);
+    let Some(kind) = caps_kind(style) else {
+        return TextFeatures { features, synthesized_caps: None };
+    };
+    // `font-feature-settings: "smcp" 0` refuses small capitals of any origin.
+    let refused = features.iter().any(|(t, v)| *t == *b"smcp" && *v == 0);
+    let allowed = small_caps_synthesis_allowed(style) && !refused;
+    let mut add = |tag: &[u8; 4]| {
+        if !features.iter().any(|(t, _)| t == tag) {
+            features.push((*tag, 1));
+        }
+    };
+    let synthesized = match kind {
+        CapsKind::Small | CapsKind::AllSmall => {
+            let all = kind == CapsKind::AllSmall;
+            (!supports(*b"smcp") && allowed).then_some(SynthesizedCaps { all, unicase: false })
+        }
+        CapsKind::Petite | CapsKind::AllPetite => {
+            let all = kind == CapsKind::AllPetite;
+            if supports(*b"pcap") {
+                None
+            } else if supports(*b"smcp") {
+                // Petite capitals without `pcap` are small capitals.
+                add(b"smcp");
+                if all {
+                    add(b"c2sc");
+                }
+                None
+            } else {
+                allowed.then_some(SynthesizedCaps { all, unicase: false })
+            }
+        }
+        CapsKind::Unicase => {
+            (!supports(*b"unic") && allowed).then_some(SynthesizedCaps { all: false, unicase: true })
+        }
+        CapsKind::Titling => None,
+    };
+    TextFeatures { features, synthesized_caps: synthesized }
 }
 
 /// The features `style`'s text asks for, in the order they apply (a later setting of the same
@@ -242,6 +288,10 @@ pub fn font_features(style: &ComputedStyle) -> Vec<Feature> {
                 set(&tag_name, setting);
             }
         }
+    }
+    // Names resolved against `@font-feature-values`.
+    if let Some(value) = other.get("-blueice-alternates") {
+        out.extend(feature_settings(value));
     }
     // The low-level property wins over every other.
     if let Some(value) = other.get("font-feature-settings") {
@@ -362,23 +412,10 @@ mod tests {
     }
 
     #[test]
-    fn alternates_pick_features_by_number() {
+    fn only_historical_forms_needs_no_names() {
         assert_eq!(feats(&[("font-variant-alternates", "historical-forms")]), [("hist".to_string(), 1)]);
-        assert_eq!(
-            feats(&[("font-variant-alternates", "stylistic(2) styleset(1, 3) character-variant(5)")]),
-            [
-                ("ss02".to_string(), 1),
-                ("ss01".to_string(), 1),
-                ("ss03".to_string(), 1),
-                ("cv05".to_string(), 1)
-            ]
-        );
-        assert_eq!(
-            feats(&[("font-variant-alternates", "swash(2) ornaments(1) annotation(3)")]),
-            [("swsh".to_string(), 2), ("ornm".to_string(), 1), ("nalt".to_string(), 3)]
-        );
-        // a name needs @font-feature-values, which is not read
-        assert!(feats(&[("font-variant-alternates", "stylistic(fancy)")]).is_empty());
+        // names are resolved against @font-feature-values, not read here
+        assert!(feats(&[("font-variant-alternates", "stylistic(fancy) swash(2)")]).is_empty());
     }
 
     #[test]

@@ -135,6 +135,7 @@ const OTHER_INHERITED_PROPERTIES: &[&str] = &[
     "font-variant-east-asian",
     "font-variant-position",
     "font-feature-settings",
+    "text-spacing-trim",
     "font-stretch",
     "font-variation-settings",
     "font-optical-sizing",

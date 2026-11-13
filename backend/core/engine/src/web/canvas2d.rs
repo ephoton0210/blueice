@@ -494,6 +494,21 @@ impl CanvasFont {
         drawn.chars().map(|c| Piece::Char(c, size)).collect()
     }
 
+    /// A glyph of `face`, made bold and slanted when the font asks for it and `face` exists in
+    /// Regular only (the CJK and script faces; DejaVu has a bold and an oblique of its own).
+    fn styled(
+        &self,
+        face: blueice_font::Glyphs,
+        (metrics, bitmap): (blueice_font::GlyphMetrics, Vec<u8>),
+        size: f64,
+    ) -> (blueice_font::GlyphMetrics, Vec<u8>) {
+        if !(self.bold || self.italic) || !blueice_font::is_regular_only_fallback(face) {
+            return (metrics, bitmap);
+        }
+        let smear = if self.bold { (size / 20.0).max(1.0).round() as usize } else { 0 };
+        blueice_font::synthesize_style(&metrics, &bitmap, smear, if self.italic { 0.2 } else { 0.0 })
+    }
+
     /// How far the pen moves over `pieces`.
     fn advance(&self, pieces: &[Piece]) -> f64 {
         pieces
@@ -572,12 +587,12 @@ impl Canvas2d {
                 Piece::Gap(_) => unreachable!("handled above"),
                 Piece::Char(ch, size) => {
                     let face = blueice_font::font_for_char_in(*ch, font.bold, font.italic, font.face);
-                    let (metrics, bitmap) = face.rasterize(*ch, *size as f32);
+                    let (metrics, bitmap) = font.styled(face, face.rasterize(*ch, *size as f32), *size);
                     let advance = f64::from(metrics.advance_width);
                     (metrics, bitmap, advance, (0.0, 0.0))
                 }
                 Piece::Glyph(g, size) => {
-                    let (metrics, bitmap) = g.font.rasterize_indexed(g.id, *size as f32);
+                    let (metrics, bitmap) = font.styled(g.font, g.font.rasterize_indexed(g.id, *size as f32), *size);
                     (metrics, bitmap, f64::from(g.advance), (f64::from(g.dx), f64::from(g.dy)))
                 }
             };
@@ -1401,6 +1416,31 @@ mod tests {
             ink_of(&directed_args("\u{FE91}\u{FE90}", "ltr")),
             "initial then final in reading order, final on the left"
         );
+    }
+
+    #[test]
+    fn bold_and_italic_text_in_a_regular_only_face_is_synthesized() {
+        let none = crate::fonts::FontCatalog::default();
+        let ink_of = |font: &str, text: &str| {
+            let mut c = canvas(120, 80);
+            let mut args = text_args(text, 10.0, 60.0, font, "left");
+            args.push(n(0.0));
+            args.push(t("ltr"));
+            fill_text(&mut c, &args, &none);
+            ink(&c)
+        };
+        for text in ["\u{65e5}", "\u{928}", "\u{e2a}"] {
+            let regular = ink_of("40px sans-serif", text);
+            let bold = ink_of("bold 40px sans-serif", text);
+            let italic = ink_of("italic 40px sans-serif", text);
+            assert!(bold.len() > regular.len() + 20, "{text:?}: bold is heavier: {} vs {}", bold.len(), regular.len());
+            let width = |s: &[(u32, u32)]| s.iter().map(|p| p.0).max().unwrap() - s.iter().map(|p| p.0).min().unwrap();
+            assert!(width(&italic) > width(&regular), "{text:?}: leaning takes more width");
+        }
+        // Latin has its own bold, which is not a smeared regular
+        let regular = ink_of("40px sans-serif", "H");
+        let bold = ink_of("bold 40px sans-serif", "H");
+        assert!(bold.len() > regular.len());
     }
 
     #[test]

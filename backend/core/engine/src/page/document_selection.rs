@@ -244,7 +244,12 @@ impl Index {
                         style.is_bold(),
                         style.is_italic(),
                         None,
-                        blueice_font::register_features(&blueice_css::font_features(style)),
+                        blueice_font::register_features(
+                            &blueice_css::text_features(style, &|tag| {
+                                blueice_font::face_supports_feature(style.is_bold(), style.is_italic(), None, tag)
+                            })
+                            .features,
+                        ),
                         size as f32,
                         fragment.rtl,
                     );

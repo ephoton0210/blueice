@@ -46,6 +46,7 @@
 //! glyph bug reappearing one level down.
 
 pub mod web;
+pub use fontdue::Metrics as GlyphMetrics;
 mod opentype;
 mod shape;
 mod variable;
@@ -74,7 +75,7 @@ struct ScriptFace {
     bytes: &'static [u8],
 }
 
-const SCRIPT_FACES: [ScriptFace; 13] = [
+const SCRIPT_FACES: [ScriptFace; 25] = [
     ScriptFace {
         names: &["notosansdevanagari", "notosansdevanagariregular"],
         ranges: &[(0x0900, 0x097F), (0x1CD0, 0x1CFF), (0xA8E0, 0xA8FF)],
@@ -140,9 +141,69 @@ const SCRIPT_FACES: [ScriptFace; 13] = [
         ranges: &[(0x1780, 0x17FF), (0x19E0, 0x19FF)],
         bytes: include_bytes!("../assets/NotoSansKhmer-Regular.ttf"),
     },
+    ScriptFace {
+        names: &["notosansethiopic", "notosansethiopicregular"],
+        ranges: &[(0x1200, 0x139F), (0x2D80, 0x2DDF), (0xAB00, 0xAB2F)],
+        bytes: include_bytes!("../assets/NotoSansEthiopic-Regular.ttf"),
+    },
+    ScriptFace {
+        names: &["notoseriftibetan", "notoseriftibetanregular"],
+        ranges: &[(0x0F00, 0x0FFF)],
+        bytes: include_bytes!("../assets/NotoSerifTibetan-Regular.ttf"),
+    },
+    ScriptFace {
+        names: &["notosanscherokee", "notosanscherokeeregular"],
+        ranges: &[(0x13A0, 0x13FF), (0xAB70, 0xABBF)],
+        bytes: include_bytes!("../assets/NotoSansCherokee-Regular.ttf"),
+    },
+    ScriptFace {
+        names: &["notosansmongolian", "notosansmongolianregular"],
+        ranges: &[(0x1800, 0x18AF)],
+        bytes: include_bytes!("../assets/NotoSansMongolian-Regular.ttf"),
+    },
+    ScriptFace {
+        names: &["notosansthaana", "notosansthaanaregular"],
+        ranges: &[(0x0780, 0x07BF)],
+        bytes: include_bytes!("../assets/NotoSansThaana-Regular.ttf"),
+    },
+    ScriptFace {
+        names: &["notosanssyriac", "notosanssyriacregular"],
+        ranges: &[(0x0700, 0x074F), (0x0860, 0x086F)],
+        bytes: include_bytes!("../assets/NotoSansSyriac-Regular.ttf"),
+    },
+    ScriptFace {
+        names: &["notosansjavanese", "notosansjavaneseregular"],
+        ranges: &[(0xA980, 0xA9DF)],
+        bytes: include_bytes!("../assets/NotoSansJavanese-Regular.ttf"),
+    },
+    ScriptFace {
+        names: &["notosansbalinese", "notosansbalineseregular"],
+        ranges: &[(0x1B00, 0x1B7F)],
+        bytes: include_bytes!("../assets/NotoSansBalinese-Regular.ttf"),
+    },
+    ScriptFace {
+        names: &["notosansyi", "notosansyiregular"],
+        ranges: &[(0xA000, 0xA4CF)],
+        bytes: include_bytes!("../assets/NotoSansYi-Regular.ttf"),
+    },
+    ScriptFace {
+        names: &["notosansrunic", "notosansrunicregular"],
+        ranges: &[(0x16A0, 0x16FF)],
+        bytes: include_bytes!("../assets/NotoSansRunic-Regular.ttf"),
+    },
+    ScriptFace {
+        names: &["notosanscoptic", "notosanscopticregular"],
+        ranges: &[(0x2C80, 0x2CFF)],
+        bytes: include_bytes!("../assets/NotoSansCoptic-Regular.ttf"),
+    },
+    ScriptFace {
+        names: &["notosansglagolitic", "notosansglagoliticregular"],
+        ranges: &[(0x2C00, 0x2C5F)],
+        bytes: include_bytes!("../assets/NotoSansGlagolitic-Regular.ttf"),
+    },
 ];
 
-static SCRIPT_FONTS: [OnceLock<fontdue::Font>; 13] = [const { OnceLock::new() }; 13];
+static SCRIPT_FONTS: [OnceLock<fontdue::Font>; 25] = [const { OnceLock::new() }; 25];
 
 /// The bundled face for the script `c` is in, parsed on its first use.
 fn script_font(c: char) -> Option<&'static fontdue::Font> {
@@ -427,6 +488,56 @@ pub fn shape_in(
     shape_with(text, |c| font_for_char_in(c, bold, italic, face).has_glyph(c))
 }
 
+/// Whether `font` is a bundled face that exists in Regular only (the CJK face and the script
+/// faces): bold and italic text drawn with it has to be synthesized.
+pub fn is_regular_only_fallback(font: Glyphs) -> bool {
+    let Glyphs::Static(f) = font else {
+        return false;
+    };
+    fonts().cjk_fallback.get().is_some_and(|c| std::ptr::eq(c, f))
+        || SCRIPT_FONTS.iter().any(|slot| slot.get().is_some_and(|c| std::ptr::eq(c, f)))
+}
+
+/// A glyph bitmap made bold by smearing it `smear` pixels sideways and slanted by shearing it
+/// about its baseline by `slant` (a fraction of the height above it): what a face with no bold or
+/// italic of its own is given. The returned metrics and bitmap are wider by the smear and the
+/// shear.
+pub fn synthesize_style(
+    metrics: &fontdue::Metrics,
+    bitmap: &[u8],
+    smear: usize,
+    slant: f32,
+) -> (fontdue::Metrics, Vec<u8>) {
+    if (smear == 0 && slant == 0.0) || metrics.width == 0 || metrics.height == 0 {
+        return (*metrics, bitmap.to_vec());
+    }
+    let (w, h) = (metrics.width, metrics.height);
+    // How far right of the baseline each row is moved: the rows above it lean.
+    let shift = |row: usize| -> usize {
+        let up = (metrics.ymin + h as i32 - row as i32).max(0) as f32;
+        (up * slant).round().max(0.0) as usize
+    };
+    let extra = shift(0) + smear;
+    let new_w = w + extra;
+    let mut out = vec![0_u8; new_w * h];
+    for row in 0..h {
+        let base = shift(row);
+        for col in 0..w {
+            let v = bitmap[row * w + col];
+            if v == 0 {
+                continue;
+            }
+            for s in 0..=smear {
+                let at = row * new_w + col + base + s;
+                out[at] = out[at].max(v);
+            }
+        }
+    }
+    let mut metrics = *metrics;
+    metrics.width = new_w;
+    (metrics, out)
+}
+
 /// How far below the top of its box the baseline of text this size is drawn: a page face's own
 /// ascent, or the ratio the bundled fonts are drawn by. The rasterizer and anything that must put
 /// two sizes of text on one baseline use the same figure.
@@ -606,6 +717,18 @@ mod tests {
             ("\u{E9A}\u{EAD}\u{E81}\u{EB5}", "Lao"),
             ("\u{1019}\u{103C}\u{1014}\u{103A}\u{1019}\u{102C}", "Myanmar"),
             ("\u{1781}\u{17D2}\u{1798}\u{17C2}\u{179A}", "Khmer"),
+            ("\u{1200}\u{1201}\u{1202}\u{1240}\u{1260}", "Ethiopic"),
+            ("\u{F56}\u{F7C}\u{F51}\u{F0B}\u{F66}\u{F90}\u{F51}", "Tibetan"),
+            ("\u{13E3}\u{13B3}\u{13A9}", "Cherokee"),
+            ("\u{1823}\u{1829}\u{1829}\u{182D}\u{1823}\u{182F}", "Mongolian"),
+            ("\u{78B}\u{7A8}\u{788}\u{7AC}\u{780}\u{7A8}", "Thaana"),
+            ("\u{723}\u{718}\u{72A}\u{71D}\u{71D}\u{710}", "Syriac"),
+            ("\u{A997}\u{A9AE}", "Javanese"),
+            ("\u{1B29}\u{1B2E}\u{1B36}", "Balinese"),
+            ("\u{A188}\u{A320}", "Yi"),
+            ("\u{16A0}\u{16A2}\u{16A6}", "Runic"),
+            ("\u{2C98}\u{2C89}\u{2CA7}", "Coptic"),
+            ("\u{2C30}\u{2C31}\u{2C32}", "Glagolitic"),
         ] {
             for c in text.chars() {
                 let f = font_for_char(c, false, false);

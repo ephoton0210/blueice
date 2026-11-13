@@ -1,8 +1,7 @@
-The Noto Sans script fonts in this directory (NotoSansDevanagari, NotoSansBengali,
-NotoSansGujarati, NotoSansGurmukhi, NotoSansTamil, NotoSansTelugu, NotoSansKannada,
-NotoSansMalayalam, NotoSansThai, NotoSansLao, NotoSansKhmer, NotoSansMyanmar and
-NotoSansSinhala, Regular) are unmodified copies of the fonts the Noto Project publishes.
-Each carries its own copyright line:
+The Noto Sans and Noto Serif script fonts in this directory (Devanagari, Bengali, Gujarati, Gurmukhi,
+Tamil, Telugu, Kannada, Malayalam, Sinhala, Thai, Lao, Khmer, Myanmar, Ethiopic, Tibetan (Noto Serif),
+Cherokee, Mongolian, Thaana, Syriac, Javanese, Balinese, Yi, Runic, Coptic and Glagolitic, Regular) are
+unmodified copies of the fonts the Noto Project publishes. Each carries its own copyright line:
 
 Copyright 2022 The Noto Project Authors (https://github.com/notofonts/devanagari)
 Copyright 2022 The Noto Project Authors (https://github.com/notofonts/bengali)
@@ -17,6 +16,18 @@ Copyright 2022 The Noto Project Authors (https://github.com/notofonts/lao)
 Copyright 2022 The Noto Project Authors (https://github.com/notofonts/khmer)
 Copyright 2022 The Noto Project Authors (https://github.com/notofonts/myanmar)
 Copyright 2022 The Noto Project Authors (https://github.com/notofonts/sinhala)
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/ethiopic)
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/tibetan)
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/cherokee)
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/mongolian)
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/thaana)
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/syriac)
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/javanese)
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/balinese)
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/yi)
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/runic)
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/coptic)
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/glagolitic)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:

@@ -34,6 +34,9 @@ enum Piece {
         hang: Hang,
         /// The share of the font size it is drawn at (synthesized small capitals).
         scale: f64,
+        /// Fullwidth punctuation drawn with the font's `halt`/`vhal` alternates, its blank half
+        /// trimmed (`text-spacing-trim`).
+        trim: bool,
     },
     Space {
         width: f64,
@@ -113,6 +116,44 @@ struct Hang {
     last: f64,
     /// An opening bracket or quote at its start, hanging before the start of the first line.
     first: f64,
+    /// The blank half of an opening mark at its start (`text-spacing-trim: trim-start`),
+    /// hanging before the start of any line.
+    start_trim: f64,
+    /// The blank half of a closing mark at its end, hanging past the end of a line: always for
+    /// `trim-both`, only when it does not otherwise fit for the others.
+    end_trim: f64,
+    end_trim_force: bool,
+}
+
+/// The kinds of punctuation `text-spacing-trim` tells apart.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TrimClass {
+    Opening,
+    Closing,
+    MiddleDot,
+    IdeographicSpace,
+    /// An opening bracket of any width, which a fullwidth opening mark after it makes half.
+    OtherOpen,
+    /// A closing bracket of any width.
+    OtherClose,
+}
+
+fn trim_class(c: char) -> Option<TrimClass> {
+    Some(match c {
+        '\u{3008}' | '\u{300A}' | '\u{300C}' | '\u{300E}' | '\u{3010}' | '\u{3014}' | '\u{3016}'
+        | '\u{3018}' | '\u{301A}' | '\u{301D}' | '\u{FF08}' | '\u{FF3B}' | '\u{FF5B}' | '\u{FF5F}'
+        | '\u{2018}' | '\u{201C}' => TrimClass::Opening,
+        '\u{3009}' | '\u{300B}' | '\u{300D}' | '\u{300F}' | '\u{3011}' | '\u{3015}' | '\u{3017}'
+        | '\u{3019}' | '\u{301B}' | '\u{301E}' | '\u{301F}' | '\u{FF09}' | '\u{FF3D}' | '\u{FF5D}'
+        | '\u{FF60}' | '\u{2019}' | '\u{201D}'
+        // colons and dots, which sit to one side of their cell like closing marks
+        | '\u{FF1A}' | '\u{FF1B}' | '\u{3001}' | '\u{3002}' | '\u{FF0C}' | '\u{FF0E}' => TrimClass::Closing,
+        '\u{00B7}' | '\u{2027}' | '\u{30FB}' => TrimClass::MiddleDot,
+        '\u{3000}' => TrimClass::IdeographicSpace,
+        '(' | '[' | '{' => TrimClass::OtherOpen,
+        ')' | ']' | '}' => TrimClass::OtherClose,
+        _ => return None,
+    })
 }
 
 /// Opening brackets and quotes, which `hanging-punctuation: first` lets hang before a line.
@@ -193,9 +234,9 @@ fn transform_text(text: &str, transform: Option<&str>) -> String {
 #[derive(Clone)]
 struct TextProps {
     font_size: f64,
-    /// Small capitals the face has no `smcp` for are made of capitals at 70% of the size:
-    /// `Some(true)` also shrinks the capitals already there (`all-small-caps`).
-    synthesized_small_caps: Option<bool>,
+    /// Capitals the face cannot supply are made of capitals at 70% of the size: which letters
+    /// shrink depends on the kind (`small-caps`, `all-small-caps`, `unicase`).
+    synthesized_small_caps: Option<blueice_css::SynthesizedCaps>,
     bold: bool,
     italic: bool,
     face: Option<blueice_font::web::WebFontId>,
@@ -207,6 +248,9 @@ struct TextProps {
     vertical: Option<String>,
     /// The OpenType features the text asks for.
     features: blueice_font::FeaturesId,
+    /// The same with the font's half-width alternates (`halt`, or `vhal` in a vertical line).
+    trim_features: blueice_font::FeaturesId,
+    trim_mode: crate::ctx::SpacingTrim,
     hanging: crate::ctx::Hanging,
 }
 
@@ -217,11 +261,11 @@ impl TextProps {
             style.style.is_some_and(|s| s.is_italic()),
             style.web_face(),
         );
-        // Asked for small capitals, a face with none of its own gets synthesized ones.
-        let synthesized_small_caps = style
-            .style
-            .and_then(blueice_css::small_caps_request)
-            .filter(|_| !blueice_font::face_supports_feature(bold, italic, face, *b"smcp"));
+        // What the style asks for given what its face supports: the OpenType features, and
+        // capitals made by scaling where the face has none (small, petite and unicase capitals).
+        let supports = |tag: [u8; 4]| blueice_font::face_supports_feature(bold, italic, face, tag);
+        let text_features = style.style.map(|s| blueice_css::text_features(s, &supports));
+        let synthesized_small_caps = text_features.as_ref().and_then(|t| t.synthesized_caps);
         TextProps {
             font_size: style.font_size(),
             synthesized_small_caps,
@@ -232,10 +276,18 @@ impl TextProps {
             word_spacing: style.px("word-spacing", f64::NAN).unwrap_or(0.0),
             combine: style.combine_upright(),
             vertical: style.vertical_orientation().map(str::to_string),
-            features: style
-                .style
-                .map(|s| blueice_font::register_features(&blueice_css::font_features(s)))
+            features: text_features
+                .as_ref()
+                .map(|t| blueice_font::register_features(&t.features))
                 .unwrap_or_default(),
+            trim_features: {
+                let mut list = text_features.as_ref().map(|t| t.features.clone()).unwrap_or_default();
+                let tag = if style.vertical_orientation().is_some() { *b"vhal" } else { *b"halt" };
+                list.retain(|(t, _)| *t != tag);
+                list.push((tag, 1));
+                blueice_font::register_features(&list)
+            },
+            trim_mode: style.text_spacing_trim(),
             hanging: style.hanging(),
         }
     }
@@ -297,6 +349,11 @@ impl TextProps {
         }
     }
 
+    /// This text with the half-width alternates of punctuation.
+    fn trimmed(&self) -> TextProps {
+        TextProps { features: self.trim_features, ..self.clone() }
+    }
+
     /// This text at `scale` times its size.
     fn scaled(&self, scale: f64) -> TextProps {
         TextProps {
@@ -310,12 +367,17 @@ impl TextProps {
     /// capitals made of lowercase letters (and, for `all-small-caps`, of capitals) at 70% of the
     /// size, the rest at full size.
     fn small_cap_runs(&self, word: &str) -> Vec<(String, f64)> {
-        let Some(all) = self.synthesized_small_caps else {
+        let Some(caps) = self.synthesized_small_caps else {
             return vec![(word.to_string(), 1.0)];
         };
         let mut runs: Vec<(String, f64)> = Vec::new();
         for c in word.chars() {
-            let small = c.is_lowercase() || (all && c.is_uppercase());
+            // Unicase draws the capitals small and leaves the lowercase letters as they are.
+            let small = if caps.unicase {
+                c.is_uppercase()
+            } else {
+                c.is_lowercase() || (caps.all && c.is_uppercase())
+            };
             let (text, scale) = if small {
                 (c.to_uppercase().collect::<String>(), SMALL_CAPS_SCALE)
             } else {
@@ -346,6 +408,25 @@ impl TextProps {
         if let Some(c) = word.chars().next() {
             if self.hanging.first && is_opening(c) {
                 hang.first = width(c);
+            }
+        }
+        // The blank half of fullwidth marks at the edges of a line (`text-spacing-trim`).
+        use crate::ctx::SpacingTrim as T;
+        let blank = |c: char| {
+            let (full, half) = (self.width(&c.to_string()), self.trimmed().width(&c.to_string()));
+            (full - half).max(0.0)
+        };
+        if let Some(c) = word.chars().next() {
+            if trim_class(c) == Some(TrimClass::Opening) && matches!(self.trim_mode, T::TrimStart | T::TrimBoth) {
+                hang.start_trim = blank(c);
+            }
+        }
+        if let Some(c) = word.chars().last() {
+            if trim_class(c) == Some(TrimClass::Closing)
+                && matches!(self.trim_mode, T::Normal | T::SpaceFirst | T::TrimStart | T::TrimBoth)
+            {
+                hang.end_trim = blank(c);
+                hang.end_trim_force = self.trim_mode == T::TrimBoth;
             }
         }
         hang
@@ -391,6 +472,7 @@ fn push_text(
                     wrap,
                     hang,
                     scale,
+                    trim: false,
                 });
             }
         }
@@ -811,6 +893,7 @@ fn collect(
                         wrap: false,
                         hang: Hang::default(),
                         scale: 1.0,
+                        trim: false,
                     });
                     state.last_space = false;
                 }
@@ -1134,7 +1217,7 @@ fn break_lines(
             Some(Piece::Word { hang, .. }) => pick(hang),
             _ => 0.0,
         };
-        let mut hang = hung(chunk.items.last(), |h| h.end);
+        let mut hang = hung(chunk.items.last(), |h| h.end).max(hung(chunk.items.last(), |h| h.end_trim));
         if chunk_index + 1 == chunk_count {
             hang = hang.max(hung(chunk.items.last(), |h| h.last));
         }
@@ -1213,6 +1296,147 @@ fn piece_style<'a>(ctx: &'a Ctx<'a>, piece: &Piece) -> Option<Style<'a>> {
     }
 }
 
+/// `text-spacing-trim`: the fullwidth punctuation of a run whose blank half is trimmed because
+/// of its neighbours (CSS Text 4, 8.5.1), cut out of its words into pieces drawn with the font's
+/// half-width alternates. An opening mark after another opening mark, a middle dot, an ideographic
+/// space, a closing mark of at least its size or any other opening bracket is trimmed; so is a
+/// closing mark before the mirror of that list; `trim-all` trims every opening, closing and
+/// middle-dot mark; `space-all` trims none. A face without the alternates declines.
+fn apply_trimming(ctx: &Ctx<'_>, pieces: Vec<Piece>) -> Vec<Piece> {
+    // Fast out: most runs have no fullwidth punctuation at all.
+    let has_marks = pieces.iter().any(|p| {
+        matches!(p, Piece::Word { text, .. } if text.chars().any(|c| {
+            matches!(trim_class(c), Some(TrimClass::Opening | TrimClass::Closing | TrimClass::MiddleDot))
+        }))
+    });
+    if !has_marks {
+        return pieces;
+    }
+    use crate::ctx::SpacingTrim as T;
+    // The characters of the run in order: a word's, or a break in the sequence where something
+    // else (a space, an atomic box) stands between two words.
+    struct Slot {
+        piece: usize,
+        index: usize,
+        c: char,
+        size: f64,
+    }
+    let mut slots: Vec<Option<Slot>> = Vec::new();
+    for (i, piece) in pieces.iter().enumerate() {
+        match piece {
+            Piece::Word { text, style_node, scale, .. } => {
+                let size = ctx.style(*style_node).font_size() * scale;
+                for (index, c) in text.chars().enumerate() {
+                    slots.push(Some(Slot { piece: i, index, c, size }));
+                }
+            }
+            Piece::Space { .. } | Piece::Break | Piece::Atomic(_) => slots.push(None),
+            Piece::Gap(_) | Piece::Edge { .. } | Piece::Mark(_) => {}
+        }
+    }
+    let class_at = |k: usize| slots.get(k).and_then(|s| s.as_ref()).and_then(|s| trim_class(s.c));
+    let mut trimmed: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
+    let mut verdicts: std::collections::HashMap<(NodeId, char), bool> = std::collections::HashMap::new();
+    for (k, slot) in slots.iter().enumerate() {
+        let Some(slot) = slot else { continue };
+        let Some(class) = trim_class(slot.c) else { continue };
+        if !matches!(class, TrimClass::Opening | TrimClass::Closing | TrimClass::MiddleDot) {
+            continue;
+        }
+        let Piece::Word { style_node, scale, .. } = &pieces[slot.piece] else { continue };
+        let mode = ctx.style(*style_node).text_spacing_trim();
+        if mode == T::SpaceAll {
+            continue;
+        }
+        let neighbour = |k: Option<usize>| k.and_then(|k| slots.get(k)).and_then(|s| s.as_ref());
+        let wanted = mode == T::TrimAll
+            || match class {
+                TrimClass::Opening => {
+                    let before = neighbour(k.checked_sub(1));
+                    before.is_some_and(|p| match trim_class(p.c) {
+                        Some(TrimClass::Opening | TrimClass::MiddleDot | TrimClass::IdeographicSpace | TrimClass::OtherOpen) => true,
+                        Some(TrimClass::Closing) => p.size >= slot.size,
+                        _ => false,
+                    })
+                }
+                TrimClass::Closing => {
+                    let after = neighbour(Some(k + 1));
+                    after.is_some_and(|n| match trim_class(n.c) {
+                        Some(TrimClass::Closing | TrimClass::MiddleDot | TrimClass::IdeographicSpace | TrimClass::OtherClose) => true,
+                        Some(TrimClass::Opening) => n.size > slot.size,
+                        _ => false,
+                    })
+                }
+                _ => false,
+            };
+        let _ = class_at;
+        if !wanted {
+            continue;
+        }
+        // The face has to have the alternate: the mark must really get narrower.
+        let ok = *verdicts.entry((*style_node, slot.c)).or_insert_with(|| {
+            let props = TextProps::of(&ctx.style(*style_node)).scaled(*scale);
+            let text = slot.c.to_string();
+            props.trimmed().width(&text) < props.width(&text) - 0.01
+        });
+        if ok {
+            trimmed.insert((slot.piece, slot.index));
+        }
+    }
+    if trimmed.is_empty() {
+        return pieces;
+    }
+    // Words are cut at the trimmed characters into runs of one kind.
+    let mut out = Vec::with_capacity(pieces.len() + trimmed.len() * 2);
+    for (i, piece) in pieces.into_iter().enumerate() {
+        let Piece::Word { text, style_node, can_break_before, wrap, hang, scale, trim, width } = piece else {
+            out.push(piece);
+            continue;
+        };
+        if !text.chars().enumerate().any(|(index, _)| trimmed.contains(&(i, index))) {
+            out.push(Piece::Word { text, width, style_node, can_break_before, wrap, hang, scale, trim });
+            continue;
+        }
+        let base = TextProps::of(&ctx.style(style_node)).scaled(scale);
+        let mut parts: Vec<(String, bool)> = Vec::new();
+        for (index, c) in text.chars().enumerate() {
+            let cut = trimmed.contains(&(i, index));
+            match parts.last_mut() {
+                Some((run, flag)) if *flag == cut => run.push(c),
+                _ => parts.push((c.to_string(), cut)),
+            }
+        }
+        let count = parts.len();
+        for (k, (part, cut)) in parts.into_iter().enumerate() {
+            let props = if cut { base.trimmed() } else { base.clone() };
+            // What may hang belongs to the ends of the word; a trimmed mark has no blank half left.
+            let mut h = Hang::default();
+            if k == 0 && !cut {
+                h.first = hang.first;
+                h.start_trim = hang.start_trim;
+            }
+            if k + 1 == count && !cut {
+                h.end = hang.end;
+                h.force = hang.force;
+                h.last = hang.last;
+                h.end_trim = hang.end_trim;
+                h.end_trim_force = hang.end_trim_force;
+            }
+            out.push(Piece::Word {
+                width: props.width(&part),
+                text: part,
+                style_node,
+                can_break_before: can_break_before && k == 0,
+                wrap,
+                hang: h,
+                scale,
+                trim: cut,
+            });
+        }
+    }
+    out
+}
+
 /// The bidi levels of a run's pieces. Each piece stands for some characters of one paragraph
 /// string; a word whose characters fall on different levels is cut into a word per level.
 /// Returns the pieces (words possibly cut), a level for each, and the paragraph's own level.
@@ -1245,6 +1469,7 @@ fn resolve_bidi(ctx: &Ctx<'_>, pieces: Vec<Piece>, base: Base) -> (Vec<Piece>, V
             width,
             hang,
             scale,
+            trim,
         } = piece
         else {
             levels.push(byte_levels.get(start).copied().unwrap_or(paragraph));
@@ -1272,11 +1497,16 @@ fn resolve_bidi(ctx: &Ctx<'_>, pieces: Vec<Piece>, base: Base) -> (Vec<Piece>, V
                 wrap,
                 hang,
                 scale,
+                trim,
             });
             continue;
         }
         cuts.push(word.len());
-        let props = TextProps::of(&ctx.style(style_node)).scaled(scale);
+        let props = if trim {
+            TextProps::of(&ctx.style(style_node)).scaled(scale).trimmed()
+        } else {
+            TextProps::of(&ctx.style(style_node)).scaled(scale)
+        };
         for (k, pair) in cuts.windows(2).enumerate() {
             let part = &word[pair[0]..pair[1]];
             levels.push(level_at(pair[0]));
@@ -1299,6 +1529,7 @@ fn resolve_bidi(ctx: &Ctx<'_>, pieces: Vec<Piece>, base: Base) -> (Vec<Piece>, V
                     h
                 },
                 scale,
+                trim,
             });
         }
     }
@@ -1363,6 +1594,7 @@ pub(crate) fn layout_run_around(
         }
         pieces.extend(closing.into_iter().map(Piece::Mark));
     }
+    let pieces = apply_trimming(ctx, pieces);
     let (pieces, levels, paragraph_level) = resolve_bidi(ctx, pieces, base);
     let rtl_paragraph = paragraph_level % 2 == 1;
     let text_align = cstyle
@@ -1498,18 +1730,26 @@ pub(crate) fn layout_run_around(
         };
         let overflows = line.width > available + 0.01;
         let end_hang = word_hang(line.items.last());
-        let trailing_hang = if end_hang.end > 0.0 && (end_hang.force || overflows) {
+        let hung_at_end = if end_hang.end > 0.0 && (end_hang.force || overflows) {
             end_hang.end
         } else if end_hang.last > 0.0 && line_index + 1 == line_count && overflows {
             end_hang.last
         } else {
             0.0
         };
-        let start_hang = if is_first && first_in_block {
-            word_hang(line.items.first()).first
+        // The blank half of a closing mark at the end of a line (`text-spacing-trim`).
+        let trimmed_at_end = if end_hang.end_trim > 0.0 && (end_hang.end_trim_force || overflows) {
+            end_hang.end_trim
         } else {
             0.0
         };
+        let trailing_hang = hung_at_end.max(trimmed_at_end);
+        let start_hang = (if is_first && first_in_block {
+            word_hang(line.items.first()).first
+        } else {
+            0.0
+        })
+        .max(word_hang(line.items.first()).start_trim);
         // A hung character is outside the edge of the line it is at on screen: the logical end
         // is the left edge in right-to-left text, the logical start the right edge there. One
         // in the middle of a line (mixed directions) does not hang.
@@ -1564,10 +1804,10 @@ pub(crate) fn layout_run_around(
             entry.1 = 0.0;
         }
         // text, x, width, node, y, height, drawn right to left, first piece in reading order, size share
-        type Run = (String, f64, f64, NodeId, f64, f64, bool, u32, f64);
+        type Run = (String, f64, f64, NodeId, f64, f64, bool, u32, f64, bool);
         let mut run_text: Option<Run> = None;
         let flush = |run: &mut Option<Run>, children: &mut Vec<Fragment>| {
-            if let Some((text, rx, rw, node, ry, rh, rtl, logical, size_scale)) = run.take() {
+            if let Some((text, rx, rw, node, ry, rh, rtl, logical, size_scale, trim)) = run.take() {
                 let hidden = !ctx.style(node).is_visible();
                 children.push(Fragment {
                     node: Some(node),
@@ -1580,6 +1820,7 @@ pub(crate) fn layout_run_around(
                     rtl,
                     logical,
                     size_scale,
+                    trim,
                     ..Fragment::empty_block()
                 });
             }
@@ -1598,6 +1839,7 @@ pub(crate) fn layout_run_around(
                         width,
                         style_node,
                         scale,
+                        trim,
                         ..
                     } => {
                         let (above, below, align) = metrics[slot].unwrap_or((
@@ -1611,8 +1853,11 @@ pub(crate) fn layout_run_around(
                             Align::Bottom => line_height - (above + below),
                         };
                         match run_text.as_mut() {
-                            Some((run, _, rw, node, _, _, run_rtl, first, run_scale))
-                                if *node == *style_node && *run_rtl == odd && *run_scale == *scale =>
+                            Some((run, _, rw, node, _, _, run_rtl, first, run_scale, run_trim))
+                                if *node == *style_node
+                                    && *run_rtl == odd
+                                    && *run_scale == *scale
+                                    && *run_trim == *trim =>
                             {
                                 *first = (*first).min(*i as u32);
                                 // On screen a right-to-left run reads backwards, so the word
@@ -1636,6 +1881,7 @@ pub(crate) fn layout_run_around(
                                     odd,
                                     *i as u32,
                                     *scale,
+                                    *trim,
                                 ));
                             }
                         }
@@ -2193,6 +2439,18 @@ mod tests {
             let f = body("<p>Hello</p>", css, 400.0);
             assert_eq!(scaled_runs(&f), [("Hello".to_string(), 1.0)], "{css}");
         }
+        // petite capitals without `pcap` are small capitals, and unicase draws the capitals small
+        let f = body("<p>Hello</p>", "p { font-variant: petite-caps }", 400.0);
+        assert_eq!(scaled_runs(&f), [("H".to_string(), 1.0), ("ELLO".to_string(), 0.7)]);
+        let f = body("<p>Hi</p>", "p { font-variant: all-petite-caps }", 400.0);
+        assert_eq!(scaled_runs(&f), [("HI".to_string(), 0.7)]);
+        let f = body("<p>Hello</p>", "p { font-variant-caps: unicase }", 400.0);
+        assert_eq!(scaled_runs(&f), [("H".to_string(), 0.7), ("ello".to_string(), 1.0)]);
+        // titling capitals have no visible effect without the feature, and `smcp` 0 refuses small caps
+        let f = body("<p>Hello</p>", "p { font-variant-caps: titling-caps }", 400.0);
+        assert_eq!(scaled_runs(&f), [("Hello".to_string(), 1.0)]);
+        let f = body("<p>Hello</p>", "p { font-variant: small-caps; font-feature-settings: \"smcp\" 0 }", 400.0);
+        assert_eq!(scaled_runs(&f), [("Hello".to_string(), 1.0)]);
         // synthesis that lists the other kinds only does not synthesize small caps
         let f = body("<p>Hello</p>", "p { font-variant: small-caps; font-synthesis: weight style }", 400.0);
         assert_eq!(scaled_runs(&f), [("Hello".to_string(), 1.0)]);
@@ -2200,6 +2458,71 @@ mod tests {
 
     fn word_width_at(text: &str, size: f64) -> f64 {
         blueice_font::measure_text_width(text, size, false, false)
+    }
+
+    /// The width of `text` set with and without the font's `halt` trimming, at 16px.
+    fn full_and_half(text: &str) -> (f64, f64) {
+        let halt = blueice_font::register_features(&[(*b"halt", 1)]);
+        let at = |f| blueice_font::measure_text_width_features(text, 16.0, false, false, None, f);
+        (at(blueice_font::FeaturesId::default()), at(halt))
+    }
+
+    fn line_width(html: &str, css: &str) -> f64 {
+        first_line(&body(html, css, 400.0)).width
+    }
+
+    #[test]
+    fn adjacent_fullwidth_punctuation_loses_its_blank_half_unless_space_all() {
+        let (open_full, open_half) = full_and_half("\u{300c}");
+        let (close_full, close_half) = full_and_half("\u{300d}");
+        assert!(open_half < open_full - 1.0 && close_half < close_full - 1.0, "the face can trim: {open_half} {close_half}");
+        // a closing mark before an opening one: the opening one is trimmed
+        let pair = "<p>\u{300d}\u{300c}</p>";
+        assert!((line_width(pair, "") - (close_full + open_half)).abs() < 0.01);
+        assert!((line_width(pair, "p { text-spacing-trim: space-all }") - (close_full + open_full)).abs() < 0.01);
+        // an opening mark after an opening one, a closing mark before a closing one
+        assert!((line_width("<p>\u{ff08}\u{ff08}</p>", "") - (full_and_half("\u{ff08}").0 + full_and_half("\u{ff08}").1)).abs() < 0.01);
+        assert!((line_width("<p>\u{ff09}\u{ff09}</p>", "") - (full_and_half("\u{ff09}").1 + full_and_half("\u{ff09}").0)).abs() < 0.01);
+        // between letters both stay full width
+        let framed = "<p>\u{3042}\u{300c}\u{3042}\u{300d}\u{3042}</p>";
+        let a = full_and_half("\u{3042}").0;
+        assert!((line_width(framed, "") - (3.0 * a + open_full + close_full)).abs() < 0.01);
+        // trim-all trims them wherever they are
+        assert!((line_width(framed, "p { text-spacing-trim: trim-all }") - (3.0 * a + open_half + close_half)).abs() < 0.01);
+    }
+
+    #[test]
+    fn trim_start_and_trim_both_trim_a_mark_at_the_edge_of_a_line() {
+        let (open_full, open_half) = full_and_half("\u{300c}");
+        let a = full_and_half("\u{3042}").0;
+        let html = "<p>\u{300c}\u{3042}</p>";
+        // the opening mark at the start of the line: the blank half hangs before it
+        let normal = body(html, "p { width: 100px }", 100.0);
+        assert!(first_line(&normal).children[0].x.abs() < 0.01);
+        for mode in ["trim-start", "trim-both"] {
+            let f = body(html, &format!("p {{ width: 100px; text-spacing-trim: {mode} }}"), 100.0);
+            let line = first_line(&f);
+            assert!(
+                (line.x + line.children[0].x + (open_full - open_half)).abs() < 0.01,
+                "{mode}: the blank half of the bracket is outside the box: {}",
+                line.x + line.children[0].x
+            );
+        }
+        // a closing mark at the end of a line: trimmed always by trim-both, only if needed otherwise
+        let (close_full, close_half) = full_and_half("\u{300d}");
+        let end = "<p>\u{3042}\u{300d}</p>";
+        let right = |mode: &str| {
+            let f = body(end, &format!("p {{ text-align: right; width: 100px; text-spacing-trim: {mode} }}"), 100.0);
+            first_line(&f).x
+        };
+        assert!((right("normal") - (100.0 - a - close_full)).abs() < 0.01, "it fits, so it stays");
+        assert!((right("trim-both") - (100.0 - a - close_half)).abs() < 0.01, "always trimmed");
+        // when it does not fit it hangs by its blank half in normal too
+        let text = "<p>\u{3042}\u{3044}\u{300d}</p>";
+        let tight = format!("p {{ width: {}px }}", 2.0 * a + close_half + 0.5);
+        assert_eq!(run_texts(&body(text, &tight, 400.0)).len(), 1, "the closing mark hangs by its blank half");
+        let space_all = format!("p {{ width: {}px; text-spacing-trim: space-all }}", 2.0 * a + close_half + 0.5);
+        assert!(run_texts(&body(text, &space_all, 400.0)).len() > 1, "space-all trims nothing");
     }
 
     #[test]

@@ -51,6 +51,8 @@ pub(crate) struct FontCatalog {
     families: HashMap<String, Vec<CatalogFace>>,
     script_faces: usize,
     generation: u64,
+    /// The names the page gave to font-specific alternates (`@font-feature-values`).
+    feature_values: blueice_css::FeatureValues,
 }
 
 /// A face a script made and added to the document (`new FontFace`, `document.fonts.add`): the
@@ -442,7 +444,9 @@ pub(crate) fn fetch_linked_fonts(
         return FontCatalog::default();
     };
     let mut wanted: Vec<(FontFaceRule, Url)> = Vec::new();
+    let mut feature_values = blueice_css::FeatureValues::default();
     for (css, sheet_base) in sheets(&doc, linked, &base) {
+        feature_values.merge(blueice_css::font_feature_values(&css));
         for face in blueice_css::font_faces(&css) {
             if wanted.len() < limits.faces {
                 wanted.push((face, sheet_base.clone()));
@@ -463,7 +467,7 @@ pub(crate) fn fetch_linked_fonts(
             .map(|worker| worker.join().ok().flatten())
             .collect()
     });
-    let mut catalog = FontCatalog::default();
+    let mut catalog = FontCatalog { feature_values, ..FontCatalog::default() };
     for ((face, _), id) in wanted.into_iter().zip(loaded) {
         if diag {
             let first = face.sources.first().map_or("-", |s| s.url.as_str());
@@ -582,6 +586,12 @@ pub(crate) fn assign_faces(
     styles: &mut HashMap<blueice_dom::NodeId, blueice_css::ComputedStyle>,
 ) {
     use blueice_css::Value;
+    // The names a page gave to alternates become the OpenType settings they stand for.
+    if !catalog.feature_values.is_empty() {
+        for style in styles.values_mut() {
+            catalog.feature_values.resolve(style);
+        }
+    }
     if catalog.is_empty() {
         return;
     }
@@ -1588,6 +1598,39 @@ mod tests {
         assert_eq!(synth("both", 700, false), 0, "a real bold face exists");
         assert_eq!(synth("both", 400, true), 2);
         assert_eq!(synth("sans-serif", 700, false), 0, "no page face: nothing to synthesize");
+    }
+
+    #[test]
+    fn names_given_to_alternates_reach_the_features_a_style_asks_for() {
+        let html = "<style>@font-feature-values Noble { @swash { flowing: 2; } @stylistic { fancy: 3; } }\
+             p { font-family: Noble, serif } .a { font-variant-alternates: swash(flowing) stylistic(fancy) }\
+             .b { font-variant-alternates: swash(unknown) } .c { font-family: Other; font-variant-alternates: swash(flowing) }</style>\
+             <body><p id=a class=a>a</p><p id=b class=b>b</p><p id=c class=a>c</p><p id=d class=c>d</p></body>";
+        let doc = blueice_html::parse(html);
+        let ua = blueice_css::ua_stylesheet();
+        let author = blueice_css::parse(&html[html.find("<style>").unwrap() + 7..html.find("</style>").unwrap()]).rules;
+        let mut styles = blueice_css::cascade(&doc, &[(blueice_css::Origin::Ua, &ua), (blueice_css::Origin::Author, &author)]);
+        assign_faces(&catalog(html), &mut styles);
+        let features = |id: &str| -> Vec<(String, u32)> {
+            let node = styles
+                .keys()
+                .copied()
+                .find(|n| {
+                    matches!(doc.data(*n), blueice_dom::NodeData::Element { attributes, .. }
+                        if attributes.iter().any(|(k, v)| k == "id" && v == id))
+                })
+                .unwrap();
+            blueice_css::font_features(&styles[&node])
+                .into_iter()
+                .map(|(t, v)| (String::from_utf8(t.to_vec()).unwrap().trim().to_string(), v))
+                .collect()
+        };
+        assert_eq!(
+            features("a"),
+            [("swsh".to_string(), 2), ("cswh".to_string(), 2), ("salt".to_string(), 3)]
+        );
+        assert!(features("b").is_empty(), "an undefined name does nothing");
+        assert!(features("d").is_empty(), "the values are for the family they were defined for");
     }
 
     #[test]

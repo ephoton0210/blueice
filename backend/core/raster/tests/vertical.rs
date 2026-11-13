@@ -188,3 +188,42 @@ fn upright_text_takes_the_proportional_widths_of_vpal_when_the_style_asks() {
         height(&plain)
     );
 }
+
+#[test]
+fn bold_and_italic_in_a_face_that_exists_in_regular_only_are_made_by_smearing_and_shearing() {
+    let draw = |text: &str, bold: bool, italic: bool| {
+        ink(&Frame {
+            width: 160.0,
+            height: 80.0,
+            commands: vec![PaintCommand::Text {
+                x: 10.0,
+                y: 10.0,
+                text: text.to_string(),
+                color: Color::Rgba(0, 0, 0, 255),
+                font_size_px: 40.0,
+                bold,
+                italic,
+                face: None,
+                rtl: false,
+                orient: TextOrient::Horizontal,
+                breadth: 0.0,
+                features: 0,
+            }],
+        })
+    };
+    for text in ["\u{65e5}", "\u{928}\u{92e}", "\u{e2a}\u{e27}", "\u{1200}"] {
+        let (regular, bold, italic) = (draw(text, false, false), draw(text, true, false), draw(text, false, true));
+        assert!(bold.len() > regular.len() + 20, "{text:?}: {} vs {}", bold.len(), regular.len());
+        let width = |s: &BTreeSet<(i64, i64)>| s.iter().map(|p| p.0).max().unwrap() - s.iter().map(|p| p.0).min().unwrap();
+        assert!(width(&italic) > width(&regular), "{text:?}: {} vs {}", width(&italic), width(&regular));
+        // the lean is at the top: the highest rows move right more than the lowest
+        let top = |s: &BTreeSet<(i64, i64)>| {
+            let y = s.iter().map(|p| p.1).min().unwrap();
+            s.iter().filter(|p| p.1 == y).map(|p| p.0).max().unwrap()
+        };
+        assert!(top(&italic) >= top(&regular), "{text:?}");
+    }
+    // DejaVu has its own bold: the bundled Latin face is drawn as it is, not smeared
+    let (r, b) = (draw("H", false, false), draw("H", true, false));
+    assert!(b.len() > r.len());
+}

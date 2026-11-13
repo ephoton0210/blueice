@@ -142,6 +142,9 @@ pub struct Fragment {
     /// A text run drawn at this share of its element's font size (the smaller capitals of
     /// synthesized small caps); 1 for ordinary text.
     pub size_scale: f64,
+    /// A text run drawn with the font's half-width alternates (`halt`, or `vhal` on a vertical
+    /// line): fullwidth punctuation with its blank half trimmed (`text-spacing-trim`).
+    pub trim: bool,
 }
 
 impl Fragment {
@@ -167,6 +170,7 @@ impl Fragment {
             orient: TextOrient::Horizontal,
             turned_back: false,
             size_scale: 1.0,
+            trim: false,
         }
     }
 }

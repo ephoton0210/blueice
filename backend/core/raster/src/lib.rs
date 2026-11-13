@@ -91,6 +91,21 @@ struct TextRun<'a> {
     features: blueice_font::FeaturesId,
 }
 
+impl TextRun<'_> {
+    /// How far to smear and slant a glyph of `font` to give the run the weight and slant it asks
+    /// for: a page's own face is made bold and slanted when the run asks, and so is a bundled face
+    /// that exists in Regular only (the CJK and script faces). Bundled DejaVu has its own.
+    fn synthesized_style(&self, font: blueice_font::Glyphs) -> (i64, f64) {
+        let synthesize = self.face.is_some() || blueice_font::is_regular_only_fallback(font);
+        let smear = if synthesize && self.bold {
+            (self.font_size_px / 20.0).max(1.0).round() as i64
+        } else {
+            0
+        };
+        (smear, if synthesize && self.italic { 0.2 } else { 0.0 })
+    }
+}
+
 /// An RGBA8, row-major pixel buffer -- the engine's final rendered
 /// output for one frame, ready to hand to a frontend's presentation
 /// surface (a `softbuffer` window for the reference frontend; a
@@ -192,11 +207,8 @@ impl Pixmap {
         let baseline_y = run.y + ascent;
         // A page face that lacks the weight or slant asked for is made bold by smearing each
         // glyph sideways and slanted by shearing it about the baseline.
-        let synthesized = run.face.is_some();
-        let smear = if synthesized && run.bold { (run.font_size_px / 20.0).max(1.0).round() as i64 } else { 0 };
-        let slant = if synthesized && run.italic { 0.2 } else { 0.0 };
         if run.orient != blueice_paint::TextOrient::Horizontal {
-            self.draw_vertical_text(&run, ascent, smear, clip, (r, g, b, a));
+            self.draw_vertical_text(&run, ascent, clip, (r, g, b, a));
             return;
         }
         // Arabic and Hebrew are shaped with the font's own tables: joining forms, ligatures,
@@ -212,6 +224,7 @@ impl Pixmap {
         ) {
             let mut pen_x = run.x;
             for glyph in glyphs {
+                let (smear, slant) = run.synthesized_style(glyph.font);
                 let (metrics, bitmap) = glyph.font.rasterize_indexed(glyph.id, run.font_size_px as f32);
                 let bitmap_top = baseline_y - f64::from(glyph.dy) - (metrics.ymin as f64 + metrics.height as f64);
                 let bitmap_left = pen_x + f64::from(glyph.dx) + metrics.xmin as f64;
@@ -253,6 +266,7 @@ impl Pixmap {
             // and `blueice-font`'s CJK fallback only kicks in for the
             // specific characters the primary face can't cover.
             let f = font_for_char_in(ch, run.bold, run.italic, run.face);
+            let (smear, slant) = run.synthesized_style(f);
             let (metrics, bitmap) = f.rasterize(ch, run.font_size_px as f32);
             let bitmap_top = baseline_y - (metrics.ymin as f64 + metrics.height as f64);
             let bitmap_left = pen_x + metrics.xmin as f64;
@@ -286,7 +300,6 @@ impl Pixmap {
     fn draw_combined_text(
         &mut self,
         run: &TextRun<'_>,
-        smear: i64,
         clip: PixelClip,
         (r, g, b, a): (u8, u8, u8, u8),
     ) {
@@ -305,6 +318,7 @@ impl Pixmap {
         let baseline = run.y + em * UPRIGHT_ASCENT_RATIO;
         for ch in shaped.chars() {
             let f = font_for_char_in(ch, run.bold, run.italic, run.face);
+            let (smear, _) = run.synthesized_style(f);
             let (metrics, bitmap) = f.rasterize(ch, em as f32);
             if metrics.width > 0 && metrics.height > 0 {
                 // Each destination column is the mean of the source columns it covers.
@@ -350,12 +364,11 @@ impl Pixmap {
         &mut self,
         run: &TextRun<'_>,
         ascent: f64,
-        smear: i64,
         clip: PixelClip,
         (r, g, b, a): (u8, u8, u8, u8),
     ) {
         if run.orient == blueice_paint::TextOrient::Combined {
-            self.draw_combined_text(run, smear, clip, (r, g, b, a));
+            self.draw_combined_text(run, clip, (r, g, b, a));
             return;
         }
         let ccw = run.orient == blueice_paint::TextOrient::SidewaysCcw;
@@ -380,6 +393,7 @@ impl Pixmap {
             ) {
                 let mut pen = run.y;
                 for glyph in glyphs {
+                    let (smear, _) = run.synthesized_style(glyph.font);
                     let (metrics, bitmap) = glyph.font.rasterize_indexed(glyph.id, size);
                     let origin_x = run.x + run.breadth / 2.0 + f64::from(glyph.dx);
                     let origin_y = pen + f64::from(glyph.dy);
@@ -412,6 +426,7 @@ impl Pixmap {
         for original in shaped.chars() {
             let size = run.font_size_px as f32;
             let f = font_for_char_in(original, run.bold, run.italic, run.face);
+            let (smear, _) = run.synthesized_style(f);
             // An upright character is set from the font's own vertical layout (`vmtx`, `VORG`,
             // `vert`): the glyph it has for a vertical line, how far the pen moves, and where the
             // glyph hangs from the pen.

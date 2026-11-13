@@ -990,7 +990,7 @@ mod tests {
         let run = |css: &str| {
             let f = body(
                 "<div>\u{300c}\u{3042}\u{3002}\u{300d}</div>",
-                &format!("div {{ writing-mode: vertical-rl; width: 60px; height: 300px; {css} }}"),
+                &format!("div {{ writing-mode: vertical-rl; width: 60px; height: 300px; text-spacing-trim: space-all; {css} }}"),
             );
             texts(div(&f))[0].5
         };
@@ -999,6 +999,18 @@ mod tests {
         let proportional = run("font-variant-east-asian: proportional-width");
         assert!(proportional < plain - 2.0, "{proportional} vs {plain}");
         assert!((run("font-feature-settings: \"vpal\" 1") - proportional).abs() < 0.01);
+    }
+
+    #[test]
+    fn adjacent_closing_marks_are_trimmed_in_a_vertical_line_with_vhal() {
+        let run = |css: &str| {
+            let f = body(
+                "<div>\u{3042}\u{3002}\u{300d}</div>",
+                &format!("div {{ writing-mode: vertical-rl; width: 60px; height: 300px; {css} }}"),
+            );
+            texts(div(&f)).iter().map(|r| r.5).sum::<f64>()
+        };
+        assert!(run("") < run("text-spacing-trim: space-all") - 2.0);
     }
 
     #[test]

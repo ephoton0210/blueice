@@ -918,7 +918,11 @@ fn paint_fragment(
                 let spacing = spacing.filter(|_| orient == TextOrient::Horizontal);
                 // Text that runs up the page starts at the bottom of its box.
                 let y = if orient == TextOrient::SidewaysCcw { y + fragment.height } else { y };
-                let features = blueice_font::register_features(&blueice_css::font_features(style)).as_u32();
+                let features = {
+                    let face_id = face.map(blueice_font::web::WebFontId::from_u32);
+                    let supports = |tag: [u8; 4]| blueice_font::face_supports_feature(bold, italic, face_id, tag);
+                    blueice_font::register_features(&blueice_css::text_features(style, &supports).features).as_u32()
+                };
                 // Synthesized small capitals are smaller text on the same baseline.
                 let font_size_px = style.font_size_px * fragment.size_scale;
                 let face_id = face.map(blueice_font::web::WebFontId::from_u32);

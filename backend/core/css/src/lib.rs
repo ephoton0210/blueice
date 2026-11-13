@@ -28,6 +28,7 @@ mod cascade;
 mod color;
 mod content;
 mod font_face;
+mod feature_values;
 mod font_features;
 mod gradient;
 mod media;
@@ -51,7 +52,11 @@ pub use gradient::{
     StopPosition,
 };
 pub use media::{matches_media, MediaEnvironment};
-pub use font_features::{font_features, font_features_for, small_caps_request, Feature};
+pub use feature_values::{font_feature_values, FeatureValues};
+pub use font_features::{
+    caps_kind, font_features, font_features_for, text_features, CapsKind, Feature, SynthesizedCaps,
+    TextFeatures,
+};
 pub use font_face::{face_descriptors, font_faces, FaceDescriptors, FontFaceRule, FontSource};
 pub use parser::{Declaration, Rule};
 pub use selector::{
