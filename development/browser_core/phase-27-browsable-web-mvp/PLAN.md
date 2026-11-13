@@ -1023,6 +1023,8 @@ Fixed, each with a test:
   whole canvas (`blueice_paint::canvas_background`, drawn first in `Page::render_band`).
 - A block-level picture with `margin: auto` (`svg`/`img { display: block; margin: 0 auto }`) was not
   centred: the forced width skipped the auto margins.
+- An inline element's bounds (AI representation, focus ring, scroll-into-view) covered only its first
+  word; `find_fragment_bounds` now returns the union of all its fragments, like `getBoundingClientRect`.
 - Underline/line-through stopped at every space; the gap between two words of one element is now
   covered (`Fragment.deco_after`).
 - Quirks mode (no doctype) was parsed but never reached CSS. `Document::quirks_mode` now carries it
@@ -1035,7 +1037,6 @@ Fixed, each with a test:
 Open, not fixed:
 - Hacker News's logo and vote arrows were not shown in the offline `render_html` check (it fetches no
   images); not yet checked in a live page, so it is unknown whether images are really missing.
-- An inline link's AI-representation bounds cover only its first word.
 - `system-ui`, Verdana and similar fall back to DejaVu Sans, so line breaks and widths differ from
   Safari's system font.
 - `get_console_messages` answered "Page console is unavailable" on a local test page.

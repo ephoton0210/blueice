@@ -1514,3 +1514,29 @@ fn the_root_background_paints_the_whole_viewport_not_only_the_content() {
     let (_, bottom, _) = at("<p>short</p>");
     assert_eq!(bottom, [255, 255, 255, 255]);
 }
+
+#[test]
+fn an_inline_elements_bounds_cover_all_its_words_and_lines() {
+    use crate::page::find_fragment_bounds;
+    let mut page = Page::new(400.0, 300.0);
+    page.load_html_str(
+        "<style>body{margin:0} p{margin:0;width:150px}</style>\
+         <p><a id=one href=#>Learn more here</a></p>\
+         <p><a id=wrapped href=#>alpha beta gamma delta epsilon zeta eta theta</a></p>",
+        None,
+    );
+    let bounds = |id: &str| {
+        let node = page.script_get_element_by_id(id).unwrap();
+        find_fragment_bounds(page.fragment(), node, 0.0, 0.0).unwrap()
+    };
+    // all three words of a one-line link, not just the first
+    let one = bounds("one");
+    let word = blueice_font::measure_text_width("Learn", 16.0, false, false);
+    assert!(one.width > word * 2.0, "{one:?}");
+    let whole = blueice_font::measure_text_width("Learn more here", 16.0, false, false);
+    assert!((one.width - whole).abs() < 1.0, "{} vs {whole}", one.width);
+    // a link that wraps spans every line it is on
+    let wrapped = bounds("wrapped");
+    assert!(wrapped.height > 30.0, "{wrapped:?}");
+    assert!(wrapped.width > 100.0, "{wrapped:?}");
+}

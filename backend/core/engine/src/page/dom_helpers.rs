@@ -276,10 +276,18 @@ pub(crate) fn find_fragment_bounds(
             height: fragment.height,
         });
     }
+    // An inline element is many fragments (a word each, on as many lines): its bounds are
+    // their union, like `getBoundingClientRect`.
     fragment
         .children
         .iter()
-        .find_map(|child| find_fragment_bounds(child, id, x, y))
+        .filter_map(|child| find_fragment_bounds(child, id, x, y))
+        .reduce(|a, b| {
+            let (left, top) = (a.x.min(b.x), a.y.min(b.y));
+            let right = (a.x + a.width).max(b.x + b.width);
+            let bottom = (a.y + a.height).max(b.y + b.height);
+            blueice_ipc::Bounds { x: left, y: top, width: right - left, height: bottom - top }
+        })
 }
 
 pub(super) const HIGHLIGHT_COLOR: Color = Color::Rgba(255, 149, 0, 255);
