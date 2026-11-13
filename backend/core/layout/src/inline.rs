@@ -2492,6 +2492,23 @@ mod tests {
     }
 
     #[test]
+    fn adjacent_marks_are_trimmed_across_an_inline_element_boundary() {
+        let (close_full, _) = full_and_half("\u{300d}");
+        let (_, open_half) = full_and_half("\u{300c}");
+        let expected = close_full + open_half;
+        for html in [
+            "<p>\u{300d}<span>\u{300c}</span></p>",
+            "<p><b>\u{300d}</b><i>\u{300c}</i></p>",
+        ] {
+            let w = line_width(html, "");
+            assert!((w - expected).abs() < 0.5, "{html}: {w} vs {expected}");
+        }
+        // a space between them separates them
+        let spaced = line_width("<p>\u{300d} <span>\u{300c}</span></p>", "");
+        assert!(spaced > expected + 1.0, "{spaced}");
+    }
+
+    #[test]
     fn trim_start_and_trim_both_trim_a_mark_at_the_edge_of_a_line() {
         let (open_full, open_half) = full_and_half("\u{300c}");
         let a = full_and_half("\u{3042}").0;
