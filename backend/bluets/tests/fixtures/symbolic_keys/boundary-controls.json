@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "scope": "Separate ambient/runtime and configured resource controls; excluded from the 256 direct Native comparisons.",
+  "controls": [
+    {
+      "id": "constraint-chain-work-0",
+      "kind": "resource-limit",
+      "source": "export function result<E, K extends keyof E, L extends K>(key: L, consume: (key: keyof E) => void) { consume(key); }\n",
+      "limited": {
+        "max_type_expansions": 0
+      }
+    },
+    {
+      "id": "constraint-chain-work-1",
+      "kind": "resource-limit",
+      "source": "export function result<E, K extends keyof E, L extends K>(key: L, consume: (key: keyof E) => void) { consume(key); }\n",
+      "limited": {
+        "max_type_expansions": 1
+      }
+    },
+    {
+      "id": "same-named-keys-alias-work-0",
+      "kind": "resource-limit",
+      "source": "type Keys<T> = keyof T;\nexport function result<E, K extends Keys<E>>(key: K, consume: (key: keyof E) => void) { consume(key); }\n",
+      "limited": {
+        "max_type_expansions": 0
+      }
+    },
+    {
+      "id": "same-named-keys-alias-work-1",
+      "kind": "resource-limit",
+      "source": "type Keys<T> = keyof T;\nexport function result<E, K extends Keys<E>>(key: K, consume: (key: keyof E) => void) { consume(key); }\n",
+      "limited": {
+        "max_type_expansions": 1
+      }
+    },
+    {
+      "id": "key-intersection-work-0",
+      "kind": "resource-limit",
+      "source": "export function result<E, F, K extends keyof E & keyof F>(key: K, consume: (key: keyof E) => void) { consume(key); }\n",
+      "limited": {
+        "max_type_expansions": 0
+      }
+    },
+    {
+      "id": "key-intersection-work-1",
+      "kind": "resource-limit",
+      "source": "export function result<E, F, K extends keyof E & keyof F>(key: K, consume: (key: keyof E) => void) { consume(key); }\n",
+      "limited": {
+        "max_type_expansions": 1
+      }
+    },
+    {
+      "id": "compound-key-parser-0",
+      "kind": "resource-limit",
+      "source": "type Keys<T> = keyof (T | {x: number});\nexport const result: Keys<{x: boolean}> = \"x\";\n",
+      "limited": {
+        "parser.max_type_depth": 0
+      }
+    },
+    {
+      "id": "compound-key-parser-1",
+      "kind": "resource-limit",
+      "source": "type Keys<T> = keyof (T | {x: number});\nexport const result: Keys<{x: boolean}> = \"x\";\n",
+      "limited": {
+        "parser.max_type_depth": 1
+      }
+    },
+    {
+      "id": "ambient-ExternalKeys",
+      "kind": "ambient-owner",
+      "declaration": "type ExternalKeys<T> = keyof T;",
+      "source": "export const result: ExternalKeys<{x: number}> = \"x\";\n"
+    },
+    {
+      "id": "runtime-ExternalKeys",
+      "kind": "runtime-authority",
+      "declaration": "type ExternalKeys<T> = keyof T;",
+      "source": "ExternalKeys(\"x\");\n"
+    },
+    {
+      "id": "ambient-ExternalKeyPair",
+      "kind": "ambient-owner",
+      "declaration": "type ExternalKeyPair<T> = keyof T & PropertyKey;",
+      "source": "export const result: ExternalKeyPair<{x: number}> = \"x\";\n"
+    },
+    {
+      "id": "runtime-ExternalKeyPair",
+      "kind": "runtime-authority",
+      "declaration": "type ExternalKeyPair<T> = keyof T & PropertyKey;",
+      "source": "ExternalKeyPair(\"x\");\n"
+    }
+  ]
+}

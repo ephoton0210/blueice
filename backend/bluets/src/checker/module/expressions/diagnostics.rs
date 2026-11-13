@@ -10,6 +10,7 @@ mod compatibility;
 mod constructors;
 mod indexed;
 mod inference_candidates;
+mod key_sets;
 mod more_types;
 mod operators;
 mod records;
@@ -124,6 +125,12 @@ impl ModuleChecker<'_> {
         argument: &[Token],
         overloaded: bool,
     ) {
+        if let Some((source, target)) = self.key_diagnostic_types(actual, expected) {
+            if source != *actual || target != *expected {
+                self.call_argument_error(span, message, &source, &target, argument, overloaded);
+                return;
+            }
+        }
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
         budget.checking = self.checking;
         // Inferred scalar barriers reduce, while object barriers retain their

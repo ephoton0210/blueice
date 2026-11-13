@@ -4,6 +4,7 @@
 
 //! Materialize concrete library operator arguments without expanding interfaces.
 use super::*;
+mod keys;
 mod non_null;
 
 fn conditional_alias(name: &str, aliases: &BTreeMap<String, TypeDefinition>) -> bool {
@@ -35,6 +36,7 @@ pub(super) fn finish(
             super::barriers::alias_has_barrier(name, aliases)
                 || crate::checker::type_relations::non_null_alias(name, aliases)
                 || conditional_alias(name, aliases)
+                || keys::alias(name, aliases)
         }
         Type::Mapped(_)
         | Type::Conditional(_)
@@ -63,6 +65,9 @@ fn finish_inner(
     aliases: &BTreeMap<String, TypeDefinition>,
     budget: &mut TypeExpansionBudget,
 ) -> Type {
+    if let Some(retained) = keys::retained(&value, aliases) {
+        return retained;
+    }
     if super::symbolic_indexed_access(&value, aliases) {
         return value;
     }
@@ -93,6 +98,28 @@ fn finish_inner(
             }
         }
         Type::Named { name, arguments } => {
+            let requested = Type::Named {
+                name: name.clone(),
+                arguments: arguments.clone(),
+            };
+            if let Some(scalar) =
+                crate::checker::type_operators::primitive_alias(&requested, aliases, budget)
+            {
+                return scalar;
+            }
+            if keys::alias(&name, aliases) {
+                if let Some(expanded) = instantiate_named(
+                    &requested,
+                    aliases,
+                    &mut HashSet::new(),
+                    budget,
+                    "inferred key alias",
+                ) {
+                    if expanded != requested && !budget.exhausted {
+                        return finish(expanded, aliases, budget);
+                    }
+                }
+            }
             if super::barriers::alias_has_barrier(&name, aliases)
                 || aliases
                     .get(&name)

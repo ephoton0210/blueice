@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:02abdba6835124bb585bf13149d5b6dcaf072911",
+  "archive": "SYMBOLIC_KEYS_DEVELOPMENT_07.tar.gz",
+  "entries": [
+    {
+      "path": "authoring-evidence/preflight-1-backend.tar.gz",
+      "bytes": 33261771,
+      "sha256": "7d78673065b9d6dee881e09866f7ccf3202c3d430b4c14f7fba790e1b2e2aebf"
+    },
+    {
+      "path": "authoring-evidence/preflight-1-driver.log",
+      "bytes": 543,
+      "sha256": "0151d5ea9bae83bef71bb7702a7aa25a47fddd8b12c7e35882f0726ea21749ee"
+    },
+    {
+      "path": "authoring-evidence/preflight-1-retirement.json",
+      "bytes": 414,
+      "sha256": "d81fd4e896c5cbdd4639c39ab6c755a8e5194300e8479ce8a5c7dc646f70b5ca"
+    },
+    {
+      "path": "authoring-evidence/preflight-2/clippy.log",
+      "bytes": 1035,
+      "sha256": "1dd4e8306d8dd9c3850e73c1619465dce75334c302da91749aa810420f0050bb"
+    },
+    {
+      "path": "authoring-evidence/preflight-2/fmt.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "authoring-evidence/preflight-2/measurement.json",
+      "bytes": 1216,
+      "sha256": "ca60e28e68d181cb55b37cea21f16f0ef8eef3f5ad41691ec574e87caac4de75"
+    },
+    {
+      "path": "authoring-evidence/preflight-2/source-manifest.json",
+      "bytes": 2318286,
+      "sha256": "e435af68c6ac484e9f29acec01e11e291af5053e3e611bf3cbae1e0a577d8bb1"
+    },
+    {
+      "path": "authoring-evidence/preflight-2-retirement.json",
+      "bytes": 346,
+      "sha256": "04f832fdece0e130272d3f1b7270b11d885603350eed4d103a7304001be6f3f6"
+    }
+  ]
+}

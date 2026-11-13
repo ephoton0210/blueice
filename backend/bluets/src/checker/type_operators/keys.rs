@@ -4,6 +4,8 @@
 
 //! Key sets and projections preserve numeric keys, unions and optional fields.
 use super::*;
+mod operand;
+mod sets;
 
 pub(super) fn literal_key(name: &str) -> Type {
     Type::Literal(if name.parse::<f64>().is_ok() {
@@ -29,7 +31,24 @@ pub(super) fn keyof(
     visited: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> Option<Type> {
-    let value = expanded(value, aliases, visited, budget);
+    keyof_inner(value, aliases, visited, budget, &mut Vec::new())
+}
+
+fn keyof_inner(
+    value: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    visited: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+    order: &mut Vec<Type>,
+) -> Option<Type> {
+    let (value, deferred) = operand::normalize(value, aliases, visited, budget)?;
+    if deferred {
+        let key = Type::KeyOf(Box::new(value));
+        if !order.contains(&key) {
+            order.push(key.clone());
+        }
+        return Some(key);
+    }
     let owner = match &value {
         Type::String | Type::StringLiteral(_) | Type::StringMapping(_) => Some("String"),
         Type::Number => Some("Number"),
@@ -67,9 +86,9 @@ pub(super) fn keyof(
         return Some(result);
     }
     match value {
-        Type::Readonly(value) => keyof(&value, aliases, visited, budget),
+        Type::Readonly(value) => keyof_inner(&value, aliases, visited, budget, order),
         Type::IndexedRecord { object, indices } => {
-            let mut keys = vec![keyof(&object, aliases, visited, budget)?];
+            let mut keys = vec![keyof_inner(&object, aliases, visited, budget, order)?];
             for index in indices {
                 keys.push(
                     index
@@ -83,14 +102,7 @@ pub(super) fn keyof(
             }
             Some(union(keys))
         }
-        Type::Any => Some(Type::Union(vec![
-            Type::String,
-            Type::Number,
-            Type::Named {
-                name: "symbol".into(),
-                arguments: vec![],
-            },
-        ])),
+        Type::Any => Some(Type::Union(vec![Type::String, Type::Number, Type::Symbol])),
         Type::Unknown | Type::StrictUnknown => Some(Type::Never),
         Type::Never => Some(Type::Union(vec![Type::String, Type::Number, Type::Symbol])),
         Type::Record(fields) | Type::CallableRecord { fields, .. } => {
@@ -101,17 +113,42 @@ pub(super) fn keyof(
             })))
         }
         Type::Union(parts) => {
+            let mut parts = parts
+                .iter()
+                .map(|part| {
+                    operand::normalize(part, aliases, &mut visited.clone(), budget)
+                        .map(|(value, _)| value)
+                })
+                .collect::<Option<Vec<_>>>()?;
+            sets::order_objects(&mut parts, aliases);
             let mut sets = Vec::new();
             for part in parts {
                 if !budget.consume() {
                     return None;
                 }
-                let keys = keyof(&part, aliases, &mut visited.clone(), budget)?;
+                let keys = keyof_inner(&part, aliases, &mut visited.clone(), budget, order)?;
                 sets.push(match keys {
                     Type::Union(keys) => keys,
                     Type::Never => vec![],
                     value => vec![value],
                 });
+            }
+            if sets
+                .iter()
+                .flatten()
+                .any(|key| matches!(key, Type::KeyOf(_) | Type::Intersection(_)))
+            {
+                let mut intersection = Vec::new();
+                for set in sets {
+                    let value = union(set);
+                    if value == Type::Never {
+                        return Some(Type::Never);
+                    }
+                    if !intersection.contains(&value) {
+                        intersection.push(value);
+                    }
+                }
+                return Some(sets::key_intersection(intersection));
             }
             let first = sets.first()?;
             Some(union(
@@ -122,15 +159,28 @@ pub(super) fn keyof(
             ))
         }
         Type::Intersection(parts) => {
+            let parts = match sets::intersection(parts, aliases, visited, budget)? {
+                sets::Objects::Simple(parts) => parts,
+                sets::Objects::Distributed(branches) => {
+                    return keyof_inner(&Type::Union(branches), aliases, visited, budget, order);
+                }
+            };
             let mut keys = Vec::new();
             for part in parts {
                 if !budget.consume() {
                     return None;
                 }
-                keys.push(keyof(&part, aliases, &mut visited.clone(), budget)?);
+                keys.push(keyof_inner(
+                    &part,
+                    aliases,
+                    &mut visited.clone(),
+                    budget,
+                    order,
+                )?);
             }
-            Some(union(keys))
+            Some(sets::ordered_union(keys, order))
         }
+        Type::Function { .. } | Type::GenericFunction { .. } => Some(Type::Never),
         Type::Array(_) | Type::Tuple(_) => {
             let mut keys = vec![Type::Number];
             keys.extend(

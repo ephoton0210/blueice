@@ -1,0 +1,209 @@
+{
+  "schema": 1,
+  "scope": "16 supplementary Native-calibrated key-algebra/parenthesis controls, frozen before repairing their observed differences; zero direct inventory credit.",
+  "options": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "CommonJS",
+    "lib": [
+      "ES5"
+    ],
+    "declaration": true,
+    "noEmitOnError": true,
+    "outDir": "dist"
+  },
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "libraries": {
+    "lib.es5.d.ts": "c430d44666289dae81f30fa7b2edebf186ecc91a2d4c71266ea6ae76388792e1",
+    "lib.decorators.d.ts": "8e7f8264d0fb4c5339605a15daadb037bf238c10b654bb3eee14208f860a32ea",
+    "lib.decorators.legacy.d.ts": "782dec38049b92d4e85c1585fbea5474a219c6984a35b004963b00beb1aab538"
+  },
+  "cases": [
+    {
+      "id": "left",
+      "source": "export function result<E,F,G,H>(key: keyof ((E | F) & G)) { return key; }\n",
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare function result<E, F, G, H>(key: keyof ((E | F) & G)): (keyof E | keyof G) & (keyof G | keyof F);\n"
+        }
+      }
+    },
+    {
+      "id": "right",
+      "source": "export function result<E,F,G,H>(key: keyof (G & (E | F))) { return key; }\n",
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare function result<E, F, G, H>(key: keyof (G & (E | F))): (keyof G | keyof E) & (keyof G | keyof F);\n"
+        }
+      }
+    },
+    {
+      "id": "separate",
+      "source": "export function result<E,F,G,H>(key: keyof ((E & G) | (F & G))) { return key; }\n",
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare function result<E, F, G, H>(key: keyof ((E & G) | (F & G))): (keyof E | keyof G) & (keyof G | keyof F);\n"
+        }
+      }
+    },
+    {
+      "id": "dual",
+      "source": "export function result<E,F,G,H>(key: keyof ((E | F) & (G | H))) { return key; }\n",
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare function result<E, F, G, H>(key: keyof ((E | F) & (G | H))): ((keyof E | keyof G) & (keyof E | keyof H)) & ((keyof G | keyof F) & (keyof H | keyof F));\n"
+        }
+      }
+    },
+    {
+      "id": "nested",
+      "source": "export function result<E,F,G,H>(key: keyof (((E | F) & G) | H)) { return key; }\n",
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare function result<E, F, G, H>(key: keyof (((E | F) & G) | H)): keyof H & ((keyof E | keyof G) & (keyof G | keyof F));\n"
+        }
+      }
+    },
+    {
+      "id": "inverse",
+      "source": "export function result<E,F,G,H>(key: keyof ((E & F) | G)) { return key; }\n",
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare function result<E, F, G, H>(key: keyof ((E & F) | G)): keyof G & (keyof E | keyof F);\n"
+        }
+      }
+    },
+    {
+      "id": "mixed",
+      "source": "export function result<E,F,G,H>(key: keyof ((E | F) | (G & H))) { return key; }\n",
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare function result<E, F, G, H>(key: keyof ((E | F) | (G & H))): keyof E & (keyof F & (keyof G | keyof H));\n"
+        }
+      }
+    },
+    {
+      "id": "last",
+      "source": "export function result<E,F,G,H>(key: keyof ((E & F) & (G | H))) { return key; }\n",
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare function result<E, F, G, H>(key: keyof ((E & F) & (G | H))): (keyof E | keyof F | keyof G) & (keyof E | keyof F | keyof H);\n"
+        }
+      }
+    },
+    {
+      "id": "other",
+      "source": "export function result<E,F,G,H>(key: keyof ((E | G) & F)) { return key; }\n",
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare function result<E, F, G, H>(key: keyof ((E | G) & F)): (keyof E | keyof F) & (keyof F | keyof G);\n"
+        }
+      }
+    },
+    {
+      "id": "alternate",
+      "source": "export function result<E,F,G,H>(key: keyof ((G | F) & E)) { return key; }\n",
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare function result<E, F, G, H>(key: keyof ((G | F) & E)): (keyof F | keyof E) & (keyof E | keyof G);\n"
+        }
+      }
+    },
+    {
+      "id": "union-three",
+      "source": "export function result<E,F,G,H>(key: keyof (E | F | G)) { return key; }\n",
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare function result<E, F, G, H>(key: keyof (E | F | G)): keyof E & keyof F & keyof G;\n"
+        }
+      }
+    },
+    {
+      "id": "intersection-three",
+      "source": "export function result<E,F,G,H>(key: keyof (E & F & G)) { return key; }\n",
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare function result<E, F, G, H>(key: keyof (E & F & G)): keyof E | keyof F | keyof G;\n"
+        }
+      }
+    },
+    {
+      "id": "alias-union",
+      "source": "type Choices<A,B> = A | B;\nexport function result<E,F,G,H>(key: keyof (Choices<E,F> & G)) { return key; }\n",
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "type Choices<A, B> = A | B;\nexport declare function result<E, F, G, H>(key: keyof (Choices<E, F> & G)): (keyof E | keyof G) & (keyof G | keyof F);\nexport {};\n"
+        }
+      }
+    },
+    {
+      "id": "alias-intersection",
+      "source": "type Both<A,B> = A & B;\nexport function result<E,F,G,H>(key: keyof (Both<E,F> | G)) { return key; }\n",
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "type Both<A, B> = A & B;\nexport declare function result<E, F, G, H>(key: keyof (Both<E, F> | G)): keyof G & (keyof E | keyof F);\nexport {};\n"
+        }
+      }
+    },
+    {
+      "id": "distinct-shapes-reject",
+      "source": "export function result<E,F,G>(key: keyof ((E | F) & G), consume: (key: keyof (E | (F & G))) => void) { consume(key); }\n",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2345,
+            "message": "Argument of type '(keyof E | keyof G) & (keyof G | keyof F)' is not assignable to parameter of type 'keyof E & (keyof G | keyof F)'.\n  Type 'keyof G' is not assignable to type 'keyof E & (keyof G | keyof F)'.\n    Type 'string | number | symbol' is not assignable to type 'keyof E & (keyof G | keyof F)'.\n      Type 'string' is not assignable to type 'keyof E & (keyof G | keyof F)'.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 112,
+              "length": 3
+            },
+            "relatedInformation": []
+          }
+        ],
+        "declarations": {}
+      }
+    },
+    {
+      "id": "distinct-shapes-accept",
+      "source": "export function result<E,F,G>(key: keyof (E | (F & G)), consume: (key: keyof ((E | F) & G)) => void) { consume(key); }\n",
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare function result<E, F, G>(key: keyof (E | (F & G)), consume: (key: keyof ((E | F) & G)) => void): void;\n"
+        }
+      }
+    }
+  ]
+}

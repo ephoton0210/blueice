@@ -520,7 +520,10 @@ impl Context<'_> {
                             if matches!(
                                 option,
                                 Type::Function { .. } | Type::GenericFunction { .. }
-                            ) {
+                            ) || matches!(option, Type::Conditional(_))
+                                || (matches!(value, Type::Intersection(_))
+                                    && matches!(option, Type::Union(_) | Type::Intersection(_)))
+                            {
                                 format!("({text})")
                             } else {
                                 text
@@ -534,7 +537,14 @@ impl Context<'_> {
                         " & "
                     })
             }
-            Type::KeyOf(value) => format!("keyof {}", self.render(value, indent, span)?),
+            Type::KeyOf(value) => {
+                let text = self.render(value, indent, span)?;
+                if value.needs_parentheses_after_keyof() {
+                    format!("keyof ({text})")
+                } else {
+                    format!("keyof {text}")
+                }
+            }
             Type::IndexedAccess { object, index, .. } => format!(
                 "{}[{}]",
                 self.render(object, indent, span)?,

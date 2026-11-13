@@ -72,8 +72,8 @@ pub(crate) use import_types::ImportTypeReference;
 
 mod class_expressions;
 mod class_methods;
-pub(crate) use class_expressions::type_parameter_identity;
 pub use class_expressions::ClassExpression;
+pub(crate) use class_expressions::{type_parameter_identity, type_parameter_origin};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TypeReference {

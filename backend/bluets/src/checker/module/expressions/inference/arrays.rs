@@ -8,6 +8,30 @@ use super::*;
 
 mod elements;
 
+fn operator_literal_context(
+    value: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    budget: &mut TypeExpansionBudget,
+) -> bool {
+    if !budget.consume() {
+        return false;
+    }
+    let value = crate::checker::type_operators::diagnostic_type(value, aliases, budget);
+    match value {
+        Type::Literal(_)
+        | Type::StringLiteral(_)
+        | Type::StringMapping(_)
+        | Type::Never
+        | Type::Null
+        | Type::TemplateLiteral(_)
+        | Type::UniqueSymbol(_) => true,
+        Type::Union(parts) | Type::Intersection(parts) => parts
+            .iter()
+            .any(|part| operator_literal_context(part, aliases, budget)),
+        _ => false,
+    }
+}
+
 impl<'a> ModuleChecker<'a> {
     /// The type of `tokens` where an expression of type `expected` is
     /// required. A tuple literal takes its element positions from a tuple
@@ -106,21 +130,9 @@ impl<'a> ModuleChecker<'a> {
                 return expected.clone();
             }
         }
-        let literal_display =
-            crate::checker::type_operators::diagnostic_type(&contextual, &self.types, &mut budget);
-        let literal_context = crate::checker::type_operators::is_operator_context(
-            expected,
-            &self.types,
-        ) && (matches!(
-            literal_display,
-            Type::Literal(_)
-                | Type::StringLiteral(_)
-                | Type::StringMapping(_)
-                | Type::Never
-                | Type::Null
-                | Type::TemplateLiteral(_)
-                | Type::UniqueSymbol(_)
-        ) || matches!(&literal_display, Type::Union(parts) if parts.iter().any(Type::is_literal)));
+        let literal_context =
+            crate::checker::type_operators::is_operator_context(expected, &self.types)
+                && operator_literal_context(&contextual, &self.types, &mut budget);
         if literal_context {
             if let [literal] = strip_outer_parentheses(tokens) {
                 if matches!(literal.kind, TokenKind::String | TokenKind::Number)

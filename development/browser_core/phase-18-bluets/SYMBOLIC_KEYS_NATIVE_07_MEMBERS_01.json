@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:02abdba6835124bb585bf13149d5b6dcaf072911",
+  "archive": "SYMBOLIC_KEYS_NATIVE_07.tar.gz",
+  "entries": [
+    {
+      "path": "accepted-native/suite-artifacts/152/observations/helper-name-collision.json",
+      "bytes": 33445732,
+      "sha256": "ad0e8f580987aec9f93bd05c402d3bc870f2ea24016a179f216c20523f9bcba9"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/152/reports/helper-name-collision.json",
+      "bytes": 4367162,
+      "sha256": "2b5f557e9ad89869f4d6163e12d9c3052bb9c4b79e973092cd954746081073f8"
+    }
+  ]
+}

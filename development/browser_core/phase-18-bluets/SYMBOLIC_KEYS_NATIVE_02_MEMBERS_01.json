@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:02abdba6835124bb585bf13149d5b6dcaf072911",
+  "archive": "SYMBOLIC_KEYS_NATIVE_02.tar.gz",
+  "entries": [
+    {
+      "path": "accepted-native/suite-artifacts/135/observations/async-arrow-finally.json",
+      "bytes": 34243434,
+      "sha256": "9f4111729c49bc0b304fc4b8f9e0f67a819f5dc800bc399ca9c899e177049fbd"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/135/reports/async-arrow-finally.json",
+      "bytes": 8589417,
+      "sha256": "c29f516cc5a3879da7a90a9a70ca8ede569991ff959af3e33bea5bf54edc25f4"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/136/observations/async-class-method.json",
+      "bytes": 273851,
+      "sha256": "a2291e848586d97304d6000f6dee7c85135faa1729bb891a6e41555bcdd90091"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/136/reports/async-class-method.json",
+      "bytes": 828208,
+      "sha256": "e7114584e493c0afa0e44a1dbafb2b9e4fc15a4fc42d44cfc54750b97d3e9678"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/137/observations/async-generator-exception-template.json",
+      "bytes": 324986,
+      "sha256": "f30cd845efff66967efc4dcd91d982e12b7dfb30bc24ffcbc49c342ef3973004"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/137/reports/async-generator-exception-template.json",
+      "bytes": 280777,
+      "sha256": "0cf1e8363e60a8c3f7a4c89ff641f567c131c3dcfb178f1f4d69a93b67bc2c48"
+    }
+  ]
+}

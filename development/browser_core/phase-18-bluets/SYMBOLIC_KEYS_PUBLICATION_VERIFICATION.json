@@ -1,0 +1,21 @@
+{
+  "sourceRevision": "backend-tree:02abdba6835124bb585bf13149d5b6dcaf072911",
+  "conclusion": "success",
+  "artifactFiles": 31,
+  "independentlyVerifiedMembers": 190239,
+  "todoExpectedOpen": false,
+  "verifiedAt": "2026-11-13T18:18:59.064108+00:00",
+  "measurement": {
+    "path": "SYMBOLIC_KEYS_MEASUREMENT.json",
+    "sha256": "2d84446c473070324ec5f094d15c78710c16ddcc3c26bf793c2b8d0eb30a748d"
+  },
+  "artifactIndex": {
+    "path": "SYMBOLIC_KEYS_ARTIFACTS.json",
+    "sha256": "8406eee08d9f2fe8816e84298ad92a83593af293c91734769dffceba3654ca76"
+  },
+  "verifier": {
+    "archive": "SYMBOLIC_KEYS_AUDIT_01.tar.gz",
+    "path": "check_publication.py",
+    "sha256": "3ca942d17d6074260b95a30e0e23def5ca10bbb50191987358fc70f256a19637"
+  }
+}

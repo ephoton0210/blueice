@@ -12,8 +12,10 @@ mod conditional;
 mod keys;
 mod literal_order;
 mod mapped;
+mod scalars;
 mod string_mapping;
 mod templates;
+pub(in crate::checker) use scalars::primitive_alias;
 
 pub(in crate::checker) const STRING_LITERAL_PROFILE: &str = "\0bluets:string-literal-profile";
 
@@ -167,6 +169,9 @@ pub(super) fn diagnostic_type(
     aliases: &BTreeMap<String, TypeDefinition>,
     budget: &mut TypeExpansionBudget,
 ) -> Type {
+    if let Some(scalar) = primitive_alias(value, aliases, budget) {
+        return scalar;
+    }
     if matches!(value, Type::Named { name, .. } if super::type_relations::non_null_alias(name, aliases))
     {
         return super::inference::result_type(value, &BTreeMap::new(), aliases, budget);
@@ -260,9 +265,13 @@ pub(super) fn is_operator_context(
     value: &Type,
     aliases: &BTreeMap<String, TypeDefinition>,
 ) -> bool {
-    let mut value = value;
+    let mut pending = vec![value];
     let mut visited = HashSet::new();
-    loop {
+    while let Some(value) = pending.pop() {
+        if let Type::Union(parts) | Type::Intersection(parts) = value {
+            pending.extend(parts);
+            continue;
+        }
         if matches!(value, Type::Named { name, .. } if super::type_relations::non_null_alias(name, aliases))
         {
             return true;
@@ -276,14 +285,15 @@ pub(super) fn is_operator_context(
             return true;
         }
         let Type::Named { name, .. } = value else {
-            return false;
+            continue;
         };
-        if !visited.insert(name) {
-            return false;
+        if !visited.insert(name.as_str()) {
+            continue;
         }
         let Some(definition) = aliases.get(name) else {
-            return false;
+            continue;
         };
-        value = &definition.value;
+        pending.push(&definition.value);
     }
+    false
 }

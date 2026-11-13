@@ -1,0 +1,112 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:02abdba6835124bb585bf13149d5b6dcaf072911",
+  "archive": "SYMBOLIC_KEYS_NATIVE_08.tar.gz",
+  "entries": [
+    {
+      "path": "accepted-native/suite-artifacts/153/observations/helper-name-collision.json",
+      "bytes": 33445732,
+      "sha256": "ad0e8f580987aec9f93bd05c402d3bc870f2ea24016a179f216c20523f9bcba9"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/155/observations/interop-default-function-boundary.json",
+      "bytes": 5071,
+      "sha256": "67c23e954caba5909dc34fc40899c5d9ec61635c1465fb41f57ac2451ebf5b61"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/155/observations/interop-expression-boundary.json",
+      "bytes": 7704,
+      "sha256": "2db7688198d7e40650d949a7d9d75d6fbe48d6fc38374a435ceb34577fdb6f45"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/155/observations/interop-expression-maps.json",
+      "bytes": 2657727,
+      "sha256": "b95e178e779d35c17e51effd8e2ca21e1f209f9737016b4a33035779b02dc4b6"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/155/reports/interop-expression-maps.json",
+      "bytes": 328,
+      "sha256": "a8933f769d4f38236b8aa0e9c403f3e7f53b655f4cc00058fb8c902b1b9184a7"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/156/observations/interop-module-boundary.json",
+      "bytes": 29295,
+      "sha256": "4bcbeaa49944f6a1ef2de55bded9d3313e34669131ae3e023dfc5c55d4a83a41"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/156/observations/interop-module-maps.json",
+      "bytes": 2657727,
+      "sha256": "b95e178e779d35c17e51effd8e2ca21e1f209f9737016b4a33035779b02dc4b6"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/156/reports/interop-complete-module-acceptance-partial.json",
+      "bytes": 68286,
+      "sha256": "542d2c59180d03ffeb4226e97591ba1a6ad936171edc94105d0ebc87fb937fa7"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/156/reports/interop-complete-module-acceptance.json",
+      "bytes": 8108363,
+      "sha256": "7f06b2228c318eff6d409a5f39e614ba0aa67e2a4a47037da4c4a24ea7b92c4f"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/156/reports/interop-module-acceptance-partial-progress.jsonl",
+      "bytes": 840,
+      "sha256": "71759f47b9b85fd6bee784d5ee5034acc568835620e5774192259c704c28c50b"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/156/reports/interop-module-acceptance-progress.jsonl",
+      "bytes": 101652,
+      "sha256": "3010822ae70d23453553fb4fde551f9f48f29ce04e35f2a96a48a58a399b3429"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/157/observations/iteration-iterable-bindings-forof.json",
+      "bytes": 1523388,
+      "sha256": "851e1f021ddfcd97c87e9180256a7ab3b512e1b752647de6a7bca8d3185a3005"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/157/reports/iteration-iterable-bindings-forof.json",
+      "bytes": 3995057,
+      "sha256": "9f038bb2d6b39ec5882c282af1c31a2504b93f05e63fe1595ef75721bb7df123"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/158/reports/decorator-class-phase.json",
+      "bytes": 342666,
+      "sha256": "bf9eca5582dd482fdb77e474a3996eac20790cfc5733e55135f6ca2b21a1f757"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/159/observations/decorator-legacy-whole.json",
+      "bytes": 1110975,
+      "sha256": "002cad10584d14b8864d566e51a5bcfc13a54bb1acd53b2467c4b56c064a2143"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/159/reports/decorator-legacy-whole.json",
+      "bytes": 1533199,
+      "sha256": "79aed228928690a784bd1e8b3a0fafd431850e46ec0167618854ef8907c1e60a"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/161/observations/async-arrow-lexical-this.json",
+      "bytes": 280000,
+      "sha256": "91e653aa5607a72c4b9dc23e1f8683caf73a97ff56c91e0b16db00fc3f2d3682"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/161/reports/async-arrow-lexical-this.json",
+      "bytes": 375270,
+      "sha256": "1d6a669c804e2e747ba0c58a618ddc1eb539497868aedb1928810e7310ae5fbd"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/162/observations/decorator-literal-accessors.json",
+      "bytes": 535191,
+      "sha256": "2260c66e3993c6109835bffc13826c1e2044db0adee788ef15e9f43445c86b0f"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/162/reports/decorator-literal-accessors.json",
+      "bytes": 6263751,
+      "sha256": "11694be5a42ccf4209a8b38ba650cf8b4f691c6980a9a757882cb147c80523c6"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/163/observations/decorator-literal-auto-accessors.json",
+      "bytes": 408165,
+      "sha256": "cd35aca30e266febcb0d7bed58d029ececddce9dbdb04e370ae88e5feee06e82"
+    }
+  ]
+}

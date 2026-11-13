@@ -16,7 +16,20 @@ mod result_parameters;
 mod results;
 mod surfaces;
 
-pub(crate) const VERSION: &str = "bluets-generic-inference/12";
+pub(crate) const VERSION: &str = "bluets-generic-inference/13";
+
+pub(in crate::checker) fn depends_on_parameter(
+    value: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    budget: &mut TypeExpansionBudget,
+) -> bool {
+    let parameters = aliases
+        .iter()
+        .filter(|(_, definition)| definition.kind == TypeDefinitionKind::Parameter)
+        .map(|(name, _)| name.clone())
+        .collect();
+    dependencies::contains(value, &parameters, aliases, &mut HashSet::new(), budget)
+}
 
 pub(in crate::checker) fn reverse_mapped_object(
     mapped: &crate::parser::MappedType,

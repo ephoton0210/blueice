@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:02abdba6835124bb585bf13149d5b6dcaf072911",
+  "archive": "SYMBOLIC_KEYS_COMPILERS_04.tar.gz",
+  "entries": [
+    {
+      "path": "native-cli-snapshot",
+      "bytes": 50123264,
+      "sha256": "56e4feb0e82b461a28e4e83e0cd38b60713a04ac190439bd13114f209bc360bc"
+    }
+  ]
+}

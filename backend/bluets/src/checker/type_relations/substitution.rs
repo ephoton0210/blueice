@@ -303,7 +303,7 @@ pub(crate) fn type_identity(value: &Type) -> String {
         Type::Conditional(_) | Type::Infer(_) | Type::Mapped(_) | Type::Readonly(_) => {
             value.operator_text(type_identity).expect("operator type")
         }
-        Type::KeyOf(value) => format!("keyof {}", type_identity(value)),
+        Type::KeyOf(value) => format!("keyof({})", type_identity(value)),
         Type::IndexedAccess { object, index, .. } => {
             format!("{}[{}]", type_identity(object), type_identity(index))
         }
@@ -361,7 +361,14 @@ pub(crate) fn type_label(value: &Type) -> String {
         | Type::TemplateLiteral(_)
         | Type::Readonly(_)
         | Type::IndexedRecord { .. } => value.operator_text(type_label).expect("operator type"),
-        Type::KeyOf(value) => format!("keyof {}", type_label(value)),
+        Type::KeyOf(value) => {
+            let text = type_label(value);
+            if value.needs_parentheses_after_keyof() {
+                format!("keyof ({text})")
+            } else {
+                format!("keyof {text}")
+            }
+        }
         Type::IndexedAccess { object, index, .. } => {
             format!("{}[{}]", type_label(object), type_label(index))
         }

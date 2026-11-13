@@ -27,9 +27,18 @@ impl ScopeModel<'_> {
             let Some(declared) = parameter.annotation.as_ref() else {
                 continue;
             };
+            let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+            let scalar = crate::checker::type_operators::primitive_alias(
+                declared,
+                &self.type_definitions,
+                &mut budget,
+            );
             if parameter.pattern.is_some()
                 || parameter.rest
-                || matches!(declared, Type::Any | Type::Boolean)
+                || matches!(
+                    scalar.as_ref().unwrap_or(declared),
+                    Type::Any | Type::Boolean
+                )
             {
                 continue;
             }

@@ -189,6 +189,9 @@ impl ModuleChecker<'_> {
         if let Some(detail) = self.keyof_constraint_detail(actual, expected) {
             return Some(detail);
         }
+        if let Some(detail) = self.symbolic_key_detail(actual, expected) {
+            return Some(detail);
+        }
         if let (
             Type::GenericFunction {
                 type_parameters,

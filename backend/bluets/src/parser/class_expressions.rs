@@ -24,6 +24,13 @@ pub(super) fn parameter_source_name(name: &str) -> Option<&str> {
         .flatten()
 }
 
+pub(crate) fn type_parameter_origin(name: &str) -> Option<(&str, usize)> {
+    let identity = name.strip_prefix("#typeparam@")?;
+    let (origin, _) = identity.rsplit_once(':')?;
+    let (module, offset) = origin.rsplit_once(':')?;
+    Some((module, offset.parse().ok()?))
+}
+
 impl ClassDeclaration {
     pub fn export_name(&self) -> &str {
         if self.default_export {

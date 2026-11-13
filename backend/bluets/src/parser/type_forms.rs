@@ -135,6 +135,19 @@ impl Type {
         }
     }
 
+    /// Low-precedence operands need an explicit grouping after a key operator.
+    pub(crate) fn needs_parentheses_after_keyof(&self) -> bool {
+        matches!(
+            self,
+            Self::Union(_)
+                | Self::Intersection(_)
+                | Self::Conditional(_)
+                | Self::Function { .. }
+                | Self::GenericFunction { .. }
+        ) || matches!(self, Self::CallableRecord {fields,signatures}
+                if fields.is_empty() && signatures.len()==1 && signatures[0].constructor_arrow)
+    }
+
     /// A shallow visitor, used where operator children have no local binding.
     pub(crate) fn operator_children(&self) -> Option<Vec<&Type>> {
         Some(match self {

@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "typescript": "5.9.3",
-  "source_revision": "backend-tree:bfee3b4ec32820c6c242798b6d2d90fdb6e00600",
-  "source_graph_sha256": "d84b284d71cfe2d42b8140d43081fdede20560000ad3a3c52aba4ae00da74d90",
+  "source_revision": "backend-tree:02abdba6835124bb585bf13149d5b6dcaf072911",
+  "source_graph_sha256": "2fc9d30cf0dfc7c2795e5f8454df0c75ee1f6eeb7aa36ecb4c9302c32ca96b15",
   "fixture_directories": 3392,
   "diagnostic_programs": 3182,
   "diagnostic_templates": 221,
@@ -2304,6 +2304,20 @@
         "backend/bluets/tests/fixtures/string_intrinsics/literal-context-regressions.json": "aec250d61e5f03aea46ad1bafb9e6bfb652ca35d",
         "backend/bluets/tests/fixtures/string_intrinsics/reference.json": "c38c0a9408866fb4f18e7a8c80a08001cb822db8",
         "backend/bluets/tests/string_intrinsics.rs": "73bd4c508bac78bcfa38dbe765fb8c35056d96cd"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/symbolic_keys.rs",
+      "ignored_tests": [
+        "native_producers_consumers_syntax_and_execution_are_reproducible"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/symbolic_keys/FROZEN.json": "d2bb23180af51421db094cafe6419b27325da249",
+        "backend/bluets/tests/fixtures/symbolic_keys/algebra-controls.json": "f846cfa827f0b61922cc29f3e9e234c0f71b520c",
+        "backend/bluets/tests/fixtures/symbolic_keys/boundary-controls.json": "6f0c3095db6508f4f5d07ca99fcf041d9b5e2044",
+        "backend/bluets/tests/fixtures/symbolic_keys/cases.json": "8b1be9399ffc70fd8f4bb0ad351dec4ba33eb612",
+        "backend/bluets/tests/fixtures/symbolic_keys/reference.json": "45d3e4dcb1a43ef7c06ef48e6c8a31fc318b5139",
+        "backend/bluets/tests/symbolic_keys.rs": "9a56c1cd12aec78bc861b93a557f0aaf1280f455"
       }
     },
     {

@@ -13,6 +13,7 @@ mod more_types;
 mod parameters;
 mod string_mapping;
 mod surfaces;
+mod symbolic_keys;
 mod variance;
 use crate::checker::type_operators::union;
 pub(super) use compatibility::constructor_relation_type;
@@ -178,11 +179,14 @@ fn assignable_inner(
     visited: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> bool {
-    if *expected == Type::Never {
-        return type_operators::expanded(actual, aliases, visited, budget) == Type::Never;
-    }
     if actual == expected {
         return true;
+    }
+    if let Some(result) = symbolic_keys::assignable(actual, expected, aliases, visited, budget) {
+        return result;
+    }
+    if *expected == Type::Never {
+        return type_operators::expanded(actual, aliases, visited, budget) == Type::Never;
     }
     // Preserve a symbolic key set's declaration identity before approximation
     // as broad property keys can expand the parameter's constraint.
@@ -493,6 +497,16 @@ fn assignable_inner(
                     is_assignable(actual, &expanded, aliases, &mut path, budget)
                 };
             }
+        }
+    }
+    // A restriction can retain a whole union even when none of that union's
+    // individual alternatives contains the restriction by itself.
+    if let (Type::Intersection(parts), Type::Union(_)) = (actual, expected) {
+        if parts
+            .iter()
+            .any(|part| is_assignable(part, expected, aliases, &mut visited.clone(), budget))
+        {
+            return true;
         }
     }
     // Compare named union constituents before erasing their generic identity
@@ -971,7 +985,7 @@ pub(super) fn instantiate_named(
             | Type::IndexedAccess { .. }
     ) {
         return super::type_operators::resolve(value, aliases, visited, budget)
-            .filter(|resolved| !matches!(value, Type::StringMapping(_)) || resolved != value);
+            .filter(|resolved| resolved != value);
     }
     let Type::Named { name, arguments } = value else {
         return None;

@@ -255,24 +255,25 @@ pub(super) fn emit_declaration(
                         output.push('?');
                     }
                     output.push_str(": ");
-                    output.push_str(
-                        &inferred
-                            .and_then(|context| context.parameter_type(parameter.span.start))
-                            .map(str::to_owned)
-                            .unwrap_or_else(|| {
-                                parameter
-                                    .annotation
-                                    .as_ref()
-                                    .map(type_to_ts)
-                                    .unwrap_or_else(|| {
-                                        if crate::parser::is_javascript(&module.id) {
-                                            "any".to_string()
-                                        } else {
-                                            "unknown".to_string()
-                                        }
-                                    })
-                            }),
-                    );
+                    let rendered = inferred
+                        .and_then(|context| context.parameter_type(parameter.span.start))
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| {
+                            parameter
+                                .annotation
+                                .as_ref()
+                                .map(type_to_ts)
+                                .unwrap_or_else(|| {
+                                    if crate::parser::is_javascript(&module.id) {
+                                        "any".to_string()
+                                    } else {
+                                        "unknown".to_string()
+                                    }
+                                })
+                        });
+                    output.push_str(&super::authored_type::parameter(
+                        module, parameter, rendered,
+                    ));
                 }
                 output.push_str("): ");
                 output.push_str(

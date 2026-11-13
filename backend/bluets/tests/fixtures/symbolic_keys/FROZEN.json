@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "recordedAt": "2026-11-13T12:07:51.412507+00:00",
+  "scope": "Primary inputs/reference/policy controls were frozen before checker/emitter production changes. Supplementary algebra controls were added after primary repairs and frozen before repairing their independently observed differences. Completion requires full same-source acceptance.",
+  "baselineCommit": "5f12dbca05ebc091208fd8f851aec3acb05c6b83",
+  "baselineSourceRevision": "backend-tree:bfee3b4ec32820c6c242798b6d2d90fdb6e00600",
+  "sha256": {
+    "cases.json": "c9a8dce1ca266bd45e44a2e9b8175a5885a0dc14bbfdb2b83c86d1847a4222a6",
+    "reference.json": "3100219aefab3dfbac9ae579c1a7a49919da75a4fe4992041789dd77d0e1e3e3",
+    "boundary-controls.json": "c7d9f4fa5eccf1045ddae70d641c984edb0b360dc3b60383179e5c28298de317"
+  },
+  "counts": {
+    "forms": 64,
+    "profiles": 4,
+    "comparisons": 256,
+    "accepted": 172,
+    "rejected": 84,
+    "declarationFiles": 176,
+    "consumers": 344,
+    "syntax": 176,
+    "runtime": 24
+  },
+  "separateBoundaryControls": 12,
+  "originalDiscoverySourcesUnchanged": true,
+  "broaderFeatureRowsOpen": 22,
+  "fullTypeScriptParity": false,
+  "supplementarySha256": {
+    "algebra-controls.json": "4c7a514fa7384a38fe642755febf840638e35aa2f53b7215561407848f2dd5bd"
+  },
+  "supplementaryControls": 16,
+  "supplementaryInventoryCredit": 0
+}

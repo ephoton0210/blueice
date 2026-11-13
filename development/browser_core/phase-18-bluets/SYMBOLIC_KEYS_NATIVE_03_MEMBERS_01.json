@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:02abdba6835124bb585bf13149d5b6dcaf072911",
+  "archive": "SYMBOLIC_KEYS_NATIVE_03.tar.gz",
+  "entries": [
+    {
+      "path": "accepted-native/suite-artifacts/138/observations/async-generator-finally.json",
+      "bytes": 34736312,
+      "sha256": "58212d155fe6547d3d7cbfe9b0a2d605c868f46c960d91a64b338dbe87e97f97"
+    }
+  ]
+}

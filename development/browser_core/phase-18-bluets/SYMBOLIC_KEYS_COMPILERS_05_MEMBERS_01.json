@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:02abdba6835124bb585bf13149d5b6dcaf072911",
+  "archive": "SYMBOLIC_KEYS_COMPILERS_05.tar.gz",
+  "entries": [
+    {
+      "path": "native-map-test-executable",
+      "bytes": 58894736,
+      "sha256": "7158e5b6e98c8ddb7a5efa4868298ec2f4634ad905780082c224294c7a47286b"
+    }
+  ]
+}

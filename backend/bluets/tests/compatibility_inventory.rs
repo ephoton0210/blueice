@@ -24,6 +24,8 @@ mod case_sources;
 mod case_string_intrinsics;
 #[path = "fixtures/compatibility_inventory/case_supplement.rs"]
 mod case_supplement;
+#[path = "fixtures/compatibility_inventory/case_symbolic_keys.rs"]
+mod case_symbolic_keys;
 #[path = "fixtures/compatibility_inventory/inventory.rs"]
 mod inventory;
 #[path = "fixtures/compatibility_inventory/rust_facts.rs"]

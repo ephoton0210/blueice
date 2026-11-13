@@ -73,6 +73,13 @@ fn normalize(
     if budget.exhausted {
         return value.clone();
     }
+    if form == Form::Diagnostic {
+        if let Some(scalar) =
+            crate::checker::type_operators::primitive_alias(value, aliases, budget)
+        {
+            return scalar;
+        }
+    }
     if form == Form::Diagnostic
         && matches!(value, Type::Named {name, ..} if crate::checker::type_relations::non_null_alias(name, aliases))
     {

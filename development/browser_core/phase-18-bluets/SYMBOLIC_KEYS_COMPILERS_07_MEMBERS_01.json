@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:02abdba6835124bb585bf13149d5b6dcaf072911",
+  "archive": "SYMBOLIC_KEYS_COMPILERS_07.tar.gz",
+  "entries": [
+    {
+      "path": "workspace-map-test-executable",
+      "bytes": 58896720,
+      "sha256": "3b85ecd8b785fc7484bcdce8d8fa702067655197d7aeb5d6f15ce74775343e87"
+    }
+  ]
+}

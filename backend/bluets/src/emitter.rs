@@ -23,6 +23,7 @@ pub(crate) use system::HELPER_SOURCE as SYSTEM_HELPER_SOURCE;
 pub use targets::TARGET_HELPER_V1_VERSION;
 pub(crate) use targets::{STRING_LITERAL_LOWERING_VERSION, TARGET_HELPER_V1_SOURCES};
 
+mod authored_type;
 mod callable_objects;
 mod class_expressions;
 mod class_lowering;
@@ -738,7 +739,14 @@ fn type_to_ts(value: &Type) -> String {
         | Type::TemplateLiteral(_)
         | Type::Readonly(_)
         | Type::IndexedRecord { .. } => value.operator_text(type_to_ts).expect("operator type"),
-        Type::KeyOf(value) => format!("keyof {}", type_to_ts(value)),
+        Type::KeyOf(value) => {
+            let operand = type_to_ts(value);
+            if value.needs_parentheses_after_keyof() {
+                format!("keyof ({operand})")
+            } else {
+                format!("keyof {operand}")
+            }
+        }
         Type::IndexedAccess { object, index, .. } => {
             format!("{}[{}]", type_to_ts(object), type_to_ts(index))
         }
@@ -845,7 +853,14 @@ fn type_to_ts(value: &Type) -> String {
             .join(" | "),
         Type::Intersection(values) => values
             .iter()
-            .map(type_to_ts)
+            .map(|value| {
+                let text = type_to_ts(value);
+                if matches!(value, Type::Union(_)) {
+                    format!("({text})")
+                } else {
+                    text
+                }
+            })
             .collect::<Vec<_>>()
             .join(" & "),
     }

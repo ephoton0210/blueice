@@ -1,0 +1,237 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:02abdba6835124bb585bf13149d5b6dcaf072911",
+  "archive": "SYMBOLIC_KEYS_NATIVE_09.tar.gz",
+  "entries": [
+    {
+      "path": "accepted-native/suite-artifacts/163/reports/decorator-literal-auto-accessors.json",
+      "bytes": 4740914,
+      "sha256": "de0516caaeb0dfffdcdf31ce1be6878cccaa71216c5d0958c4e723a8d8fc5d4f"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/164/observations/decorator-literal-fields.json",
+      "bytes": 588191,
+      "sha256": "131106f467102186e4ae878b00accde73527b232a3ab861b4ece775dff7d2168"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/164/reports/decorator-literal-fields.json",
+      "bytes": 6023239,
+      "sha256": "74d52f3f286873e3525c12c4cbac0bdc19545a7dc29d8d5d94855054ccb98d28"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/165/reports/decorator-literal-methods.json",
+      "bytes": 7618790,
+      "sha256": "d9256c77a11c941ec2989ff9b6680a929bbdf193d9284b3e6b3d1e7c224f708f"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/166/observations/decorator-literal-replacement-order.json",
+      "bytes": 598403,
+      "sha256": "6f681734094d843333cb50eb802140d4cd3f78e70e7283b3a04e48aafe9fc5dd"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/166/reports/decorator-literal-replacement-order.json",
+      "bytes": 359839,
+      "sha256": "ab2f6e2c14f244498dc990952a5a9c4b16dd5d772022f4acfeb74a0c0eb60197"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/167/observations/metadata-callable-alias.json",
+      "bytes": 386909,
+      "sha256": "0becb4ab00d8e3b99551b559c96cf67d708a98c04d1d9ceff6772b30249e93e2"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/167/reports/metadata-callable-alias-controls-progress.jsonl",
+      "bytes": 5869,
+      "sha256": "1de099b21aeed10ed4a4a6996d725c3b60951062e1842c9aa5578dd7f9ace01d"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/167/reports/metadata-callable-alias-controls.json",
+      "bytes": 3009256,
+      "sha256": "ea50d7ebbfc4d43e92582f002504ecb88d984b751232e4588b97dd7e2c432761"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/167/reports/metadata-callable-alias.json",
+      "bytes": 114952,
+      "sha256": "d3c3d8b792e2927e62507bc28ebe407e5cb8ad8f165e7979eb45177e901178ee"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/168/observations/metadata-class-type-alias.json",
+      "bytes": 385475,
+      "sha256": "14c7869bc39371fc3c152a6108d86fe7176a895a97ac05f9b0fc2e3b09c06863"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/168/reports/metadata-class-type-alias-controls-progress.jsonl",
+      "bytes": 5869,
+      "sha256": "fdc87dddc1961093083553208faa910ce0935f155e5a1eaed51d2c505fe4c311"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/168/reports/metadata-class-type-alias-controls.json",
+      "bytes": 3003854,
+      "sha256": "b214b1b383077654d3ece86526617f2b101a7825d3243f63d872a45609247952"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/168/reports/metadata-class-type-alias.json",
+      "bytes": 114656,
+      "sha256": "206949eb273041196d26abd64829e2a2ef6b9bd097f63b2c8015b2db6dea2069"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/169/observations/metadata-class-adjacent.json",
+      "bytes": 54339,
+      "sha256": "970f971a6f19714c8b81f18aa8a59c3066378899be812a4c5a32a139cff6398e"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/169/observations/metadata-classes.json",
+      "bytes": 1627116,
+      "sha256": "3304137cbec0813d71af833044d486826c80243fafd8a54944ebb02a2f4ce858"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/169/reports/metadata-class-adjacent.json",
+      "bytes": 4623,
+      "sha256": "3bc037d45405fd263274aad391ec468bab301608d436eaa0b91e80bf67f7ec85"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/169/reports/metadata-class-controls-progress.jsonl",
+      "bytes": 24620,
+      "sha256": "a61e353a4900fbc02c522032f0e8e213fe1d4431691a9cf25c61f0ee8231cdce"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/169/reports/metadata-class-controls.json",
+      "bytes": 12893602,
+      "sha256": "60ceb9b5ed43c47eb285f3c2f5395847ee79128bbe9b4f5d07992be00dea213a"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/169/reports/metadata-classes.json",
+      "bytes": 479609,
+      "sha256": "7adea9a8c42a833b8cdd35749082ccb5b5264ec184874634a4e2cd3a8eeb56d6"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/170/observations/metadata-import-type-class.json",
+      "bytes": 401852,
+      "sha256": "6595f5923a06bc321cc9124eb244d61c075f67a1d0a8de543617269c2dd3f2eb"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/170/reports/metadata-import-type-class-controls-progress.jsonl",
+      "bytes": 6155,
+      "sha256": "5cb1e36621b5196baf47bd81da598b3fb81e69decc1796b9342b021ae7adcef9"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/170/reports/metadata-import-type-class-controls.json",
+      "bytes": 3137210,
+      "sha256": "1d1f11065b8754f588cb6c52a1ecdfdba6f55b76595b313b097603c61f76e04a"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/170/reports/metadata-import-type-class.json",
+      "bytes": 120546,
+      "sha256": "5fae8f9d8ebfe3eddc426bce3fc68f432c49c660596386789cc7c063cda0d15e"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/171/observations/metadata-inline-import-type-class.json",
+      "bytes": 402153,
+      "sha256": "45d1f63e7aeb2b3d3b9ab8c841003099d2d2ba1ab4ba77152773882e73de5dab"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/171/reports/metadata-inline-import-type-class-controls-progress.jsonl",
+      "bytes": 6155,
+      "sha256": "c63ea97757fb6baf97256439c372f67bd926debb17dadbc3a1ab1c9b134bcf58"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/171/reports/metadata-inline-import-type-class-controls.json",
+      "bytes": 3137210,
+      "sha256": "1bc980f0e182c97deae9ed1a97967bbd7d1e39b3343b823123a3527aaa1368c1"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/171/reports/metadata-inline-import-type-class.json",
+      "bytes": 120546,
+      "sha256": "038af6e035290343f5e1db1b46548efb1cdcbd57bb83c8d2939d703d6a837a58"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/172/observations/metadata-imported-interface.json",
+      "bytes": 385188,
+      "sha256": "5217369ea9ffb33c1d815a400883d73b033535fca6da6c0b24753f638bf8c0f1"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/172/reports/metadata-imported-interface-controls-progress.jsonl",
+      "bytes": 5869,
+      "sha256": "1a552e37406112299d256d7d776b5131d2ecafd5112e0c87eff2eb98ae438711"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/172/reports/metadata-imported-interface-controls.json",
+      "bytes": 3003854,
+      "sha256": "8979ddc542cdda860fe343109eeb719d227505ded992c3dfe7b62ff02c19e8a7"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/172/reports/metadata-imported-interface.json",
+      "bytes": 114656,
+      "sha256": "52324bb988934ffdd3fb80f7c3ef653f1e323a0d061a0387adbdd7a8004a9b75"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/173/observations/metadata-local-class-type-alias.json",
+      "bytes": 404669,
+      "sha256": "c1a7e93687d10cd5901795df83f0a32a5c74c038e52151f67acf38d98b43cf1f"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/173/reports/metadata-local-class-type-alias-controls-progress.jsonl",
+      "bytes": 6155,
+      "sha256": "d6d0ee2b7344d3ded1f4eaaf6646e52107baf5641ea6999fcae01a024038a1be"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/173/reports/metadata-local-class-type-alias-controls.json",
+      "bytes": 3131516,
+      "sha256": "0b5fd98333046218ff67285b5eac94e160cb07d041ccf11d69da92ddcc6693ee"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/173/reports/metadata-local-class-type-alias.json",
+      "bytes": 120234,
+      "sha256": "37b16fe8b0bc2e3705830f8e6f3dd948de81a26f5af6511fd79fa764b0701657"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/174/observations/metadata-namespace-reexported-class.json",
+      "bytes": 446448,
+      "sha256": "ac002116cea6542359fce917c6a12b7cb0ec5ddeb22eae31ee9b5da345e5e2d5"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/174/reports/metadata-namespace-reexported-class-controls-progress.jsonl",
+      "bytes": 9264,
+      "sha256": "82218697b287b99e2379ec5ecd95d364f66f79bd259e5e425a61a1da1ec2276b"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/174/reports/metadata-namespace-reexported-class-controls.json",
+      "bytes": 3726535,
+      "sha256": "52d43062905b38489e6e131dbf0aa0d1f2db3dad682dbed9ae6827d987208724"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/174/reports/metadata-namespace-reexported-class.json",
+      "bytes": 212507,
+      "sha256": "5a9ad1432758f4cf456eced27f1b1b3beea4f8ca925278f75adb620a4006dd41"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/175/observations/metadata-nullable-alias.json",
+      "bytes": 386613,
+      "sha256": "a11fed7591cba3fd9df0a61834324b1f7a641280cca839091d5f6ac3a4f8ad58"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/175/reports/metadata-nullable-alias-controls-progress.jsonl",
+      "bytes": 5869,
+      "sha256": "02c9e90e3a3ee01a525fef4dd7513f95382cef3c5a882f423abf51eec98cf87a"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/175/reports/metadata-nullable-alias-controls.json",
+      "bytes": 3003854,
+      "sha256": "b41225f8631b001b5628fbd1ed268c3160c1b241e22fd05012dcf767547c039d"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/175/reports/metadata-nullable-alias.json",
+      "bytes": 114656,
+      "sha256": "40bde64f31acc1c8d4857cff7f6a7482c781a2c59426e7c03b8d7fc8b1ee7218"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/176/observations/metadata-numeric-enum.json",
+      "bytes": 404775,
+      "sha256": "5594c25207a4f811026b511c42c81a8d6cec3b0d42961c7e6b9ba1bb5ba5cdff"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/176/reports/metadata-numeric-enum-controls-progress.jsonl",
+      "bytes": 6155,
+      "sha256": "17e3877b31c908749532c701f5f51a387f31e6b19b21c3e81e4f0e9216f85cb2"
+    }
+  ]
+}

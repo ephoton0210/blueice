@@ -77,7 +77,14 @@ fn text_options(
         | Type::TemplateLiteral(_)
         | Type::Readonly(_)
         | Type::IndexedRecord { .. } => value.operator_text(render).expect("operator type"),
-        Type::KeyOf(value) => format!("keyof {}", render(value)),
+        Type::KeyOf(value) => {
+            let text = render(value);
+            if value.needs_parentheses_after_keyof() {
+                format!("keyof ({text})")
+            } else {
+                format!("keyof {text}")
+            }
+        }
         Type::IndexedAccess { object, index, .. } => {
             format!("{}[{}]", render(object), render(index))
         }
@@ -287,6 +294,7 @@ fn text_options(
         }
         Type::Union(values) => {
             let literal_union = values.iter().all(Type::is_literal);
+            let deferred_keys = values.iter().all(|value| matches!(value, Type::KeyOf(_)));
             let inferred_records = values.iter().all(|value| {
                 matches!(value, Type::Record(fields)
                 if fields.iter().all(|field| field.span.module == "<inferred>"))
@@ -301,7 +309,7 @@ fn text_options(
                     }
                 })
                 .collect::<Vec<_>>();
-            if !literal_union && !inferred_records {
+            if !literal_union && !inferred_records && !deferred_keys {
                 values.sort_by_key(|value| {
                     (
                         match value.as_str() {
@@ -320,7 +328,25 @@ fn text_options(
             values.dedup();
             values.join(" | ")
         }
-        Type::Intersection(values) => values.iter().map(render).collect::<Vec<_>>().join(" & "),
+        Type::Intersection(values) => values
+            .iter()
+            .map(|value| {
+                let text = render(value);
+                if matches!(
+                    value,
+                    Type::Union(_)
+                        | Type::Intersection(_)
+                        | Type::Function { .. }
+                        | Type::GenericFunction { .. }
+                        | Type::Conditional(_)
+                ) {
+                    format!("({text})")
+                } else {
+                    text
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" & "),
         Type::Any => "any".into(),
         Type::Unknown | Type::StrictUnknown => "unknown".into(),
         Type::BigInt => "bigint".into(),

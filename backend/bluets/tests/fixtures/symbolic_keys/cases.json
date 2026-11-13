@@ -1,0 +1,548 @@
+{
+  "schema": 1,
+  "scope": "P0-E authored contract; Native observations must be calibrated and frozen before production edits.",
+  "options": {
+    "strict": true,
+    "lib": [
+      "ES5"
+    ],
+    "declaration": true,
+    "noEmitOnError": true
+  },
+  "profiles": [
+    {
+      "id": "es5-commonjs",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS"
+      }
+    },
+    {
+      "id": "es5-esnext",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "ESNext"
+      }
+    },
+    {
+      "id": "es2022-commonjs",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "CommonJS"
+      }
+    },
+    {
+      "id": "es2022-esnext",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext"
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "same-parameter",
+      "source": "export function result<E, K extends keyof E>(key: K, consume: (key: keyof E) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nresult<{x: number}, \"x\">(\"x\", key => { const accepted: \"x\" = key; });\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number}, \"x\">(\"y\", () => {});\n"
+      },
+      "runtime": "var observed = \"\"; check(\"x\", function(key) { observed = key; }); if (observed !== \"x\") throw Error(\"key callback\");"
+    },
+    {
+      "id": "same-parameter-capture",
+      "source": "export function result<E>(consume: (key: keyof E) => void) { return function<K extends keyof E>(key: K) { consume(key); }; }\n",
+      "origin": "unchanged-discovery-32",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nresult<{x: number}>(key => { const accepted: \"x\" = key; })<\"x\">(\"x\");\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number}>(() => {})<\"y\">(\"y\");\n"
+      },
+      "runtime": "var observed = \"\"; check(function(key) { observed = key; })(\"x\"); if (observed !== \"x\") throw Error(\"captured key callback\");"
+    },
+    {
+      "id": "unrelated-parameters",
+      "source": "export function result<E, F, K extends keyof F>(key: K, consume: (key: keyof E) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32"
+    },
+    {
+      "id": "shadowed-parameters",
+      "source": "export function result<E>(consume: (key: keyof E) => void) { return function<E, K extends keyof E>(key: K) { consume(key); }; }\n",
+      "origin": "unchanged-discovery-32"
+    },
+    {
+      "id": "equal-constraints",
+      "source": "export function result<E extends {x: number}, F extends {x: number}, K extends keyof F>(key: K, consume: (key: keyof E) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32"
+    },
+    {
+      "id": "extends-forward",
+      "source": "export function result<E extends F, F, K extends keyof F>(key: K, consume: (key: keyof E) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nresult<{x: number; y: string}, {x: number}, \"x\">(\"x\", key => { const accepted: \"x\" | \"y\" = key; });\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number; y: string}, {x: number}, \"y\">(\"y\", () => {});\n"
+      },
+      "runtime": "var observed = \"\"; check(\"x\", function(key) { observed = key; }); if (observed !== \"x\") throw Error(\"key callback\");"
+    },
+    {
+      "id": "extends-reverse",
+      "source": "export function result<E, F extends E, K extends keyof F>(key: K, consume: (key: keyof E) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32"
+    },
+    {
+      "id": "key-intersection",
+      "source": "export function result<E, F, K extends keyof E & keyof F>(key: K, consume: (key: keyof E) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nresult<{x: number; a: string}, {x: boolean; b: string}, \"x\">(\"x\", () => {});\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number; a: string}, {x: boolean; b: string}, \"a\">(\"a\", () => {});\n"
+      },
+      "runtime": "var observed = \"\"; check(\"x\", function(key) { observed = key; }); if (observed !== \"x\") throw Error(\"key callback\");"
+    },
+    {
+      "id": "key-union",
+      "source": "export function result<E, F, K extends keyof E | keyof F>(key: K, consume: (key: keyof E) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32"
+    },
+    {
+      "id": "unknown-keys-target",
+      "source": "export function result<E, K extends keyof E>(key: K, consume: (key: keyof unknown) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32"
+    },
+    {
+      "id": "never-argument",
+      "source": "export function result<E>(key: never, consume: (key: keyof E) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\ndeclare const key: never; result<{x: number}>(key, () => {});\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number}>(\"x\", () => {});\n"
+      }
+    },
+    {
+      "id": "any-argument",
+      "source": "export function result<E>(key: any, consume: (key: keyof E) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nresult<{x: number}>(true, key => { const accepted: \"x\" = key; });\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number}>(true, (key: boolean) => {});\n"
+      }
+    },
+    {
+      "id": "keys-to-propertykey",
+      "source": "export function result<E>(key: keyof E, consume: (key: PropertyKey) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nresult<{x: number}>(\"x\", () => {});\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number}>(\"y\", () => {});\n"
+      }
+    },
+    {
+      "id": "propertykey-to-keys",
+      "source": "export function result<E>(key: PropertyKey, consume: (key: keyof E) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32"
+    },
+    {
+      "id": "same-local-alias",
+      "source": "export function result<E>(key: keyof E, consume: (key: keyof E) => void) { type Key = keyof E; const local: Key = key; consume(local); }\n",
+      "origin": "unchanged-discovery-32",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nresult<{x: number}>(\"x\", () => {});\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number}>(\"y\", () => {});\n"
+      }
+    },
+    {
+      "id": "unrelated-local-alias",
+      "source": "export function result<E, F>(key: keyof F, consume: (key: keyof E) => void) { type Key = keyof F; const local: Key = key; consume(local); }\n",
+      "origin": "unchanged-discovery-32"
+    },
+    {
+      "id": "unrelated-target-alias",
+      "source": "type Keys<T> = keyof T;\nexport function result<E, F>(key: keyof F, consume: (key: Keys<E>) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32"
+    },
+    {
+      "id": "required-string-key",
+      "source": "export function result<E extends {x: number}>(key: \"x\", consume: (key: keyof E) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nresult<{x: number}>(\"x\", () => {});\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number}>(\"y\", () => {});\n"
+      }
+    },
+    {
+      "id": "unconstrained-string-key",
+      "source": "export function result<E>(key: \"x\", consume: (key: keyof E) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32"
+    },
+    {
+      "id": "required-number-key",
+      "source": "export function result<E extends {0: number}>(key: 0, consume: (key: keyof E) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nresult<{0: number}>(0, () => {});\n",
+        "negative": "import {result} from \"./main\";\nresult<{0: number}>(1, () => {});\n"
+      }
+    },
+    {
+      "id": "required-symbol-key",
+      "source": "declare const token: unique symbol;\nexport function result<E extends {[token]: number}>(key: typeof token, consume: (key: keyof E) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\ndeclare const key: Parameters<typeof result>[0]; result(key, value => { const accepted: typeof key = value; });\n",
+        "negative": "import {result} from \"./main\";\nresult(\"x\", () => {});\n"
+      }
+    },
+    {
+      "id": "any-keys-to-propertykey",
+      "source": "export function result<E>(key: keyof any, consume: (key: PropertyKey) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\ndeclare const key: symbol; result<{}>(key, value => { const accepted: PropertyKey = value; });\n",
+        "negative": "import {result} from \"./main\";\nresult<{}>(true, () => {});\n"
+      }
+    },
+    {
+      "id": "unknown-keys-to-never",
+      "source": "export function result<E>(key: keyof unknown, consume: (key: never) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\ndeclare const key: never; result<{}>(key, () => {});\n",
+        "negative": "import {result} from \"./main\";\nresult<{}>(\"x\", () => {});\n"
+      }
+    },
+    {
+      "id": "never-keys-to-propertykey",
+      "source": "export function result<E>(key: keyof never, consume: (key: PropertyKey) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\ndeclare const key: symbol; result<{}>(key, value => { const accepted: PropertyKey = value; });\n",
+        "negative": "import {result} from \"./main\";\nresult<{}>(true, () => {});\n"
+      }
+    },
+    {
+      "id": "union-object-keys",
+      "source": "export function result<E, F>(key: keyof (E | F), consume: (key: keyof E) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nresult<{x: number; a: string}, {x: boolean; b: string}>(\"x\", () => {});\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number; a: string}, {x: boolean; b: string}>(\"a\", () => {});\n"
+      },
+      "runtime": "var observed = \"\"; check(\"x\", function(key) { observed = key; }); if (observed !== \"x\") throw Error(\"key callback\");"
+    },
+    {
+      "id": "intersection-object-keys",
+      "source": "export function result<E, F>(key: keyof (E & F), consume: (key: keyof E) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32"
+    },
+    {
+      "id": "same-named-keys-alias",
+      "source": "type Keys<T> = keyof T;\nexport function result<E, K extends Keys<E>>(key: K, consume: (key: keyof E) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nresult<{x: number}, \"x\">(\"x\", key => { const accepted: \"x\" = key; });\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number}, \"x\">(\"y\", () => {});\n"
+      }
+    },
+    {
+      "id": "constraint-chain",
+      "source": "export function result<E, K extends keyof E, L extends K>(key: L, consume: (key: keyof E) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nresult<{x: number}, \"x\", \"x\">(\"x\", () => {});\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number}, \"x\", \"y\">(\"y\", () => {});\n"
+      }
+    },
+    {
+      "id": "unrelated-constraint-chain",
+      "source": "export function result<E, F, K extends keyof F, L extends K>(key: L, consume: (key: keyof E) => void) { consume(key); }\n",
+      "origin": "unchanged-discovery-32"
+    },
+    {
+      "id": "same-key-annotated-copy",
+      "source": "export function result<E, K extends keyof E>(key: K, consume: (key: keyof E) => void) { const local: keyof E = key; consume(local); }\n",
+      "origin": "unchanged-discovery-32",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nresult<{x: number}, \"x\">(\"x\", key => { const accepted: \"x\" = key; });\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number}, \"x\">(\"y\", () => {});\n"
+      }
+    },
+    {
+      "id": "captured-unrelated-keys",
+      "source": "export function result<E, F>(consume: (key: keyof E) => void) { return function<K extends keyof F>(key: K) { consume(key); }; }\n",
+      "origin": "unchanged-discovery-32"
+    },
+    {
+      "id": "intersection-local-alias",
+      "source": "export function result<E, F>(key: keyof E & keyof F, consume: (key: keyof E) => void) { type Key = keyof E & keyof F; const local: Key = key; consume(local); }\n",
+      "origin": "unchanged-discovery-32",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nresult<{x: number; a: string}, {x: boolean; b: string}>(\"x\", () => {});\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number; a: string}, {x: boolean; b: string}>(\"a\", () => {});\n"
+      },
+      "runtime": "var observed = \"\"; check(\"x\", function(key) { observed = key; }); if (observed !== \"x\") throw Error(\"key callback\");"
+    },
+    {
+      "id": "transitive-forward",
+      "source": "export function result<E extends F, F extends G, G, K extends keyof G>(key: K, consume: (key: keyof E) => void) { consume(key); }\n",
+      "origin": "extended-key-relations",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nresult<{x: number; y: string}, {x: number}, {x: number}, \"x\">(\"x\", () => {});\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number; y: string}, {x: number}, {x: number}, \"y\">(\"y\", () => {});\n"
+      }
+    },
+    {
+      "id": "transitive-reverse",
+      "source": "export function result<E, F extends E, G extends F, K extends keyof G>(key: K, consume: (key: keyof E) => void) { consume(key); }\n",
+      "origin": "extended-key-relations"
+    },
+    {
+      "id": "imported-keys-forward",
+      "source": "import type {Keys} from \"./keys\";\nexport function result<E extends F, F, K extends Keys<F>>(key: K, consume: (key: Keys<E>) => void) { consume(key); }\n",
+      "origin": "extended-key-relations",
+      "files": {
+        "keys.ts": "export type Keys<T> = keyof T;\n"
+      },
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nresult<{x: number; y: string}, {x: number}, \"x\">(\"x\", () => {});\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number; y: string}, {x: number}, \"y\">(\"y\", () => {});\n"
+      }
+    },
+    {
+      "id": "equal-index-constraints",
+      "source": "export function result<E extends {[key: string]: unknown}, F extends {[key: string]: unknown}, K extends keyof F>(key: K, consume: (key: keyof E) => void) { consume(key); }\n",
+      "origin": "extended-key-relations"
+    },
+    {
+      "id": "captured-key-alias",
+      "source": "export function result<E, F>(consume: (key: keyof E) => void) { type Key = keyof F; return (key: Key) => consume(key); }\n",
+      "origin": "extended-key-relations"
+    },
+    {
+      "id": "reordered-forward",
+      "source": "export function result<F, E extends F, K extends keyof F>(key: K, consume: (key: keyof E) => void) { consume(key); }\n",
+      "origin": "extended-key-relations",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nresult<{x: number}, {x: number; y: string}, \"x\">(\"x\", () => {});\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number}, {x: number; y: string}, \"y\">(\"y\", () => {});\n"
+      }
+    },
+    {
+      "id": "union-to-union",
+      "source": "export function result<E, F>(key: keyof E | keyof F, consume: (key: keyof E | keyof F) => void) { consume(key); }\n",
+      "origin": "extended-key-relations",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nresult<{x: number}, {y: string}>(\"y\", () => {});\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number}, {y: string}>(\"z\", () => {});\n"
+      }
+    },
+    {
+      "id": "keys-to-key-union",
+      "source": "export function result<E, F>(key: keyof E, consume: (key: keyof E | keyof F) => void) { consume(key); }\n",
+      "origin": "extended-key-relations",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nresult<{x: number}, {y: string}>(\"x\", () => {});\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number}, {y: string}>(\"y\", () => {});\n"
+      }
+    },
+    {
+      "id": "intersection-to-right",
+      "source": "export function result<E, F>(key: keyof E & keyof F, consume: (key: keyof F) => void) { consume(key); }\n",
+      "origin": "extended-key-relations",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nresult<{x: number; a: string}, {x: boolean; b: string}>(\"x\", () => {});\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number; a: string}, {x: boolean; b: string}>(\"b\", () => {});\n"
+      }
+    },
+    {
+      "id": "object-union-to-right",
+      "source": "export function result<E, F>(key: keyof (E | F), consume: (key: keyof F) => void) { consume(key); }\n",
+      "origin": "extended-key-relations",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nresult<{x: number; a: string}, {x: boolean; b: string}>(\"x\", () => {});\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number; a: string}, {x: boolean; b: string}>(\"b\", () => {});\n"
+      }
+    },
+    {
+      "id": "object-intersection-to-key-union",
+      "source": "export function result<E, F>(key: keyof (E & F), consume: (key: keyof E | keyof F) => void) { consume(key); }\n",
+      "origin": "extended-key-relations",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nresult<{x: number}, {y: string}>(\"y\", () => {});\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number}, {y: string}>(\"z\", () => {});\n"
+      }
+    },
+    {
+      "id": "extra-key-beyond-object-constraint",
+      "source": "export function result<E extends {x: number}, K extends keyof E>(key: K, consume: (key: \"x\") => void) { consume(key); }\n",
+      "origin": "extended-key-relations"
+    },
+    {
+      "id": "index-constraint-keeps-symbol-possibility",
+      "source": "export function result<E extends {[key: string]: number}>(key: keyof E, consume: (key: string | number) => void) { consume(key); }\n",
+      "origin": "extended-key-relations"
+    },
+    {
+      "id": "alias-union-operand",
+      "source": "type Keys<T> = keyof T;\nexport function result<E, F>(key: Keys<E | F>) { return key; }\n",
+      "origin": "extended-key-relations",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nconst accepted: \"x\" = result<{x: number; a: string}, {x: boolean; b: string}>(\"x\");\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number; a: string}, {x: boolean; b: string}>(\"a\");\n"
+      }
+    },
+    {
+      "id": "alias-key-intersection",
+      "source": "type Keys<T> = keyof T;\nexport function result<E, F>(key: Keys<E> & Keys<F>, consume: (key: Keys<E>) => void) { consume(key); }\n",
+      "origin": "extended-key-relations",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nresult<{x: number; a: string}, {x: boolean; b: string}>(\"x\", () => {});\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number; a: string}, {x: boolean; b: string}>(\"a\", () => {});\n"
+      }
+    },
+    {
+      "id": "return-object-union-keys",
+      "source": "export function result<E, F>(key: keyof (E | F)) { return key; }\n",
+      "origin": "extended-key-relations",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nconst accepted: \"x\" = result<{x: number; a: string}, {x: boolean; b: string}>(\"x\");\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number; a: string}, {x: boolean; b: string}>(\"a\");\n"
+      }
+    },
+    {
+      "id": "return-object-intersection-keys",
+      "source": "export function result<E, F>(key: keyof (E & F)) { return key; }\n",
+      "origin": "extended-key-relations",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nconst accepted: \"x\" | \"y\" = result<{x: number}, {y: string}>(\"y\");\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number}, {y: string}>(\"z\");\n"
+      }
+    },
+    {
+      "id": "return-conditional-operand-keys",
+      "source": "export function result<T extends boolean, E, F>(key: keyof (T extends true ? E : F)) { return key; }\n",
+      "origin": "extended-key-relations",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nconst accepted: \"x\" = result<true, {x: number}, {y: string}>(\"x\");\n",
+        "negative": "import {result} from \"./main\";\nresult<true, {x: number}, {y: string}>(\"y\");\n"
+      }
+    },
+    {
+      "id": "return-array-operand-keys",
+      "source": "export function result<E>(key: keyof E[]) { return key; }\n",
+      "origin": "extended-key-relations",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nconst accepted: keyof number[] = result<number>(\"length\");\n",
+        "negative": "import {result} from \"./main\";\nresult<number>(\"absent\");\n"
+      }
+    },
+    {
+      "id": "return-tuple-operand-keys",
+      "source": "export function result<E, F>(key: keyof [E, F]) { return key; }\n",
+      "origin": "extended-key-relations",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nconst accepted: keyof [number, string] = result<number, string>(\"1\");\n",
+        "negative": "import {result} from \"./main\";\nresult<number, string>(\"2\");\n"
+      }
+    },
+    {
+      "id": "return-function-operand-keys",
+      "source": "export function result<E>(key: keyof (() => E)) { return key; }\n",
+      "origin": "extended-key-relations",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\ndeclare const key: never; const accepted: never = result<number>(key);\n",
+        "negative": "import {result} from \"./main\";\nresult<number>(\"x\");\n"
+      }
+    },
+    {
+      "id": "return-constructor-operand-keys",
+      "source": "export function result<E>(key: keyof (new () => E)) { return key; }\n",
+      "origin": "extended-key-relations",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\ndeclare const key: never; const accepted: never = result<number>(key);\n",
+        "negative": "import {result} from \"./main\";\nresult<number>(\"x\");\n"
+      }
+    },
+    {
+      "id": "return-mixed-operand-keys",
+      "source": "export function result<E, F, G>(key: keyof ((E | F) & G)) { return key; }\n",
+      "origin": "extended-key-relations",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nconst accepted: \"x\" | \"g\" = result<{x: number; a: string}, {x: boolean; b: string}, {g: boolean}>(\"g\");\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number; a: string}, {x: boolean; b: string}, {g: boolean}>(\"a\");\n"
+      }
+    },
+    {
+      "id": "owner-propertykey-rejects-global-domain",
+      "source": "type PropertyKey = boolean;\nexport function result(key: keyof any, consume: (key: PropertyKey) => void) { consume(key); }\n",
+      "origin": "extended-key-relations"
+    },
+    {
+      "id": "owner-propertykey-keeps-own-domain",
+      "source": "type PropertyKey = boolean;\nexport function result(key: PropertyKey) { return key; }\n",
+      "origin": "extended-key-relations",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nconst accepted: boolean = result(true);\n",
+        "negative": "import {result} from \"./main\";\nresult(\"x\");\n"
+      }
+    },
+    {
+      "id": "return-primitive-symbol-keys",
+      "source": "export function result(key: keyof symbol) { return key; }\n",
+      "origin": "extended-key-relations",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nconst accepted: keyof symbol = result(\"toString\");\n",
+        "negative": "import {result} from \"./main\";\nresult(\"absent\");\n"
+      }
+    },
+    {
+      "id": "any-keys-include-symbol",
+      "source": "export function result(key: symbol, consume: (key: keyof any) => void) { consume(key); }\n",
+      "origin": "extended-key-relations",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\ndeclare const key: symbol; result(key, () => {});\n",
+        "negative": "import {result} from \"./main\";\nresult(true, () => {});\n"
+      }
+    },
+    {
+      "id": "never-keys-are-not-only-symbol",
+      "source": "export function result(key: keyof never, consume: (key: symbol) => void) { consume(key); }\n",
+      "origin": "extended-key-relations"
+    },
+    {
+      "id": "unknown-keys-assign-to-any",
+      "source": "export function result(key: keyof unknown, consume: (key: any) => void) { consume(key); }\n",
+      "origin": "extended-key-relations",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\ndeclare const key: never; result(key, () => {});\n",
+        "negative": "import {result} from \"./main\";\nresult(\"x\", () => {});\n"
+      }
+    },
+    {
+      "id": "return-unknown-union-keys",
+      "source": "export function result<E>(key: keyof (E | unknown)) { return key; }\n",
+      "origin": "extended-key-relations",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\ndeclare const key: never; const accepted: never = result<{}>(key);\n",
+        "negative": "import {result} from \"./main\";\nresult<{}>(\"x\");\n"
+      }
+    },
+    {
+      "id": "return-unknown-intersection-keys",
+      "source": "export function result<E>(key: keyof (E & unknown)) { return key; }\n",
+      "origin": "extended-key-relations",
+      "consumerSources": {
+        "positive": "import {result} from \"./main\";\nconst accepted: \"x\" = result<{x: number}>(\"x\");\n",
+        "negative": "import {result} from \"./main\";\nresult<{x: number}>(\"y\");\n"
+      }
+    },
+    {
+      "id": "imported-unrelated-keys",
+      "source": "import type {Keys} from \"./keys\";\nexport function result<E, F>(key: Keys<F>, consume: (key: Keys<E>) => void) { consume(key); }\n",
+      "origin": "extended-key-relations",
+      "files": {
+        "keys.ts": "export type Keys<T> = keyof T;\n"
+      }
+    }
+  ]
+}
