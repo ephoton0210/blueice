@@ -366,6 +366,48 @@ impl Pixmap {
         // tops face left, the baseline is `ascent` inside the left edge and the text climbs from
         // the bottom (`run.y`).
         let baseline_x = if ccw { run.x + ascent } else { run.x + run.breadth - ascent };
+        // Upright text is set as a whole from the font's vertical layout: its `vert` alternates,
+        // pair kerning (`vkrn`), proportional widths (`vpal`) and per-glyph offsets.
+        if !sideways {
+            let size = run.font_size_px as f32;
+            if let Some(glyphs) = blueice_font::vertical_glyphs(
+                run.text,
+                run.bold,
+                run.italic,
+                run.face,
+                run.features,
+                size,
+            ) {
+                let mut pen = run.y;
+                for glyph in glyphs {
+                    let (metrics, bitmap) = glyph.font.rasterize_indexed(glyph.id, size);
+                    let origin_x = run.x + run.breadth / 2.0 + f64::from(glyph.dx);
+                    let origin_y = pen + f64::from(glyph.dy);
+                    for row in 0..metrics.height {
+                        for col in 0..metrics.width {
+                            let coverage = bitmap[row * metrics.width + col] as u32;
+                            if coverage == 0 {
+                                continue;
+                            }
+                            let dx = metrics.xmin as f64 + col as f64;
+                            let up = (metrics.ymin as f64 + metrics.height as f64) - row as f64;
+                            let (px, py) =
+                                ((origin_x + dx).round() as i64, (origin_y - up).round() as i64);
+                            for extra in 0..=smear {
+                                self.set_pixel_blended(
+                                    px + extra,
+                                    py,
+                                    [r, g, b, ((coverage * a as u32) / 255) as u8],
+                                    clip,
+                                );
+                            }
+                        }
+                    }
+                    pen += f64::from(glyph.advance);
+                }
+                return;
+            }
+        }
         let mut pen = run.y;
         for original in shaped.chars() {
             let size = run.font_size_px as f32;

@@ -51,7 +51,7 @@ mod shape;
 mod variable;
 pub use opentype::{
     char_advances, face_supports_feature, is_complex, register_features, shape_for_drawing, shape_text, starts_rtl,
-    vertical_cell, vertical_glyph, DrawGlyph, FeaturesId, VerticalCell,
+    vertical_cell, vertical_glyph, vertical_glyphs, DrawGlyph, FeaturesId, VerticalCell, VerticalGlyph,
 };
 pub use shape::{is_mark, mirrored, shape_with, vertical_form, visual_order};
 pub use variable::{Axis, VarInstance, Variation};
@@ -63,6 +63,96 @@ const FONT_BOLD: &[u8] = include_bytes!("../assets/DejaVuSans-Bold.ttf");
 const FONT_ITALIC: &[u8] = include_bytes!("../assets/DejaVuSans-Oblique.ttf");
 const FONT_BOLD_ITALIC: &[u8] = include_bytes!("../assets/DejaVuSans-BoldOblique.ttf");
 const FONT_CJK_FALLBACK: &[u8] = include_bytes!("../assets/NotoSansTC-Regular.otf");
+
+/// A bundled face for one script (Noto Sans, Regular, SIL Open Font License): drawn only for
+/// characters of that script that DejaVu Sans lacks, as the CJK face is for ideographs.
+struct ScriptFace {
+    /// The names a stylesheet's `local()` knows it by, lowercased and without separators.
+    names: &'static [&'static str],
+    /// The code point ranges it is the fallback for.
+    ranges: &'static [(u32, u32)],
+    bytes: &'static [u8],
+}
+
+const SCRIPT_FACES: [ScriptFace; 13] = [
+    ScriptFace {
+        names: &["notosansdevanagari", "notosansdevanagariregular"],
+        ranges: &[(0x0900, 0x097F), (0x1CD0, 0x1CFF), (0xA8E0, 0xA8FF)],
+        bytes: include_bytes!("../assets/NotoSansDevanagari-Regular.ttf"),
+    },
+    ScriptFace {
+        names: &["notosansbengali", "notosansbengaliregular"],
+        ranges: &[(0x0980, 0x09FF)],
+        bytes: include_bytes!("../assets/NotoSansBengali-Regular.ttf"),
+    },
+    ScriptFace {
+        names: &["notosansgurmukhi", "notosansgurmukhiregular"],
+        ranges: &[(0x0A00, 0x0A7F)],
+        bytes: include_bytes!("../assets/NotoSansGurmukhi-Regular.ttf"),
+    },
+    ScriptFace {
+        names: &["notosansgujarati", "notosansgujaratiregular"],
+        ranges: &[(0x0A80, 0x0AFF)],
+        bytes: include_bytes!("../assets/NotoSansGujarati-Regular.ttf"),
+    },
+    ScriptFace {
+        names: &["notosanstamil", "notosanstamilregular"],
+        ranges: &[(0x0B80, 0x0BFF)],
+        bytes: include_bytes!("../assets/NotoSansTamil-Regular.ttf"),
+    },
+    ScriptFace {
+        names: &["notosanstelugu", "notosansteluguregular"],
+        ranges: &[(0x0C00, 0x0C7F)],
+        bytes: include_bytes!("../assets/NotoSansTelugu-Regular.ttf"),
+    },
+    ScriptFace {
+        names: &["notosanskannada", "notosanskannadaregular"],
+        ranges: &[(0x0C80, 0x0CFF)],
+        bytes: include_bytes!("../assets/NotoSansKannada-Regular.ttf"),
+    },
+    ScriptFace {
+        names: &["notosansmalayalam", "notosansmalayalamregular"],
+        ranges: &[(0x0D00, 0x0D7F)],
+        bytes: include_bytes!("../assets/NotoSansMalayalam-Regular.ttf"),
+    },
+    ScriptFace {
+        names: &["notosanssinhala", "notosanssinhalaregular"],
+        ranges: &[(0x0D80, 0x0DFF)],
+        bytes: include_bytes!("../assets/NotoSansSinhala-Regular.ttf"),
+    },
+    ScriptFace {
+        names: &["notosansthai", "notosansthairegular"],
+        ranges: &[(0x0E00, 0x0E7F)],
+        bytes: include_bytes!("../assets/NotoSansThai-Regular.ttf"),
+    },
+    ScriptFace {
+        names: &["notosanslao", "notosanslaoregular"],
+        ranges: &[(0x0E80, 0x0EFF)],
+        bytes: include_bytes!("../assets/NotoSansLao-Regular.ttf"),
+    },
+    ScriptFace {
+        names: &["notosansmyanmar", "notosansmyanmarregular"],
+        ranges: &[(0x1000, 0x109F), (0xA9E0, 0xA9FF), (0xAA60, 0xAA7F)],
+        bytes: include_bytes!("../assets/NotoSansMyanmar-Regular.ttf"),
+    },
+    ScriptFace {
+        names: &["notosanskhmer", "notosanskhmerregular"],
+        ranges: &[(0x1780, 0x17FF), (0x19E0, 0x19FF)],
+        bytes: include_bytes!("../assets/NotoSansKhmer-Regular.ttf"),
+    },
+];
+
+static SCRIPT_FONTS: [OnceLock<fontdue::Font>; 13] = [const { OnceLock::new() }; 13];
+
+/// The bundled face for the script `c` is in, parsed on its first use.
+fn script_font(c: char) -> Option<&'static fontdue::Font> {
+    let code = c as u32;
+    let (index, face) = SCRIPT_FACES
+        .iter()
+        .enumerate()
+        .find(|(_, f)| f.ranges.iter().any(|&(lo, hi)| lo <= code && code <= hi))?;
+    Some(load_font(&SCRIPT_FONTS[index], face.bytes))
+}
 
 struct FontSet {
     regular: OnceLock<fontdue::Font>,
@@ -119,7 +209,7 @@ pub fn bundled_font_bytes(name: &str) -> Option<&'static [u8]> {
         "dejavusansoblique" | "dejavusansitalic" => FONT_ITALIC,
         "dejavusansboldoblique" | "dejavusansbolditalic" => FONT_BOLD_ITALIC,
         "notosanstc" | "notosanstcregular" => FONT_CJK_FALLBACK,
-        _ => return None,
+        other => return SCRIPT_FACES.iter().find(|f| f.names.contains(&other)).map(|f| f.bytes),
     })
 }
 
@@ -136,6 +226,13 @@ pub(crate) fn bundled_bytes_of(font: &'static fontdue::Font) -> Option<&'static 
     .into_iter()
     .find(|(slot, _)| slot.get().is_some_and(|f| std::ptr::eq(f, font)))
     .map(|(_, bytes)| bytes)
+    .or_else(|| {
+        SCRIPT_FONTS
+            .iter()
+            .zip(&SCRIPT_FACES)
+            .find(|(slot, _)| slot.get().is_some_and(|f| std::ptr::eq(f, font)))
+            .map(|(_, face)| face.bytes)
+    })
 }
 
 pub fn font_for(bold: bool, italic: bool) -> &'static fontdue::Font {
@@ -162,6 +259,10 @@ pub fn font_for_char(c: char, bold: bool, italic: bool) -> &'static fontdue::Fon
     let primary = font_for(bold, italic);
     if primary.has_glyph(c) {
         return primary;
+    }
+    // A character of a script DejaVu does not carry is drawn by that script's own bundled face.
+    if let Some(font) = script_font(c).filter(|f| f.has_glyph(c)) {
+        return font;
     }
     cjk_fallback()
 }
@@ -486,6 +587,49 @@ mod tests {
             .map(|c| font_for(false, false).metrics(c, 16.0).advance_width as f64)
             .sum();
         assert_eq!(measure_text_width("abc", 16.0, false, false), expected);
+    }
+
+    #[test]
+    fn indic_and_southeast_asian_scripts_have_bundled_faces_and_are_shaped() {
+        let dejavu = font_for(false, false) as *const fontdue::Font;
+        for (text, script) in [
+            ("\u{928}\u{92E}\u{938}\u{94D}\u{924}\u{947}", "Devanagari"),
+            ("\u{9AC}\u{9BE}\u{982}\u{9B2}\u{9BE}", "Bengali"),
+            ("\u{A38}\u{A24}\u{A3F}", "Gurmukhi"),
+            ("\u{AA8}\u{AAE}\u{AB8}\u{ACD}\u{AA4}\u{AC7}", "Gujarati"),
+            ("\u{BA4}\u{BAE}\u{BBF}\u{BB4}\u{BCD}", "Tamil"),
+            ("\u{C24}\u{C46}\u{C32}\u{C41}\u{C17}\u{C41}", "Telugu"),
+            ("\u{C95}\u{CA8}\u{CCD}\u{CA8}\u{CA1}", "Kannada"),
+            ("\u{D2E}\u{D32}\u{D2F}\u{D3E}\u{D33}\u{D02}", "Malayalam"),
+            ("\u{DC3}\u{DD2}\u{D82}\u{DC4}\u{DBD}", "Sinhala"),
+            ("\u{E2A}\u{E27}\u{E31}\u{E2A}\u{E14}\u{E35}", "Thai"),
+            ("\u{E9A}\u{EAD}\u{E81}\u{EB5}", "Lao"),
+            ("\u{1019}\u{103C}\u{1014}\u{103A}\u{1019}\u{102C}", "Myanmar"),
+            ("\u{1781}\u{17D2}\u{1798}\u{17C2}\u{179A}", "Khmer"),
+        ] {
+            for c in text.chars() {
+                let f = font_for_char(c, false, false);
+                assert!(f.has_glyph(c), "{script}: U+{:04X} has a glyph", c as u32);
+                // DejaVu carries part of Lao itself, and is tried first for every script.
+                if script != "Lao" {
+                    assert!(!std::ptr::eq(f, dejavu), "{script}: not drawn by DejaVu");
+                }
+                assert!(!std::ptr::eq(f, cjk_fallback()), "{script}: not drawn by the CJK face");
+            }
+            let glyphs = shape_for_drawing(text, false, false, None, 24.0, false)
+                .unwrap_or_else(|| panic!("{script} is shaped"));
+            assert!(!glyphs.is_empty());
+            let width = measure_text_width(text, 24.0, false, false);
+            assert!(width > 10.0, "{script}: {width}");
+            // conjuncts, ligatures and marks make the glyph run differ from one glyph a letter
+            let _ = glyphs;
+        }
+        // Devanagari conjunct स्त is one glyph, and the vowel sign े is placed on the letter
+        let glyphs = shape_for_drawing("\u{928}\u{92E}\u{938}\u{94D}\u{924}\u{947}", false, false, None, 24.0, false).unwrap();
+        assert!(glyphs.len() < 6, "{} glyphs for six code points", glyphs.len());
+        // the names a stylesheet's local() knows them by
+        assert!(bundled_font_bytes("Noto Sans Devanagari").is_some());
+        assert!(bundled_font_bytes("NotoSansThai-Regular").is_some());
     }
 
     #[test]

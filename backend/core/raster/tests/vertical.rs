@@ -153,3 +153,38 @@ fn combined_characters_are_squeezed_into_one_em_and_centred_in_the_column() {
     let flat = ink(&run("5", TextOrient::Horizontal, 10.0, 10.0, 0.0));
     assert_eq!(normalized(&one).1, normalized(&flat).1);
 }
+
+#[test]
+fn upright_text_takes_the_proportional_widths_of_vpal_when_the_style_asks() {
+    let with = |features: u32| {
+        ink(&Frame {
+            width: 160.0,
+            height: 260.0,
+            commands: vec![PaintCommand::Text {
+                x: 20.0,
+                y: 10.0,
+                text: "\u{300c}\u{3042}\u{3002}\u{300d}\u{3042}".to_string(),
+                color: Color::Rgba(0, 0, 0, 255),
+                font_size_px: 40.0,
+                bold: false,
+                italic: false,
+                face: None,
+                rtl: false,
+                orient: TextOrient::Upright,
+                breadth: 50.0,
+                features,
+            }],
+        })
+    };
+    let height = |set: &BTreeSet<(i64, i64)>| {
+        set.iter().map(|p| p.1).max().unwrap() - set.iter().map(|p| p.1).min().unwrap()
+    };
+    let plain = with(0);
+    let proportional = with(blueice_font::register_features(&[(*b"vpal", 1)]).as_u32());
+    assert!(
+        height(&proportional) + 10 < height(&plain),
+        "the brackets and the stop are tucked in: {} vs {}",
+        height(&proportional),
+        height(&plain)
+    );
+}

@@ -195,6 +195,7 @@ mod tests {
         "gecko-body",
         "fonts-heading",
         "fonts-intro",
+        "fonts-noto",
         "fonts-copyright",
         "fonts-permission",
         "translation-notice",

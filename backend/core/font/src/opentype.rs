@@ -404,6 +404,85 @@ pub fn vertical_cell(font: &'static fontdue::Font, c: char) -> Option<VerticalCe
     cell
 }
 
+/// One glyph of upright text in a vertical line, with where to put it: the pen sits at the top of
+/// the glyph's cell on the line's axis, moves down by `advance`, and the glyph is drawn `dx` to the
+/// right of the axis and `dy` below the pen (all in pixels).
+#[derive(Clone, Copy)]
+pub struct VerticalGlyph {
+    pub font: Glyphs,
+    pub id: u16,
+    pub advance: f32,
+    pub dx: f32,
+    pub dy: f32,
+}
+
+/// `text` set upright in a vertical line, shaped in the top-to-bottom direction so the font's
+/// vertical layout applies: the `vert`/`vrt2` alternates, `vkrn` pair kerning, `vmtx`/`VORG`
+/// metrics, and, where the box asks for proportional widths (`pwid`) or sets `vpal`/`vhal`, those
+/// proportional and half-width alternates. A character whose font has no vertical alternate takes
+/// its vertical presentation form where some face has one. `None` when a face cannot be shaped.
+pub fn vertical_glyphs(
+    text: &str,
+    bold: bool,
+    italic: bool,
+    face: Option<WebFontId>,
+    features: FeaturesId,
+    px: f32,
+) -> Option<Vec<VerticalGlyph>> {
+    if text.is_empty() {
+        return None;
+    }
+    let mut settings = features_of(features);
+    // Proportional widths in a vertical line are the font's `vpal`.
+    let wants = |tag: &[u8; 4]| settings.iter().any(|f| f.tag == rustybuzz::ttf_parser::Tag::from_bytes(tag) && f.value != 0);
+    if wants(b"pwid") && !wants(b"vpal") {
+        settings.push(rustybuzz::Feature::new(rustybuzz::ttf_parser::Tag::from_bytes(b"vpal"), 1, ..));
+    }
+    let mut runs: Vec<(Glyphs, String)> = Vec::new();
+    for c in text.chars() {
+        let font = font_for_char_in(c, bold, italic, face);
+        let mut shown = c;
+        if let Glyphs::Static(f) = font {
+            let has_alternate = vertical_cell(f, c).is_some_and(|cell| cell.alternate);
+            let form = crate::vertical_form(c);
+            if !has_alternate
+                && form != c
+                && font_for_char_in(form, bold, italic, face).has_glyph(form)
+            {
+                shown = form;
+            }
+        }
+        // The form may live in another face than the character does.
+        let font = if shown == c { font } else { font_for_char_in(shown, bold, italic, face) };
+        match runs.last_mut() {
+            Some((f, run)) if f.address() == font.address() => run.push(shown),
+            _ => runs.push((font, shown.to_string())),
+        }
+    }
+    let mut out = Vec::new();
+    for (font, run) in runs {
+        let hb = face_of(font)?;
+        let mut buffer = UnicodeBuffer::new();
+        buffer.push_str(&run);
+        buffer.set_direction(Direction::TopToBottom);
+        buffer.guess_segment_properties();
+        let glyphs = rustybuzz::shape(hb, &settings, buffer);
+        let scale = px / hb.units_per_em() as f32;
+        for (info, pos) in glyphs.glyph_infos().iter().zip(glyphs.glyph_positions()) {
+            out.push(VerticalGlyph {
+                font,
+                id: info.glyph_id as u16,
+                // HarfBuzz counts down the line as negative, and a glyph drawn below the pen as a
+                // negative offset.
+                advance: -(pos.y_advance as f32) * scale,
+                dx: pos.x_offset as f32 * scale,
+                dy: -(pos.y_offset as f32) * scale,
+            });
+        }
+    }
+    Some(out)
+}
+
 /// The glyph a font draws `c` with in a vertical line, when its `vert` or `vrt2` feature has one.
 pub fn vertical_glyph(font: &'static fontdue::Font, c: char) -> Option<u16> {
     vertical_cell(font, c).filter(|cell| cell.alternate).map(|cell| cell.id)
@@ -515,6 +594,29 @@ mod tests {
         assert!(cell.dy > 0.7 && cell.dy < 1.0, "its baseline is most of an em below the top: {}", cell.dy);
         let bracket = vertical_cell(cjk, '\u{300C}').unwrap();
         assert!(bracket.alternate);
+    }
+
+    #[test]
+    fn upright_text_takes_the_fonts_proportional_vertical_widths_when_asked() {
+        let text = "\u{300C}\u{3042}\u{3002}\u{300D}";
+        let total = |features: FeaturesId| -> f32 {
+            vertical_glyphs(text, false, false, None, features, 100.0)
+                .unwrap()
+                .iter()
+                .map(|g| g.advance)
+                .sum()
+        };
+        let plain = total(FeaturesId::default());
+        assert!((plain - 400.0).abs() < 0.5, "four full-width cells: {plain}");
+        let vpal = total(crate::register_features(&[(*b"vpal", 1)]));
+        assert!(vpal < plain - 10.0, "the brackets and stop are tucked in: {vpal} vs {plain}");
+        // proportional widths in a vertical line are `vpal`
+        let pwid = total(crate::register_features(&[(*b"pwid", 1)]));
+        assert!((pwid - vpal).abs() < 0.01, "{pwid} vs {vpal}");
+        // and vertical kerning is on by default, so a pair is not simply the sum of its cells
+        let glyphs = vertical_glyphs(text, false, false, None, FeaturesId::default(), 100.0).unwrap();
+        assert_eq!(glyphs.len(), 4);
+        assert!(glyphs.iter().all(|g| g.advance > 0.0));
     }
 
     #[test]

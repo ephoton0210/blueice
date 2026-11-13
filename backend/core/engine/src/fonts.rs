@@ -1300,6 +1300,30 @@ mod tests {
     }
 
     #[test]
+    fn canvas_font_stretch_and_small_caps_follow_the_font_shorthand_rules() {
+        let html = "<body><canvas id=c width=100 height=40></canvas><script>\
+             const g = document.getElementById('c').getContext('2d');\
+             g.font = '24px sans-serif';\
+             const w = (t) => g.measureText(t).width;\
+             const normal = w('hello');\
+             g.fontVariantCaps = 'small-caps'; const small = w('hello'); const caps = g.fontVariantCaps;\
+             g.fontVariantCaps = 'all-small-caps'; const allsmall = w('HELLO');\
+             g.fontVariantCaps = 'normal';\
+             g.fontStretch = 'condensed'; const stretch = g.fontStretch; g.fontStretch = 'bogus'; const kept = g.fontStretch;\
+             g.font = '24px sans-serif'; const reset = g.fontStretch;\
+             g.font = 'small-caps 24px sans-serif'; const fromFont = g.fontVariantCaps;\
+             g.font = '24px sans-serif'; const back = g.fontVariantCaps;\
+             console.log('CAPS ' + (small < normal) + ' ' + caps + ' ' + (Math.abs(allsmall - small) < 0.01) + ' ' + fromFont + ' ' + back);\
+             console.log('STRETCH ' + stretch + ' ' + kept + ' ' + reset);\
+             </script></body>";
+        let mut page = script_page(html);
+        run_scripts(&mut page);
+        let log = page.web_console().join("\n");
+        assert!(log.contains("CAPS true small-caps true small-caps normal"), "{log}");
+        assert!(log.contains("STRETCH condensed condensed normal"), "{log}");
+    }
+
+    #[test]
     fn a_script_fills_and_strokes_paths() {
         let html = "<body><canvas id=c width=100 height=100></canvas><script>\
              const g = document.getElementById('c').getContext('2d');\

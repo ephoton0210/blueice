@@ -101,12 +101,14 @@ pub fn credits_html(locale: &str) -> String {
         en("fonts-copyright"),
         en("fonts-permission")
     ));
+    body.push_str(&format!("<p>{}</p>", en("fonts-noto")));
     if is_translated {
         body.push_str(&format!("<p>{}</p>", t("translation-notice")));
         body.push_str(&format!(
-            "<p>{}</p><p>{}</p>",
+            "<p>{}</p><p>{}</p><p>{}</p>",
             t("fonts-copyright"),
-            t("fonts-permission")
+            t("fonts-permission"),
+            t("fonts-noto")
         ));
     }
 
@@ -190,6 +192,10 @@ mod tests {
         assert!(html.contains("THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS"));
         assert!(html.contains("Mozilla Public License"));
         assert!(html.contains("Bitstream"));
+        assert!(
+            html.contains("Noto Sans") && html.contains("SIL Open Font License"),
+            "the bundled Noto fonts are credited with their license"
+        );
         assert!(
             !html.contains("非正式翻譯"),
             "the English-only page must not carry a translation notice"

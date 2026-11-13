@@ -13,6 +13,7 @@ gecko-heading = Mozilla Firefox（Gecko）
 gecko-body = Mozilla Firefox（Gecko）採用 Mozilla Public License 2.0 版授權，授權條款全文可於 https://mozilla.org/MPL/2.0/ 取得。
 fonts-heading = 字型
 fonts-intro = 本應用程式內建 DejaVu Sans 字型家族，衍生自 Bitstream Vera。
+fonts-noto = 本應用程式另內建 Noto Sans 字型，涵蓋繁體中文，以及天城文、孟加拉文、古木基文、古吉拉特文、坦米爾文、泰盧固文、卡納達文、馬拉雅拉姆文、僧伽羅文、泰文、寮文、緬甸文與高棉文。版權所有 The Noto Project Authors。這些字型依 SIL Open Font License 1.1 版授權，授權全文見 https://openfontlicense.org。
 fonts-copyright = 版權所有 (c) 2003 Bitstream, Inc.，保留一切權利。Bitstream Vera 為 Bitstream, Inc. 之商標。DejaVu 所作之變更屬公有領域（public domain）。
 fonts-permission = 茲免費授予任何取得本字型（下稱「字型」）及其相關說明文件（下稱「字型軟體」）之人，重製與散布字型軟體之權利，包括但不限於使用、複製、合併、發布、散布及／或販售字型軟體副本之權利，並得允許取得字型軟體之人為上述行為，惟須符合下列條件：上述版權與商標聲明及本授權聲明，須包含於字型軟體所有字體之所有副本中。
 translation-notice = 以上英文文字為具法律效力之正式聲明；以下為方便參考之非正式翻譯。

@@ -254,7 +254,21 @@ impl TextProps {
         // In a vertical line an upright character is as long as the font's vertical advance.
         let upright_aware = |t: &str| match &self.vertical {
             Some(orientation) => {
-                let (mut total, mut sideways) = (0.0, String::new());
+                // Runs of upright characters are set as wholes, so pairs can be kerned.
+                let (mut total, mut sideways, mut upright) = (0.0, String::new(), String::new());
+                let end_upright = |upright: &mut String, total: &mut f64| {
+                    if !upright.is_empty() {
+                        let run = std::mem::take(upright);
+                        *total += crate::vertical::upright_length(
+                            &run,
+                            self.font_size,
+                            self.bold,
+                            self.italic,
+                            self.face,
+                            self.features,
+                        ) + self.letter_spacing * run.chars().count() as f64;
+                    }
+                };
                 for c in t.chars() {
                     if crate::vertical::orient_of(c, Some(orientation))
                         == crate::fragment::TextOrient::Upright
@@ -262,17 +276,13 @@ impl TextProps {
                         if !sideways.is_empty() {
                             total += plain(&std::mem::take(&mut sideways));
                         }
-                        total += crate::vertical::upright_length(
-                            &c.to_string(),
-                            self.font_size,
-                            self.bold,
-                            self.italic,
-                            self.face,
-                        ) + self.letter_spacing;
+                        upright.push(c);
                     } else {
+                        end_upright(&mut upright, &mut total);
                         sideways.push(c);
                     }
                 }
+                end_upright(&mut upright, &mut total);
                 total + plain(&sideways)
             }
             None => plain(t),

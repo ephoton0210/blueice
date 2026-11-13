@@ -259,6 +259,23 @@ struct CanvasFont {
     features: blueice_font::FeaturesId,
     letter_spacing: f64,
     word_spacing: f64,
+    /// Small capitals to synthesize because the face has no `smcp` (`Some(true)`: for
+    /// `all-small-caps`, capitals shrink too).
+    small_caps: Option<bool>,
+}
+
+/// Synthesized small capitals are capitals at this share of the size.
+const SMALL_CAPS_SCALE: f64 = 0.7;
+
+/// The `fontStretch` a draw carries (the sixth item of its text properties), as a percentage in
+/// tenths; none when it is `normal`, so a stretch in the `font` shorthand stands.
+fn extras_stretch(json: &str) -> Option<u16> {
+    let v: Vec<serde_json::Value> = serde_json::from_str(json).ok()?;
+    let word = v.get(5)?.as_str()?;
+    if word == "normal" {
+        return None;
+    }
+    stretch_keyword(word)
 }
 
 /// A `font-stretch` keyword as a percentage in tenths.
@@ -279,7 +296,7 @@ fn stretch_keyword(word: &str) -> Option<u16> {
 impl CanvasFont {
     /// `[style] [weight] size[/line-height] family[, family]...`; anything else is the default
     /// `10px sans-serif`.
-    fn parse(spec: &str, fonts: &crate::fonts::FontCatalog) -> CanvasFont {
+    fn parse(spec: &str, fonts: &crate::fonts::FontCatalog, stretch_property: Option<u16>) -> CanvasFont {
         let default = CanvasFont {
             size: 10.0,
             bold: false,
@@ -288,6 +305,7 @@ impl CanvasFont {
             features: blueice_font::FeaturesId::default(),
             letter_spacing: 0.0,
             word_spacing: 0.0,
+            small_caps: None,
         };
         let (mut weight, mut italic, mut stretch) = (400_u16, false, 1000_u16);
         let mut words = spec.split_whitespace();
@@ -323,6 +341,8 @@ impl CanvasFont {
         let Some(size) = size.filter(|s| s.is_finite() && *s > 0.0) else {
             return default;
         };
+        // `fontStretch` set after the shorthand wins over the shorthand's own keyword.
+        let stretch = stretch_property.unwrap_or(stretch);
         let families: Vec<String> = words
             .collect::<Vec<_>>()
             .join(" ")
@@ -347,6 +367,7 @@ impl CanvasFont {
             features: blueice_font::FeaturesId::default(),
             letter_spacing: 0.0,
             word_spacing: 0.0,
+            small_caps: None,
         }
     }
 
@@ -364,6 +385,13 @@ impl CanvasFont {
             ("text-rendering", word(2)),
         ];
         let mut features = blueice_css::font_features_for(&props);
+        // Small capitals the face has no `smcp` for are made of smaller capitals.
+        self.small_caps = match word(1) {
+            "small-caps" => Some(false),
+            "all-small-caps" => Some(true),
+            _ => None,
+        }
+        .filter(|_| !blueice_font::face_supports_feature(self.bold, self.italic, self.face, *b"smcp"));
         self.letter_spacing = number(3).clamp(-1000.0, 1000.0);
         self.word_spacing = number(4).clamp(-1000.0, 1000.0);
         // Letters spaced out are not joined into ligatures.
@@ -389,7 +417,7 @@ impl CanvasFont {
             } else {
                 for (i, word) in run.split(' ').enumerate() {
                     if i > 0 {
-                        segments.push(vec![Piece::Char(' '), Piece::Gap(self.word_spacing)]);
+                        segments.push(vec![Piece::Char(' ', self.size), Piece::Gap(self.word_spacing)]);
                     }
                     if !word.is_empty() {
                         segments.push(self.run_pieces(word, run_rtl));
@@ -413,18 +441,49 @@ impl CanvasFont {
             .collect()
     }
 
-    /// One run in one direction: shaped, or one character at a time where it cannot be.
+    /// One run in one direction, cut into the sizes synthesized small capitals are drawn at, each
+    /// shaped, or drawn one character at a time where it cannot be.
     fn run_pieces(&self, run: &str, run_rtl: bool) -> Vec<Piece> {
+        let mut parts: Vec<(String, f64)> = Vec::new();
+        match self.small_caps {
+            None => parts.push((run.to_string(), self.size)),
+            Some(all) => {
+                for c in run.chars() {
+                    let small = c.is_lowercase() || (all && c.is_uppercase());
+                    let (text, size) = if small {
+                        (c.to_uppercase().collect::<String>(), self.size * SMALL_CAPS_SCALE)
+                    } else {
+                        (c.to_string(), self.size)
+                    };
+                    match parts.last_mut() {
+                        Some((run, s)) if *s == size => run.push_str(&text),
+                        _ => parts.push((text, size)),
+                    }
+                }
+            }
+        }
+        // On screen a right-to-left run has its parts last to first.
+        let mut shaped: Vec<Vec<Piece>> = parts
+            .into_iter()
+            .map(|(text, size)| self.sized_pieces(&text, run_rtl, size))
+            .collect();
+        if run_rtl {
+            shaped.reverse();
+        }
+        shaped.into_iter().flatten().collect()
+    }
+
+    fn sized_pieces(&self, run: &str, run_rtl: bool, size: f64) -> Vec<Piece> {
         if let Some(glyphs) = blueice_font::shape_text(
             run,
             self.bold,
             self.italic,
             self.face,
             self.features,
-            self.size as f32,
+            size as f32,
             run_rtl,
         ) {
-            return glyphs.into_iter().map(Piece::Glyph).collect();
+            return glyphs.into_iter().map(|g| Piece::Glyph(g, size)).collect();
         }
         let shaped = blueice_font::shape_in(run, self.bold, self.italic, self.face);
         let drawn = if run_rtl {
@@ -432,7 +491,7 @@ impl CanvasFont {
         } else {
             shaped
         };
-        drawn.chars().map(Piece::Char).collect()
+        drawn.chars().map(|c| Piece::Char(c, size)).collect()
     }
 
     /// How far the pen moves over `pieces`.
@@ -440,10 +499,10 @@ impl CanvasFont {
         pieces
             .iter()
             .map(|p| match p {
-                Piece::Glyph(g) => f64::from(g.advance),
+                Piece::Glyph(g, _) => f64::from(g.advance),
                 Piece::Gap(g) => *g,
-                Piece::Char(c) => blueice_font::font_for_char_in(*c, self.bold, self.italic, self.face)
-                    .metrics(*c, self.size as f32)
+                Piece::Char(c, size) => blueice_font::font_for_char_in(*c, self.bold, self.italic, self.face)
+                    .metrics(*c, *size as f32)
                     .advance_width as f64,
             })
             .sum()
@@ -452,10 +511,10 @@ impl CanvasFont {
 
 /// One thing to draw in a line of canvas text.
 enum Piece {
-    /// A glyph a shaper chose, with its own advance and offset.
-    Glyph(blueice_font::DrawGlyph),
-    /// A character drawn from the face that has it.
-    Char(char),
+    /// A glyph a shaper chose, with its own advance and offset, and the size it is drawn at.
+    Glyph(blueice_font::DrawGlyph, f64),
+    /// A character drawn from the face that has it, at a size.
+    Char(char, f64),
     /// Room the pen moves over without drawing: letter and word spacing.
     Gap(f64),
 }
@@ -511,14 +570,14 @@ impl Canvas2d {
             }
             let (metrics, bitmap, advance, (dx, dy)) = match piece {
                 Piece::Gap(_) => unreachable!("handled above"),
-                Piece::Char(ch) => {
+                Piece::Char(ch, size) => {
                     let face = blueice_font::font_for_char_in(*ch, font.bold, font.italic, font.face);
-                    let (metrics, bitmap) = face.rasterize(*ch, font.size as f32);
+                    let (metrics, bitmap) = face.rasterize(*ch, *size as f32);
                     let advance = f64::from(metrics.advance_width);
                     (metrics, bitmap, advance, (0.0, 0.0))
                 }
-                Piece::Glyph(g) => {
-                    let (metrics, bitmap) = g.font.rasterize_indexed(g.id, font.size as f32);
+                Piece::Glyph(g, size) => {
+                    let (metrics, bitmap) = g.font.rasterize_indexed(g.id, *size as f32);
                     (metrics, bitmap, f64::from(g.advance), (f64::from(g.dx), f64::from(g.dy)))
                 }
             };
@@ -920,7 +979,7 @@ impl Canvas2d {
             "fillText" | "strokeText" => {
                 // text, x, y, font, paint, alpha, matrix, align, baseline, maxWidth (<0: none),
                 // lineWidth (strokeText only; fillText sends 0), direction ("rtl" or not)
-                let font = CanvasFont::parse(text(a, 3), fonts).with_extras(text(a, 12));
+                let font = CanvasFont::parse(text(a, 3), fonts, extras_stretch(text(a, 12))).with_extras(text(a, 12));
                 let paint = Paint::parse(text(a, 4));
                 let max = if a.get(9).is_some() { num(a, 9) } else { -1.0 };
                 let (at, alpha, m) = ((num(a, 1), num(a, 2)), num(a, 5).clamp(0.0, 1.0), affine(a, 6));
@@ -936,7 +995,7 @@ impl Canvas2d {
             // (left and right either side, ascent above the baseline, descent below) and the
             // font's own, as comma-separated numbers.
             "measureBox" => {
-                let font = CanvasFont::parse(text(a, 1), fonts).with_extras(text(a, 5));
+                let font = CanvasFont::parse(text(a, 1), fonts, extras_stretch(text(a, 5))).with_extras(text(a, 5));
                 let (glyphs, _) = Self::place_text(
                     text(a, 0),
                     (0.0, 0.0),
@@ -957,7 +1016,7 @@ impl Canvas2d {
                 Reply::Text(format!("{},{left},{right},{ascent},{descent},{fa},{fd}", font.advance(&shown)))
             }
             "measureText" => {
-                let font = CanvasFont::parse(text(a, 1), fonts);
+                let font = CanvasFont::parse(text(a, 1), fonts, None);
                 Reply::Number(font.advance(&font.pieces(text(a, 0), false)))
             }
             // path (JSON), paint, alpha, matrix, even-odd (fillPath); and line width, cap, join,
@@ -1481,6 +1540,51 @@ mod tests {
         };
         let (small, large) = (w("14px Opt"), w("28px Opt"));
         assert!((large / small - 2.0).abs() > 0.01, "{small} {large}: the large size is drawn in the display cut");
+    }
+
+    /// The width `measureBox` reports for `text`, with the text properties a draw carries.
+    fn box_width(c: &mut Canvas2d, text: &str, font: &str, extras: &str, catalog: &crate::fonts::FontCatalog) -> f64 {
+        let reply = c
+            .call_with_fonts("measureBox", &[t(text), t(font), t("left"), t("alphabetic"), t("ltr"), t(extras)], catalog)
+            .unwrap();
+        match reply {
+            Reply::Text(s) => s.split(',').next().unwrap().parse().unwrap(),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_font_stretch_property_condenses_a_face_that_has_a_width_axis() {
+        let bytes = include_bytes!("../../../font/tests/data/opensans-latin-wdth.woff2");
+        let mut catalog = crate::fonts::FontCatalog::default();
+        assert!(catalog.add_script_font(&crate::fonts::ScriptFont {
+            family: "Wide".into(), weight_min: 300, weight_max: 800, italic: false, slant: None, stretch_min: 750, stretch_max: 1000,
+            ranges: vec![], bytes: bytes.to_vec(),
+        }));
+        let mut c = canvas(10, 10);
+        let normal = box_width(&mut c, "Hamburgefonstiv", "32px Wide", r#"["auto","normal","auto",0,0,"normal"]"#, &catalog);
+        let condensed = box_width(&mut c, "Hamburgefonstiv", "32px Wide", r#"["auto","normal","auto",0,0,"condensed"]"#, &catalog);
+        assert!(condensed < normal * 0.95, "{condensed} vs {normal}");
+        // a stretch named in the shorthand stands when the property is normal
+        let in_shorthand = box_width(&mut c, "Hamburgefonstiv", "condensed 32px Wide", r#"["auto","normal","auto",0,0,"normal"]"#, &catalog);
+        assert!((in_shorthand - condensed).abs() < 0.01);
+    }
+
+    #[test]
+    fn small_capitals_are_synthesized_where_the_face_has_none() {
+        let none = crate::fonts::FontCatalog::default();
+        let mut c = canvas(10, 10);
+        let plain = box_width(&mut c, "hello", "20px sans-serif", r#"["auto","normal","auto",0,0,"normal"]"#, &none);
+        let small = box_width(&mut c, "hello", "20px sans-serif", r#"["auto","small-caps","auto",0,0,"normal"]"#, &none);
+        let capitals_at_70 = blueice_font::measure_text_width("HELLO", 14.0, false, false);
+        assert!((small - capitals_at_70).abs() < 0.01, "{small} vs {capitals_at_70}");
+        assert!(small < plain);
+        // capitals stay full size in small-caps and shrink in all-small-caps
+        let mixed = box_width(&mut c, "Hi", "20px sans-serif", r#"["auto","small-caps","auto",0,0,"normal"]"#, &none);
+        let expected = blueice_font::measure_text_width("H", 20.0, false, false) + blueice_font::measure_text_width("I", 14.0, false, false);
+        assert!((mixed - expected).abs() < 0.01);
+        let all = box_width(&mut c, "Hi", "20px sans-serif", r#"["auto","all-small-caps","auto",0,0,"normal"]"#, &none);
+        assert!((all - blueice_font::measure_text_width("HI", 14.0, false, false)).abs() < 0.01);
     }
 
     #[test]

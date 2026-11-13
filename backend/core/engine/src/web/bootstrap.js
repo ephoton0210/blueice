@@ -2790,7 +2790,7 @@
       super();
       this.canvas = canvas;
       this._id = bi('c2dCreate', canvas._id, canvas.width, canvas.height);
-      this._state = { fillStyle: '#000000', strokeStyle: '#000000', globalAlpha: 1, m: [1, 0, 0, 1, 0, 0], font: '10px sans-serif', textAlign: 'start', textBaseline: 'alphabetic', lineWidth: 1, lineCap: 'butt', lineJoin: 'miter', miterLimit: 10, dash: [], dashOffset: 0, direction: 'ltr', fontKerning: 'auto', fontVariantCaps: 'normal', textRendering: 'auto', letterSpacing: '0px', wordSpacing: '0px' };
+      this._state = { fillStyle: '#000000', strokeStyle: '#000000', globalAlpha: 1, m: [1, 0, 0, 1, 0, 0], font: '10px sans-serif', textAlign: 'start', textBaseline: 'alphabetic', lineWidth: 1, lineCap: 'butt', lineJoin: 'miter', miterLimit: 10, dash: [], dashOffset: 0, direction: 'ltr', fontKerning: 'auto', fontStretch: 'normal', fontVariantCaps: 'normal', textRendering: 'auto', letterSpacing: '0px', wordSpacing: '0px' };
       this._stack = [];
       this._subs = [];
       this._cur = null;
@@ -2805,7 +2805,8 @@
     get globalAlpha() { return this._state.globalAlpha; }
     set globalAlpha(v) { v = Number(v); if (v >= 0 && v <= 1) this._state.globalAlpha = v; }
     get font() { return this._state.font; }
-    set font(v) { this._state.font = String(v); }
+    // The `font` shorthand sets the variant and the stretch it names, or resets them to normal.
+    set font(v) { v = String(v); this._state.font = v; this._state.fontVariantCaps = /(^|\s)small-caps(\s|$)/.test(v) ? 'small-caps' : 'normal'; this._state.fontStretch = 'normal'; }
     get textAlign() { return this._state.textAlign; }
     set textAlign(v) { v = String(v); if (['start', 'end', 'left', 'right', 'center'].includes(v)) this._state.textAlign = v; }
     get textBaseline() { return this._state.textBaseline; }
@@ -2814,6 +2815,8 @@
     set lineWidth(v) { v = Number(v); if (v > 0 && Number.isFinite(v)) this._state.lineWidth = v; }
     get fontKerning() { return this._state.fontKerning; }
     set fontKerning(v) { v = String(v); if (['auto', 'normal', 'none'].includes(v)) this._state.fontKerning = v; }
+    get fontStretch() { return this._state.fontStretch; }
+    set fontStretch(v) { v = String(v); if (['ultra-condensed', 'extra-condensed', 'condensed', 'semi-condensed', 'normal', 'semi-expanded', 'expanded', 'extra-expanded', 'ultra-expanded'].includes(v)) this._state.fontStretch = v; }
     get fontVariantCaps() { return this._state.fontVariantCaps; }
     set fontVariantCaps(v) { v = String(v); if (['normal', 'small-caps', 'all-small-caps', 'petite-caps', 'all-petite-caps', 'unicase', 'titling-caps'].includes(v)) this._state.fontVariantCaps = v; }
     get textRendering() { return this._state.textRendering; }
@@ -2825,7 +2828,7 @@
     // The text properties the font properties of a draw carry, as one JSON array for the engine.
     _textExtras() {
       const st = this._state;
-      return JSON.stringify([st.fontKerning, st.fontVariantCaps, st.textRendering, parseFloat(st.letterSpacing), parseFloat(st.wordSpacing)]);
+      return JSON.stringify([st.fontKerning, st.fontVariantCaps, st.textRendering, parseFloat(st.letterSpacing), parseFloat(st.wordSpacing), st.fontStretch]);
     }
     get direction() { return this._state.direction; }
     set direction(v) { v = String(v); if (['ltr', 'rtl', 'inherit'].includes(v)) this._state.direction = v; }

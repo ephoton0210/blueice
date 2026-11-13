@@ -3,18 +3,19 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use std::process::Command;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 
-static PARSED_FONTS: AtomicU8 = AtomicU8::new(0);
+static PARSED_FONTS: AtomicU32 = AtomicU32::new(0);
 
 pub(super) fn record_parsed_font(bytes: &[u8]) {
-    let fonts = [
+    let mut fonts = vec![
         super::FONT_REGULAR,
         super::FONT_BOLD,
         super::FONT_ITALIC,
         super::FONT_BOLD_ITALIC,
         super::FONT_CJK_FALLBACK,
     ];
+    fonts.extend(super::SCRIPT_FACES.iter().map(|face| face.bytes));
     let index = fonts
         .iter()
         .position(|font| *font == bytes)
@@ -69,4 +70,14 @@ fn cjk_measurement_parses_only_its_primary_and_fallback_faces() {
         super::font_for_char('關', false, false)
     ));
     assert_eq!(PARSED_FONTS.load(Ordering::SeqCst), 0b10001);
+}
+
+#[test]
+fn a_script_measurement_parses_only_dejavu_and_that_scripts_own_face() {
+    if !cold_process("cold_start::a_script_measurement_parses_only_dejavu_and_that_scripts_own_face") {
+        return;
+    }
+    // Devanagari is the first script face, after the five Latin and CJK ones
+    assert!(super::measure_text_width("\u{928}\u{92E}\u{938}\u{94D}\u{924}\u{947}", 16.0, false, false) > 0.0);
+    assert_eq!(PARSED_FONTS.load(Ordering::SeqCst), 1 | (1 << 5), "DejaVu (to find it lacks the letters) and Devanagari");
 }

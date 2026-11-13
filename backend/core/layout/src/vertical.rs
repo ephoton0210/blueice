@@ -195,7 +195,12 @@ pub(crate) fn upright_length(
     bold: bool,
     italic: bool,
     face: Option<blueice_font::web::WebFontId>,
+    features: blueice_font::FeaturesId,
 ) -> f64 {
+    // The font's vertical layout for the run as a whole: pair kerning and proportional widths.
+    if let Some(glyphs) = blueice_font::vertical_glyphs(text, bold, italic, face, features, size as f32) {
+        return glyphs.iter().map(|g| f64::from(g.advance)).sum();
+    }
     text.chars()
         .map(|c| match blueice_font::font_for_char_in(c, bold, italic, face) {
             blueice_font::Glyphs::Static(font) => blueice_font::vertical_cell(font, c)
@@ -328,6 +333,9 @@ fn split_runs(
             s.style.is_some_and(|st| st.is_bold()),
             s.style.is_some_and(|st| st.is_italic()),
             s.web_face(),
+            s.style
+                .map(|st| blueice_font::register_features(&blueice_css::font_features(st)))
+                .unwrap_or_default(),
         ),
         Some(s) => blueice_font::measure_text_width_in(
             run,
@@ -975,6 +983,22 @@ mod tests {
             inline.width,
             texts(&f.children[0])
         );
+    }
+
+    #[test]
+    fn proportional_widths_shorten_upright_punctuation_in_a_vertical_line() {
+        let run = |css: &str| {
+            let f = body(
+                "<div>\u{300c}\u{3042}\u{3002}\u{300d}</div>",
+                &format!("div {{ writing-mode: vertical-rl; width: 60px; height: 300px; {css} }}"),
+            );
+            texts(div(&f))[0].5
+        };
+        let plain = run("");
+        assert!((plain - 64.0).abs() < 0.5, "four 16px cells: {plain}");
+        let proportional = run("font-variant-east-asian: proportional-width");
+        assert!(proportional < plain - 2.0, "{proportional} vs {plain}");
+        assert!((run("font-feature-settings: \"vpal\" 1") - proportional).abs() < 0.01);
     }
 
     #[test]
