@@ -6,6 +6,8 @@
 
 #[path = "fixtures/compatibility_inventory/accounting.rs"]
 mod accounting;
+#[path = "fixtures/compatibility_inventory/case_conditional_inference.rs"]
+mod case_conditional_inference;
 #[path = "fixtures/compatibility_inventory/case_ge5.rs"]
 mod case_ge5;
 #[path = "fixtures/compatibility_inventory/case_inline.rs"]

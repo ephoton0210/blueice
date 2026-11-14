@@ -1,0 +1,112 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "archive": "CONDITIONAL_INFERENCE_DEVELOPMENT_20.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/contract/symbol-work-probe-1/candidate-f-bluetsc",
+      "bytes": 50341472,
+      "sha256": "978e1250f9b1efeb5cd77cbee0d886da6427d02f93c27a4bffbd113143a52b23"
+    },
+    {
+      "path": "development-history/contract/symbol-work-probe-1/report.json",
+      "bytes": 2979,
+      "sha256": "1c724bd596deda66d51cae4f84d5f52e7f5ec8d78625860dc9b3c842d4edf758"
+    },
+    {
+      "path": "development-history/contract/virtual-host-regression/fixed-host.cjs",
+      "bytes": 1591,
+      "sha256": "e4f91e27f5d452791270d7d113d20eb3719a507891f3c3e870e3e69c37d95089"
+    },
+    {
+      "path": "development-history/contract/virtual-host-regression/green.log",
+      "bytes": 672,
+      "sha256": "e9b1742e427289fdea0748e40dc85a05dc0633ba5ce72e309efa7b5544f11194"
+    },
+    {
+      "path": "development-history/contract/virtual-host-regression/legacy-host.cjs",
+      "bytes": 1075,
+      "sha256": "88106e1d8686244426469fe8ceacf07319e202de96245b3b83e0042c35970a70"
+    },
+    {
+      "path": "development-history/contract/virtual-host-regression/measurement.json",
+      "bytes": 362,
+      "sha256": "8a739ad877ae16a4224a3cf87c12a41d26fe9cdb593e69b1ee3f964a4a6c1204"
+    },
+    {
+      "path": "development-history/contract/virtual-host-regression/red.log",
+      "bytes": 6210,
+      "sha256": "74cd9c00c4c23bd55f2cff8c921cebe1580bb57395873c5469bc96923d6ece3e"
+    },
+    {
+      "path": "development-history/contract/virtual-host-regression/regression.test.cjs",
+      "bytes": 3070,
+      "sha256": "883059e1ade066849624a56b78e7b6b56f6b9fa0b83b0f81e2f09163be6d3bab"
+    },
+    {
+      "path": "development-history/contract-members.json",
+      "bytes": 8209661,
+      "sha256": "b50a4289dc051026d0c3d4c591f9e1255934dca1db1e56f02569ff0a87a3a156"
+    },
+    {
+      "path": "development-history/failed-acceptance-r1/acceptance-driver.json",
+      "bytes": 1374,
+      "sha256": "7bea6e28b609e58cc799bf03530e67bcd91ed0bcfa6331d54edc0bacbaf8e3a3"
+    },
+    {
+      "path": "development-history/failed-acceptance-r1/accepted-native/000-backend_bluets_tests_conditional_inference_rs.log",
+      "bytes": 522,
+      "sha256": "64ce548b95240fb1fa4b9350fa94ef7fde60377d6ca5a450df7a2e42171f7491"
+    },
+    {
+      "path": "development-history/failed-acceptance-r1/accepted-native/001-backend_bluets_tests_symbolic_keys_rs.log",
+      "bytes": 511,
+      "sha256": "16f0db47870e90005a9e913cdf722a66095d82b86c3b00b8e793fffab193e184"
+    },
+    {
+      "path": "development-history/failed-acceptance-r1/accepted-native/002-backend_bluets_tests_mapped_inference_rs.log",
+      "bytes": 645,
+      "sha256": "3bf5914f865bb24aba75b34de31516ef0c8b9ed6c845e6ffea9e77397d4c87a7"
+    },
+    {
+      "path": "development-history/failed-acceptance-r1/accepted-native/003-backend_bluets_tests_gc1_object_generic_methods_rs.log",
+      "bytes": 482,
+      "sha256": "6b3fbff51d5feede80c2debe6d2201ec528832c92efbcae014ca93c36509564a"
+    },
+    {
+      "path": "development-history/failed-acceptance-r1/accepted-native/004-backend_bluets_tests_gt5_compositions_rs.log",
+      "bytes": 571,
+      "sha256": "6b8168e512cb839fbabd6471304141e3cd6f1df7d24d781a4def4072bf70671b"
+    },
+    {
+      "path": "development-history/failed-acceptance-r1/accepted-native/005-backend_bluets_tests_gt2_inference_rs.log",
+      "bytes": 475,
+      "sha256": "073d9e5cd48d99edfe8dd51c4fa72c0dd07df11ba3dd09809866ca532aa99701"
+    },
+    {
+      "path": "development-history/failed-acceptance-r1/accepted-native/006-backend_bluets_tests_string_intrinsics_rs.log",
+      "bytes": 530,
+      "sha256": "177ebcd730cf51dfa06638c0ce54bb392df12cc407fa3f3b25e786ec6b7de37c"
+    },
+    {
+      "path": "development-history/failed-acceptance-r1/accepted-native/007-backend_bluets_tests_gt3_operators_rs.log",
+      "bytes": 4039,
+      "sha256": "774c3644e853a51ca9c358f3aa3e989b5bc7b015471f02ca4dd0452b556a3b65"
+    },
+    {
+      "path": "development-history/failed-acceptance-r1/accepted-native/cargo-artifacts.jsonl",
+      "bytes": 374484,
+      "sha256": "73a537675087fe12972b40d7562a258f2b169c30eae6946c345535bc8700faeb"
+    },
+    {
+      "path": "development-history/failed-acceptance-r1/accepted-native/current.json",
+      "bytes": 29,
+      "sha256": "0e9db5084f29935d08b7553076769526ff56e3f2f01e1dd74a9ec52472ea4c24"
+    },
+    {
+      "path": "development-history/failed-acceptance-r1/accepted-native/measurement.json",
+      "bytes": 91783,
+      "sha256": "3277d4bebb9719c7e443c37bc754e83d27f0582ad007760fe61f4fd913fc8e89"
+    }
+  ]
+}

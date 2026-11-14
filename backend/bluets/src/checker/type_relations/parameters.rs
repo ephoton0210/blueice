@@ -62,6 +62,21 @@ pub(super) fn generic_functions_assignable(
     {
         return None;
     }
+    if let Type::GenericFunction {
+        type_parameters,
+        parameters,
+        result,
+        ..
+    } = actual
+    {
+        if type_parameters.is_empty() {
+            let source = Type::Function {
+                parameters: parameters.clone(),
+                result: result.clone(),
+            };
+            return Some(is_assignable(&source, expected, aliases, visited, budget));
+        }
+    }
     if let (
         Type::GenericFunction {
             type_parameters,

@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "frozenAt": "2026-11-13T19:16:50.354Z",
+  "scope": "Separate alias identity regression controls frozen after the first primary repairs and before the scalar-alias regression repair; zero inventory credit.",
+  "sha256": {
+    "alias-controls.json": "2d2ac8cee34ed99f6240c1616b0bcdcc485b50b83c250800fbd0b3e00487a05c"
+  },
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "comparisons": 24,
+  "syntax": 24,
+  "inventoryCredit": 0,
+  "priorCompilerSha256": "cec21048b82150ed2d34c9dd4d5df46c8fe914ca021a2631fe33a7fbbfce341a"
+}

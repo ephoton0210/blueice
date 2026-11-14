@@ -20,19 +20,15 @@ function compile(source, options, sources = new Map()) {
     const native = converted.options, name = path.join(base, 'entry.ts');
     sources = new Map(sources); sources.set(name, source);
     const host = ts.createCompilerHost(native), read = host.getSourceFile;
-    const exists = host.fileExists, readFile = host.readFile, directoryExists = host.directoryExists;
-    host.fileExists = file => sources.has(file) || exists(file);
-    host.readFile = file => sources.get(file) ?? readFile(file);
-    host.directoryExists = file => file === base || directoryExists(file);
     host.getSourceFile = (file, version, ...args) => {
-        if (sources.has(file)) return ts.createSourceFile(file, sources.get(file), version, true);
         const key = `${native.target}:${file}`;
         if (!libraries.has(key)) libraries.set(key, read(file, version, ...args));
         return libraries.get(key);
     };
+    require('./virtual_compiler_host.cjs')(ts, host, sources);
     let declaration, javascript;
     host.writeFile = (file, text) => {
-        if (path.basename(file) === 'entry.d.ts') declaration = text.replaceAll('\r\n','\n');
+        if (path.basename(file) === 'entry.d.ts') declaration = text;
         if (path.basename(file) === 'entry.js') javascript = text;
     };
     const program = ts.createProgram([name], native, host);

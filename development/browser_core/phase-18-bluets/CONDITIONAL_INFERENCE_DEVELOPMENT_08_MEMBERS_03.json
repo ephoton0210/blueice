@@ -1,0 +1,1007 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "archive": "CONDITIONAL_INFERENCE_DEVELOPMENT_08.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/mutable-array-to-readonly-pattern/observation.json",
+      "bytes": 846,
+      "sha256": "fcc33a8775b566a6d3db5c8efe947cf3a4e0916a3c5e1c90f001458e2d758cfa"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/mutable-array-to-readonly-pattern/tsconfig.json",
+      "bytes": 309,
+      "sha256": "9bf58ef0b8d1b5e7eafab849bb1ac748b06ff71e4d7abade1d56f416c0104024"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/nested-double-contravariant-candidates/consumers/negative/consumer.ts",
+      "bytes": 66,
+      "sha256": "538df79fb83ba37e64e66eecfadb73127ff5905633def8735dc87d2c9a29d590"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/nested-double-contravariant-candidates/consumers/negative/main.d.ts",
+      "bytes": 91,
+      "sha256": "26c39bf638c71e809313ba87f9c78badb8de79a0cae0e214876dbfa0e019e5df"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/nested-double-contravariant-candidates/consumers/positive/consumer.ts",
+      "bytes": 142,
+      "sha256": "960ccef97af9b347d3151c1ae85a62adf812beb1fc6071b1ca64ab20f498274d"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/nested-double-contravariant-candidates/consumers/positive/main.d.ts",
+      "bytes": 91,
+      "sha256": "26c39bf638c71e809313ba87f9c78badb8de79a0cae0e214876dbfa0e019e5df"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/nested-double-contravariant-candidates/dist/main.d.ts",
+      "bytes": 91,
+      "sha256": "26c39bf638c71e809313ba87f9c78badb8de79a0cae0e214876dbfa0e019e5df"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/nested-double-contravariant-candidates/dist/main.js",
+      "bytes": 54,
+      "sha256": "b42347a48fefdcc84241efa08c3fa02435b0931a69a689ec4b67119eedaf0edb"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/nested-double-contravariant-candidates/main.ts",
+      "bytes": 300,
+      "sha256": "d09f443ae3da7db3d26881b7a3851ef0db012139be3166cade8c78a7b02f7e33"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/nested-double-contravariant-candidates/observation.json",
+      "bytes": 879,
+      "sha256": "6bd1540959123f8f4456130ba7f00fc4c7a97dad87886f18e506b31e9b095944"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/nested-double-contravariant-candidates/tsconfig.json",
+      "bytes": 309,
+      "sha256": "9bf58ef0b8d1b5e7eafab849bb1ac748b06ff71e4d7abade1d56f416c0104024"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/non-distributive-union-control/consumers/negative/consumer.ts",
+      "bytes": 63,
+      "sha256": "8d2d7bd081bbf1d486b8e9774484e76edbadcc05c412ca30c03cf7938eb9ab43"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/non-distributive-union-control/consumers/negative/main.d.ts",
+      "bytes": 63,
+      "sha256": "50fd9e26c16d07670d05ec8c59c7b95aa701d1f1c2243b135da7ea0b15878e85"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/non-distributive-union-control/consumers/positive/consumer.ts",
+      "bytes": 92,
+      "sha256": "943f0ec5c4116c4aa80df11e7d57e2889c61a844f21f62cf8489e35214a2368e"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/non-distributive-union-control/consumers/positive/main.d.ts",
+      "bytes": 63,
+      "sha256": "50fd9e26c16d07670d05ec8c59c7b95aa701d1f1c2243b135da7ea0b15878e85"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/non-distributive-union-control/dist/main.d.ts",
+      "bytes": 63,
+      "sha256": "50fd9e26c16d07670d05ec8c59c7b95aa701d1f1c2243b135da7ea0b15878e85"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/non-distributive-union-control/dist/main.js",
+      "bytes": 54,
+      "sha256": "b42347a48fefdcc84241efa08c3fa02435b0931a69a689ec4b67119eedaf0edb"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/non-distributive-union-control/main.ts",
+      "bytes": 152,
+      "sha256": "d36c75006b8d5652bdb0370bbb5cd4057faaf1c4f6a070cdef6bc44c340feb12"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/non-distributive-union-control/observation.json",
+      "bytes": 823,
+      "sha256": "1fed1b56d5365034241fcc0add8864ae622e96b3e3f11decdfa748eb998d48a9"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/non-distributive-union-control/tsconfig.json",
+      "bytes": 309,
+      "sha256": "9bf58ef0b8d1b5e7eafab849bb1ac748b06ff71e4d7abade1d56f416c0104024"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/one-missing-function-position/consumers/negative/consumer.ts",
+      "bytes": 70,
+      "sha256": "1c6a20499fe41e629e8910fa9662438c717264897d038914768646d4a46565f0"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/one-missing-function-position/consumers/negative/main.d.ts",
+      "bytes": 95,
+      "sha256": "eafd67dd13346a1b40a847d6d278593e4d714aa14ebd5b272a11aa732e968b2d"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/one-missing-function-position/consumers/positive/consumer.ts",
+      "bytes": 117,
+      "sha256": "2c2788410f58ca84f00b16116f5704382b6e3a9612a39e28180598e322f75dec"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/one-missing-function-position/consumers/positive/main.d.ts",
+      "bytes": 95,
+      "sha256": "eafd67dd13346a1b40a847d6d278593e4d714aa14ebd5b272a11aa732e968b2d"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/one-missing-function-position/dist/main.d.ts",
+      "bytes": 95,
+      "sha256": "eafd67dd13346a1b40a847d6d278593e4d714aa14ebd5b272a11aa732e968b2d"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/one-missing-function-position/dist/main.js",
+      "bytes": 54,
+      "sha256": "b42347a48fefdcc84241efa08c3fa02435b0931a69a689ec4b67119eedaf0edb"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/one-missing-function-position/main.ts",
+      "bytes": 204,
+      "sha256": "1af8804160451e414445d6d798e709900dc6f8eabf37e9164618bb84f1832a93"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/one-missing-function-position/observation.json",
+      "bytes": 865,
+      "sha256": "c25f081f7a38817d2a38d6dedd441ee29d45f44158fce0803564583d5e46d7d8"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/one-missing-function-position/tsconfig.json",
+      "bytes": 309,
+      "sha256": "9bf58ef0b8d1b5e7eafab849bb1ac748b06ff71e4d7abade1d56f416c0104024"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/optional-source-parameter-candidate/consumers/negative/consumer.ts",
+      "bytes": 64,
+      "sha256": "52104b6c85b9b39f5addd7b3ed9911ab81bd473e791ab77d4b61d35ca866eaf0"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/optional-source-parameter-candidate/consumers/negative/main.d.ts",
+      "bytes": 97,
+      "sha256": "99c856a05628af49ddfd883402c3abab5571835f38b82a79377e9b4607c606c3"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/optional-source-parameter-candidate/consumers/positive/consumer.ts",
+      "bytes": 153,
+      "sha256": "0994253d43f9c61e910687549a586a1a85dde85094f4a652ab432c6bab164fae"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/optional-source-parameter-candidate/consumers/positive/main.d.ts",
+      "bytes": 97,
+      "sha256": "99c856a05628af49ddfd883402c3abab5571835f38b82a79377e9b4607c606c3"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/optional-source-parameter-candidate/dist/main.d.ts",
+      "bytes": 97,
+      "sha256": "99c856a05628af49ddfd883402c3abab5571835f38b82a79377e9b4607c606c3"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/optional-source-parameter-candidate/dist/main.js",
+      "bytes": 54,
+      "sha256": "b42347a48fefdcc84241efa08c3fa02435b0931a69a689ec4b67119eedaf0edb"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/optional-source-parameter-candidate/main.ts",
+      "bytes": 189,
+      "sha256": "a4e1d324a40124ffdd72730fd853cf65a3cfbeb1be7e3aff2b9667aa0277e8fc"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/optional-source-parameter-candidate/observation.json",
+      "bytes": 872,
+      "sha256": "24363c8874a2b51600780967e1f8f0557e4708d347e8f3be6b0a1a305bf1b2a5"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/optional-source-parameter-candidate/tsconfig.json",
+      "bytes": 309,
+      "sha256": "9bf58ef0b8d1b5e7eafab849bb1ac748b06ff71e4d7abade1d56f416c0104024"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/overload-last-signature-control/consumers/negative/consumer.ts",
+      "bytes": 69,
+      "sha256": "98ea7014425c871c49ab4a96d547b05cc691e935edb8fd231cb59a7ce1f604f3"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/overload-last-signature-control/consumers/negative/main.d.ts",
+      "bytes": 73,
+      "sha256": "e62a44ef461e686782c6879cddf895e1929a324062ac250855b5dcb84ef4af59"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/overload-last-signature-control/consumers/positive/consumer.ts",
+      "bytes": 102,
+      "sha256": "24085d18935911fbec632d89c47660d4cc0f0aa999cc3164208dc87f18700446"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/overload-last-signature-control/consumers/positive/main.d.ts",
+      "bytes": 73,
+      "sha256": "e62a44ef461e686782c6879cddf895e1929a324062ac250855b5dcb84ef4af59"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/overload-last-signature-control/dist/main.d.ts",
+      "bytes": 73,
+      "sha256": "e62a44ef461e686782c6879cddf895e1929a324062ac250855b5dcb84ef4af59"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/overload-last-signature-control/dist/main.js",
+      "bytes": 54,
+      "sha256": "b42347a48fefdcc84241efa08c3fa02435b0931a69a689ec4b67119eedaf0edb"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/overload-last-signature-control/main.ts",
+      "bytes": 198,
+      "sha256": "0ec8bab81c66ea072ed5d5e3c659368e187fd6359e805947dfdf512dbde33a9b"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/overload-last-signature-control/observation.json",
+      "bytes": 853,
+      "sha256": "aa841cdf791aa8cc285d7b27093651f89754656ed9fbe85501eb912ad50a6130"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/overload-last-signature-control/tsconfig.json",
+      "bytes": 309,
+      "sha256": "9bf58ef0b8d1b5e7eafab849bb1ac748b06ff71e4d7abade1d56f416c0104024"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-array/consumers/negative/consumer.ts",
+      "bytes": 64,
+      "sha256": "52104b6c85b9b39f5addd7b3ed9911ab81bd473e791ab77d4b61d35ca866eaf0"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-array/consumers/negative/main.d.ts",
+      "bytes": 73,
+      "sha256": "42349f04164eba8624f9c8524da1a118024c50411ff4a5328ebb963bca19b383"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-array/consumers/positive/consumer.ts",
+      "bytes": 100,
+      "sha256": "ed88d486104f43fec7a946b5f53999e37e20bdadd6e22ce3c15864276136c4ed"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-array/consumers/positive/main.d.ts",
+      "bytes": 73,
+      "sha256": "42349f04164eba8624f9c8524da1a118024c50411ff4a5328ebb963bca19b383"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-array/dist/main.d.ts",
+      "bytes": 73,
+      "sha256": "42349f04164eba8624f9c8524da1a118024c50411ff4a5328ebb963bca19b383"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-array/dist/main.js",
+      "bytes": 54,
+      "sha256": "b42347a48fefdcc84241efa08c3fa02435b0931a69a689ec4b67119eedaf0edb"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-array/main.ts",
+      "bytes": 174,
+      "sha256": "9821ba236701fc0192be5aa4c5a25ad47948614ed33e702f99ad15dcf63c6106"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-array/observation.json",
+      "bytes": 827,
+      "sha256": "1ff1a9c4efb35a16009ca3b8852a6df6c036872d26e0dfb2fbd3fbd358e1b642"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-array/tsconfig.json",
+      "bytes": 309,
+      "sha256": "9bf58ef0b8d1b5e7eafab849bb1ac748b06ff71e4d7abade1d56f416c0104024"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-array-to-mutable-pattern/consumers/negative/consumer.ts",
+      "bytes": 69,
+      "sha256": "90614dc65b731abe7439e65053be3e23d89db9331f16f102e62671c6fcbb625a"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-array-to-mutable-pattern/consumers/negative/main.d.ts",
+      "bytes": 73,
+      "sha256": "0d962136e6a573b1afc3a1bfb0575d491789c39c1f393bc36e159e508f31249e"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-array-to-mutable-pattern/consumers/positive/consumer.ts",
+      "bytes": 102,
+      "sha256": "55b75e26aacd9119f01fa29c39dfee0e5e3ad3104f91a9fe143b21a0f49adb98"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-array-to-mutable-pattern/consumers/positive/main.d.ts",
+      "bytes": 73,
+      "sha256": "0d962136e6a573b1afc3a1bfb0575d491789c39c1f393bc36e159e508f31249e"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-array-to-mutable-pattern/dist/main.d.ts",
+      "bytes": 73,
+      "sha256": "0d962136e6a573b1afc3a1bfb0575d491789c39c1f393bc36e159e508f31249e"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-array-to-mutable-pattern/dist/main.js",
+      "bytes": 54,
+      "sha256": "b42347a48fefdcc84241efa08c3fa02435b0931a69a689ec4b67119eedaf0edb"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-array-to-mutable-pattern/main.ts",
+      "bytes": 165,
+      "sha256": "830ae672c1951116f76e6809d4199e8608fba3f29ae2e0ac5be5710bb3bb9a86"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-array-to-mutable-pattern/observation.json",
+      "bytes": 855,
+      "sha256": "ba47e94ac1109c56ea6f0a2ad638ac290f908e1433cd7d03b0d15736f2794bb6"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-array-to-mutable-pattern/tsconfig.json",
+      "bytes": 309,
+      "sha256": "9bf58ef0b8d1b5e7eafab849bb1ac748b06ff71e4d7abade1d56f416c0104024"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-tuple-pattern/consumers/negative/consumer.ts",
+      "bytes": 74,
+      "sha256": "4776d383efdf9ca01bf44446e779b8497a33931e0e608af3b65937cf25647f0d"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-tuple-pattern/consumers/negative/main.d.ts",
+      "bytes": 93,
+      "sha256": "bdaa12c6c2fea47e77a74fb9a00547cfd2baf87f91771c143b97da3db16cf2b6"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-tuple-pattern/consumers/positive/consumer.ts",
+      "bytes": 115,
+      "sha256": "8867cb489bda4957bebf106111a1a4b9310d38390bbccf6334e11a7baae3a89c"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-tuple-pattern/consumers/positive/main.d.ts",
+      "bytes": 93,
+      "sha256": "bdaa12c6c2fea47e77a74fb9a00547cfd2baf87f91771c143b97da3db16cf2b6"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-tuple-pattern/dist/main.d.ts",
+      "bytes": 93,
+      "sha256": "bdaa12c6c2fea47e77a74fb9a00547cfd2baf87f91771c143b97da3db16cf2b6"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-tuple-pattern/dist/main.js",
+      "bytes": 54,
+      "sha256": "b42347a48fefdcc84241efa08c3fa02435b0931a69a689ec4b67119eedaf0edb"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-tuple-pattern/main.ts",
+      "bytes": 204,
+      "sha256": "b4bf806da651ac2ba82cc9ca9ed2f0161bf42f305841c68e40033d6999979d5d"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-tuple-pattern/observation.json",
+      "bytes": 1153,
+      "sha256": "c47920b5e61c2a5ef30e186ae3bd306217df4ecf7dae0f58ba5a3f3f07a96e73"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/readonly-tuple-pattern/tsconfig.json",
+      "bytes": 309,
+      "sha256": "9bf58ef0b8d1b5e7eafab849bb1ac748b06ff71e4d7abade1d56f416c0104024"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-contravariant-literal/consumers/negative/consumer.ts",
+      "bytes": 65,
+      "sha256": "f87a5dc00d82ed5d0625db232278116d8294f5d228fc06f5ef062a08549bbab9"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-contravariant-literal/consumers/negative/main.d.ts",
+      "bytes": 34,
+      "sha256": "668a65d49866c0421dcec098a76d712bbb5bf696baddf5c131e938e59e3a0beb"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-contravariant-literal/consumers/positive/consumer.ts",
+      "bytes": 96,
+      "sha256": "0d1f9d5ebc005f7abb6d8470c9018b614b8d13edb59cfb5311dcf9df541ef471"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-contravariant-literal/consumers/positive/main.d.ts",
+      "bytes": 34,
+      "sha256": "668a65d49866c0421dcec098a76d712bbb5bf696baddf5c131e938e59e3a0beb"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-contravariant-literal/dist/main.d.ts",
+      "bytes": 34,
+      "sha256": "668a65d49866c0421dcec098a76d712bbb5bf696baddf5c131e938e59e3a0beb"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-contravariant-literal/dist/main.js",
+      "bytes": 78,
+      "sha256": "2f0d8065d4d8c4bbb4c6893090106dfe1628c2a34b227aa743dd5e10bc716bff"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-contravariant-literal/main.ts",
+      "bytes": 247,
+      "sha256": "54d0fd7fedc345cbd33849b042dd595420860dd47518640b6fc20cb966b1dfde"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-contravariant-literal/observation.json",
+      "bytes": 872,
+      "sha256": "6b5e32410916560d66a94f45e78768281c32c49eff6ed32ab084bfbe1d1d1ad9"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-contravariant-literal/runtime-check.js",
+      "bytes": 195,
+      "sha256": "127c72c67afb5e3af89b13eec15e4f864de7edc753b4a8a408bebd1f0f8c3912"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-contravariant-literal/tsconfig.json",
+      "bytes": 309,
+      "sha256": "9bf58ef0b8d1b5e7eafab849bb1ac748b06ff71e4d7abade1d56f416c0104024"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-contravariant-record/consumers/negative/consumer.ts",
+      "bytes": 73,
+      "sha256": "ccc7c6865d3e79aabea9af735030514883c9bfe94f1aa820cae4655fa03b8a29"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-contravariant-record/consumers/negative/main.d.ts",
+      "bytes": 70,
+      "sha256": "f3c76c19b4ed4f9a84f6c9e75f4282c196c0cbaaf95673f610c7442fd51f6b03"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-contravariant-record/consumers/positive/consumer.ts",
+      "bytes": 131,
+      "sha256": "3e9bfd9eaae9bdc51214890ba48c080ad117f26dca716dbf6627c36f15d2dbe5"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-contravariant-record/consumers/positive/main.d.ts",
+      "bytes": 70,
+      "sha256": "f3c76c19b4ed4f9a84f6c9e75f4282c196c0cbaaf95673f610c7442fd51f6b03"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-contravariant-record/dist/main.d.ts",
+      "bytes": 70,
+      "sha256": "f3c76c19b4ed4f9a84f6c9e75f4282c196c0cbaaf95673f610c7442fd51f6b03"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-contravariant-record/dist/main.js",
+      "bytes": 92,
+      "sha256": "41be6fcccb5baef69fd179944f00076c79993ac1844982ac9f9361dc762454a1"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-contravariant-record/main.ts",
+      "bytes": 269,
+      "sha256": "91223f4426b700e10001cc5e2a3b8e3e3b74b9e2fa7c5cce5e9a109dfcd618af"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-contravariant-record/observation.json",
+      "bytes": 1355,
+      "sha256": "e0cf77144755c13e543eba9f1c5058c874919df109bfa43c86bcefbe3845650b"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-contravariant-record/runtime-check.js",
+      "bytes": 223,
+      "sha256": "31ee25c7e3ac15a52bf03b64f7e8cff1fba36a97c0430bc9652e8b91d936bd9e"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-contravariant-record/tsconfig.json",
+      "bytes": 309,
+      "sha256": "9bf58ef0b8d1b5e7eafab849bb1ac748b06ff71e4d7abade1d56f416c0104024"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-covariant-union/consumers/negative/consumer.ts",
+      "bytes": 66,
+      "sha256": "538df79fb83ba37e64e66eecfadb73127ff5905633def8735dc87d2c9a29d590"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-covariant-union/consumers/negative/main.d.ts",
+      "bytes": 46,
+      "sha256": "3b44202b6609fa87ca1cd914b397a844d0d12cd36817e33ac61630b982014c4f"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-covariant-union/consumers/positive/consumer.ts",
+      "bytes": 142,
+      "sha256": "960ccef97af9b347d3151c1ae85a62adf812beb1fc6071b1ca64ab20f498274d"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-covariant-union/consumers/positive/main.d.ts",
+      "bytes": 46,
+      "sha256": "3b44202b6609fa87ca1cd914b397a844d0d12cd36817e33ac61630b982014c4f"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-covariant-union/dist/main.d.ts",
+      "bytes": 46,
+      "sha256": "3b44202b6609fa87ca1cd914b397a844d0d12cd36817e33ac61630b982014c4f"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-covariant-union/dist/main.js",
+      "bytes": 79,
+      "sha256": "a63a08a5a12fca2c8abfab3d997f850e6c6457dc691f9f76c968f629c9fe2188"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-covariant-union/main.ts",
+      "bytes": 190,
+      "sha256": "3d625a44cdfd0a26b6b31d785379da3cf26b47366ec4578ce93657764de107c0"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-covariant-union/observation.json",
+      "bytes": 888,
+      "sha256": "15fbaf63e7565e4b87eb2015d5d2d4f318ddfdd2eca6185fab44e6e6a249bdd6"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-covariant-union/runtime-check.js",
+      "bytes": 197,
+      "sha256": "54a7faab3b3e323fbf870b151a9bd6b27e3d31dafc9723ece839e67a33e09dd4"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-covariant-union/tsconfig.json",
+      "bytes": 309,
+      "sha256": "9bf58ef0b8d1b5e7eafab849bb1ac748b06ff71e4d7abade1d56f416c0104024"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-mixed-candidate-precedence/consumers/negative/consumer.ts",
+      "bytes": 69,
+      "sha256": "90614dc65b731abe7439e65053be3e23d89db9331f16f102e62671c6fcbb625a"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-mixed-candidate-precedence/consumers/negative/main.d.ts",
+      "bytes": 35,
+      "sha256": "8c7f5d95871746efa4c9b32588d3723f162c9e1039f20b303d8305346c93cac9"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-mixed-candidate-precedence/consumers/positive/consumer.ts",
+      "bytes": 98,
+      "sha256": "80968faf00d697aa015205cf4c7e7d37b8400588c3e266579364f9e72dc5aae7"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-mixed-candidate-precedence/consumers/positive/main.d.ts",
+      "bytes": 35,
+      "sha256": "8c7f5d95871746efa4c9b32588d3723f162c9e1039f20b303d8305346c93cac9"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-mixed-candidate-precedence/dist/main.d.ts",
+      "bytes": 35,
+      "sha256": "8c7f5d95871746efa4c9b32588d3723f162c9e1039f20b303d8305346c93cac9"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-mixed-candidate-precedence/dist/main.js",
+      "bytes": 79,
+      "sha256": "a63a08a5a12fca2c8abfab3d997f850e6c6457dc691f9f76c968f629c9fe2188"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-mixed-candidate-precedence/main.ts",
+      "bytes": 182,
+      "sha256": "2eca88e5e79d8f6489bae9456f5db19cfc98aba99e4d42baa8ca55cb89bb3e09"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-mixed-candidate-precedence/observation.json",
+      "bytes": 883,
+      "sha256": "c0c83c49e7e4b01580ddd441d9086513a5ea833de1bed75deaacec8e28159e9d"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-mixed-candidate-precedence/runtime-check.js",
+      "bytes": 197,
+      "sha256": "54a7faab3b3e323fbf870b151a9bd6b27e3d31dafc9723ece839e67a33e09dd4"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-mixed-candidate-precedence/tsconfig.json",
+      "bytes": 309,
+      "sha256": "9bf58ef0b8d1b5e7eafab849bb1ac748b06ff71e4d7abade1d56f416c0104024"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-readonly-element/consumers/negative/consumer.ts",
+      "bytes": 64,
+      "sha256": "52104b6c85b9b39f5addd7b3ed9911ab81bd473e791ab77d4b61d35ca866eaf0"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-readonly-element/consumers/negative/main.d.ts",
+      "bytes": 37,
+      "sha256": "b649a5239f026b238c3da9f09eea8c77ab2b3c5e10ed916ce8cea3f77d93219f"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-readonly-element/consumers/positive/consumer.ts",
+      "bytes": 100,
+      "sha256": "ed88d486104f43fec7a946b5f53999e37e20bdadd6e22ce3c15864276136c4ed"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-readonly-element/consumers/positive/main.d.ts",
+      "bytes": 37,
+      "sha256": "b649a5239f026b238c3da9f09eea8c77ab2b3c5e10ed916ce8cea3f77d93219f"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-readonly-element/dist/main.d.ts",
+      "bytes": 37,
+      "sha256": "b649a5239f026b238c3da9f09eea8c77ab2b3c5e10ed916ce8cea3f77d93219f"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-readonly-element/dist/main.js",
+      "bytes": 79,
+      "sha256": "a63a08a5a12fca2c8abfab3d997f850e6c6457dc691f9f76c968f629c9fe2188"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-readonly-element/main.ts",
+      "bytes": 177,
+      "sha256": "9d71ccde0f00b87586cc20ea2ef80a303ee462e89ff6ce75ce86f00a7cdbaf51"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-readonly-element/observation.json",
+      "bytes": 870,
+      "sha256": "75c8943960c737066b6ec85422c913f2bbbb60448f9c27ff9eb8f8b6568dbb78"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-readonly-element/runtime-check.js",
+      "bytes": 197,
+      "sha256": "54a7faab3b3e323fbf870b151a9bd6b27e3d31dafc9723ece839e67a33e09dd4"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-readonly-element/tsconfig.json",
+      "bytes": 309,
+      "sha256": "9bf58ef0b8d1b5e7eafab849bb1ac748b06ff71e4d7abade1d56f416c0104024"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-variadic-suffix/consumers/negative/consumer.ts",
+      "bytes": 85,
+      "sha256": "343cca017055fa6fbacd48dd326722f344c800ebcc9cf58ade24050c693e790d"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-variadic-suffix/consumers/negative/main.d.ts",
+      "bytes": 58,
+      "sha256": "5201add2cad60a1c13ab245d91203a99a39102769d3c37cd77209ce05bbfd7ae"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-variadic-suffix/consumers/positive/consumer.ts",
+      "bytes": 134,
+      "sha256": "db66d0fd0ac6d4de61f72888b50e1c5443eb9527fa9fd64141017ec493455938"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-variadic-suffix/consumers/positive/main.d.ts",
+      "bytes": 58,
+      "sha256": "5201add2cad60a1c13ab245d91203a99a39102769d3c37cd77209ce05bbfd7ae"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-variadic-suffix/dist/main.d.ts",
+      "bytes": 58,
+      "sha256": "5201add2cad60a1c13ab245d91203a99a39102769d3c37cd77209ce05bbfd7ae"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-variadic-suffix/dist/main.js",
+      "bytes": 92,
+      "sha256": "c9e39ab64b175116a3ae2aab08aa0b25307e80b98e7e6c08e465f6a15edfd81c"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-variadic-suffix/main.ts",
+      "bytes": 204,
+      "sha256": "4f80b791b9d527a94f5dd2413dc22cb27994733145af96ea8a21146db5c57828"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-variadic-suffix/observation.json",
+      "bytes": 891,
+      "sha256": "ba650105c0f2d5f384e10d14dc227f994f9c06218d57dc21d7a72ed01dfc84b9"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-variadic-suffix/runtime-check.js",
+      "bytes": 223,
+      "sha256": "589bf93439471e69928d09df0560ebaa29eacf5cb1e6754d77e728d72e9b81e5"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/runtime-variadic-suffix/tsconfig.json",
+      "bytes": 309,
+      "sha256": "9bf58ef0b8d1b5e7eafab849bb1ac748b06ff71e4d7abade1d56f416c0104024"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-fixed-prefix-and-suffix/consumers/negative/consumer.ts",
+      "bytes": 71,
+      "sha256": "a1921a06099b90fbe47915ab2455cf74593ed97a3b6d0bb160479947e116bb9a"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-fixed-prefix-and-suffix/consumers/negative/main.d.ts",
+      "bytes": 79,
+      "sha256": "fe1e88f74a37b5d86de7b945d4ef187c1cc34c95baa0e4db58d473795416085e"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-fixed-prefix-and-suffix/consumers/positive/consumer.ts",
+      "bytes": 105,
+      "sha256": "983d937f9cf2b6b5aee68c74c7db001cf8a7caf874a56cdf5157781c623812e4"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-fixed-prefix-and-suffix/consumers/positive/main.d.ts",
+      "bytes": 79,
+      "sha256": "fe1e88f74a37b5d86de7b945d4ef187c1cc34c95baa0e4db58d473795416085e"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-fixed-prefix-and-suffix/dist/main.d.ts",
+      "bytes": 79,
+      "sha256": "fe1e88f74a37b5d86de7b945d4ef187c1cc34c95baa0e4db58d473795416085e"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-fixed-prefix-and-suffix/dist/main.js",
+      "bytes": 54,
+      "sha256": "b42347a48fefdcc84241efa08c3fa02435b0931a69a689ec4b67119eedaf0edb"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-fixed-prefix-and-suffix/main.ts",
+      "bytes": 193,
+      "sha256": "e32af7653eff91fb684d993ba442c165863a803909b0ec82d562de42c9cc4402"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-fixed-prefix-and-suffix/observation.json",
+      "bytes": 850,
+      "sha256": "6083bc31c2d0e85282b0a4909e172a09d985762ac8b06f418c0f10f2c8091906"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-fixed-prefix-and-suffix/tsconfig.json",
+      "bytes": 309,
+      "sha256": "9bf58ef0b8d1b5e7eafab849bb1ac748b06ff71e4d7abade1d56f416c0104024"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-optional-empty/consumers/negative/consumer.ts",
+      "bytes": 64,
+      "sha256": "31a6579dad5e72a4b07b0b1a6ff05f7938c805c5bd9abc6f12a75483b6acdc3d"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-optional-empty/consumers/negative/main.d.ts",
+      "bytes": 51,
+      "sha256": "8e2ab375d2f9fdf0805e5c43b280628d2f55ccd249c58ecefc757271f4f7b96d"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-optional-empty/consumers/positive/consumer.ts",
+      "bytes": 118,
+      "sha256": "3e1a9e6aa78499542abbdfccb73273a5496405931b8c12938e06abb1f237b590"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-optional-empty/consumers/positive/main.d.ts",
+      "bytes": 51,
+      "sha256": "8e2ab375d2f9fdf0805e5c43b280628d2f55ccd249c58ecefc757271f4f7b96d"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-optional-empty/dist/main.d.ts",
+      "bytes": 51,
+      "sha256": "8e2ab375d2f9fdf0805e5c43b280628d2f55ccd249c58ecefc757271f4f7b96d"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-optional-empty/dist/main.js",
+      "bytes": 27,
+      "sha256": "f3c2a5417ee2d6bb4ef48a6856ce367b923c0a28cac6035a1cb871c472edccf1"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-optional-empty/main.ts",
+      "bytes": 131,
+      "sha256": "fc3bf6e0f56e5a6d5906d661bcaaa1dbe1fda972107378cb91318bc839d605eb"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-optional-empty/observation.json",
+      "bytes": 870,
+      "sha256": "32de47ee1123324f93e86dab44a17fb84c0948490955e47a019c09e725383313"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-optional-empty/tsconfig.json",
+      "bytes": 309,
+      "sha256": "9bf58ef0b8d1b5e7eafab849bb1ac748b06ff71e4d7abade1d56f416c0104024"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-prefix-control/consumers/negative/consumer.ts",
+      "bytes": 85,
+      "sha256": "6e64a52f73b18818f2fd53d3a3c2e53d6b51e0381ff6999b917b6061da0bcd64"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-prefix-control/consumers/negative/main.d.ts",
+      "bytes": 115,
+      "sha256": "268174eff92943b0122e19ab9a32b5bf7af551d103621cedd170d2335d6e8dfd"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-prefix-control/consumers/positive/consumer.ts",
+      "bytes": 134,
+      "sha256": "9c0574ce9404433a64850784cf36779d4f8e8abc73778254e49c814d1fb1a15c"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-prefix-control/consumers/positive/main.d.ts",
+      "bytes": 115,
+      "sha256": "268174eff92943b0122e19ab9a32b5bf7af551d103621cedd170d2335d6e8dfd"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-prefix-control/dist/main.d.ts",
+      "bytes": 115,
+      "sha256": "268174eff92943b0122e19ab9a32b5bf7af551d103621cedd170d2335d6e8dfd"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-prefix-control/dist/main.js",
+      "bytes": 54,
+      "sha256": "b42347a48fefdcc84241efa08c3fa02435b0931a69a689ec4b67119eedaf0edb"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-prefix-control/main.ts",
+      "bytes": 209,
+      "sha256": "3c4c23e8880a150e7e99329747bbca8662da84f461c33e1ee54500ae1f1ff1e0"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-prefix-control/observation.json",
+      "bytes": 876,
+      "sha256": "f0ac828a4700b7d8703146f4f8c94d63dcda90ace07512f8359619580d64eae1"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-prefix-control/tsconfig.json",
+      "bytes": 309,
+      "sha256": "9bf58ef0b8d1b5e7eafab849bb1ac748b06ff71e4d7abade1d56f416c0104024"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-suffix-empty-control/consumers/negative/consumer.ts",
+      "bytes": 69,
+      "sha256": "90614dc65b731abe7439e65053be3e23d89db9331f16f102e62671c6fcbb625a"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-suffix-empty-control/consumers/negative/main.d.ts",
+      "bytes": 73,
+      "sha256": "0d962136e6a573b1afc3a1bfb0575d491789c39c1f393bc36e159e508f31249e"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-suffix-empty-control/consumers/positive/consumer.ts",
+      "bytes": 102,
+      "sha256": "55b75e26aacd9119f01fa29c39dfee0e5e3ad3104f91a9fe143b21a0f49adb98"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-suffix-empty-control/consumers/positive/main.d.ts",
+      "bytes": 73,
+      "sha256": "0d962136e6a573b1afc3a1bfb0575d491789c39c1f393bc36e159e508f31249e"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-suffix-empty-control/dist/main.d.ts",
+      "bytes": 73,
+      "sha256": "0d962136e6a573b1afc3a1bfb0575d491789c39c1f393bc36e159e508f31249e"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-suffix-empty-control/dist/main.js",
+      "bytes": 54,
+      "sha256": "b42347a48fefdcc84241efa08c3fa02435b0931a69a689ec4b67119eedaf0edb"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-suffix-empty-control/main.ts",
+      "bytes": 165,
+      "sha256": "f1f79aa37815a22b46c986016eddadeda5a2def05ba2e9c3a1da7bf0c46fe980"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-suffix-empty-control/observation.json",
+      "bytes": 848,
+      "sha256": "a1129f7a085a1c8ecf5a768376fcdf0adb9df9efca05ec60ec4709a95534ff05"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-suffix-empty-control/tsconfig.json",
+      "bytes": 309,
+      "sha256": "9bf58ef0b8d1b5e7eafab849bb1ac748b06ff71e4d7abade1d56f416c0104024"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-suffix-rest/consumers/negative/consumer.ts",
+      "bytes": 85,
+      "sha256": "343cca017055fa6fbacd48dd326722f344c800ebcc9cf58ade24050c693e790d"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-suffix-rest/consumers/negative/main.d.ts",
+      "bytes": 115,
+      "sha256": "f2fbd0b5165aecafb43572a78ea44cf6b5e9fac24be1d8487abe48f4515fe997"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-suffix-rest/consumers/positive/consumer.ts",
+      "bytes": 134,
+      "sha256": "db66d0fd0ac6d4de61f72888b50e1c5443eb9527fa9fd64141017ec493455938"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-suffix-rest/consumers/positive/main.d.ts",
+      "bytes": 115,
+      "sha256": "f2fbd0b5165aecafb43572a78ea44cf6b5e9fac24be1d8487abe48f4515fe997"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-suffix-rest/dist/main.d.ts",
+      "bytes": 115,
+      "sha256": "f2fbd0b5165aecafb43572a78ea44cf6b5e9fac24be1d8487abe48f4515fe997"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-suffix-rest/dist/main.js",
+      "bytes": 54,
+      "sha256": "b42347a48fefdcc84241efa08c3fa02435b0931a69a689ec4b67119eedaf0edb"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-suffix-rest/main.ts",
+      "bytes": 209,
+      "sha256": "1b41434a0809ce04d3dccd7f1cb3cbb3d0fbb280859a2acf740ce1da88d3d6f9"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-suffix-rest/observation.json",
+      "bytes": 873,
+      "sha256": "eecc22de38a748f5f36bfc22c6488095586d1b0e268d04206c07ee94ba1880e3"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/tuple-suffix-rest/tsconfig.json",
+      "bytes": 309,
+      "sha256": "9bf58ef0b8d1b5e7eafab849bb1ac748b06ff71e4d7abade1d56f416c0104024"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/two-missing-function-positions/consumers/negative/consumer.ts",
+      "bytes": 64,
+      "sha256": "31a6579dad5e72a4b07b0b1a6ff05f7938c805c5bd9abc6f12a75483b6acdc3d"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/two-missing-function-positions/consumers/negative/main.d.ts",
+      "bytes": 97,
+      "sha256": "6c6f9042258a73f3d9dbd8ff725b0c6fcfb0c704c461d1046166433288bf1a01"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/two-missing-function-positions/consumers/positive/consumer.ts",
+      "bytes": 116,
+      "sha256": "1890b6fa06a1731fbe3bc26710e1fadc8a1514c21f926dbebcba7731c89620b0"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/two-missing-function-positions/consumers/positive/main.d.ts",
+      "bytes": 97,
+      "sha256": "6c6f9042258a73f3d9dbd8ff725b0c6fcfb0c704c461d1046166433288bf1a01"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/two-missing-function-positions/dist/main.d.ts",
+      "bytes": 97,
+      "sha256": "6c6f9042258a73f3d9dbd8ff725b0c6fcfb0c704c461d1046166433288bf1a01"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/two-missing-function-positions/dist/main.js",
+      "bytes": 54,
+      "sha256": "b42347a48fefdcc84241efa08c3fa02435b0931a69a689ec4b67119eedaf0edb"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/two-missing-function-positions/main.ts",
+      "bytes": 196,
+      "sha256": "662b5110a9eed82e75478761ffdefcd3644e6af3dac87acd699574567c5212db"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/two-missing-function-positions/observation.json",
+      "bytes": 925,
+      "sha256": "d68200f9dc00ad6b66b4309e501666ab3210105bb50f69bb73d6c504940d67e3"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/two-missing-function-positions/tsconfig.json",
+      "bytes": 309,
+      "sha256": "9bf58ef0b8d1b5e7eafab849bb1ac748b06ff71e4d7abade1d56f416c0104024"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/unknown-conditional-control/consumers/negative/consumer.ts",
+      "bytes": 63,
+      "sha256": "8d2d7bd081bbf1d486b8e9774484e76edbadcc05c412ca30c03cf7938eb9ab43"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/unknown-conditional-control/consumers/negative/main.d.ts",
+      "bytes": 63,
+      "sha256": "50fd9e26c16d07670d05ec8c59c7b95aa701d1f1c2243b135da7ea0b15878e85"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/unknown-conditional-control/consumers/positive/consumer.ts",
+      "bytes": 92,
+      "sha256": "943f0ec5c4116c4aa80df11e7d57e2889c61a844f21f62cf8489e35214a2368e"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/unknown-conditional-control/consumers/positive/main.d.ts",
+      "bytes": 63,
+      "sha256": "50fd9e26c16d07670d05ec8c59c7b95aa701d1f1c2243b135da7ea0b15878e85"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/unknown-conditional-control/dist/main.d.ts",
+      "bytes": 63,
+      "sha256": "50fd9e26c16d07670d05ec8c59c7b95aa701d1f1c2243b135da7ea0b15878e85"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/unknown-conditional-control/dist/main.js",
+      "bytes": 54,
+      "sha256": "b42347a48fefdcc84241efa08c3fa02435b0931a69a689ec4b67119eedaf0edb"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/unknown-conditional-control/main.ts",
+      "bytes": 140,
+      "sha256": "e9e8badf242cf0ea06a280e96b0b163aa33d126c81ada429e2570f50e924c150"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/unknown-conditional-control/observation.json",
+      "bytes": 820,
+      "sha256": "329e028c426445038e11da23393738ba6e282ad0d236d30cea702cab46407807"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/es5-esnext-functions-true/unknown-conditional-control/tsconfig.json",
+      "bytes": 309,
+      "sha256": "9bf58ef0b8d1b5e7eafab849bb1ac748b06ff71e4d7abade1d56f416c0104024"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/observations/bluets-conditional-inference-native-5lGS4s/report.json",
+      "bytes": 387686,
+      "sha256": "455d76d4d3a0f5f29cf907955c7c8d74546d74a7dad2d82c8e8bae17f74eb0fe"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/record_conditional_inference.cjs.log",
+      "bytes": 301,
+      "sha256": "eb2118f96b01be5e3a893d306ed19887e9cda01fe38d6aaf70c69c1963fd5f73"
+    },
+    {
+      "path": "development-history/contract/oracles-current-1/verify_conditional_inference.cjs.log",
+      "bytes": 360,
+      "sha256": "c1920caa922ee2a74fe33396bef5adb9e71c2179e9834635b9aebf04ff7283d5"
+    }
+  ]
+}

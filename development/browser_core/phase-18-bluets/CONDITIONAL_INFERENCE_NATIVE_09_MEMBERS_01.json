@@ -1,0 +1,112 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "archive": "CONDITIONAL_INFERENCE_NATIVE_09.tar.gz",
+  "entries": [
+    {
+      "path": "accepted-native/suite-artifacts/155/observations/async-arrow-finally.json",
+      "bytes": 34243434,
+      "sha256": "c03a15be6c1fb7ce07e473275ed435996d0447788d86461d065bae66b51885cd"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/156/observations/class-super.json",
+      "bytes": 2254779,
+      "sha256": "3a2c70cd1dd05e4e68111cc9ab02574a6a7ec74e0f879af742c02815ba2f8d36"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/156/reports/class-super.json",
+      "bytes": 2859636,
+      "sha256": "a8b9ee9b9b7f619714dc55f58b3faedcb22a309dc531a9e518c5ad6c49b860aa"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/157/observations/decorator-legacy-whole.json",
+      "bytes": 1110975,
+      "sha256": "6529e58d75bd91a7b11371413eea7b178828785e364ce2c3778ff9a712bdeae5"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/157/reports/decorator-legacy-whole.json",
+      "bytes": 1533199,
+      "sha256": "99148cf5b92ef92e7a2801b38f6e4f5ded61c372a37ad5d30eecb74f82b1df03"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/158/observations/iteration-iterable-bindings-forof.json",
+      "bytes": 1523388,
+      "sha256": "c5d74148e2b73162ad585b8546d1e0ac3d1e95584c631b8423c9afcf3a4f4dc1"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/158/reports/iteration-iterable-bindings-forof.json",
+      "bytes": 3995057,
+      "sha256": "c13e8e30372d1e1fedee72e787062098f6c7524a5871de26949750963624d0f3"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/159/observations/object-object-rest-spread.json",
+      "bytes": 939335,
+      "sha256": "94e2b4fe55e42db0515e22000e6f92ff640486457b35db210f1ece0b5ae81b15"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/159/reports/object-object-rest-spread.json",
+      "bytes": 2134842,
+      "sha256": "733a156621266eeec63d9c09472a1b81a17596fb92bfb65bb5180fb7b621a799"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/160/observations/metadata-namespace-reexported-class.json",
+      "bytes": 446448,
+      "sha256": "795a9cd4d1cb411de11b599d5d5382386592fc4492bac1a6f117bd3cc12002b5"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/160/reports/metadata-namespace-reexported-class-controls-progress.jsonl",
+      "bytes": 9264,
+      "sha256": "fe4133d39b2ae471deca484e725fa25d40758037781a59bae5e8de9bd51c34e1"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/160/reports/metadata-namespace-reexported-class-controls.json",
+      "bytes": 3726535,
+      "sha256": "3d1f199a49d70fef19f0af9a4b886441fdced535f63721d21e14e51f8ad36d12"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/160/reports/metadata-namespace-reexported-class.json",
+      "bytes": 212507,
+      "sha256": "9d73a32f7ade42c6366430bf05b1d8cdbf0ad284c629c6670a8a6b8935693099"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/161/observations/interop-module-boundary.json",
+      "bytes": 29295,
+      "sha256": "bcd0e602d562d36ab20d996f3100f535e1b78ef3a680e64131a1ea74c3006e69"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/161/observations/interop-module-maps.json",
+      "bytes": 2657727,
+      "sha256": "e2a9f9b96716d50efb4c489123047f0aa62b8f1fdfb43c7d990ab8043da5c019"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/161/reports/interop-complete-module-acceptance-partial.json",
+      "bytes": 68286,
+      "sha256": "ee17a9c912655ef095cb99f9543cb888b178ac4033e3d28dafb3454e2454e4ba"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/161/reports/interop-complete-module-acceptance.json",
+      "bytes": 8108363,
+      "sha256": "55186562be9840de20d2808f8dfe69c46fb62da1a1d0a4592e6bb0e095d04241"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/161/reports/interop-module-acceptance-partial-progress.jsonl",
+      "bytes": 840,
+      "sha256": "17ba226e80a896c283313c448fbe57f128d54c1f27f2fd2aeed90b845878e699"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/161/reports/interop-module-acceptance-progress.jsonl",
+      "bytes": 101652,
+      "sha256": "4d64d325ee4a26a2876973b4dec2025ed2e58264fa240375023f0dca0d2afa12"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/162/observations/interop-default-function-boundary.json",
+      "bytes": 5071,
+      "sha256": "35fa518b829c6cfd3b55ebee957cd3f06709ee17d5ae971bd9b67b6d9d43f737"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/162/observations/interop-expression-boundary.json",
+      "bytes": 7704,
+      "sha256": "5a3e25c9111cd1334e647337549200a13133a8bdbf5f97db7bbc536d023464ee"
+    }
+  ]
+}

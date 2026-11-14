@@ -26,7 +26,29 @@ pub(in crate::checker) fn prepare(
     // Owner/source definitions retain their work charge; argument expansion
     // and every selected conditional below still use the same owner's budget.
     let charge = definition.kind != TypeDefinitionKind::LibraryInterface;
-    collect(&definition.value, &candidates, &mut checked, budget, charge);
+    if charge {
+        let names = definition
+            .parameters
+            .iter()
+            .map(|parameter| &parameter.name)
+            .collect::<Vec<_>>();
+        let identity = format!(
+            "{names:?}:{}",
+            super::super::type_relations::type_identity(&definition.value)
+        );
+        if let Some(previous) = budget.conditional_argument_slots.get(&identity) {
+            checked = previous.clone();
+        } else {
+            collect(&definition.value, &candidates, &mut checked, budget, true);
+            if !budget.exhausted {
+                budget
+                    .conditional_argument_slots
+                    .insert(identity, checked.clone());
+            }
+        }
+    } else {
+        collect(&definition.value, &candidates, &mut checked, budget, false);
+    }
     for (parameter, argument) in definition.parameters.iter().zip(&mut arguments) {
         if !checked.contains(&parameter.name) {
             continue;

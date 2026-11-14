@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "archive": "CONDITIONAL_INFERENCE_DEVELOPMENT_21.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/failed-acceptance-r1/accepted-native-cli",
+      "bytes": 50341472,
+      "sha256": "978e1250f9b1efeb5cd77cbee0d886da6427d02f93c27a4bffbd113143a52b23"
+    },
+    {
+      "path": "development-history/failed-acceptance-r1/all-source-module-size-audit.json",
+      "bytes": 120722,
+      "sha256": "e40ad117358ade3223b50b8743d47997acd3f5af717182010ccdf82eaa465327"
+    },
+    {
+      "path": "development-history/failed-acceptance-r1/audit_conditional_inference.py",
+      "bytes": 6800,
+      "sha256": "3928884180edd29fa18157a310a9838718d8151a17a8a2405cadb7114c7f502c"
+    },
+    {
+      "path": "development-history/failed-acceptance-r1/audit_mapped.py",
+      "bytes": 7366,
+      "sha256": "e53413de9d8c00fcc1f31e770867d72280b5ca37cdf43c8f7343c7ee5d8daaf6"
+    },
+    {
+      "path": "development-history/failed-acceptance-r1/audit_symbolic_keys.py",
+      "bytes": 6833,
+      "sha256": "56d0d34a62cb20ef3f9337fe941584271be790d93d254ed474173bd7ed7e38a4"
+    }
+  ]
+}

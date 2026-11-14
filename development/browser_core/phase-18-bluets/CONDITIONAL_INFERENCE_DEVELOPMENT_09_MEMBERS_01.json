@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "archive": "CONDITIONAL_INFERENCE_DEVELOPMENT_09.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/contract/preflight-1/actual-bluetsc",
+      "bytes": 50237040,
+      "sha256": "90887456a725d3cbc83f94c3d0afb8e6373ef4631cbb162448783100c958d4b5"
+    },
+    {
+      "path": "development-history/contract/preflight-1/callable_utilities.log",
+      "bytes": 17343,
+      "sha256": "3ead89dcbd51b634f404c3c5d4fc98789fc984b910b6dceb3eb3f6a0804d0d6f"
+    },
+    {
+      "path": "development-history/contract/preflight-1/library.log",
+      "bytes": 26658,
+      "sha256": "ac961705f356a431a5d08587a1c191967d09e935eb11a3969953d796caa1d504"
+    },
+    {
+      "path": "development-history/contract/preflight-1/measurement.json",
+      "bytes": 1081,
+      "sha256": "d399c0db58e24811fe10aa99caa602112d8b9111c05dfba446c21fa4c2511b68"
+    },
+    {
+      "path": "development-history/contract/preflight-1/source-manifest.json",
+      "bytes": 73304,
+      "sha256": "674675d80402a0b28eab92904e68b6e1a6d12b5f2f88258e248f784f2dc7ba85"
+    }
+  ]
+}

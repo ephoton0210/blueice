@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "archive": "CONDITIONAL_INFERENCE_NATIVE_08.tar.gz",
+  "entries": [
+    {
+      "path": "accepted-native/suite-artifacts/154/observations/helper-name-collision.json",
+      "bytes": 33445732,
+      "sha256": "a0085a074584e1e13296c3801255109cbd6c0a18ac02ea02fc27563bd45acfc5"
+    }
+  ]
+}

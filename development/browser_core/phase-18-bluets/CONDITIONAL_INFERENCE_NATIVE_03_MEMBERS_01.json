@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "archive": "CONDITIONAL_INFERENCE_NATIVE_03.tar.gz",
+  "entries": [
+    {
+      "path": "accepted-native/suite-artifacts/141/observations/decorator-literal-accessors.json",
+      "bytes": 535191,
+      "sha256": "20c17b4462a2a24efb8372588fd878eec32526b593d7650330c9e9bbd93de85d"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/141/reports/decorator-literal-accessors.json",
+      "bytes": 6263751,
+      "sha256": "473e6d2127d505cabf05691cf130f4661362fc73bd7dc0dd4071d55c0b5794e2"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/142/observations/decorator-literal-fields.json",
+      "bytes": 588191,
+      "sha256": "432e9d2d1ca8edabc5b5d03dce67fef1a33f68cbcf2f8df24378659a0beaa215"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/142/reports/decorator-literal-fields.json",
+      "bytes": 6023239,
+      "sha256": "ce6d51cbae00dee0467df6eb8d26898e533fe661a5e9963b55f1ba6fb05ef6dd"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/143/reports/private-accessor.json",
+      "bytes": 11323898,
+      "sha256": "7e1eddfac60384644cc82c97a5f559d2e8bb709a23c87e99045845ecba81fab5"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/144/reports/decorator-double-accessors.json",
+      "bytes": 5722603,
+      "sha256": "101731ecd521d11fb404da19f6f514285f0b20840ba00d6319eb8ede1a895ea7"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/145/observations/async-arrow-finally.json",
+      "bytes": 34243434,
+      "sha256": "c03a15be6c1fb7ce07e473275ed435996d0447788d86461d065bae66b51885cd"
+    }
+  ]
+}

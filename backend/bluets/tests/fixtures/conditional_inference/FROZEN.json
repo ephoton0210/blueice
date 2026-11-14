@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "frozenAt": "2026-11-13T18:42:47.998077+00:00",
+  "scope": "Native expectations frozen before production changes; implementation/acceptance pending.",
+  "productionBaseline": {
+    "commit": "d4694f775e8d3e1ef2b45bc438ddaca7b8ac080c",
+    "sourceRevision": "backend-tree:02abdba6835124bb585bf13149d5b6dcaf072911",
+    "compilerSha256": "683cc89a0417661178c05b7bfd2a0abab19e0088616562fc30744a3fe28576f6",
+    "allPreviousFilesUnchanged": 14691
+  },
+  "sha256": {
+    "cases.json": "2041620627881c5ce018121eef557eb5acdc72b7ec7086285ac704d7388ce926",
+    "reference.json": "455d76d4d3a0f5f29cf907955c7c8d74546d74a7dad2d82c8e8bae17f74eb0fe",
+    "boundary-controls.json": "26b3e4d8ce210c7133c6133bf164a9ab88c6a01b3dc1004fd15db6d89fe54ad8",
+    "boundary-reference.json": "a2e3cf27eddddf5e61c526b29bb50620fb73f40481eb33ca6ac36f89301f7dda"
+  },
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "libraries": {
+    "lib.es5.d.ts": "c430d44666289dae81f30fa7b2edebf186ecc91a2d4c71266ea6ae76388792e1",
+    "lib.decorators.d.ts": "8e7f8264d0fb4c5339605a15daadb037bf238c10b654bb3eee14208f860a32ea",
+    "lib.decorators.legacy.d.ts": "782dec38049b92d4e85c1585fbea5474a219c6984a35b004963b00beb1aab538"
+  },
+  "comparisons": 384,
+  "accepted": 360,
+  "rejected": 24,
+  "declarationFiles": 368,
+  "consumers": 720,
+  "syntax": 368,
+  "runtime": 48,
+  "policyControls": 12,
+  "unchangedOriginalPrograms": 24,
+  "calibrationDriverSha256": "81383d59008103c681e717f6c19721fec393d4de482040348c930ba40c59fcfc",
+  "authoringDriverSha256": "fe886a5d845157bc3dc448e98e0901ff13757c233ecc3d822d0b02ff292b33a3",
+  "boundaryCalibrationDriverSha256": "e081eae49cb8d4f5b8f16fdbaff9dc9b9cc7596c7fcf307c3bbfcac53287af05",
+  "productionChangesStarted": false
+}

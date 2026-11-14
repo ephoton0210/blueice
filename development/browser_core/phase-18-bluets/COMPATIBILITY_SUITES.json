@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "typescript": "5.9.3",
-  "source_revision": "backend-tree:02abdba6835124bb585bf13149d5b6dcaf072911",
-  "source_graph_sha256": "2fc9d30cf0dfc7c2795e5f8454df0c75ee1f6eeb7aa36ecb4c9302c32ca96b15",
+  "source_revision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "source_graph_sha256": "a7cbc686748f1c4eb50b977d4e91b621635c40ead22cadd3f811a1aa363ff8e9",
   "fixture_directories": 3392,
   "diagnostic_programs": 3182,
   "diagnostic_templates": 221,
@@ -307,6 +307,22 @@
         "backend/bluets/tests/compatibility_checker_matrix.rs": "7d2f2115b938bbe0a94df15aafcdbd9928e07270",
         "backend/bluets/tests/fixtures/typescript_oracle/compatibility-checker-matrix.tsv": "b18db9335b38507df47f3b68b39bfb070f917860",
         "backend/bluets/tests/fixtures/typescript_oracle/compatibility-reference.json": "0e2a260dc2c4d3414ee99e33bb3588f7449838b7"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/conditional_inference.rs",
+      "ignored_tests": [
+        "native_producers_consumers_syntax_and_execution_are_reproducible"
+      ],
+      "inputs": {
+        "backend/bluets/tests/conditional_inference.rs": "aec17aaebfb6db905e1e1e120aa5c76bd3bafba3",
+        "backend/bluets/tests/fixtures/conditional_inference/ALIAS_CONTROLS_FROZEN.json": "49a379f6d3da29878c1643e843597a2335b02ce3",
+        "backend/bluets/tests/fixtures/conditional_inference/FROZEN.json": "fed1b0003547f9a0e0ccbe49886422deb4a98629",
+        "backend/bluets/tests/fixtures/conditional_inference/alias-controls.json": "98224073d4c8dc69b333c1fd36e7b8464d912038",
+        "backend/bluets/tests/fixtures/conditional_inference/boundary-controls.json": "19ba1c404c01574520eed26486da6e7a1697f959",
+        "backend/bluets/tests/fixtures/conditional_inference/boundary-reference.json": "f449eeb647cb48825097ce2100552e6b6b79b6a8",
+        "backend/bluets/tests/fixtures/conditional_inference/cases.json": "6c13f9e2af9efb923109fa33a653e4bf9ad121c8",
+        "backend/bluets/tests/fixtures/conditional_inference/reference.json": "061de5ac66137b7da7b785dcc22393a8db8abea8"
       }
     },
     {

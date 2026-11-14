@@ -1,0 +1,2662 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "archive": "CONDITIONAL_INFERENCE_DEVELOPMENT_24.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/failed-acceptance-r1/windows-failure-evidence.tar.gz",
+      "bytes": 55727113,
+      "sha256": "a7ca9c34deeacab2ef6db06520cecab783c37a8ee835d3dfd9c52536e570dcae"
+    },
+    {
+      "path": "development-history/failed-acceptance-r1-members.json",
+      "bytes": 9460822,
+      "sha256": "e324515991e700cadb9662464d75df3cc3011b63354a2ae48892cabb7a85816a"
+    },
+    {
+      "path": "development-history/index.json",
+      "bytes": 1151,
+      "sha256": "84e261708eacd22bad64d94c76ada89871bb465b82052cb2e93d69c03179549e"
+    },
+    {
+      "path": "orchestration-amendments/driver-hashes.before.json",
+      "bytes": 1993,
+      "sha256": "ebba8e413d96afdd8977bbe239f2c49e9c91b3df8cacdfd70929c6bb925c2119"
+    },
+    {
+      "path": "orchestration-amendments/receipt.json",
+      "bytes": 1518,
+      "sha256": "d32209a1dfefc63d0da3114ae698cd6c3004f4c1178baca0a0b665d0a537b62c"
+    },
+    {
+      "path": "orchestration-amendments/run_local_gates.before.py",
+      "bytes": 9067,
+      "sha256": "69bc0b34bebdc6896496a79905dc9208b401b472410bffc3c5aa0b57c777c3c3"
+    },
+    {
+      "path": "orchestration-amendments/tool-manifest-order.json",
+      "bytes": 473,
+      "sha256": "bbbd4db88231fe613235093fa799f85be7be8cf20381dae9a6830c34d6549de3"
+    },
+    {
+      "path": "orchestration-start-snapshot/audit_conditional_inference.py",
+      "bytes": 6800,
+      "sha256": "3928884180edd29fa18157a310a9838718d8151a17a8a2405cadb7114c7f502c"
+    },
+    {
+      "path": "orchestration-start-snapshot/audit_mapped.py",
+      "bytes": 7366,
+      "sha256": "e53413de9d8c00fcc1f31e770867d72280b5ca37cdf43c8f7343c7ee5d8daaf6"
+    },
+    {
+      "path": "orchestration-start-snapshot/audit_symbolic_keys.py",
+      "bytes": 6833,
+      "sha256": "56d0d34a62cb20ef3f9337fe941584271be790d93d254ed474173bd7ed7e38a4"
+    },
+    {
+      "path": "orchestration-start-snapshot/complete_windows.py",
+      "bytes": 4111,
+      "sha256": "998c125cd329b4a054ffb0f3dfce53fda33d60d70aefa6bb525f39215cd6d2f6"
+    },
+    {
+      "path": "orchestration-start-snapshot/finish_windows.py",
+      "bytes": 4403,
+      "sha256": "3736bf63844bfd18ce765395c69f36aa12afeb8674021c06a159d83803dd5001"
+    },
+    {
+      "path": "orchestration-start-snapshot/freeze_source.py",
+      "bytes": 6481,
+      "sha256": "f5e9b5763761572272c3504f5e707d43781b069198a829c089b69e76f294a4c3"
+    },
+    {
+      "path": "orchestration-start-snapshot/measure_priority.cjs",
+      "bytes": 5921,
+      "sha256": "197937edc719e80622a46287b521f5ef7554c4b7af1533ea889c49142fc2ecc5"
+    },
+    {
+      "path": "orchestration-start-snapshot/prepare_native_durations.py",
+      "bytes": 1386,
+      "sha256": "ea646ad0d0d72424d0a41c9158721a009b8e8e5108dc577c4df535acc19077a8"
+    },
+    {
+      "path": "orchestration-start-snapshot/prepare_windows.py",
+      "bytes": 4110,
+      "sha256": "70b889bd8826a61430b689b9ddbe410c878b02d963ae8780d7c37e90e9d0c2df"
+    },
+    {
+      "path": "orchestration-start-snapshot/preserve_sources.py",
+      "bytes": 3812,
+      "sha256": "030edec3ad5395058d4313ce4dc2fbdf2a686bf7662d2c337cd8bda5b0f08a01"
+    },
+    {
+      "path": "orchestration-start-snapshot/replay_original_discovery.cjs",
+      "bytes": 6612,
+      "sha256": "e11a3f8127b3daf64cbfa9ab3d242d3bee97072826ac1b72ddb48249a8ac4088"
+    },
+    {
+      "path": "orchestration-start-snapshot/replay_workspace_when_ready.py",
+      "bytes": 3328,
+      "sha256": "0b3b705c7b0ee4d7d0f077fa59e2740ded742ca78469804ceb5d99db6abfbeb3"
+    },
+    {
+      "path": "orchestration-start-snapshot/run_acceptance.py",
+      "bytes": 5756,
+      "sha256": "87ff5d33a7eaffb1faf2a6df01f44eaad99cbc599245a048508f35f27e241501"
+    },
+    {
+      "path": "orchestration-start-snapshot/run_local_gates.py",
+      "bytes": 9067,
+      "sha256": "69bc0b34bebdc6896496a79905dc9208b401b472410bffc3c5aa0b57c777c3c3"
+    },
+    {
+      "path": "orchestration-start-snapshot/run_native_gates.py",
+      "bytes": 5625,
+      "sha256": "82b16d0021243fc6b4ded156f47fc3aa7c01ece135672455c16e8607f4b8a2d6"
+    },
+    {
+      "path": "orchestration-start-snapshot/run_project_gates.py",
+      "bytes": 2235,
+      "sha256": "aef3e5442d5d456eb8fc16b4b9194811390f8b9ca41be1b0a6030c6b09aee054"
+    },
+    {
+      "path": "orchestration-start-snapshot/upload_windows.py",
+      "bytes": 2518,
+      "sha256": "cec68a562b7ed8be1fcfe36f118495083db712524e37c08e90302ba6da994160"
+    },
+    {
+      "path": "orchestration-start-snapshot/verify_windows.py",
+      "bytes": 19958,
+      "sha256": "72dc4a28fe259cefb973d599ef48aad4b9a8cfd0b273d2a6c238ce4235025bdb"
+    },
+    {
+      "path": "orchestration-start-snapshot/watch_maps.py",
+      "bytes": 3845,
+      "sha256": "b53886467b1b7a4b760945778127d1863bc5c412785e2ab31b0d15375df9b829"
+    },
+    {
+      "path": "orchestration-start-snapshot/windows/package-evidence.py",
+      "bytes": 7588,
+      "sha256": "d5f2e7c73d0d31ef6f4adf6247cd9a8ad658798b97e3add61780feb085576a74"
+    },
+    {
+      "path": "orchestration-start-snapshot/windows/windows-runner.cjs",
+      "bytes": 10085,
+      "sha256": "0146756bf7bf2646fe495683a21d0b8ad196384e95eccb018fed3ce0a7962eb9"
+    },
+    {
+      "path": "original-discovery24/inputs.json",
+      "bytes": 10156,
+      "sha256": "345781101a80b890ca4f3f2fd7c9b3f76c1bde119d1f3631481da0865d798a81"
+    },
+    {
+      "path": "original-discovery24/native-reference.json",
+      "bytes": 13713,
+      "sha256": "8256999c594badf503459007a74e5c974dd011b6a87055a98aced6b56881766f"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/aliased-candidate-positions/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/aliased-candidate-positions/build.stdout",
+      "bytes": 78,
+      "sha256": "75471c5a07bf5be505e65b0a17b3b34fcb1d0cbd14d4b8c8fc3adb1bf9cd8446"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/aliased-candidate-positions/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "46b906d1921290bbcce2fb4c3aeca7a924ea58a750f8dba3469f8c85ac30ca3c"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/aliased-candidate-positions/dist/main.d.ts",
+      "bytes": 71,
+      "sha256": "10cb53307e0f494a0c31623e81cfc8beb69b1ac31a6f9936f8852161cd801505"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/aliased-candidate-positions/dist/main.js",
+      "bytes": 176,
+      "sha256": "20095a65ec0b8526dd4252174516ad6663abbbceae9924360569fbe2cd24ed67"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/aliased-candidate-positions/main.ts",
+      "bytes": 265,
+      "sha256": "0bffb076f30a92e03b7b32941066f4138b99924d3ec02783d334ce88f2940f39"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/aliased-candidate-positions/observation.json",
+      "bytes": 291,
+      "sha256": "2bf8a017566f064cf755c7155bd17321c7f92842fcab23a3716d3d6464d86794"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/aliased-candidate-positions/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/conditional-any/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/conditional-any/build.stdout",
+      "bytes": 78,
+      "sha256": "dc221fda6a12628f14a7c33b617059480a74cd987d05092386eecfef9736e505"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/conditional-any/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "c6aa462488d10a5b64ab88356086ab7287463035e23113a12e8b700e83826f4f"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/conditional-any/dist/main.d.ts",
+      "bytes": 71,
+      "sha256": "91271e3e62a3f2a7f9d004d49bfbf865f837558a54eccb90283ba6a55aa8acf6"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/conditional-any/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/conditional-any/main.ts",
+      "bytes": 140,
+      "sha256": "4807bdfe3272728087b53a7cd4a662b0f5b6b3969d68a286aff42feeb17191fc"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/conditional-any/observation.json",
+      "bytes": 279,
+      "sha256": "abbecca102452c83eb0d47dc89a3a5a4c3ce21eb668d058f43237fed358625cd"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/conditional-any/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/conditional-never-control/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/conditional-never-control/build.stdout",
+      "bytes": 78,
+      "sha256": "b53cafe88afd8a62a620b5f0095c51782b62863bbb3306156e4014f413c91da0"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/conditional-never-control/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "ab07058a36183e16a00dd57b76ef992c5dfcff6cde33390bc96f001ed3f9030b"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/conditional-never-control/dist/main.d.ts",
+      "bytes": 71,
+      "sha256": "10cb53307e0f494a0c31623e81cfc8beb69b1ac31a6f9936f8852161cd801505"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/conditional-never-control/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/conditional-never-control/main.ts",
+      "bytes": 142,
+      "sha256": "72abb921931873eb9dc8dfcb6231cab08013acb034251b85ed6dfd95329bd059"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/conditional-never-control/observation.json",
+      "bytes": 289,
+      "sha256": "709154485c467a587e6df1d4e76113bad4af79491f7ba5d2840787c54ed17ebb"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/conditional-never-control/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/constrained-covariant-union/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/constrained-covariant-union/build.stdout",
+      "bytes": 78,
+      "sha256": "86e706e249766e3275beab0c6952350c2131f3b7a4cf4f128a82fa7c5b2f5bf6"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/constrained-covariant-union/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "c111a2d905403aafbc57ae1fae4226f03ccedec6f06a03cd4cca365f91ac6113"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/constrained-covariant-union/dist/main.d.ts",
+      "bytes": 79,
+      "sha256": "3a10bb64d67b3abcbdebf3011affbb5dd4c5941e2e99ed8e09d9f5c16c3af98d"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/constrained-covariant-union/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/constrained-covariant-union/main.ts",
+      "bytes": 214,
+      "sha256": "35533fe4462a066b75c682daa57b1c165f077512c1fabfcb388038e070ed6a83"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/constrained-covariant-union/observation.json",
+      "bytes": 307,
+      "sha256": "207faa3ff2605633438ca9d72f25c693d19962f95faed415eb1b53fe650811ba"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/constrained-covariant-union/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-disjoint/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-disjoint/build.stdout",
+      "bytes": 78,
+      "sha256": "fe22920249b3e349a48a2684a50043cff97de9b93df3a91bc3ebf5b7da42750b"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-disjoint/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "48ccb97955847dddbbe6a2e4f0b94d9e2d4371370ae8fd78dad6c2a737a7cdb9"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-disjoint/dist/main.d.ts",
+      "bytes": 71,
+      "sha256": "10cb53307e0f494a0c31623e81cfc8beb69b1ac31a6f9936f8852161cd801505"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-disjoint/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-disjoint/main.ts",
+      "bytes": 238,
+      "sha256": "ce9b464c4c1bab2248b7d5d71d520bfd007f9068fa4b0c1007f67f6a48c01368"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-disjoint/observation.json",
+      "bytes": 286,
+      "sha256": "142f2a2974aa8bc64e4eb38e1aa1863817cd4380398113872e922b152f39dc07"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-disjoint/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-record-intersection/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-record-intersection/build.stdout",
+      "bytes": 78,
+      "sha256": "00032add32b1902cc67ab99609303f745c30759b16a04ea5aa1ee471f5888ddf"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-record-intersection/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "49b2f544f3f85d78f34f64b368d088b2fc9dcab4244a4cd64dffb0ba1469cab8"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-record-intersection/dist/main.d.ts",
+      "bytes": 133,
+      "sha256": "da518d3ed27334a1f134edf7e7032499ab9e2a691006b72560f983b4fdd585a4"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-record-intersection/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-record-intersection/main.ts",
+      "bytes": 271,
+      "sha256": "f7d92a1ee1241018eb530c092277a4ce8a0973bf1605fd15f4ecaf2e0f73eca9"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-record-intersection/observation.json",
+      "bytes": 366,
+      "sha256": "b2bf0bfe928d1fd9c250b743cbc724410b40e6f2132e95af9fd8532c28746074"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-record-intersection/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-reject-union/build.stderr",
+      "bytes": 519,
+      "sha256": "cafe96c32265481592a900fab8b411972ca4042f48a15b3275f07f955f700dd0"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-reject-union/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-reject-union/main.ts",
+      "bytes": 250,
+      "sha256": "fd98ffb198942ad21d228e994f27909421b8b851d057598c96a6884a9aaec8d5"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-reject-union/observation.json",
+      "bytes": 468,
+      "sha256": "a6f34c0f3ec00ae504c0bdb063f2c0cfa493ecc83bac8eddee5a2fe6245d2bb3"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-reject-union/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-related-literals/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-related-literals/build.stdout",
+      "bytes": 78,
+      "sha256": "8d6918ca7a5c69d9e9824672a402467cdf28f94bb49a5aaa575ad33754aa9b31"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-related-literals/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "97912aa6644145ed88439c106a72973c1cbe1ae420cfa6377d57cc69938532a6"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-related-literals/dist/main.d.ts",
+      "bytes": 67,
+      "sha256": "39c838248f6a8b5c501d81fdc5d799925d088303e98195e0e9982bba3cbc4aa1"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-related-literals/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-related-literals/main.ts",
+      "bytes": 242,
+      "sha256": "33a73d33d0940ce727f39c2b38cfeff080a556a1eaa793f84de3fc1eeb307233"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-related-literals/observation.json",
+      "bytes": 294,
+      "sha256": "81b52eb8db680c9de4af5f2ffd8c57229fe4d2faac8b3f482f4aa71529dd4980"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/contravariant-related-literals/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/covariant-union-control/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/covariant-union-control/build.stdout",
+      "bytes": 78,
+      "sha256": "4cdd3ffaeaba720e15205401529f8394c767c1421cb5a0074e857678f50667ba"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/covariant-union-control/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "19287174451746fa21491ee7a5e5fe18a427b60bb2ea28a6b7e5c105660ae8cf"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/covariant-union-control/dist/main.d.ts",
+      "bytes": 91,
+      "sha256": "26c39bf638c71e809313ba87f9c78badb8de79a0cae0e214876dbfa0e019e5df"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/covariant-union-control/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/covariant-union-control/main.ts",
+      "bytes": 196,
+      "sha256": "8a374b612a3ddf7fad6c5e588af5758e28102aa2598d1d96b34c8a81a2b0b77a"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/covariant-union-control/observation.json",
+      "bytes": 307,
+      "sha256": "ee968de3d797b99e11b55f68373c394915f54c424df488d006f30703ee912758"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/covariant-union-control/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/cross-file-contravariance/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/cross-file-contravariance/build.stdout",
+      "bytes": 78,
+      "sha256": "338327e3ff5bd02c1fdef50cea1ad87d535a0fc7af323657e23eb38dcb5f2514"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/cross-file-contravariance/dist/bluetsc.manifest.json",
+      "bytes": 1421,
+      "sha256": "452bf46149c99922b202296c310324055cfceb8ae49f27e1b33f329535a77906"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/cross-file-contravariance/dist/main.d.ts",
+      "bytes": 71,
+      "sha256": "10cb53307e0f494a0c31623e81cfc8beb69b1ac31a6f9936f8852161cd801505"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/cross-file-contravariance/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/cross-file-contravariance/dist/types.d.ts",
+      "bytes": 109,
+      "sha256": "d1744e0950aa138411e661356448154054a4845a2a00a590dc495a815af322dd"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/cross-file-contravariance/dist/types.js",
+      "bytes": 78,
+      "sha256": "da8815cd26bbc3418b07e59306164fc5e2bf2a9a7ac668fdd183fd7805b6cda3"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/cross-file-contravariance/main.ts",
+      "bytes": 183,
+      "sha256": "e52e1bb8a49526ccc475d7f4967fd1889c8596ec6c7c0354becd303e97574688"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/cross-file-contravariance/observation.json",
+      "bytes": 428,
+      "sha256": "ed695d09b2a9bf45baec29eab0a5dfdd1dd950c187107cc11aa3424acf4ac4fb"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/cross-file-contravariance/tsconfig.json",
+      "bytes": 297,
+      "sha256": "c8317db31a81a2b458e1c9298735b4c98834befb901764faa8b5ebaae76252cc"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/cross-file-contravariance/types.ts",
+      "bytes": 100,
+      "sha256": "649373adf158d2a456165915ef815c4daf094f1f53e0faa2c8d16d79d2c77b0b"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/double-contravariance/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/double-contravariance/build.stdout",
+      "bytes": 78,
+      "sha256": "1bc88621a6eb1b5ccda61ee78329d3abfeabb97e3ce29ad48658f1d8226e6a0d"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/double-contravariance/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "888c3216a809ab90c37e23a4df6546d7c196a6ced06a3cd9f4dc97edd02f3aa8"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/double-contravariance/dist/main.d.ts",
+      "bytes": 69,
+      "sha256": "811aab9fa538912e353857de8eb1ac61faf7769633bd2a01eec00a98749d44d4"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/double-contravariance/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/double-contravariance/main.ts",
+      "bytes": 198,
+      "sha256": "bac17ef9924a591b8ea113ce26119b28b34cd23687b188876b0026d8a5a07f8e"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/double-contravariance/observation.json",
+      "bytes": 287,
+      "sha256": "4441f290ce63200ee851b21f5c57f47776d4a7422da265f3d9bc0938f53a272e"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/double-contravariance/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-constrained-missing/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-constrained-missing/build.stdout",
+      "bytes": 78,
+      "sha256": "983b74591104717e4e96f16e3df81c6dedf0f4ff42dd917afcff81ec5c995f28"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-constrained-missing/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "eabe878d3dbaa77aa71a36a933ef1471ca56e7407dcf442c8ae19cbf1c969340"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-constrained-missing/dist/main.d.ts",
+      "bytes": 73,
+      "sha256": "42349f04164eba8624f9c8524da1a118024c50411ff4a5328ebb963bca19b383"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-constrained-missing/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-constrained-missing/main.ts",
+      "bytes": 182,
+      "sha256": "7c76229a33bb8838272fb2ced0dec8146762a077f284fd45421527ec6537d1c1"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-constrained-missing/observation.json",
+      "bytes": 294,
+      "sha256": "5ba26f98258d2cf5b055e718ef366fd0102db8bbce59ad50f6d3ee9554f80a62"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-constrained-missing/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-optional-position/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-optional-position/build.stdout",
+      "bytes": 78,
+      "sha256": "b1ec2b12f4745f146f727b76cfda877223620062c3233973cb17f79f55becd24"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-optional-position/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "62a82a7fb9dbe515463b730a66b9eb4069e3f67eae069445c873052eed17326a"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-optional-position/dist/main.d.ts",
+      "bytes": 38,
+      "sha256": "683df0449112210241ce9508bccc440c26cb02cad46fe960b59b6c6bb391fc2d"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-optional-position/dist/main.js",
+      "bytes": 128,
+      "sha256": "3e35d9d16bf414b1f2ca3bd67c8fdb79fb88c41166e8f42daf26a6a5a1ad2c6b"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-optional-position/main.ts",
+      "bytes": 131,
+      "sha256": "bfa7147e77d55ab8e43d510d5efe98712df3252ac30394e4632282a33989ec64"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-optional-position/observation.json",
+      "bytes": 256,
+      "sha256": "1fe4be424b7af139095837a726aa18dbe810a9d74ef5395be302298f4f406055"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-optional-position/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-return-control/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-return-control/build.stdout",
+      "bytes": 78,
+      "sha256": "af7a8d2bb2f67958f550f4ceb4855311254d155fd418fde94f99ddb7fc650ad7"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-return-control/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "25819197a9d91a18ce50ad5b256fb0746942c3966dd9c8212fb6dff2ecbabe69"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-return-control/dist/main.d.ts",
+      "bytes": 69,
+      "sha256": "811aab9fa538912e353857de8eb1ac61faf7769633bd2a01eec00a98749d44d4"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-return-control/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-return-control/main.ts",
+      "bytes": 181,
+      "sha256": "524fd49ff19b4bc8bfe3c8c0c2868e2cbc9b68b13a7418084321cbfcd5b0bc1e"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-return-control/observation.json",
+      "bytes": 289,
+      "sha256": "4b877b52d028d8195f6f9ba70f698e33dfec659727c4bd7fa32ad3817779cf09"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-return-control/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-zero-arguments/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-zero-arguments/build.stdout",
+      "bytes": 78,
+      "sha256": "ece5f167170456011c01130d4ef883267684eb3e4c8c55628312638fc0a34bcf"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-zero-arguments/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "32b73418870ec6ccc4a57351b09edc5611a40c80d7acfaad32e5934e805c0f39"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-zero-arguments/dist/main.d.ts",
+      "bytes": 38,
+      "sha256": "683df0449112210241ce9508bccc440c26cb02cad46fe960b59b6c6bb391fc2d"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-zero-arguments/dist/main.js",
+      "bytes": 128,
+      "sha256": "3e35d9d16bf414b1f2ca3bd67c8fdb79fb88c41166e8f42daf26a6a5a1ad2c6b"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-zero-arguments/main.ts",
+      "bytes": 130,
+      "sha256": "1bebe929048d7bdaf69b928028686c7ec50e2fa847df0047d7491b334682d792"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-zero-arguments/observation.json",
+      "bytes": 253,
+      "sha256": "93af1ea1a7075dde8d7472c80473154534c44fc78df12ba14cf5e6a6765b1104"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-zero-arguments/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-zero-arguments-reject-literal/build.stderr",
+      "bytes": 517,
+      "sha256": "573c72f1d7c8f1fdf3dbd805fabe61b6248a3e4636546a8e57bfe2048e851630"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-zero-arguments-reject-literal/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-zero-arguments-reject-literal/main.ts",
+      "bytes": 167,
+      "sha256": "6aae342d3bb56d84d3146ce81b69e04411e06e6343870fa73e6688a4b78dbf48"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-zero-arguments-reject-literal/observation.json",
+      "bytes": 481,
+      "sha256": "0fb5a00d571af08ce35df07459b4daa4d28e615a6a621c9180f8d39069c8a9c7"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/function-zero-arguments-reject-literal/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/mixed-covariance-precedence/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/mixed-covariance-precedence/build.stdout",
+      "bytes": 78,
+      "sha256": "f9ec4feff89d3881d4ca637ea1b3ac13581b7a359f1210cf53e19c583b26a4de"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/mixed-covariance-precedence/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "53be81500876c568445b3174072e64cf02b55dcb26a02e6a64483e2fde44a1ce"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/mixed-covariance-precedence/dist/main.d.ts",
+      "bytes": 69,
+      "sha256": "811aab9fa538912e353857de8eb1ac61faf7769633bd2a01eec00a98749d44d4"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/mixed-covariance-precedence/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/mixed-covariance-precedence/main.ts",
+      "bytes": 177,
+      "sha256": "6b2b6cb63f8efbf37cbbd932d2f032364856eabb3416f7a2dbd4048e8a3e5dc9"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/mixed-covariance-precedence/observation.json",
+      "bytes": 293,
+      "sha256": "73ccd5c1ea28bed8123ff92ee30a02bafccd61fc61bdc7f8d1b886aa9ba78bd0"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/mixed-covariance-precedence/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/mixed-incompatible-rejection-branch/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/mixed-incompatible-rejection-branch/build.stdout",
+      "bytes": 78,
+      "sha256": "cd0737c67510ef59544f6808ad4c60af3688a531463643ae063e91ca4d9e2d01"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/mixed-incompatible-rejection-branch/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "ca646e1f238095553b3af80166d6e35bca52ea535143f728ab874c961b18d3ee"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/mixed-incompatible-rejection-branch/dist/main.d.ts",
+      "bytes": 73,
+      "sha256": "0d962136e6a573b1afc3a1bfb0575d491789c39c1f393bc36e159e508f31249e"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/mixed-incompatible-rejection-branch/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/mixed-incompatible-rejection-branch/main.ts",
+      "bytes": 183,
+      "sha256": "2cc63de75fd218a0a28974f54261b1f5c9050c64e1b23016ad4559ed99788752"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/mixed-incompatible-rejection-branch/observation.json",
+      "bytes": 305,
+      "sha256": "d933cceecd3c1645570703eb81a5b4110559989588bdc4eae686592e9f55488c"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/mixed-incompatible-rejection-branch/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/non-distributive-union-control/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/non-distributive-union-control/build.stdout",
+      "bytes": 78,
+      "sha256": "6ff2e31c841eb9727a6590108ec595b486bf99a4791bf42e069a4d782658faab"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/non-distributive-union-control/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "ccae6d1012439d68b5872dba9aadba271170343fb99531241d844fe99769c3cd"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/non-distributive-union-control/dist/main.d.ts",
+      "bytes": 63,
+      "sha256": "50fd9e26c16d07670d05ec8c59c7b95aa701d1f1c2243b135da7ea0b15878e85"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/non-distributive-union-control/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/non-distributive-union-control/main.ts",
+      "bytes": 152,
+      "sha256": "d36c75006b8d5652bdb0370bbb5cd4057faaf1c4f6a070cdef6bc44c340feb12"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/non-distributive-union-control/observation.json",
+      "bytes": 286,
+      "sha256": "3509b4a192ed79080e513162b64014488cdfcdc82183f7aa0fe1542ab14c8050"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/non-distributive-union-control/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/overload-last-signature-control/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/overload-last-signature-control/build.stdout",
+      "bytes": 78,
+      "sha256": "0de0315f4b55bdd6471ba02789d5850d6b519dcb36e898ccc3341797002e6364"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/overload-last-signature-control/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "ef67ffbd3f2b405787e37a7a66b62143c715eb0bf3c0f0d54d1308f65c254b23"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/overload-last-signature-control/dist/main.d.ts",
+      "bytes": 73,
+      "sha256": "e62a44ef461e686782c6879cddf895e1929a324062ac250855b5dcb84ef4af59"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/overload-last-signature-control/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/overload-last-signature-control/main.ts",
+      "bytes": 198,
+      "sha256": "0ec8bab81c66ea072ed5d5e3c659368e187fd6359e805947dfdf512dbde33a9b"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/overload-last-signature-control/observation.json",
+      "bytes": 301,
+      "sha256": "a03a898e509d6c80d7a0790edbb929a65e4abb8b9201bb021e8d6472cefcd5b0"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/overload-last-signature-control/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/readonly-array/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/readonly-array/build.stdout",
+      "bytes": 78,
+      "sha256": "ec08e49c3f0da1d3a422ce090fec0c429225f16044594fe42f524b9ce024ee75"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/readonly-array/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "f514f336ba70abf66c95702a7fa3198850145c0dda05ffc0f27057d4c4d79a3e"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/readonly-array/dist/main.d.ts",
+      "bytes": 73,
+      "sha256": "42349f04164eba8624f9c8524da1a118024c50411ff4a5328ebb963bca19b383"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/readonly-array/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/readonly-array/main.ts",
+      "bytes": 174,
+      "sha256": "9821ba236701fc0192be5aa4c5a25ad47948614ed33e702f99ad15dcf63c6106"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/readonly-array/observation.json",
+      "bytes": 280,
+      "sha256": "cb9a2f28270ce51d115df33f08da20afe3269bb78c716eb057fe041539c83ca8"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/readonly-array/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-optional-empty/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-optional-empty/build.stdout",
+      "bytes": 78,
+      "sha256": "3879102c4203c7326188d7c95fb70812eacffa580494fd7eb4a7ffac7ba27912"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-optional-empty/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "2f652a5498b4af499077122592ddc47df4c1bb8add00f2a3c61588a6d494c1df"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-optional-empty/dist/main.d.ts",
+      "bytes": 51,
+      "sha256": "8e2ab375d2f9fdf0805e5c43b280628d2f55ccd249c58ecefc757271f4f7b96d"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-optional-empty/dist/main.js",
+      "bytes": 128,
+      "sha256": "3e35d9d16bf414b1f2ca3bd67c8fdb79fb88c41166e8f42daf26a6a5a1ad2c6b"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-optional-empty/main.ts",
+      "bytes": 131,
+      "sha256": "fc3bf6e0f56e5a6d5906d661bcaaa1dbe1fda972107378cb91318bc839d605eb"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-optional-empty/observation.json",
+      "bytes": 263,
+      "sha256": "e2d9835f37dba7d8f17f0295baaa7b74e7110ed2087d5185fef256ee026ddb24"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-optional-empty/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-prefix-control/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-prefix-control/build.stdout",
+      "bytes": 78,
+      "sha256": "180314a593fee67837d23840b6348244d39ba40d1be84fb9e811311df4c490db"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-prefix-control/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "9f706381898947ab04c6ed83fe39b9f7a2e45f9a02933ab23a3c5c4756912980"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-prefix-control/dist/main.d.ts",
+      "bytes": 115,
+      "sha256": "268174eff92943b0122e19ab9a32b5bf7af551d103621cedd170d2335d6e8dfd"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-prefix-control/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-prefix-control/main.ts",
+      "bytes": 209,
+      "sha256": "3c4c23e8880a150e7e99329747bbca8662da84f461c33e1ee54500ae1f1ff1e0"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-prefix-control/observation.json",
+      "bytes": 328,
+      "sha256": "e582d5963c7f6cf18b494dd13e5c6941643ebbaa97d1a0e7c140126a6e2a8e3c"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-prefix-control/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-suffix-rest/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-suffix-rest/build.stdout",
+      "bytes": 78,
+      "sha256": "a41accff208993c33db9ac7559309f666243eed90481d5c647fb0ed8d2cd60f0"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-suffix-rest/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "9bb7cb12064e082f19c44e2237a2541489b720bba687d40a67470d22afc44a18"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-suffix-rest/dist/main.d.ts",
+      "bytes": 115,
+      "sha256": "f2fbd0b5165aecafb43572a78ea44cf6b5e9fac24be1d8487abe48f4515fe997"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-suffix-rest/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-suffix-rest/main.ts",
+      "bytes": 209,
+      "sha256": "1b41434a0809ce04d3dccd7f1cb3cbb3d0fbb280859a2acf740ce1da88d3d6f9"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-suffix-rest/observation.json",
+      "bytes": 325,
+      "sha256": "b2ee83a9d51dc5cb82a13bdc50909c76425ca1dadd52e87fe46b8289a472c88c"
+    },
+    {
+      "path": "original-discovery24/replay-native/blue/tuple-suffix-rest/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/aliased-candidate-positions/dist/main.d.ts",
+      "bytes": 71,
+      "sha256": "10cb53307e0f494a0c31623e81cfc8beb69b1ac31a6f9936f8852161cd801505"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/aliased-candidate-positions/dist/main.js",
+      "bytes": 174,
+      "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/aliased-candidate-positions/main.ts",
+      "bytes": 265,
+      "sha256": "0bffb076f30a92e03b7b32941066f4138b99924d3ec02783d334ce88f2940f39"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/aliased-candidate-positions/observation.json",
+      "bytes": 161,
+      "sha256": "8a1db972f9e203566de93f669e534d0daebf7e3c139c9b4820a0da5c5ba3f2d8"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/aliased-candidate-positions/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/conditional-any/dist/main.d.ts",
+      "bytes": 71,
+      "sha256": "91271e3e62a3f2a7f9d004d49bfbf865f837558a54eccb90283ba6a55aa8acf6"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/conditional-any/dist/main.js",
+      "bytes": 174,
+      "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/conditional-any/main.ts",
+      "bytes": 140,
+      "sha256": "4807bdfe3272728087b53a7cd4a662b0f5b6b3969d68a286aff42feeb17191fc"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/conditional-any/observation.json",
+      "bytes": 161,
+      "sha256": "86d0e2e3880c445a2e6b601d11e3e043111d92b1e03907b3932c19991400102b"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/conditional-any/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/conditional-never-control/dist/main.d.ts",
+      "bytes": 71,
+      "sha256": "10cb53307e0f494a0c31623e81cfc8beb69b1ac31a6f9936f8852161cd801505"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/conditional-never-control/dist/main.js",
+      "bytes": 174,
+      "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/conditional-never-control/main.ts",
+      "bytes": 142,
+      "sha256": "72abb921931873eb9dc8dfcb6231cab08013acb034251b85ed6dfd95329bd059"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/conditional-never-control/observation.json",
+      "bytes": 161,
+      "sha256": "8a1db972f9e203566de93f669e534d0daebf7e3c139c9b4820a0da5c5ba3f2d8"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/conditional-never-control/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/constrained-covariant-union/dist/main.d.ts",
+      "bytes": 79,
+      "sha256": "3a10bb64d67b3abcbdebf3011affbb5dd4c5941e2e99ed8e09d9f5c16c3af98d"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/constrained-covariant-union/dist/main.js",
+      "bytes": 174,
+      "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/constrained-covariant-union/main.ts",
+      "bytes": 214,
+      "sha256": "35533fe4462a066b75c682daa57b1c165f077512c1fabfcb388038e070ed6a83"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/constrained-covariant-union/observation.json",
+      "bytes": 177,
+      "sha256": "7f925a9c5f151e7f4a34596b0c55dce70f570de6d35954a8dccd071168d0d69b"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/constrained-covariant-union/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/contravariant-disjoint/dist/main.d.ts",
+      "bytes": 71,
+      "sha256": "10cb53307e0f494a0c31623e81cfc8beb69b1ac31a6f9936f8852161cd801505"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/contravariant-disjoint/dist/main.js",
+      "bytes": 174,
+      "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/contravariant-disjoint/main.ts",
+      "bytes": 238,
+      "sha256": "ce9b464c4c1bab2248b7d5d71d520bfd007f9068fa4b0c1007f67f6a48c01368"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/contravariant-disjoint/observation.json",
+      "bytes": 161,
+      "sha256": "8a1db972f9e203566de93f669e534d0daebf7e3c139c9b4820a0da5c5ba3f2d8"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/contravariant-disjoint/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/contravariant-record-intersection/dist/main.d.ts",
+      "bytes": 133,
+      "sha256": "da518d3ed27334a1f134edf7e7032499ab9e2a691006b72560f983b4fdd585a4"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/contravariant-record-intersection/dist/main.js",
+      "bytes": 174,
+      "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/contravariant-record-intersection/main.ts",
+      "bytes": 271,
+      "sha256": "f7d92a1ee1241018eb530c092277a4ce8a0973bf1605fd15f4ecaf2e0f73eca9"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/contravariant-record-intersection/observation.json",
+      "bytes": 230,
+      "sha256": "3d1258422150ae377a64d1efc5d93cd5e60570dd5933ad6e2ffe46b8ac643a44"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/contravariant-record-intersection/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/contravariant-reject-union/main.ts",
+      "bytes": 250,
+      "sha256": "fd98ffb198942ad21d228e994f27909421b8b851d057598c96a6884a9aaec8d5"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/contravariant-reject-union/observation.json",
+      "bytes": 319,
+      "sha256": "72a3b5aabfbd92fd4616adf8d4dfe532765750a89c770f97f0185593ec86207b"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/contravariant-reject-union/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/contravariant-related-literals/dist/main.d.ts",
+      "bytes": 67,
+      "sha256": "39c838248f6a8b5c501d81fdc5d799925d088303e98195e0e9982bba3cbc4aa1"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/contravariant-related-literals/dist/main.js",
+      "bytes": 174,
+      "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/contravariant-related-literals/main.ts",
+      "bytes": 242,
+      "sha256": "33a73d33d0940ce727f39c2b38cfeff080a556a1eaa793f84de3fc1eeb307233"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/contravariant-related-literals/observation.json",
+      "bytes": 161,
+      "sha256": "4480a97b76a8486a2ff605b5c718e49aab0e0a51afea06ff6aa575f5ec0da748"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/contravariant-related-literals/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/covariant-union-control/dist/main.d.ts",
+      "bytes": 91,
+      "sha256": "26c39bf638c71e809313ba87f9c78badb8de79a0cae0e214876dbfa0e019e5df"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/covariant-union-control/dist/main.js",
+      "bytes": 174,
+      "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/covariant-union-control/main.ts",
+      "bytes": 196,
+      "sha256": "8a374b612a3ddf7fad6c5e588af5758e28102aa2598d1d96b34c8a81a2b0b77a"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/covariant-union-control/observation.json",
+      "bytes": 181,
+      "sha256": "6e5b00abec7613f837c4107d36d0fadc851172c5b3ffc2e7f01f8d04570e3b6f"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/covariant-union-control/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/cross-file-contravariance/dist/main.d.ts",
+      "bytes": 71,
+      "sha256": "10cb53307e0f494a0c31623e81cfc8beb69b1ac31a6f9936f8852161cd801505"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/cross-file-contravariance/dist/main.js",
+      "bytes": 174,
+      "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/cross-file-contravariance/dist/types.d.ts",
+      "bytes": 109,
+      "sha256": "d1744e0950aa138411e661356448154054a4845a2a00a590dc495a815af322dd"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/cross-file-contravariance/dist/types.js",
+      "bytes": 77,
+      "sha256": "d43aa81f5bc89faa359e0f97c814ba25155591ff078fbb9bfd40f8c7c9683230"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/cross-file-contravariance/main.ts",
+      "bytes": 183,
+      "sha256": "e52e1bb8a49526ccc475d7f4967fd1889c8596ec6c7c0354becd303e97574688"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/cross-file-contravariance/observation.json",
+      "bytes": 298,
+      "sha256": "6a2227471f0b9abb4975f912ddb5a0c8bb22db7988c95a2f11d1d1c7f2e824ca"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/cross-file-contravariance/tsconfig.json",
+      "bytes": 297,
+      "sha256": "c8317db31a81a2b458e1c9298735b4c98834befb901764faa8b5ebaae76252cc"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/cross-file-contravariance/types.ts",
+      "bytes": 100,
+      "sha256": "649373adf158d2a456165915ef815c4daf094f1f53e0faa2c8d16d79d2c77b0b"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/double-contravariance/dist/main.d.ts",
+      "bytes": 69,
+      "sha256": "811aab9fa538912e353857de8eb1ac61faf7769633bd2a01eec00a98749d44d4"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/double-contravariance/dist/main.js",
+      "bytes": 174,
+      "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/double-contravariance/main.ts",
+      "bytes": 198,
+      "sha256": "bac17ef9924a591b8ea113ce26119b28b34cd23687b188876b0026d8a5a07f8e"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/double-contravariance/observation.json",
+      "bytes": 163,
+      "sha256": "95bdc7a4dc6dc6b5ece51cb0c716c6ba2be30caa1e64cb71935bc5f80fe4d234"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/double-contravariance/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/function-constrained-missing/dist/main.d.ts",
+      "bytes": 73,
+      "sha256": "42349f04164eba8624f9c8524da1a118024c50411ff4a5328ebb963bca19b383"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/function-constrained-missing/dist/main.js",
+      "bytes": 174,
+      "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/function-constrained-missing/main.ts",
+      "bytes": 182,
+      "sha256": "7c76229a33bb8838272fb2ced0dec8146762a077f284fd45421527ec6537d1c1"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/function-constrained-missing/observation.json",
+      "bytes": 163,
+      "sha256": "5ff8fcf3e418c447a923e6403dc1a6d2ecc983211c43a9f69d2c28def897b6fd"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/function-constrained-missing/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/function-optional-position/dist/main.d.ts",
+      "bytes": 38,
+      "sha256": "683df0449112210241ce9508bccc440c26cb02cad46fe960b59b6c6bb391fc2d"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/function-optional-position/dist/main.js",
+      "bytes": 126,
+      "sha256": "760084d95f65183e128ecd914cdf4f31c97b07d8a816c025f82a8e0736b07a5f"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/function-optional-position/main.ts",
+      "bytes": 131,
+      "sha256": "bfa7147e77d55ab8e43d510d5efe98712df3252ac30394e4632282a33989ec64"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/function-optional-position/observation.json",
+      "bytes": 127,
+      "sha256": "6549ad7c924920502446b9be8ab56420e59c8e729f4c35e6e57f9304fd8f429d"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/function-optional-position/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/function-return-control/dist/main.d.ts",
+      "bytes": 69,
+      "sha256": "811aab9fa538912e353857de8eb1ac61faf7769633bd2a01eec00a98749d44d4"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/function-return-control/dist/main.js",
+      "bytes": 174,
+      "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/function-return-control/main.ts",
+      "bytes": 181,
+      "sha256": "524fd49ff19b4bc8bfe3c8c0c2868e2cbc9b68b13a7418084321cbfcd5b0bc1e"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/function-return-control/observation.json",
+      "bytes": 163,
+      "sha256": "95bdc7a4dc6dc6b5ece51cb0c716c6ba2be30caa1e64cb71935bc5f80fe4d234"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/function-return-control/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/function-zero-arguments/dist/main.d.ts",
+      "bytes": 38,
+      "sha256": "683df0449112210241ce9508bccc440c26cb02cad46fe960b59b6c6bb391fc2d"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/function-zero-arguments/dist/main.js",
+      "bytes": 126,
+      "sha256": "760084d95f65183e128ecd914cdf4f31c97b07d8a816c025f82a8e0736b07a5f"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/function-zero-arguments/main.ts",
+      "bytes": 130,
+      "sha256": "1bebe929048d7bdaf69b928028686c7ec50e2fa847df0047d7491b334682d792"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/function-zero-arguments/observation.json",
+      "bytes": 127,
+      "sha256": "6549ad7c924920502446b9be8ab56420e59c8e729f4c35e6e57f9304fd8f429d"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/function-zero-arguments/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/function-zero-arguments-reject-literal/main.ts",
+      "bytes": 167,
+      "sha256": "6aae342d3bb56d84d3146ce81b69e04411e06e6343870fa73e6688a4b78dbf48"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/function-zero-arguments-reject-literal/observation.json",
+      "bytes": 320,
+      "sha256": "2a9bf8d7caf8b9d1663ff04a030176a19280438374b64d6cdcc156208367e09e"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/function-zero-arguments-reject-literal/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/mixed-covariance-precedence/dist/main.d.ts",
+      "bytes": 69,
+      "sha256": "811aab9fa538912e353857de8eb1ac61faf7769633bd2a01eec00a98749d44d4"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/mixed-covariance-precedence/dist/main.js",
+      "bytes": 174,
+      "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/mixed-covariance-precedence/main.ts",
+      "bytes": 177,
+      "sha256": "6b2b6cb63f8efbf37cbbd932d2f032364856eabb3416f7a2dbd4048e8a3e5dc9"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/mixed-covariance-precedence/observation.json",
+      "bytes": 163,
+      "sha256": "95bdc7a4dc6dc6b5ece51cb0c716c6ba2be30caa1e64cb71935bc5f80fe4d234"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/mixed-covariance-precedence/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/mixed-incompatible-rejection-branch/dist/main.d.ts",
+      "bytes": 73,
+      "sha256": "0d962136e6a573b1afc3a1bfb0575d491789c39c1f393bc36e159e508f31249e"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/mixed-incompatible-rejection-branch/dist/main.js",
+      "bytes": 174,
+      "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/mixed-incompatible-rejection-branch/main.ts",
+      "bytes": 183,
+      "sha256": "2cc63de75fd218a0a28974f54261b1f5c9050c64e1b23016ad4559ed99788752"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/mixed-incompatible-rejection-branch/observation.json",
+      "bytes": 167,
+      "sha256": "6a73cdf88cf25728a279dc66c6ae423c0773f22335f82d242b45ba48c28065fa"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/mixed-incompatible-rejection-branch/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/non-distributive-union-control/dist/main.d.ts",
+      "bytes": 63,
+      "sha256": "50fd9e26c16d07670d05ec8c59c7b95aa701d1f1c2243b135da7ea0b15878e85"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/non-distributive-union-control/dist/main.js",
+      "bytes": 174,
+      "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/non-distributive-union-control/main.ts",
+      "bytes": 152,
+      "sha256": "d36c75006b8d5652bdb0370bbb5cd4057faaf1c4f6a070cdef6bc44c340feb12"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/non-distributive-union-control/observation.json",
+      "bytes": 153,
+      "sha256": "1a632631b9cd0c2dc3837911c1a8a319418e0e813b4a5b21f048ee6a9b262bb5"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/non-distributive-union-control/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/overload-last-signature-control/dist/main.d.ts",
+      "bytes": 73,
+      "sha256": "e62a44ef461e686782c6879cddf895e1929a324062ac250855b5dcb84ef4af59"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/overload-last-signature-control/dist/main.js",
+      "bytes": 174,
+      "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/overload-last-signature-control/main.ts",
+      "bytes": 198,
+      "sha256": "0ec8bab81c66ea072ed5d5e3c659368e187fd6359e805947dfdf512dbde33a9b"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/overload-last-signature-control/observation.json",
+      "bytes": 167,
+      "sha256": "c2f27c66b19d98f20c4dac3a8d65d83ce9a5f6873b40211a7ae0ed353b463fc3"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/overload-last-signature-control/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/readonly-array/dist/main.d.ts",
+      "bytes": 73,
+      "sha256": "42349f04164eba8624f9c8524da1a118024c50411ff4a5328ebb963bca19b383"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/readonly-array/dist/main.js",
+      "bytes": 174,
+      "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/readonly-array/main.ts",
+      "bytes": 174,
+      "sha256": "9821ba236701fc0192be5aa4c5a25ad47948614ed33e702f99ad15dcf63c6106"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/readonly-array/observation.json",
+      "bytes": 163,
+      "sha256": "5ff8fcf3e418c447a923e6403dc1a6d2ecc983211c43a9f69d2c28def897b6fd"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/readonly-array/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/tuple-optional-empty/dist/main.d.ts",
+      "bytes": 51,
+      "sha256": "8e2ab375d2f9fdf0805e5c43b280628d2f55ccd249c58ecefc757271f4f7b96d"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/tuple-optional-empty/dist/main.js",
+      "bytes": 126,
+      "sha256": "760084d95f65183e128ecd914cdf4f31c97b07d8a816c025f82a8e0736b07a5f"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/tuple-optional-empty/main.ts",
+      "bytes": 131,
+      "sha256": "fc3bf6e0f56e5a6d5906d661bcaaa1dbe1fda972107378cb91318bc839d605eb"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/tuple-optional-empty/observation.json",
+      "bytes": 140,
+      "sha256": "d1bd5fb7459e74afc335fac3392fb4d653e822921a69999820756d4c37d0ca1b"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/tuple-optional-empty/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/tuple-prefix-control/dist/main.d.ts",
+      "bytes": 115,
+      "sha256": "268174eff92943b0122e19ab9a32b5bf7af551d103621cedd170d2335d6e8dfd"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/tuple-prefix-control/dist/main.js",
+      "bytes": 174,
+      "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/tuple-prefix-control/main.ts",
+      "bytes": 209,
+      "sha256": "3c4c23e8880a150e7e99329747bbca8662da84f461c33e1ee54500ae1f1ff1e0"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/tuple-prefix-control/observation.json",
+      "bytes": 205,
+      "sha256": "8605c9a4c81643eed1abea61d1845edf6d1efb1f02d9cfc9f1c9960e2ef4206b"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/tuple-prefix-control/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/tuple-suffix-rest/dist/main.d.ts",
+      "bytes": 115,
+      "sha256": "f2fbd0b5165aecafb43572a78ea44cf6b5e9fac24be1d8487abe48f4515fe997"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/tuple-suffix-rest/dist/main.js",
+      "bytes": 174,
+      "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/tuple-suffix-rest/main.ts",
+      "bytes": 209,
+      "sha256": "1b41434a0809ce04d3dccd7f1cb3cbb3d0fbb280859a2acf740ce1da88d3d6f9"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/tuple-suffix-rest/observation.json",
+      "bytes": 205,
+      "sha256": "120e7dcda93a34705f495a07a04e15e33d778c0dff1e9e3fe4fb3820773b884b"
+    },
+    {
+      "path": "original-discovery24/replay-native/native/tuple-suffix-rest/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-native/report.json",
+      "bytes": 9638,
+      "sha256": "c23346c2b49b96ba40a03aabf69b87c611e3260cf08bd51931266178c6b06c88"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/aliased-candidate-positions/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/aliased-candidate-positions/build.stdout",
+      "bytes": 78,
+      "sha256": "1d60cccfda59ace789f464c3991a0cbf4b31aad122362b12237b217ad596fda6"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/aliased-candidate-positions/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "d57ce8d7e40b5f9165ed8c3a0c67c7f69c58c9527687d7b6f5867d39ab1428f1"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/aliased-candidate-positions/dist/main.d.ts",
+      "bytes": 71,
+      "sha256": "10cb53307e0f494a0c31623e81cfc8beb69b1ac31a6f9936f8852161cd801505"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/aliased-candidate-positions/dist/main.js",
+      "bytes": 176,
+      "sha256": "20095a65ec0b8526dd4252174516ad6663abbbceae9924360569fbe2cd24ed67"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/aliased-candidate-positions/main.ts",
+      "bytes": 265,
+      "sha256": "0bffb076f30a92e03b7b32941066f4138b99924d3ec02783d334ce88f2940f39"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/aliased-candidate-positions/observation.json",
+      "bytes": 291,
+      "sha256": "2bf8a017566f064cf755c7155bd17321c7f92842fcab23a3716d3d6464d86794"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/aliased-candidate-positions/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/conditional-any/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/conditional-any/build.stdout",
+      "bytes": 78,
+      "sha256": "97a589a94afcd861e52958890bc1c71885587051ebc20d95c95bbe7577d1aa79"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/conditional-any/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "1ca27445c546f3d6bda79e518d402ce360732d2d78fb2bd9d071bd7dd289eb0b"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/conditional-any/dist/main.d.ts",
+      "bytes": 71,
+      "sha256": "91271e3e62a3f2a7f9d004d49bfbf865f837558a54eccb90283ba6a55aa8acf6"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/conditional-any/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/conditional-any/main.ts",
+      "bytes": 140,
+      "sha256": "4807bdfe3272728087b53a7cd4a662b0f5b6b3969d68a286aff42feeb17191fc"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/conditional-any/observation.json",
+      "bytes": 279,
+      "sha256": "abbecca102452c83eb0d47dc89a3a5a4c3ce21eb668d058f43237fed358625cd"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/conditional-any/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/conditional-never-control/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/conditional-never-control/build.stdout",
+      "bytes": 78,
+      "sha256": "01b6051bae5d1067fd7e619f9f10820d9fb0303c124eaa194923a115d498f9d6"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/conditional-never-control/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "285eed00c4bfca8e46f19f1ef2454c258b6cba9572e384cc764962f5a3da064a"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/conditional-never-control/dist/main.d.ts",
+      "bytes": 71,
+      "sha256": "10cb53307e0f494a0c31623e81cfc8beb69b1ac31a6f9936f8852161cd801505"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/conditional-never-control/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/conditional-never-control/main.ts",
+      "bytes": 142,
+      "sha256": "72abb921931873eb9dc8dfcb6231cab08013acb034251b85ed6dfd95329bd059"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/conditional-never-control/observation.json",
+      "bytes": 289,
+      "sha256": "709154485c467a587e6df1d4e76113bad4af79491f7ba5d2840787c54ed17ebb"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/conditional-never-control/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/constrained-covariant-union/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/constrained-covariant-union/build.stdout",
+      "bytes": 78,
+      "sha256": "8abc889a7ae40ec8abf7fdeb456949b76364bfc758e698d91af76e8643c5a866"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/constrained-covariant-union/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "4977ac7ef19456648a4bb73edd97e9d2f2471a0b3969db9834bafe2595534a55"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/constrained-covariant-union/dist/main.d.ts",
+      "bytes": 79,
+      "sha256": "3a10bb64d67b3abcbdebf3011affbb5dd4c5941e2e99ed8e09d9f5c16c3af98d"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/constrained-covariant-union/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/constrained-covariant-union/main.ts",
+      "bytes": 214,
+      "sha256": "35533fe4462a066b75c682daa57b1c165f077512c1fabfcb388038e070ed6a83"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/constrained-covariant-union/observation.json",
+      "bytes": 307,
+      "sha256": "207faa3ff2605633438ca9d72f25c693d19962f95faed415eb1b53fe650811ba"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/constrained-covariant-union/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-disjoint/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-disjoint/build.stdout",
+      "bytes": 78,
+      "sha256": "4cd2c77eb2ecc625830ab753fe8b1010df2d019b25946b516c5b9c6e4625261c"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-disjoint/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "3b4b6f260920db19547ad5d1b2e9caa9890677852fdc2cc5b71b959f89d98a45"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-disjoint/dist/main.d.ts",
+      "bytes": 71,
+      "sha256": "10cb53307e0f494a0c31623e81cfc8beb69b1ac31a6f9936f8852161cd801505"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-disjoint/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-disjoint/main.ts",
+      "bytes": 238,
+      "sha256": "ce9b464c4c1bab2248b7d5d71d520bfd007f9068fa4b0c1007f67f6a48c01368"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-disjoint/observation.json",
+      "bytes": 286,
+      "sha256": "142f2a2974aa8bc64e4eb38e1aa1863817cd4380398113872e922b152f39dc07"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-disjoint/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-record-intersection/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-record-intersection/build.stdout",
+      "bytes": 78,
+      "sha256": "6cd63594f97dfc365eb90894d44030b573acb4ac215467ba6696c56c076a0a8a"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-record-intersection/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "1f1949e80da12cf166476cd90d2420a441658d4679a84213dbdfb049da8f3a1f"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-record-intersection/dist/main.d.ts",
+      "bytes": 133,
+      "sha256": "da518d3ed27334a1f134edf7e7032499ab9e2a691006b72560f983b4fdd585a4"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-record-intersection/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-record-intersection/main.ts",
+      "bytes": 271,
+      "sha256": "f7d92a1ee1241018eb530c092277a4ce8a0973bf1605fd15f4ecaf2e0f73eca9"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-record-intersection/observation.json",
+      "bytes": 366,
+      "sha256": "b2bf0bfe928d1fd9c250b743cbc724410b40e6f2132e95af9fd8532c28746074"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-record-intersection/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-reject-union/build.stderr",
+      "bytes": 519,
+      "sha256": "cafe96c32265481592a900fab8b411972ca4042f48a15b3275f07f955f700dd0"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-reject-union/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-reject-union/main.ts",
+      "bytes": 250,
+      "sha256": "fd98ffb198942ad21d228e994f27909421b8b851d057598c96a6884a9aaec8d5"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-reject-union/observation.json",
+      "bytes": 468,
+      "sha256": "a6f34c0f3ec00ae504c0bdb063f2c0cfa493ecc83bac8eddee5a2fe6245d2bb3"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-reject-union/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-related-literals/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-related-literals/build.stdout",
+      "bytes": 78,
+      "sha256": "4971477780775c5fe7befbe8c644d95a96e2745854b3fa6f3d87339cb75d8ae6"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-related-literals/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "e715298a63c17c5aea3ae306c237b7e5fe7f6ba7127a17aecd31c69dfd435a85"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-related-literals/dist/main.d.ts",
+      "bytes": 67,
+      "sha256": "39c838248f6a8b5c501d81fdc5d799925d088303e98195e0e9982bba3cbc4aa1"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-related-literals/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-related-literals/main.ts",
+      "bytes": 242,
+      "sha256": "33a73d33d0940ce727f39c2b38cfeff080a556a1eaa793f84de3fc1eeb307233"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-related-literals/observation.json",
+      "bytes": 294,
+      "sha256": "81b52eb8db680c9de4af5f2ffd8c57229fe4d2faac8b3f482f4aa71529dd4980"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/contravariant-related-literals/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/covariant-union-control/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/covariant-union-control/build.stdout",
+      "bytes": 78,
+      "sha256": "586882430ed9d5383338408eab35606f6d7b3701e607068bda1fa78b0eba99d6"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/covariant-union-control/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "0a35f1ad34a6ac71b8efbe7bef556750a3e9d887ecd92323f92eef7f3299e412"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/covariant-union-control/dist/main.d.ts",
+      "bytes": 91,
+      "sha256": "26c39bf638c71e809313ba87f9c78badb8de79a0cae0e214876dbfa0e019e5df"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/covariant-union-control/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/covariant-union-control/main.ts",
+      "bytes": 196,
+      "sha256": "8a374b612a3ddf7fad6c5e588af5758e28102aa2598d1d96b34c8a81a2b0b77a"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/covariant-union-control/observation.json",
+      "bytes": 307,
+      "sha256": "ee968de3d797b99e11b55f68373c394915f54c424df488d006f30703ee912758"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/covariant-union-control/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/cross-file-contravariance/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/cross-file-contravariance/build.stdout",
+      "bytes": 78,
+      "sha256": "381b9dae8f834fa3f9b3de13da86e4ed71af05791b255eb24138490bc79eb39c"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/cross-file-contravariance/dist/bluetsc.manifest.json",
+      "bytes": 1421,
+      "sha256": "ecb0a22b15fe3cbccdab78ea7635c3031ade314a6836f900a340b2c8df688846"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/cross-file-contravariance/dist/main.d.ts",
+      "bytes": 71,
+      "sha256": "10cb53307e0f494a0c31623e81cfc8beb69b1ac31a6f9936f8852161cd801505"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/cross-file-contravariance/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/cross-file-contravariance/dist/types.d.ts",
+      "bytes": 109,
+      "sha256": "d1744e0950aa138411e661356448154054a4845a2a00a590dc495a815af322dd"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/cross-file-contravariance/dist/types.js",
+      "bytes": 78,
+      "sha256": "da8815cd26bbc3418b07e59306164fc5e2bf2a9a7ac668fdd183fd7805b6cda3"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/cross-file-contravariance/main.ts",
+      "bytes": 183,
+      "sha256": "e52e1bb8a49526ccc475d7f4967fd1889c8596ec6c7c0354becd303e97574688"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/cross-file-contravariance/observation.json",
+      "bytes": 428,
+      "sha256": "ed695d09b2a9bf45baec29eab0a5dfdd1dd950c187107cc11aa3424acf4ac4fb"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/cross-file-contravariance/tsconfig.json",
+      "bytes": 297,
+      "sha256": "c8317db31a81a2b458e1c9298735b4c98834befb901764faa8b5ebaae76252cc"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/cross-file-contravariance/types.ts",
+      "bytes": 100,
+      "sha256": "649373adf158d2a456165915ef815c4daf094f1f53e0faa2c8d16d79d2c77b0b"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/double-contravariance/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/double-contravariance/build.stdout",
+      "bytes": 78,
+      "sha256": "24e4a28c21bf7dda155dbbb92a4e59039d178ef7e957a4f6f6b440da2c0bdb1c"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/double-contravariance/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "93bd8c552f8894456dcd0246bc2e366c2b82d42760321fac67ab5117cbd0a44b"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/double-contravariance/dist/main.d.ts",
+      "bytes": 69,
+      "sha256": "811aab9fa538912e353857de8eb1ac61faf7769633bd2a01eec00a98749d44d4"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/double-contravariance/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/double-contravariance/main.ts",
+      "bytes": 198,
+      "sha256": "bac17ef9924a591b8ea113ce26119b28b34cd23687b188876b0026d8a5a07f8e"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/double-contravariance/observation.json",
+      "bytes": 287,
+      "sha256": "4441f290ce63200ee851b21f5c57f47776d4a7422da265f3d9bc0938f53a272e"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/double-contravariance/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-constrained-missing/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-constrained-missing/build.stdout",
+      "bytes": 78,
+      "sha256": "d1fb7e82476acecc43b4bcb27691b896adb4c802d13503de1e153bc2f31017b6"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-constrained-missing/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "937dcb40cc1108369181e1530ceb8855fa23bacdb356fe1c762e01c37c735cb3"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-constrained-missing/dist/main.d.ts",
+      "bytes": 73,
+      "sha256": "42349f04164eba8624f9c8524da1a118024c50411ff4a5328ebb963bca19b383"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-constrained-missing/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-constrained-missing/main.ts",
+      "bytes": 182,
+      "sha256": "7c76229a33bb8838272fb2ced0dec8146762a077f284fd45421527ec6537d1c1"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-constrained-missing/observation.json",
+      "bytes": 294,
+      "sha256": "5ba26f98258d2cf5b055e718ef366fd0102db8bbce59ad50f6d3ee9554f80a62"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-constrained-missing/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-optional-position/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-optional-position/build.stdout",
+      "bytes": 78,
+      "sha256": "eaa8dd23419bfad0e1e1df7460aa9ee62dee1922d60999ec9c52087ed82e598b"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-optional-position/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "f2f8a28afe50d5f97951c951fe092389e6d89f494d541ff8011401575e0a74ab"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-optional-position/dist/main.d.ts",
+      "bytes": 38,
+      "sha256": "683df0449112210241ce9508bccc440c26cb02cad46fe960b59b6c6bb391fc2d"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-optional-position/dist/main.js",
+      "bytes": 128,
+      "sha256": "3e35d9d16bf414b1f2ca3bd67c8fdb79fb88c41166e8f42daf26a6a5a1ad2c6b"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-optional-position/main.ts",
+      "bytes": 131,
+      "sha256": "bfa7147e77d55ab8e43d510d5efe98712df3252ac30394e4632282a33989ec64"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-optional-position/observation.json",
+      "bytes": 256,
+      "sha256": "1fe4be424b7af139095837a726aa18dbe810a9d74ef5395be302298f4f406055"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-optional-position/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-return-control/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-return-control/build.stdout",
+      "bytes": 78,
+      "sha256": "3ae92d8b6c19bf370988351ed6be2198f104d600db8234702c880f1a97991433"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-return-control/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "8ae9c987f289a4136702063ebfa895cfad9e185daa83bbd06608278a09689481"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-return-control/dist/main.d.ts",
+      "bytes": 69,
+      "sha256": "811aab9fa538912e353857de8eb1ac61faf7769633bd2a01eec00a98749d44d4"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-return-control/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-return-control/main.ts",
+      "bytes": 181,
+      "sha256": "524fd49ff19b4bc8bfe3c8c0c2868e2cbc9b68b13a7418084321cbfcd5b0bc1e"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-return-control/observation.json",
+      "bytes": 289,
+      "sha256": "4b877b52d028d8195f6f9ba70f698e33dfec659727c4bd7fa32ad3817779cf09"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-return-control/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-zero-arguments/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-zero-arguments/build.stdout",
+      "bytes": 78,
+      "sha256": "8c0f78b659cd706daa0f75226ba5a5d68d4dd0a3be6417d68a527e33b6eeee18"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-zero-arguments/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "a97d60b4d554bb52c2fc8c5c9118a4cd0d56335b4537aaa2b707d3cfcbd90aa6"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-zero-arguments/dist/main.d.ts",
+      "bytes": 38,
+      "sha256": "683df0449112210241ce9508bccc440c26cb02cad46fe960b59b6c6bb391fc2d"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-zero-arguments/dist/main.js",
+      "bytes": 128,
+      "sha256": "3e35d9d16bf414b1f2ca3bd67c8fdb79fb88c41166e8f42daf26a6a5a1ad2c6b"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-zero-arguments/main.ts",
+      "bytes": 130,
+      "sha256": "1bebe929048d7bdaf69b928028686c7ec50e2fa847df0047d7491b334682d792"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-zero-arguments/observation.json",
+      "bytes": 253,
+      "sha256": "93af1ea1a7075dde8d7472c80473154534c44fc78df12ba14cf5e6a6765b1104"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-zero-arguments/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-zero-arguments-reject-literal/build.stderr",
+      "bytes": 517,
+      "sha256": "573c72f1d7c8f1fdf3dbd805fabe61b6248a3e4636546a8e57bfe2048e851630"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-zero-arguments-reject-literal/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-zero-arguments-reject-literal/main.ts",
+      "bytes": 167,
+      "sha256": "6aae342d3bb56d84d3146ce81b69e04411e06e6343870fa73e6688a4b78dbf48"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-zero-arguments-reject-literal/observation.json",
+      "bytes": 481,
+      "sha256": "0fb5a00d571af08ce35df07459b4daa4d28e615a6a621c9180f8d39069c8a9c7"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/function-zero-arguments-reject-literal/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/mixed-covariance-precedence/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/mixed-covariance-precedence/build.stdout",
+      "bytes": 78,
+      "sha256": "2b07694b63f2bc0f41dc34224776bf54b724f670710216527db41872ca6acc97"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/mixed-covariance-precedence/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "fd66c5b6f9bb962c4de18d3ab7ea3f81eef61c2b45f7b3c14e4ff20b545a6f61"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/mixed-covariance-precedence/dist/main.d.ts",
+      "bytes": 69,
+      "sha256": "811aab9fa538912e353857de8eb1ac61faf7769633bd2a01eec00a98749d44d4"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/mixed-covariance-precedence/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/mixed-covariance-precedence/main.ts",
+      "bytes": 177,
+      "sha256": "6b2b6cb63f8efbf37cbbd932d2f032364856eabb3416f7a2dbd4048e8a3e5dc9"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/mixed-covariance-precedence/observation.json",
+      "bytes": 293,
+      "sha256": "73ccd5c1ea28bed8123ff92ee30a02bafccd61fc61bdc7f8d1b886aa9ba78bd0"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/mixed-covariance-precedence/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/mixed-incompatible-rejection-branch/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/mixed-incompatible-rejection-branch/build.stdout",
+      "bytes": 78,
+      "sha256": "91241db55f716b654a328a647632e36a03a75ba8d43b15d7ae6f09b3f52ad81e"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/mixed-incompatible-rejection-branch/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "b5f80bcac7ca2b483c37a7f3bfc3657a7699a1aa246666fe6e0fb34bdb219f4f"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/mixed-incompatible-rejection-branch/dist/main.d.ts",
+      "bytes": 73,
+      "sha256": "0d962136e6a573b1afc3a1bfb0575d491789c39c1f393bc36e159e508f31249e"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/mixed-incompatible-rejection-branch/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/mixed-incompatible-rejection-branch/main.ts",
+      "bytes": 183,
+      "sha256": "2cc63de75fd218a0a28974f54261b1f5c9050c64e1b23016ad4559ed99788752"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/mixed-incompatible-rejection-branch/observation.json",
+      "bytes": 305,
+      "sha256": "d933cceecd3c1645570703eb81a5b4110559989588bdc4eae686592e9f55488c"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/mixed-incompatible-rejection-branch/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/non-distributive-union-control/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/non-distributive-union-control/build.stdout",
+      "bytes": 78,
+      "sha256": "17cada837a62497600223b0825a11a647cbab2104ce2f4292b3410216f76e3a7"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/non-distributive-union-control/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "1fc62988debbd3977eebee0805404c96e6d930f908eaddbaf165fc16eb147be7"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/non-distributive-union-control/dist/main.d.ts",
+      "bytes": 63,
+      "sha256": "50fd9e26c16d07670d05ec8c59c7b95aa701d1f1c2243b135da7ea0b15878e85"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/non-distributive-union-control/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/non-distributive-union-control/main.ts",
+      "bytes": 152,
+      "sha256": "d36c75006b8d5652bdb0370bbb5cd4057faaf1c4f6a070cdef6bc44c340feb12"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/non-distributive-union-control/observation.json",
+      "bytes": 286,
+      "sha256": "3509b4a192ed79080e513162b64014488cdfcdc82183f7aa0fe1542ab14c8050"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/non-distributive-union-control/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/overload-last-signature-control/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/overload-last-signature-control/build.stdout",
+      "bytes": 78,
+      "sha256": "5f8bfabd2ceacb6aa74df382363e0c2df7c5fcbcfd3f8c623dd1fb8b429bb147"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/overload-last-signature-control/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "1d6cdc966d92832b49c410d07a9fcbbfbcb48e1fb48124dc5a5cb5fb9b64cefc"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/overload-last-signature-control/dist/main.d.ts",
+      "bytes": 73,
+      "sha256": "e62a44ef461e686782c6879cddf895e1929a324062ac250855b5dcb84ef4af59"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/overload-last-signature-control/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/overload-last-signature-control/main.ts",
+      "bytes": 198,
+      "sha256": "0ec8bab81c66ea072ed5d5e3c659368e187fd6359e805947dfdf512dbde33a9b"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/overload-last-signature-control/observation.json",
+      "bytes": 301,
+      "sha256": "a03a898e509d6c80d7a0790edbb929a65e4abb8b9201bb021e8d6472cefcd5b0"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/overload-last-signature-control/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/readonly-array/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/readonly-array/build.stdout",
+      "bytes": 78,
+      "sha256": "6546545e892bea30152591c988dd3d72f3266279dc2cf251c0898f45fd967933"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/readonly-array/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "adf1541739720962064cae04978514c89219f9df8ad582e76ea48a4e0a49c8b7"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/readonly-array/dist/main.d.ts",
+      "bytes": 73,
+      "sha256": "42349f04164eba8624f9c8524da1a118024c50411ff4a5328ebb963bca19b383"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/readonly-array/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/readonly-array/main.ts",
+      "bytes": 174,
+      "sha256": "9821ba236701fc0192be5aa4c5a25ad47948614ed33e702f99ad15dcf63c6106"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/readonly-array/observation.json",
+      "bytes": 280,
+      "sha256": "cb9a2f28270ce51d115df33f08da20afe3269bb78c716eb057fe041539c83ca8"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/readonly-array/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-optional-empty/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-optional-empty/build.stdout",
+      "bytes": 78,
+      "sha256": "3316a15fe1982de0067869c6cb5be8b1ebcba39f6063b6387eaf8a4429645bd8"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-optional-empty/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "107529f5aef933d53dc4939a67264e594005eae448f5588f4e7475de9f7bff1d"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-optional-empty/dist/main.d.ts",
+      "bytes": 51,
+      "sha256": "8e2ab375d2f9fdf0805e5c43b280628d2f55ccd249c58ecefc757271f4f7b96d"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-optional-empty/dist/main.js",
+      "bytes": 128,
+      "sha256": "3e35d9d16bf414b1f2ca3bd67c8fdb79fb88c41166e8f42daf26a6a5a1ad2c6b"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-optional-empty/main.ts",
+      "bytes": 131,
+      "sha256": "fc3bf6e0f56e5a6d5906d661bcaaa1dbe1fda972107378cb91318bc839d605eb"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-optional-empty/observation.json",
+      "bytes": 263,
+      "sha256": "e2d9835f37dba7d8f17f0295baaa7b74e7110ed2087d5185fef256ee026ddb24"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-optional-empty/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-prefix-control/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-prefix-control/build.stdout",
+      "bytes": 78,
+      "sha256": "c4b01aedeaa83e5fa65c3183241154126547c63208cad66bfe8007f52983473d"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-prefix-control/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "616adcad9b85c5a397e84bc6d3dd28e304d3766a09194dc0a706969b87f0766c"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-prefix-control/dist/main.d.ts",
+      "bytes": 115,
+      "sha256": "268174eff92943b0122e19ab9a32b5bf7af551d103621cedd170d2335d6e8dfd"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-prefix-control/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-prefix-control/main.ts",
+      "bytes": 209,
+      "sha256": "3c4c23e8880a150e7e99329747bbca8662da84f461c33e1ee54500ae1f1ff1e0"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-prefix-control/observation.json",
+      "bytes": 328,
+      "sha256": "e582d5963c7f6cf18b494dd13e5c6941643ebbaa97d1a0e7c140126a6e2a8e3c"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-prefix-control/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-suffix-rest/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-suffix-rest/build.stdout",
+      "bytes": 78,
+      "sha256": "98d1f766519eb12868bec39e2646afe01f8840dfdeabebb96c9da4eeed472037"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-suffix-rest/dist/bluetsc.manifest.json",
+      "bytes": 1405,
+      "sha256": "edf387d3c790c85025bf97d4b19865a7f1a0e113806ed6ec4b6b912eec3fff8c"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-suffix-rest/dist/main.d.ts",
+      "bytes": 115,
+      "sha256": "f2fbd0b5165aecafb43572a78ea44cf6b5e9fac24be1d8487abe48f4515fe997"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-suffix-rest/dist/main.js",
+      "bytes": 175,
+      "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-suffix-rest/main.ts",
+      "bytes": 209,
+      "sha256": "1b41434a0809ce04d3dccd7f1cb3cbb3d0fbb280859a2acf740ce1da88d3d6f9"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-suffix-rest/observation.json",
+      "bytes": 325,
+      "sha256": "b2ee83a9d51dc5cb82a13bdc50909c76425ca1dadd52e87fe46b8289a472c88c"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/blue/tuple-suffix-rest/tsconfig.json",
+      "bytes": 281,
+      "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+    },
+    {
+      "path": "original-discovery24/replay-workspace/report.json",
+      "bytes": 9638,
+      "sha256": "d13a74ae9ee04f5d14c84ffff6dd18fe9bb238f32360f08bec23bc0d07abbcc2"
+    },
+    {
+      "path": "original-discovery24/workspace-supervisor.json",
+      "bytes": 337,
+      "sha256": "cd6b91f773be842786d5de1a09372ab21859ed4476cc57b08fdf50bfe47cb136"
+    },
+    {
+      "path": "source-snapshots/frozen-backend-audit.json",
+      "bytes": 441,
+      "sha256": "d883de4810902c90901e2b8707f95154d52a603837d89313046ba6d636000649"
+    }
+  ]
+}

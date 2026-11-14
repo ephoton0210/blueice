@@ -48,6 +48,8 @@ pub(super) struct TypeExpansionBudget {
     /// A repeated demanded operation is a semantic error, independent of the
     /// owner's configured work limit. Keep its type identity for error recovery.
     pub(super) instantiation_failure: Option<Type>,
+    /// Immutable alias dependency queries can be reused within one work slot.
+    pub(super) conditional_argument_slots: BTreeMap<String, HashSet<String>>,
 }
 
 impl TypeExpansionBudget {
@@ -58,6 +60,7 @@ impl TypeExpansionBudget {
             exhausted: false,
             active_instantiations: HashSet::new(),
             instantiation_failure: None,
+            conditional_argument_slots: BTreeMap::new(),
         }
     }
 

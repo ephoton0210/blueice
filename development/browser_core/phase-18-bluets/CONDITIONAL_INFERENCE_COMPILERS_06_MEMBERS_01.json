@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "archive": "CONDITIONAL_INFERENCE_COMPILERS_06.tar.gz",
+  "entries": [
+    {
+      "path": "workspace-cli-snapshot",
+      "bytes": 50343040,
+      "sha256": "b826dc358758c6625cfc3789a947de92646cb17818422d075d4e3077c74f57e1"
+    }
+  ]
+}

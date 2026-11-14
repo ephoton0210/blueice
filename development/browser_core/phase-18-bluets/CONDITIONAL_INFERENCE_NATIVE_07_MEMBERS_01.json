@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "archive": "CONDITIONAL_INFERENCE_NATIVE_07.tar.gz",
+  "entries": [
+    {
+      "path": "accepted-native/suite-artifacts/152/observations/helper-name-collision.json",
+      "bytes": 33445732,
+      "sha256": "a0085a074584e1e13296c3801255109cbd6c0a18ac02ea02fc27563bd45acfc5"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/152/reports/helper-name-collision.json",
+      "bytes": 4367162,
+      "sha256": "2dabc1d2d59349ba22a7d62f43a70eeaa25d0aa8793288f1d6ad34bd1cbf558f"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/153/adjacent-observations/class-super.json",
+      "bytes": 2254779,
+      "sha256": "3a2c70cd1dd05e4e68111cc9ab02574a6a7ec74e0f879af742c02815ba2f8d36"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/153/adjacent-observations/decorator-legacy-whole.json",
+      "bytes": 1110975,
+      "sha256": "6529e58d75bd91a7b11371413eea7b178828785e364ce2c3778ff9a712bdeae5"
+    }
+  ]
+}

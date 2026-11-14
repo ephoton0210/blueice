@@ -5,28 +5,13 @@
 //! Conditional matching binds inferred types before selecting the true branch.
 use super::*;
 
+mod alias_variance;
 mod barriers;
 mod callables;
+mod candidates;
+mod containers;
 mod functions;
-
-#[derive(Clone, Default)]
-pub(super) struct MatchBindings {
-    values: BTreeMap<String, Type>,
-    saw_barrier: bool,
-}
-
-impl std::ops::Deref for MatchBindings {
-    type Target = BTreeMap<String, Type>;
-    fn deref(&self) -> &Self::Target {
-        &self.values
-    }
-}
-
-impl std::ops::DerefMut for MatchBindings {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.values
-    }
-}
+pub(super) use candidates::MatchBindings;
 
 pub(super) fn resolve(
     value: &ConditionalType,
@@ -34,21 +19,59 @@ pub(super) fn resolve(
     _visited: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> Option<Type> {
+    if value.extends.infer_parameters().is_empty() {
+        return predicate(value, aliases, budget);
+    }
     let actual = &value.check;
     let mut bindings = MatchBindings::default();
-    let mut matched = matches(actual, &value.extends, &mut bindings, aliases, budget);
-    if matched {
-        for parameter in value.extends.infer_parameters() {
-            // A missing function position contributes no evidence. Native uses
-            // the infer constraint (or unknown), independently of error recovery.
-            let fallback = parameter.constraint.unwrap_or(Type::StrictUnknown);
-            bindings.values.entry(parameter.name).or_insert(fallback);
-        }
-        if bindings.saw_barrier {
-            let pattern = barriers::instantiate(&value.extends, &bindings.values, budget);
-            matched = is_assignable(actual, &pattern, aliases, &mut HashSet::new(), budget);
-        }
+    let collected = matches(actual, &value.extends, &mut bindings, aliases, budget);
+    let may_be_any = matches!(
+        actual,
+        Type::Any
+            | Type::Union(_)
+            | Type::Conditional(_)
+            | Type::IndexedAccess { .. }
+            | Type::InferenceBarrier(_)
+            | Type::StringMapping(_)
+    ) || matches!(actual, Type::Named {name, ..} if aliases.get(name)
+            .is_some_and(|definition| definition.kind == TypeDefinitionKind::Alias));
+    let is_any = may_be_any && expanded(actual, aliases, &mut HashSet::new(), budget) == Type::Any;
+    if !collected && !is_any {
+        return (!budget.exhausted).then(|| value.when_false.clone());
     }
+    let parameters = value.extends.infer_parameters();
+    let pattern = if parameters.is_empty() {
+        value.extends.clone()
+    } else {
+        bindings.finish(&parameters, aliases, budget);
+        barriers::instantiate(&value.extends, &bindings.values, budget)
+    };
+    if is_any
+        && !matches!(
+            expanded(&pattern, aliases, &mut HashSet::new(), budget),
+            Type::Any | Type::StrictUnknown
+        )
+    {
+        if budget.exhausted {
+            return None;
+        }
+        let when_true = substitute_type(&value.when_true, &bindings.values);
+        return Some(if when_true == Type::Any || value.when_false == Type::Any {
+            Type::Any
+        } else {
+            union([when_true, value.when_false.clone()])
+        });
+    }
+    let source = expanded(actual, aliases, &mut HashSet::new(), budget);
+    let checking_source = callables::checking_source(&source, &pattern, aliases, budget)?;
+    let matched = collected
+        && is_assignable(
+            &checking_source,
+            &pattern,
+            aliases,
+            &mut HashSet::new(),
+            budget,
+        );
     if budget.exhausted {
         return None;
     }
@@ -56,6 +79,48 @@ pub(super) fn resolve(
         substitute_type(&value.when_true, &bindings.values)
     } else {
         value.when_false.clone()
+    })
+}
+
+fn predicate(
+    value: &ConditionalType,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    budget: &mut TypeExpansionBudget,
+) -> Option<Type> {
+    // A conditional without inference needs one complete relation, not both
+    // candidate collection and validation. In particular, replaying an alias
+    // target can traverse an entire distributed key set several times.
+    let source = expanded(&value.check, aliases, &mut HashSet::new(), budget);
+    if source == Type::Any
+        && !matches!(
+            expanded(&value.extends, aliases, &mut HashSet::new(), budget),
+            Type::Any | Type::StrictUnknown
+        )
+    {
+        if budget.exhausted {
+            return None;
+        }
+        return Some(
+            if value.when_true == Type::Any || value.when_false == Type::Any {
+                Type::Any
+            } else {
+                union([value.when_true.clone(), value.when_false.clone()])
+            },
+        );
+    }
+    let matched = is_assignable(
+        &source,
+        &value.extends,
+        aliases,
+        &mut HashSet::new(),
+        budget,
+    );
+    (!budget.exhausted).then(|| {
+        if matched {
+            value.when_true.clone()
+        } else {
+            value.when_false.clone()
+        }
     })
 }
 
@@ -70,7 +135,6 @@ pub(super) fn matches(
         return false;
     }
     if let Type::InferenceBarrier(base) = pattern {
-        bindings.saw_barrier = true;
         let mut ignored = bindings.clone();
         return matches(actual, base, &mut ignored, aliases, budget);
     }
@@ -84,6 +148,9 @@ pub(super) fn matches(
             return true;
         }
         return false;
+    }
+    if let Some(result) = alias_variance::matching(actual, pattern, bindings, aliases, budget) {
+        return result;
     }
     if let Type::Named {
         name: expected_name,
@@ -118,17 +185,7 @@ pub(super) fn matches(
     if let Type::Infer(parameter) = pattern {
         let normalized = super::normalize_nullable_union(actual, budget.checking);
         let actual = normalized.as_ref().unwrap_or(actual);
-        if parameter.constraint.as_ref().is_some_and(|constraint| {
-            !is_assignable(actual, constraint, aliases, &mut HashSet::new(), budget)
-        }) {
-            return false;
-        }
-        let value = match bindings.values.get(&parameter.name) {
-            Some(previous) => union([previous.clone(), actual.clone()]),
-            None => actual.clone(),
-        };
-        bindings.values.insert(parameter.name.clone(), value);
-        return true;
+        return bindings.record(&parameter.name, actual, aliases, budget);
     }
     if let (
         Type::Named { name, arguments },
@@ -208,39 +265,24 @@ pub(super) fn matches(
     }
 
     match (&actual, pattern) {
+        (_, Type::Readonly(expected)) => {
+            let source = match &actual {
+                Type::Readonly(source) => source.as_ref(),
+                source => source,
+            };
+            matches(source, expected, bindings, aliases, budget)
+        }
         (_, Type::TemplateLiteral(template)) => {
             templates::matches(&actual, template, bindings, aliases, budget)
         }
         (Type::Array(actual), Type::Array(pattern)) => {
             matches(actual, pattern, bindings, aliases, budget)
         }
+        (Type::Tuple(actual), Type::Array(pattern)) => actual
+            .iter()
+            .all(|element| matches(&element.indexed_type(), pattern, bindings, aliases, budget)),
         (Type::Tuple(actual), Type::Tuple(pattern)) => {
-            let fixed = pattern.iter().take_while(|element| !element.rest).count();
-            if actual.len() < fixed || (fixed == pattern.len() && actual.len() != fixed) {
-                return false;
-            }
-            for (actual, pattern) in actual.iter().zip(pattern.iter()).take(fixed) {
-                if !matches(
-                    &actual.annotation,
-                    &pattern.annotation,
-                    bindings,
-                    aliases,
-                    budget,
-                ) {
-                    return false;
-                }
-            }
-            if let Some(rest) = pattern.get(fixed) {
-                let tail = Type::Tuple(actual[fixed..].to_vec());
-                match &rest.annotation {
-                    Type::Array(item) => actual[fixed..]
-                        .iter()
-                        .all(|value| matches(&value.annotation, item, bindings, aliases, budget)),
-                    value => matches(&tail, value, bindings, aliases, budget),
-                }
-            } else {
-                true
-            }
+            containers::tuple(actual, pattern, bindings, aliases, budget)
         }
         (Type::Record(fields), Type::Record(pattern)) => pattern.iter().all(|field| {
             if fields
@@ -252,7 +294,7 @@ pub(super) fn matches(
             }
             match property_type(&actual, &field.name, aliases, &mut HashSet::new(), budget) {
                 PropertyType::Found { value, .. } => {
-                    matches(&value, &field.value, bindings, aliases, budget)
+                    bindings.field(&value, &field.value, field.method, aliases, budget)
                 }
                 _ => field.optional,
             }
@@ -261,7 +303,7 @@ pub(super) fn matches(
             pattern.iter().all(|field| {
                 match property_type(&actual, &field.name, aliases, &mut HashSet::new(), budget) {
                     PropertyType::Found { value, .. } => {
-                        matches(&value, &field.value, bindings, aliases, budget)
+                        bindings.field(&value, &field.value, field.method, aliases, budget)
                     }
                     _ => field.optional,
                 }
@@ -277,6 +319,9 @@ pub(super) fn matches(
                 result: expected,
             },
         ) => functions::matches(actual, result, pattern, expected, bindings, aliases, budget),
+        _ if bindings.contravariant => {
+            is_assignable(pattern, &actual, aliases, &mut HashSet::new(), budget)
+        }
         _ => is_assignable(&actual, pattern, aliases, &mut HashSet::new(), budget),
     }
 }

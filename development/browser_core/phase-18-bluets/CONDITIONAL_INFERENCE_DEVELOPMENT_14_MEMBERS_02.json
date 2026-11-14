@@ -1,0 +1,337 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "archive": "CONDITIONAL_INFERENCE_DEVELOPMENT_14.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/parser/implementation.rs",
+      "bytes": 5805,
+      "sha256": "8bafd6617857d6329f05d8101a56e524cdab8f3d316018f392081f0989225c04"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/parser/import_attributes.rs",
+      "bytes": 2436,
+      "sha256": "7c5108525b0e816cfd919fc40324662b93bebb0ef8281a59923a32126e4f337d"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/parser/import_types.rs",
+      "bytes": 1054,
+      "sha256": "118bdcaddcc2781ad10c63afba1afc2fd98c7ce111e946f71affda2a26c0ee2c"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/parser/jsdoc/tags.rs",
+      "bytes": 3879,
+      "sha256": "42334f5fcc8cc1ca5a8fd13beb07bd5700973896465f39f8bb7d2399bcfda814"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/parser/jsdoc.rs",
+      "bytes": 10883,
+      "sha256": "cca06267617ae280b5049adca0f579116f6b2a52457979fdec5d72de46f597d5"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/parser/module_declarations.rs",
+      "bytes": 5871,
+      "sha256": "9303638ceea742b6327f4cba24145651e4300821f53173a9d0b45da375b7a2cb"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/parser/module_kind.rs",
+      "bytes": 473,
+      "sha256": "43f7c54cb8c9e98b5dca1f633a61bfee09aa21a0a78285396205cc6be6edbf99"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/parser/namespace_names.rs",
+      "bytes": 12960,
+      "sha256": "d1c63e0aa222053affbbf8dc2fe448913e4953cb2c042062f57bf3d56616983f"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/parser/runtime_syntax.rs",
+      "bytes": 14480,
+      "sha256": "595f1bf1569bb04bfdb4984e4e01eb2463997405c5f0026d8eba52f5a672d231"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/parser/string_types.rs",
+      "bytes": 4460,
+      "sha256": "15ba0e084293889a717342312b8afa2ae7fd41c2d0bde10d3fb9fdbb9a8df297"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/parser/tests.rs",
+      "bytes": 29871,
+      "sha256": "aafb5ad3072c468205819a52046a1d3476056b98f7e182c45efff53dd47cea3f"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/parser/type_forms.rs",
+      "bytes": 14809,
+      "sha256": "7d48ad62efc21f1aa360903da0939a47012f6bfa74565b72aaffef8d9665d02c"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/parser/type_mapping.rs",
+      "bytes": 5504,
+      "sha256": "6ec8ed23424abcc30646145941c003f7c981021bf121303caef9e7df54268c52"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/parser/type_syntax/callable_objects.rs",
+      "bytes": 7267,
+      "sha256": "2ecca9b3190195e228ae06434e9e9d9ecc4850fa9fb1179f5cd013e8bd944d1e"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/parser/type_syntax/imports.rs",
+      "bytes": 3016,
+      "sha256": "5b37564271537f4fd4815905304276fc9836ecd61b5a5d2ff3c2908c45025bec"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/parser/type_syntax/operators.rs",
+      "bytes": 6987,
+      "sha256": "c1924b1ce60f1d3d7f3e6a7891e910dd925c2b6c55fccf77c9840c946be723ab"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/parser/type_syntax.rs",
+      "bytes": 29375,
+      "sha256": "8e6fa43f84ee1011ca583071791a245bea2e7adb8c055f55683d34f15c22fb98"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/parser.rs",
+      "bytes": 41362,
+      "sha256": "439e961e45600fb9b312f2f2d596e380d32439e31dbc30dafe439cc40f7537a6"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/performance.rs",
+      "bytes": 4396,
+      "sha256": "65130e16175741bbd9f765e3a9fa776e3927e11ebe80be35a9e1dd3301d66f05"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/remote_declarations/tests.rs",
+      "bytes": 8144,
+      "sha256": "3339f6bfd72d1dc35b8ef6bdf6658ed6d2cea246c8eb93f18d829b67529b3284"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/remote_declarations.rs",
+      "bytes": 13094,
+      "sha256": "e36e126465ffb2d6dd92004db0b36910392b2ef83d54549353fb10f4d23316b4"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/runtime_helper_v1.mjs",
+      "bytes": 1558,
+      "sha256": "88e90613b81e0e45c03b56042c0fd784d1da61252b2087182568397efa357d9e"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/decorator-contexts.v1.d.ts",
+      "bytes": 3544,
+      "sha256": "e1ee8cb7e5418926e39548696145e97d776ad6d529dcc64298001cb2197d7723"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/decorator-contexts.v2.d.ts",
+      "bytes": 3560,
+      "sha256": "e7f9bd768dc33ca89001493707585f7ea64c4b6c61369e6cc26907d38e6e836e"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-additions.v2.d.ts",
+      "bytes": 1151,
+      "sha256": "6ce94f5afade5b62708404f7b2837a6d552e8f454c7dd39f163d1b49a0c9cead"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-async-iteration.v2.d.ts",
+      "bytes": 955,
+      "sha256": "8ae015316ca9bfd527aca0a23f3ba9083dad1befab8ed9dad49b3971c016b5b6"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-base.v1.d.ts",
+      "bytes": 9453,
+      "sha256": "d86439192adf9787cad3491e9146bea6a14f4504c0e703b9d318b9b9aa597d75"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-buffers.v3.d.ts",
+      "bytes": 27959,
+      "sha256": "8715c15b948d336037fffe191f73757e379e33b7d315f2bd3812bd0833f09fb8"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-core.v3.d.ts",
+      "bytes": 14581,
+      "sha256": "dca4e0d1bd48ebfd78e5c81d506c94a455babc1ab7c7f774696d821a6779e2a6"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-es2015.v2.d.ts",
+      "bytes": 3106,
+      "sha256": "ce283b752a145dbeb034c2f58e303df840652c993953576ae734cd13e09af090"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-es2016.v2.d.ts",
+      "bytes": 416,
+      "sha256": "56e2694d9f058122d2feae8cfa3fd21dd52fc124fef38093e05ba25427f41cec"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-es2017.v2.d.ts",
+      "bytes": 462,
+      "sha256": "1f71f574937cac44e6748090ded98e477daaa07f64374854568de4a9c95ee967"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-es2017.v3.d.ts",
+      "bytes": 3587,
+      "sha256": "0f90c97129a5fb13a6ba6e65973952770e3c2f0fdc58d0bf56af0c72a47e6088"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-es2018.v2.d.ts",
+      "bytes": 409,
+      "sha256": "d17232968f27e3bad42127bf598033b4405aeecc05441352435e0b5a4167c0cd"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-es2018.v3.d.ts",
+      "bytes": 2048,
+      "sha256": "482a1863674cdaffd0bda8c4efb5af3be545515fb1440cda4f4c16464c812ee8"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-es2019.v2.d.ts",
+      "bytes": 338,
+      "sha256": "c5c260c0da9b4874cfbbb825bb7a5d595b0c325875e0455e1bc4a8966ac2a920"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-es2019.v3.d.ts",
+      "bytes": 781,
+      "sha256": "301830952afce9fc14bdf1a306343e7ef24398aab6092db670a8103715785402"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-es2020.v2.d.ts",
+      "bytes": 516,
+      "sha256": "2dd17beed66cf6d64188e0aca723583cc1c149419f2e60446404439728c8783a"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-es2020.v3.d.ts",
+      "bytes": 10526,
+      "sha256": "c3f6dc0128dc716680ab673bc88e9a40261dc678c375663b62802e148411a8d2"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-es2021.v2.d.ts",
+      "bytes": 507,
+      "sha256": "ed22d1c3d5426c5d58e0423d8670bdac76cc602b524e020a1d3ec3204ecbe5fc"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-es2021.v3.d.ts",
+      "bytes": 1486,
+      "sha256": "670ed0ff0e992883bfe68cedc4b9bf95808a41920ba3779620f27c4b3ab3eef6"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-es2022.v1.d.ts",
+      "bytes": 785,
+      "sha256": "14e2c06cfc683cd83758687af18570a772b4271b3e34d7b150a48280df1a2e44"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-es2022.v2.d.ts",
+      "bytes": 545,
+      "sha256": "93239ebf4d9bd907f098ddf858022cc6173e22b04961dbd81a9921a90efdd697"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-es2022.v3.d.ts",
+      "bytes": 2287,
+      "sha256": "6dce530159d0c5f0304a350cd08f6544b36da5f0f833b61c9581bd53457dc0bb"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-es2023.v2.d.ts",
+      "bytes": 683,
+      "sha256": "3f64e8c3ea70868f8d869d0e46d7104df6efae6a5bc410273e3b964123cc0ae0"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-es5.v2.d.ts",
+      "bytes": 6834,
+      "sha256": "5cd10d9e1e9df7c1f80cc41cdb2ca49c0bf00c87ac6686a6f369525d81505e58"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-iterable.v3.d.ts",
+      "bytes": 10994,
+      "sha256": "d50773a81727c5b9eedd8172e07b380ef6f19a6a1d8d728179a2dd9261e9ec84"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-promise.v3.d.ts",
+      "bytes": 1048,
+      "sha256": "b7c8c0bc9b83ecaac44c1152a1219fb912e2310ea0891369134634a1439afa10"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/ecma-thenable.v3.d.ts",
+      "bytes": 1322,
+      "sha256": "215d668fa30af418af2c465d8fd9a54a746a7943d07c66be5cb7c335317d74cd"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/intrinsics.rs",
+      "bytes": 976,
+      "sha256": "a7da215d6f529fab128560682149984cd20367ebef8cb0f1197278e417568010"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/manifest.rs",
+      "bytes": 2112,
+      "sha256": "113107119834249270f95857d784371550bd9e7478f061e9a7d940361bb38784"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/presentation.rs",
+      "bytes": 4573,
+      "sha256": "bde464b003f2ce335f3043df099fffa18eead8bed7e1dd14d5d8aac7e19f2599"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/profiles.rs",
+      "bytes": 2145,
+      "sha256": "0ff4c396578df2a903510e9bd49838bde338170fc0fa8e859054eaa393f87441"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library/symbol-metadata.v1.d.ts",
+      "bytes": 340,
+      "sha256": "ba5ae0746bfb6321870007bed4c335c5f9337416a5b67e88b4258b88f0d660c9"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/standard_library.rs",
+      "bytes": 7485,
+      "sha256": "5df3bed6f7b1d2412470057407ac527ec9efb764f1797b08295916e919396009"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/strict_boundaries.rs",
+      "bytes": 29958,
+      "sha256": "0729028f49bd93b610b1e6e71ddf00819e2f26ec273b8012d8aa18fe06ea41f8"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/symbol_keys.rs",
+      "bytes": 885,
+      "sha256": "36503c7dd98749d1c245ddd4a61ba6b27d34da7cb3ab2c0f5f9cea4e3c20b7e7"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/syntax.rs",
+      "bytes": 24463,
+      "sha256": "85e3dd93407eaf094d38a3b0e901c76c187c5f6bb91984471d50c20b8b20671d"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/type_operator_profiles/native-5.9.3.json",
+      "bytes": 618772,
+      "sha256": "88f8d1e89e1275e1a940cbfffaa43fbed394cf1d85bbcd4aa43e9dc390663bc8"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/type_operator_profiles.rs",
+      "bytes": 5200,
+      "sha256": "564554bc3045f13d5b26dec2273d20d20135f5ba52019452330ab68133c7f584"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/utf16/case.rs",
+      "bytes": 1629,
+      "sha256": "e9a0eacdd45e16282c07978d3f5558f82ec08ccab6c1233b5c418918f4fded99"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/utf16/literal.rs",
+      "bytes": 3227,
+      "sha256": "a3d8b4fb8c87964fd09c26fe201024bb0250f2d2032d3dae0c6e8906c0ccc7dc"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/utf16/render.rs",
+      "bytes": 1709,
+      "sha256": "5710f89a9c2d90f4ecf4c3ba7fb22d248603f2feca8e3f67f8282cec65711e66"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/utf16/value.rs",
+      "bytes": 3721,
+      "sha256": "30f428f48182c1a099f74a28b7f5b66deac7da3c41909423c49efb793edf9c15"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source/backend/bluets/src/utf16.rs",
+      "bytes": 3900,
+      "sha256": "497d9b9016e41233f57e75b72b4618dd4abbfcc316aa9be4c11b070f21294ac6"
+    },
+    {
+      "path": "development-history/contract/rust-green-2/source-manifest.json",
+      "bytes": 73018,
+      "sha256": "0d21336a90378c8ffd5e6672d37618881b0b8a41fb17b2d5ad3c5ef8c72f05e9"
+    }
+  ]
+}

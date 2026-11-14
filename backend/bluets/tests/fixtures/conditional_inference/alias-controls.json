@@ -1,0 +1,683 @@
+{
+  "schema": 1,
+  "scope": "Separate alias identity regression controls frozen after the first primary repairs and before the scalar-alias regression repair; zero inventory credit.",
+  "typescript": "5.9.3",
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "cases": [
+    {
+      "id": "es5-commonjs-functions-true/scalar",
+      "source": "type Alias<T> = string;\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES5",
+        "module": "CommonJS",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": true
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: unknown;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "760084d95f65183e128ecd914cdf4f31c97b07d8a816c025f82a8e0736b07a5f"
+      }
+    },
+    {
+      "id": "es5-commonjs-functions-true/record",
+      "source": "type Alias<T> = { tag: string };\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES5",
+        "module": "CommonJS",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": true
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: number;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "760084d95f65183e128ecd914cdf4f31c97b07d8a816c025f82a8e0736b07a5f"
+      }
+    },
+    {
+      "id": "es5-commonjs-functions-true/identity",
+      "source": "type Alias<T> = T;\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES5",
+        "module": "CommonJS",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": true
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: number;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "760084d95f65183e128ecd914cdf4f31c97b07d8a816c025f82a8e0736b07a5f"
+      }
+    },
+    {
+      "id": "es5-commonjs-functions-false/scalar",
+      "source": "type Alias<T> = string;\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES5",
+        "module": "CommonJS",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": false
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: unknown;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "760084d95f65183e128ecd914cdf4f31c97b07d8a816c025f82a8e0736b07a5f"
+      }
+    },
+    {
+      "id": "es5-commonjs-functions-false/record",
+      "source": "type Alias<T> = { tag: string };\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES5",
+        "module": "CommonJS",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": false
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: number;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "760084d95f65183e128ecd914cdf4f31c97b07d8a816c025f82a8e0736b07a5f"
+      }
+    },
+    {
+      "id": "es5-commonjs-functions-false/identity",
+      "source": "type Alias<T> = T;\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES5",
+        "module": "CommonJS",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": false
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: number;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "760084d95f65183e128ecd914cdf4f31c97b07d8a816c025f82a8e0736b07a5f"
+      }
+    },
+    {
+      "id": "es5-esnext-functions-true/scalar",
+      "source": "type Alias<T> = string;\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES5",
+        "module": "ESNext",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": true
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: unknown;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "f3c2a5417ee2d6bb4ef48a6856ce367b923c0a28cac6035a1cb871c472edccf1"
+      }
+    },
+    {
+      "id": "es5-esnext-functions-true/record",
+      "source": "type Alias<T> = { tag: string };\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES5",
+        "module": "ESNext",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": true
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: number;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "f3c2a5417ee2d6bb4ef48a6856ce367b923c0a28cac6035a1cb871c472edccf1"
+      }
+    },
+    {
+      "id": "es5-esnext-functions-true/identity",
+      "source": "type Alias<T> = T;\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES5",
+        "module": "ESNext",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": true
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: number;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "f3c2a5417ee2d6bb4ef48a6856ce367b923c0a28cac6035a1cb871c472edccf1"
+      }
+    },
+    {
+      "id": "es5-esnext-functions-false/scalar",
+      "source": "type Alias<T> = string;\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES5",
+        "module": "ESNext",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": false
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: unknown;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "f3c2a5417ee2d6bb4ef48a6856ce367b923c0a28cac6035a1cb871c472edccf1"
+      }
+    },
+    {
+      "id": "es5-esnext-functions-false/record",
+      "source": "type Alias<T> = { tag: string };\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES5",
+        "module": "ESNext",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": false
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: number;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "f3c2a5417ee2d6bb4ef48a6856ce367b923c0a28cac6035a1cb871c472edccf1"
+      }
+    },
+    {
+      "id": "es5-esnext-functions-false/identity",
+      "source": "type Alias<T> = T;\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES5",
+        "module": "ESNext",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": false
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: number;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "f3c2a5417ee2d6bb4ef48a6856ce367b923c0a28cac6035a1cb871c472edccf1"
+      }
+    },
+    {
+      "id": "es2022-commonjs-functions-true/scalar",
+      "source": "type Alias<T> = string;\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": true
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: unknown;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "760084d95f65183e128ecd914cdf4f31c97b07d8a816c025f82a8e0736b07a5f"
+      }
+    },
+    {
+      "id": "es2022-commonjs-functions-true/record",
+      "source": "type Alias<T> = { tag: string };\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": true
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: number;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "760084d95f65183e128ecd914cdf4f31c97b07d8a816c025f82a8e0736b07a5f"
+      }
+    },
+    {
+      "id": "es2022-commonjs-functions-true/identity",
+      "source": "type Alias<T> = T;\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": true
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: number;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "760084d95f65183e128ecd914cdf4f31c97b07d8a816c025f82a8e0736b07a5f"
+      }
+    },
+    {
+      "id": "es2022-commonjs-functions-false/scalar",
+      "source": "type Alias<T> = string;\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": false
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: unknown;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "760084d95f65183e128ecd914cdf4f31c97b07d8a816c025f82a8e0736b07a5f"
+      }
+    },
+    {
+      "id": "es2022-commonjs-functions-false/record",
+      "source": "type Alias<T> = { tag: string };\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": false
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: number;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "760084d95f65183e128ecd914cdf4f31c97b07d8a816c025f82a8e0736b07a5f"
+      }
+    },
+    {
+      "id": "es2022-commonjs-functions-false/identity",
+      "source": "type Alias<T> = T;\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": false
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: number;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "760084d95f65183e128ecd914cdf4f31c97b07d8a816c025f82a8e0736b07a5f"
+      }
+    },
+    {
+      "id": "es2022-esnext-functions-true/scalar",
+      "source": "type Alias<T> = string;\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": true
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: unknown;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "b574249dc32c77250c1c050148326a66ac426b2c8b1f6e20064e6a7d558c75d8"
+      }
+    },
+    {
+      "id": "es2022-esnext-functions-true/record",
+      "source": "type Alias<T> = { tag: string };\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": true
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: number;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "b574249dc32c77250c1c050148326a66ac426b2c8b1f6e20064e6a7d558c75d8"
+      }
+    },
+    {
+      "id": "es2022-esnext-functions-true/identity",
+      "source": "type Alias<T> = T;\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": true
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: number;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "b574249dc32c77250c1c050148326a66ac426b2c8b1f6e20064e6a7d558c75d8"
+      }
+    },
+    {
+      "id": "es2022-esnext-functions-false/scalar",
+      "source": "type Alias<T> = string;\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": false
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: unknown;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "b574249dc32c77250c1c050148326a66ac426b2c8b1f6e20064e6a7d558c75d8"
+      }
+    },
+    {
+      "id": "es2022-esnext-functions-false/record",
+      "source": "type Alias<T> = { tag: string };\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": false
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: number;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "b574249dc32c77250c1c050148326a66ac426b2c8b1f6e20064e6a7d558c75d8"
+      }
+    },
+    {
+      "id": "es2022-esnext-functions-false/identity",
+      "source": "type Alias<T> = T;\ntype Infer<T> = T extends Alias<infer U> ? U : never;\ndeclare const value: Infer<Alias<number>>;\nexport const result = value;\n",
+      "options": {
+        "strict": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "lib": [
+          "ES5"
+        ],
+        "types": [],
+        "declaration": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "outDir": "dist",
+        "strictFunctionTypes": false
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: number;\n"
+        }
+      },
+      "javascriptSha256": {
+        "main.js": "b574249dc32c77250c1c050148326a66ac426b2c8b1f6e20064e6a7d558c75d8"
+      }
+    }
+  ],
+  "comparisons": 24,
+  "syntax": 24,
+  "inventoryCredit": 0
+}

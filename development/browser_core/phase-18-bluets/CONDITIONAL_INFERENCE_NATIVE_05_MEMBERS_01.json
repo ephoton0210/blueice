@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "archive": "CONDITIONAL_INFERENCE_NATIVE_05.tar.gz",
+  "entries": [
+    {
+      "path": "accepted-native/suite-artifacts/148/observations/generator-switch-delegation.json",
+      "bytes": 33837973,
+      "sha256": "21a62f54f0b4094b730b3f6bc7d8fee5c6c1d890bd49af2dfa30a826d525ea3b"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/148/reports/generator-switch-delegation.json",
+      "bytes": 15221281,
+      "sha256": "91b19b9f57c4c6608bd96f8d30e0b50bc3dec09cf41fe2d5486a99da681f3a20"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/149/observations/metadata-class-adjacent.json",
+      "bytes": 54339,
+      "sha256": "0e05e8fd4330fcaa8e1e1f336f9133f2d42905c75760d3a16882df64c3936c0a"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/149/observations/metadata-classes.json",
+      "bytes": 1627116,
+      "sha256": "e9e523415cb74c160e303213eed11ec25397efd2d8407725dcd017c8dbb50e24"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/149/reports/metadata-class-adjacent.json",
+      "bytes": 4623,
+      "sha256": "3bc037d45405fd263274aad391ec468bab301608d436eaa0b91e80bf67f7ec85"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/149/reports/metadata-class-controls-progress.jsonl",
+      "bytes": 24620,
+      "sha256": "e45124e3b4c455ba10dbe19436e64923b9c3bf533339d5fbe742cdb95d1402fd"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/149/reports/metadata-class-controls.json",
+      "bytes": 12893602,
+      "sha256": "81551cde2ee11009ffb3ab8ac22ce7fc0b7c88296122091328d0a715e97e5713"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/149/reports/metadata-classes.json",
+      "bytes": 479609,
+      "sha256": "69c019643f276b8b1bfac94aa78501f50a3b5df4307065df2e6196ebe0b54a55"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "archive": "CONDITIONAL_INFERENCE_DEVELOPMENT_25.tar.gz",
+  "entries": [
+    {
+      "path": "source-snapshots/frozen-backend.tar.gz",
+      "bytes": 33590479,
+      "sha256": "716ce8f7087867ff327326cda2f747ba6b8de0e79067d6a19697823cb5aa1f93"
+    },
+    {
+      "path": "source-snapshots/frozen-oracle-tools.tar.gz",
+      "bytes": 813695,
+      "sha256": "7771e7b239ed71e2b104c4044dd6815369a3c35a6aa2cde7381229978191d96b"
+    },
+    {
+      "path": "source-snapshots/frozen-tools-audit.json",
+      "bytes": 351,
+      "sha256": "93f09323732062dc24e4b5268c5e60fa3110eb67359dee91ba4516e27ea0493a"
+    },
+    {
+      "path": "source-snapshots/manifest.json",
+      "bytes": 1055,
+      "sha256": "954662b7707f801cc17efee8da31454a7868c0f58dd553428e8f9660cde2381a"
+    }
+  ]
+}

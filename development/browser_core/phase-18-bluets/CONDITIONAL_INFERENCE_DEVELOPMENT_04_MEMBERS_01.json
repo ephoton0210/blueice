@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "archive": "CONDITIONAL_INFERENCE_DEVELOPMENT_04.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/canceled-acceptance-r2/windows-failure-evidence.tar.gz",
+      "bytes": 55991415,
+      "sha256": "1a6c265d5a86888bc5acb9dcff7bdf20c908ae69890c062842e9e74b2f3a6030"
+    }
+  ]
+}

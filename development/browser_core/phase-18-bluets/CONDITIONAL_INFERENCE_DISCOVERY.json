@@ -1,0 +1,2322 @@
+{
+  "schema": 1,
+  "recordedAt": "2026-11-13T18:32:13.802068+00:00",
+  "scope": "Pre-repair discovery only; zero inventory and completion credit.",
+  "input": {
+    "schema": 1,
+    "scope": "Discovery only; no inventory or acceptance credit.",
+    "options": {
+      "strict": true,
+      "target": "ES2022",
+      "module": "CommonJS",
+      "lib": [
+        "ES5"
+      ],
+      "types": [],
+      "declaration": true,
+      "noEmitOnError": true,
+      "skipLibCheck": true,
+      "outDir": "dist"
+    },
+    "cases": [
+      {
+        "id": "covariant-union-control",
+        "source": "type Infer<T> = T extends { a: infer U; b: infer U } ? U : \"miss\";\ndeclare const value: Infer<{ a: string; b: number }>;\nexport const result = value;\nexport const check: string | number = result;\n",
+        "files": {},
+        "nativeExpectedAccepts": true,
+        "question": "Covariant candidates form a union."
+      },
+      {
+        "id": "contravariant-disjoint",
+        "source": "type Infer<T> = T extends { a: (x: infer U) => void; b: (x: infer U) => void } ? U : \"miss\";\ndeclare const value: Infer<{ a: (x: string) => void; b: (x: number) => void }>;\nexport const result = value;\nexport const check: never = result;\n",
+        "files": {},
+        "nativeExpectedAccepts": true,
+        "question": "Contravariant disjoint candidates intersect to never."
+      },
+      {
+        "id": "contravariant-related-literals",
+        "source": "type Infer<T> = T extends { a: (x: infer U) => void; b: (x: infer U) => void } ? U : \"miss\";\ndeclare const value: Infer<{ a: (x: \"a\" | \"b\") => void; b: (x: \"b\" | \"c\") => void }>;\nexport const result = value;\nexport const check: \"b\" = result;\n",
+        "files": {},
+        "nativeExpectedAccepts": true,
+        "question": "Contravariant overlapping candidates retain their shared literal."
+      },
+      {
+        "id": "contravariant-record-intersection",
+        "source": "type Infer<T> = T extends { a: (x: infer U) => void; b: (x: infer U) => void } ? U : \"miss\";\ndeclare const value: Infer<{ a: (x: { a: string }) => void; b: (x: { b: number }) => void }>;\nexport const result = value;\nexport const check: { a: string; b: number } = result;\n",
+        "files": {},
+        "nativeExpectedAccepts": true,
+        "question": "Both record obligations survive contravariant inference."
+      },
+      {
+        "id": "contravariant-reject-union",
+        "source": "type Infer<T> = T extends { a: (x: infer U) => void; b: (x: infer U) => void } ? U : \"miss\";\ndeclare const value: Infer<{ a: (x: string) => void; b: (x: number) => void }>;\nexport const result = value;\nexport const rejected: typeof result = \"wrong\";\n",
+        "files": {},
+        "nativeExpectedAccepts": false,
+        "question": "A never candidate cannot admit an ordinary string."
+      },
+      {
+        "id": "mixed-covariance-precedence",
+        "source": "type Infer<T> = T extends (x: infer U) => infer U ? U : \"miss\";\ndeclare const value: Infer<(x: string) => \"ok\">;\nexport const result = value;\nexport const check: \"ok\" = result;\n",
+        "files": {},
+        "nativeExpectedAccepts": true,
+        "question": "Covariant evidence takes precedence over contravariant evidence."
+      },
+      {
+        "id": "mixed-incompatible-rejection-branch",
+        "source": "type Infer<T> = T extends (x: infer U) => infer U ? U : \"miss\";\ndeclare const value: Infer<(x: \"narrow\") => string>;\nexport const result = value;\nexport const check: \"miss\" = result;\n",
+        "files": {},
+        "nativeExpectedAccepts": true,
+        "question": "An inferred covariant result must still satisfy the contravariant position."
+      },
+      {
+        "id": "double-contravariance",
+        "source": "type Infer<T> = T extends (f: (x: infer U) => void) => void ? U : \"miss\";\ndeclare const value: Infer<(f: (x: \"ok\") => void) => void>;\nexport const result = value;\nexport const check: \"ok\" = result;\n",
+        "files": {},
+        "nativeExpectedAccepts": true,
+        "question": "Nested parameter positions flip variance twice."
+      },
+      {
+        "id": "function-zero-arguments",
+        "source": "type Infer<T> = T extends (x: infer U) => void ? U : \"miss\";\ndeclare const value: Infer<() => void>;\nexport const result = value;\n",
+        "files": {},
+        "nativeExpectedAccepts": true,
+        "question": "A function may ignore a required caller argument; missing inference is unknown."
+      },
+      {
+        "id": "function-zero-arguments-reject-literal",
+        "source": "type Infer<T> = T extends (x: infer U) => void ? U : \"miss\";\ndeclare const value: Infer<() => void>;\nexport const result = value;\nexport const check: \"miss\" = result;\n",
+        "files": {},
+        "nativeExpectedAccepts": false,
+        "question": "An uninferred unknown result cannot be treated as the false-branch literal."
+      },
+      {
+        "id": "function-optional-position",
+        "source": "type Infer<T> = T extends (x?: infer U) => void ? U : \"miss\";\ndeclare const value: Infer<() => void>;\nexport const result = value;\n",
+        "files": {},
+        "nativeExpectedAccepts": true,
+        "question": "Missing optional function positions contribute no evidence."
+      },
+      {
+        "id": "function-constrained-missing",
+        "source": "type Infer<T> = T extends (x: infer U extends string) => void ? U : \"miss\";\ndeclare const value: Infer<() => void>;\nexport const result = value;\nexport const check: string = result;\n",
+        "files": {},
+        "nativeExpectedAccepts": true,
+        "question": "Missing candidates use a declared infer constraint."
+      },
+      {
+        "id": "function-return-control",
+        "source": "type Infer<T> = T extends (...args: any[]) => infer U ? U : \"miss\";\ndeclare const value: Infer<(x: number) => \"ok\">;\nexport const result = value;\nexport const check: \"ok\" = result;\n",
+        "files": {},
+        "nativeExpectedAccepts": true,
+        "question": "Ordinary covariant return inference remains unchanged."
+      },
+      {
+        "id": "overload-last-signature-control",
+        "source": "type Infer<T> = T extends (x: infer U) => void ? U : \"miss\";\ndeclare const value: Infer<{ (x: \"first\"): void; (x: \"last\"): void }>;\nexport const result = value;\nexport const check: \"last\" = result;\n",
+        "files": {},
+        "nativeExpectedAccepts": true,
+        "question": "Conditional function inference uses the final overload."
+      },
+      {
+        "id": "readonly-array",
+        "source": "type Infer<T> = T extends readonly (infer U)[] ? U : \"miss\";\ndeclare const value: Infer<readonly string[]>;\nexport const result = value;\nexport const check: string = result;\n",
+        "files": {},
+        "nativeExpectedAccepts": true,
+        "question": "Readonly array patterns infer their element."
+      },
+      {
+        "id": "tuple-prefix-control",
+        "source": "type Infer<T> = T extends [infer H, ...infer R] ? [H, R] : \"miss\";\ndeclare const value: Infer<[string, number, boolean]>;\nexport const result = value;\nexport const check: [string, [number, boolean]] = result;\n",
+        "files": {},
+        "nativeExpectedAccepts": true,
+        "question": "Existing head/rest matching remains unchanged."
+      },
+      {
+        "id": "tuple-suffix-rest",
+        "source": "type Infer<T> = T extends [...infer R, infer L] ? [R, L] : \"miss\";\ndeclare const value: Infer<[string, number, boolean]>;\nexport const result = value;\nexport const check: [[string, number], boolean] = result;\n",
+        "files": {},
+        "nativeExpectedAccepts": true,
+        "question": "A variadic prefix must retain its trailing fixed element."
+      },
+      {
+        "id": "tuple-optional-empty",
+        "source": "type Infer<T> = T extends [(infer H)?, ...infer R] ? [H, R] : \"miss\";\ndeclare const value: Infer<[]>;\nexport const result = value;\n",
+        "files": {},
+        "nativeExpectedAccepts": true,
+        "question": "Optional tuple slots may be absent."
+      },
+      {
+        "id": "conditional-any",
+        "source": "type Infer<T> = T extends string ? 1 : 2;\ndeclare const value: Infer<any>;\nexport const result = value;\nexport const check: 1 | 2 = result;\n",
+        "files": {},
+        "nativeExpectedAccepts": true,
+        "question": "Any retains both possible conditional branches."
+      },
+      {
+        "id": "conditional-never-control",
+        "source": "type Infer<T> = T extends string ? 1 : 2;\ndeclare const value: Infer<never>;\nexport const result = value;\nexport const check: never = result;\n",
+        "files": {},
+        "nativeExpectedAccepts": true,
+        "question": "A naked never check distributes to never."
+      },
+      {
+        "id": "non-distributive-union-control",
+        "source": "type Infer<T> = [T] extends [string] ? 1 : 2;\ndeclare const value: Infer<string | number>;\nexport const result = value;\nexport const check: 2 = result;\n",
+        "files": {},
+        "nativeExpectedAccepts": true,
+        "question": "Tuple wrappers prevent distributivity."
+      },
+      {
+        "id": "constrained-covariant-union",
+        "source": "type Infer<T> = T extends { a: infer U extends string; b: infer U extends string } ? U : \"miss\";\ndeclare const value: Infer<{ a: \"a\"; b: \"b\" }>;\nexport const result = value;\nexport const check: \"a\" | \"b\" = result;\n",
+        "files": {},
+        "nativeExpectedAccepts": true,
+        "question": "Covariant constrained candidates retain a union."
+      },
+      {
+        "id": "cross-file-contravariance",
+        "source": "import type { Infer } from \"./types\";\ndeclare const value: Infer<{ a: (x: string) => void; b: (x: number) => void }>;\nexport const result = value;\nexport const check: never = result;\n",
+        "files": {
+          "types.ts": "export type Infer<T> = T extends { a: (x: infer U) => void; b: (x: infer U) => void } ? U : \"miss\";\n"
+        },
+        "nativeExpectedAccepts": true,
+        "question": "Imported generic aliases retain contravariant candidate directions."
+      },
+      {
+        "id": "aliased-candidate-positions",
+        "source": "type Callback<X> = (value: X) => void;\ntype Infer<T> = T extends { a: Callback<infer U>; b: Callback<infer U> } ? U : \"miss\";\ndeclare const value: Infer<{ a: Callback<string>; b: Callback<number> }>;\nexport const result = value;\nexport const check: never = result;\n",
+        "files": {},
+        "nativeExpectedAccepts": true,
+        "question": "Alias expansion preserves the parameter variance of infer occurrences."
+      }
+    ]
+  },
+  "observations": {
+    "typescript": "5.9.3",
+    "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+    "compilerSha256": "683cc89a0417661178c05b7bfd2a0abab19e0088616562fc30744a3fe28576f6",
+    "inputSha256": "345781101a80b890ca4f3f2fd7c9b3f76c1bde119d1f3631481da0865d798a81",
+    "parentCommit": "d4694f775e8d3e1ef2b45bc438ddaca7b8ac080c",
+    "sourceRevision": "backend-tree:02abdba6835124bb585bf13149d5b6dcaf072911",
+    "libraries": {
+      "lib.es5.d.ts": "c430d44666289dae81f30fa7b2edebf186ecc91a2d4c71266ea6ae76388792e1",
+      "lib.decorators.d.ts": "8e7f8264d0fb4c5339605a15daadb037bf238c10b654bb3eee14208f860a32ea",
+      "lib.decorators.legacy.d.ts": "782dec38049b92d4e85c1585fbea5474a219c6984a35b004963b00beb1aab538"
+    },
+    "inventoryCredit": 0,
+    "authoringErrors": [],
+    "comparisons": 24,
+    "completeAgreements": 8,
+    "completeDifferences": 16,
+    "cases": [
+      {
+        "id": "covariant-union-control",
+        "question": "Covariant candidates form a union.",
+        "agrees": true,
+        "native": {
+          "id": "covariant-union-control",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: string | number;\nexport declare const check: string | number;\n"
+          },
+          "outputsSha256": {
+            "main.d.ts": "26c39bf638c71e809313ba87f9c78badb8de79a0cae0e214876dbfa0e019e5df",
+            "main.js": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+          },
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: string | number;\nexport declare const check: string | number;\n"
+          },
+          "outputsSha256": {
+            "bluetsc.manifest.json": "61f99026a04fe848e7173bc8b0ecd58be7ea00eec8976a127d11625f80a93fb9",
+            "main.d.ts": "26c39bf638c71e809313ba87f9c78badb8de79a0cae0e214876dbfa0e019e5df",
+            "main.js": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+          },
+          "publishedOnRejectedInput": false
+        }
+      },
+      {
+        "id": "contravariant-disjoint",
+        "question": "Contravariant disjoint candidates intersect to never.",
+        "agrees": false,
+        "native": {
+          "id": "contravariant-disjoint",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: never;\nexport declare const check: never;\n"
+          },
+          "outputsSha256": {
+            "main.d.ts": "10cb53307e0f494a0c31623e81cfc8beb69b1ac31a6f9936f8852161cd801505",
+            "main.js": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+          },
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'string | number' is not assignable to type 'never'.",
+              "file": "main.ts",
+              "position": {
+                "column": 14,
+                "length": 5,
+                "line": 4
+              },
+              "relatedInformation": []
+            }
+          ],
+          "declarations": {},
+          "outputsSha256": {},
+          "publishedOnRejectedInput": false
+        }
+      },
+      {
+        "id": "contravariant-related-literals",
+        "question": "Contravariant overlapping candidates retain their shared literal.",
+        "agrees": false,
+        "native": {
+          "id": "contravariant-related-literals",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: \"b\";\nexport declare const check: \"b\";\n"
+          },
+          "outputsSha256": {
+            "main.d.ts": "39c838248f6a8b5c501d81fdc5d799925d088303e98195e0e9982bba3cbc4aa1",
+            "main.js": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+          },
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '\"a\" | \"b\" | \"c\"' is not assignable to type '\"b\"'.\n  Type '\"a\"' is not assignable to type '\"b\"'.",
+              "file": "main.ts",
+              "position": {
+                "column": 14,
+                "length": 5,
+                "line": 4
+              },
+              "relatedInformation": []
+            }
+          ],
+          "declarations": {},
+          "outputsSha256": {},
+          "publishedOnRejectedInput": false
+        }
+      },
+      {
+        "id": "contravariant-record-intersection",
+        "question": "Both record obligations survive contravariant inference.",
+        "agrees": false,
+        "native": {
+          "id": "contravariant-record-intersection",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: {\n    a: string;\n} & {\n    b: number;\n};\nexport declare const check: {\n    a: string;\n    b: number;\n};\n"
+          },
+          "outputsSha256": {
+            "main.d.ts": "da518d3ed27334a1f134edf7e7032499ab9e2a691006b72560f983b4fdd585a4",
+            "main.js": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+          },
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '{ a: string; } | { b: number; }' is not assignable to type '{ a: string; b: number; }'.\n  Type '{ a: string; }' is not assignable to type '{ a: string; b: number; }'.",
+              "file": "main.ts",
+              "position": {
+                "column": 14,
+                "length": 5,
+                "line": 4
+              },
+              "relatedInformation": []
+            }
+          ],
+          "declarations": {},
+          "outputsSha256": {},
+          "publishedOnRejectedInput": false
+        }
+      },
+      {
+        "id": "contravariant-reject-union",
+        "question": "A never candidate cannot admit an ordinary string.",
+        "agrees": false,
+        "native": {
+          "id": "contravariant-reject-union",
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type '\"wrong\"' is not assignable to type 'never'.",
+              "file": "main.ts",
+              "position": {
+                "line": 4,
+                "column": 14,
+                "length": 8
+              },
+              "relatedInformation": []
+            }
+          ],
+          "declarations": {},
+          "outputsSha256": {},
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: string | number;\nexport declare const rejected: typeof result;\n"
+          },
+          "outputsSha256": {
+            "bluetsc.manifest.json": "206bca20f6b296ff57128fc5f2ece5edc8a047c139faede849286458e5bd05ad",
+            "main.d.ts": "4f295d940ee0f37b9baca897417259c0ce863e70e0bd87cb1295de644670a7ee",
+            "main.js": "595178f543821843fd90dfeb192d87131e3b1650de6788d6e5319e875aee6cfe"
+          },
+          "publishedOnRejectedInput": false
+        }
+      },
+      {
+        "id": "mixed-covariance-precedence",
+        "question": "Covariant evidence takes precedence over contravariant evidence.",
+        "agrees": false,
+        "native": {
+          "id": "mixed-covariance-precedence",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: \"ok\";\nexport declare const check: \"ok\";\n"
+          },
+          "outputsSha256": {
+            "main.d.ts": "811aab9fa538912e353857de8eb1ac61faf7769633bd2a01eec00a98749d44d4",
+            "main.js": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+          },
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'string | \"ok\"' is not assignable to type '\"ok\"'.\n  Type 'string' is not assignable to type '\"ok\"'.",
+              "file": "main.ts",
+              "position": {
+                "column": 14,
+                "length": 5,
+                "line": 4
+              },
+              "relatedInformation": []
+            }
+          ],
+          "declarations": {},
+          "outputsSha256": {},
+          "publishedOnRejectedInput": false
+        }
+      },
+      {
+        "id": "mixed-incompatible-rejection-branch",
+        "question": "An inferred covariant result must still satisfy the contravariant position.",
+        "agrees": false,
+        "native": {
+          "id": "mixed-incompatible-rejection-branch",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: \"miss\";\nexport declare const check: \"miss\";\n"
+          },
+          "outputsSha256": {
+            "main.d.ts": "0d962136e6a573b1afc3a1bfb0575d491789c39c1f393bc36e159e508f31249e",
+            "main.js": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+          },
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'string | \"narrow\"' is not assignable to type '\"miss\"'.\n  Type '\"narrow\"' is not assignable to type '\"miss\"'.",
+              "file": "main.ts",
+              "position": {
+                "column": 14,
+                "length": 5,
+                "line": 4
+              },
+              "relatedInformation": []
+            }
+          ],
+          "declarations": {},
+          "outputsSha256": {},
+          "publishedOnRejectedInput": false
+        }
+      },
+      {
+        "id": "double-contravariance",
+        "question": "Nested parameter positions flip variance twice.",
+        "agrees": true,
+        "native": {
+          "id": "double-contravariance",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: \"ok\";\nexport declare const check: \"ok\";\n"
+          },
+          "outputsSha256": {
+            "main.d.ts": "811aab9fa538912e353857de8eb1ac61faf7769633bd2a01eec00a98749d44d4",
+            "main.js": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+          },
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: \"ok\";\nexport declare const check: \"ok\";\n"
+          },
+          "outputsSha256": {
+            "bluetsc.manifest.json": "2d7d2cdf217427060e82067c4b494922d240234674a670d26fc2e3460218f9fb",
+            "main.d.ts": "811aab9fa538912e353857de8eb1ac61faf7769633bd2a01eec00a98749d44d4",
+            "main.js": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+          },
+          "publishedOnRejectedInput": false
+        }
+      },
+      {
+        "id": "function-zero-arguments",
+        "question": "A function may ignore a required caller argument; missing inference is unknown.",
+        "agrees": false,
+        "native": {
+          "id": "function-zero-arguments",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: unknown;\n"
+          },
+          "outputsSha256": {
+            "main.d.ts": "683df0449112210241ce9508bccc440c26cb02cad46fe960b59b6c6bb391fc2d",
+            "main.js": "760084d95f65183e128ecd914cdf4f31c97b07d8a816c025f82a8e0736b07a5f"
+          },
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: \"miss\";\n"
+          },
+          "outputsSha256": {
+            "bluetsc.manifest.json": "afc26d989429044a164b2cc5f1fa93b2a8e27a1462ce9f67d9fab12bb57f8a89",
+            "main.d.ts": "44e0ae6ca1e78321abb7e50836cac14a7a07007c1ff2d7677c8224ca0687d688",
+            "main.js": "3e35d9d16bf414b1f2ca3bd67c8fdb79fb88c41166e8f42daf26a6a5a1ad2c6b"
+          },
+          "publishedOnRejectedInput": false
+        }
+      },
+      {
+        "id": "function-zero-arguments-reject-literal",
+        "question": "An uninferred unknown result cannot be treated as the false-branch literal.",
+        "agrees": false,
+        "native": {
+          "id": "function-zero-arguments-reject-literal",
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'unknown' is not assignable to type '\"miss\"'.",
+              "file": "main.ts",
+              "position": {
+                "line": 4,
+                "column": 14,
+                "length": 5
+              },
+              "relatedInformation": []
+            }
+          ],
+          "declarations": {},
+          "outputsSha256": {},
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: \"miss\";\nexport declare const check: \"miss\";\n"
+          },
+          "outputsSha256": {
+            "bluetsc.manifest.json": "f0282478d4ff7b59c80988b324de7732a0ecd2d1a24808195862fbdfb7aedc3b",
+            "main.d.ts": "0d962136e6a573b1afc3a1bfb0575d491789c39c1f393bc36e159e508f31249e",
+            "main.js": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+          },
+          "publishedOnRejectedInput": false
+        }
+      },
+      {
+        "id": "function-optional-position",
+        "question": "Missing optional function positions contribute no evidence.",
+        "agrees": false,
+        "native": {
+          "id": "function-optional-position",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: unknown;\n"
+          },
+          "outputsSha256": {
+            "main.d.ts": "683df0449112210241ce9508bccc440c26cb02cad46fe960b59b6c6bb391fc2d",
+            "main.js": "760084d95f65183e128ecd914cdf4f31c97b07d8a816c025f82a8e0736b07a5f"
+          },
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: \"miss\";\n"
+          },
+          "outputsSha256": {
+            "bluetsc.manifest.json": "7d19d8b46abeba97a2a9741d72546d99eedabee871831db6f1d4536922d1b3a7",
+            "main.d.ts": "44e0ae6ca1e78321abb7e50836cac14a7a07007c1ff2d7677c8224ca0687d688",
+            "main.js": "3e35d9d16bf414b1f2ca3bd67c8fdb79fb88c41166e8f42daf26a6a5a1ad2c6b"
+          },
+          "publishedOnRejectedInput": false
+        }
+      },
+      {
+        "id": "function-constrained-missing",
+        "question": "Missing candidates use a declared infer constraint.",
+        "agrees": false,
+        "native": {
+          "id": "function-constrained-missing",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: string;\nexport declare const check: string;\n"
+          },
+          "outputsSha256": {
+            "main.d.ts": "42349f04164eba8624f9c8524da1a118024c50411ff4a5328ebb963bca19b383",
+            "main.js": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+          },
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: \"miss\";\nexport declare const check: string;\n"
+          },
+          "outputsSha256": {
+            "bluetsc.manifest.json": "18fa35985cc6091b89db61675249638412387ce48a36d8a4b094df33d4246a4b",
+            "main.d.ts": "9d42d79e23879d3e08e9c833af8f2f8a1469bb6eb0fe063d04427fd41f95a7c9",
+            "main.js": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+          },
+          "publishedOnRejectedInput": false
+        }
+      },
+      {
+        "id": "function-return-control",
+        "question": "Ordinary covariant return inference remains unchanged.",
+        "agrees": true,
+        "native": {
+          "id": "function-return-control",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: \"ok\";\nexport declare const check: \"ok\";\n"
+          },
+          "outputsSha256": {
+            "main.d.ts": "811aab9fa538912e353857de8eb1ac61faf7769633bd2a01eec00a98749d44d4",
+            "main.js": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+          },
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: \"ok\";\nexport declare const check: \"ok\";\n"
+          },
+          "outputsSha256": {
+            "bluetsc.manifest.json": "00747e0d906b559201a84727da248a601c251ff5e1f681af2e6dc7c6a345ea92",
+            "main.d.ts": "811aab9fa538912e353857de8eb1ac61faf7769633bd2a01eec00a98749d44d4",
+            "main.js": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+          },
+          "publishedOnRejectedInput": false
+        }
+      },
+      {
+        "id": "overload-last-signature-control",
+        "question": "Conditional function inference uses the final overload.",
+        "agrees": true,
+        "native": {
+          "id": "overload-last-signature-control",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: \"last\";\nexport declare const check: \"last\";\n"
+          },
+          "outputsSha256": {
+            "main.d.ts": "e62a44ef461e686782c6879cddf895e1929a324062ac250855b5dcb84ef4af59",
+            "main.js": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+          },
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: \"last\";\nexport declare const check: \"last\";\n"
+          },
+          "outputsSha256": {
+            "bluetsc.manifest.json": "768286172cda915c5b0f6bc4dd42dc646747708bdf92628980b968168879cb84",
+            "main.d.ts": "e62a44ef461e686782c6879cddf895e1929a324062ac250855b5dcb84ef4af59",
+            "main.js": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+          },
+          "publishedOnRejectedInput": false
+        }
+      },
+      {
+        "id": "readonly-array",
+        "question": "Readonly array patterns infer their element.",
+        "agrees": false,
+        "native": {
+          "id": "readonly-array",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: string;\nexport declare const check: string;\n"
+          },
+          "outputsSha256": {
+            "main.d.ts": "42349f04164eba8624f9c8524da1a118024c50411ff4a5328ebb963bca19b383",
+            "main.js": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+          },
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: \"miss\";\nexport declare const check: string;\n"
+          },
+          "outputsSha256": {
+            "bluetsc.manifest.json": "012feca006ba6149641b42d164a6db59a3c78030706f1fd98c9d0d8f2dfb5fc0",
+            "main.d.ts": "9d42d79e23879d3e08e9c833af8f2f8a1469bb6eb0fe063d04427fd41f95a7c9",
+            "main.js": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+          },
+          "publishedOnRejectedInput": false
+        }
+      },
+      {
+        "id": "tuple-prefix-control",
+        "question": "Existing head/rest matching remains unchanged.",
+        "agrees": true,
+        "native": {
+          "id": "tuple-prefix-control",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: [string, [number, boolean]];\nexport declare const check: [string, [number, boolean]];\n"
+          },
+          "outputsSha256": {
+            "main.d.ts": "268174eff92943b0122e19ab9a32b5bf7af551d103621cedd170d2335d6e8dfd",
+            "main.js": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+          },
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: [string, [number, boolean]];\nexport declare const check: [string, [number, boolean]];\n"
+          },
+          "outputsSha256": {
+            "bluetsc.manifest.json": "64c888a9f770651cc199fbd3a4e9d1fca4e9ba4009036b52466ead62164e5ea9",
+            "main.d.ts": "268174eff92943b0122e19ab9a32b5bf7af551d103621cedd170d2335d6e8dfd",
+            "main.js": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+          },
+          "publishedOnRejectedInput": false
+        }
+      },
+      {
+        "id": "tuple-suffix-rest",
+        "question": "A variadic prefix must retain its trailing fixed element.",
+        "agrees": false,
+        "native": {
+          "id": "tuple-suffix-rest",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: [[string, number], boolean];\nexport declare const check: [[string, number], boolean];\n"
+          },
+          "outputsSha256": {
+            "main.d.ts": "f2fbd0b5165aecafb43572a78ea44cf6b5e9fac24be1d8487abe48f4515fe997",
+            "main.js": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+          },
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'boolean]' is not assignable to type 'boolean'.",
+              "file": "main.ts",
+              "position": {
+                "column": 14,
+                "length": 5,
+                "line": 4
+              },
+              "relatedInformation": []
+            }
+          ],
+          "declarations": {},
+          "outputsSha256": {},
+          "publishedOnRejectedInput": false
+        }
+      },
+      {
+        "id": "tuple-optional-empty",
+        "question": "Optional tuple slots may be absent.",
+        "agrees": false,
+        "native": {
+          "id": "tuple-optional-empty",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: [unknown, unknown[]];\n"
+          },
+          "outputsSha256": {
+            "main.d.ts": "8e2ab375d2f9fdf0805e5c43b280628d2f55ccd249c58ecefc757271f4f7b96d",
+            "main.js": "760084d95f65183e128ecd914cdf4f31c97b07d8a816c025f82a8e0736b07a5f"
+          },
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: \"miss\";\n"
+          },
+          "outputsSha256": {
+            "bluetsc.manifest.json": "5b08b3a40d2f6a9c9e45980d45a8e5b400888c1fcd85220fd644bb57f1da4dd0",
+            "main.d.ts": "44e0ae6ca1e78321abb7e50836cac14a7a07007c1ff2d7677c8224ca0687d688",
+            "main.js": "3e35d9d16bf414b1f2ca3bd67c8fdb79fb88c41166e8f42daf26a6a5a1ad2c6b"
+          },
+          "publishedOnRejectedInput": false
+        }
+      },
+      {
+        "id": "conditional-any",
+        "question": "Any retains both possible conditional branches.",
+        "agrees": false,
+        "native": {
+          "id": "conditional-any",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: 1 | 2;\nexport declare const check: 1 | 2;\n"
+          },
+          "outputsSha256": {
+            "main.d.ts": "91271e3e62a3f2a7f9d004d49bfbf865f837558a54eccb90283ba6a55aa8acf6",
+            "main.js": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+          },
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: 1;\nexport declare const check: 1 | 2;\n"
+          },
+          "outputsSha256": {
+            "bluetsc.manifest.json": "3b48a16508d255bd693e1880cb1114d2e956c95e5560d5687d53295d5e67e37c",
+            "main.d.ts": "e2cd84a25912c938300c5acac2ff39d9d051124d33dd30db8c69ff4a36d2d42f",
+            "main.js": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+          },
+          "publishedOnRejectedInput": false
+        }
+      },
+      {
+        "id": "conditional-never-control",
+        "question": "A naked never check distributes to never.",
+        "agrees": true,
+        "native": {
+          "id": "conditional-never-control",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: never;\nexport declare const check: never;\n"
+          },
+          "outputsSha256": {
+            "main.d.ts": "10cb53307e0f494a0c31623e81cfc8beb69b1ac31a6f9936f8852161cd801505",
+            "main.js": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+          },
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: never;\nexport declare const check: never;\n"
+          },
+          "outputsSha256": {
+            "bluetsc.manifest.json": "78839f5f139a157fb91a9997b21f62b37fc2b42f63fae92a9a3bf7423065be99",
+            "main.d.ts": "10cb53307e0f494a0c31623e81cfc8beb69b1ac31a6f9936f8852161cd801505",
+            "main.js": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+          },
+          "publishedOnRejectedInput": false
+        }
+      },
+      {
+        "id": "non-distributive-union-control",
+        "question": "Tuple wrappers prevent distributivity.",
+        "agrees": true,
+        "native": {
+          "id": "non-distributive-union-control",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: 2;\nexport declare const check: 2;\n"
+          },
+          "outputsSha256": {
+            "main.d.ts": "50fd9e26c16d07670d05ec8c59c7b95aa701d1f1c2243b135da7ea0b15878e85",
+            "main.js": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+          },
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: 2;\nexport declare const check: 2;\n"
+          },
+          "outputsSha256": {
+            "bluetsc.manifest.json": "5ab44d98f138eb547b85c7263bf21fb70b6802b49dd14ebf8e3697a6f0c4e643",
+            "main.d.ts": "50fd9e26c16d07670d05ec8c59c7b95aa701d1f1c2243b135da7ea0b15878e85",
+            "main.js": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+          },
+          "publishedOnRejectedInput": false
+        }
+      },
+      {
+        "id": "constrained-covariant-union",
+        "question": "Covariant constrained candidates retain a union.",
+        "agrees": true,
+        "native": {
+          "id": "constrained-covariant-union",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: \"a\" | \"b\";\nexport declare const check: \"a\" | \"b\";\n"
+          },
+          "outputsSha256": {
+            "main.d.ts": "3a10bb64d67b3abcbdebf3011affbb5dd4c5941e2e99ed8e09d9f5c16c3af98d",
+            "main.js": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+          },
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: \"a\" | \"b\";\nexport declare const check: \"a\" | \"b\";\n"
+          },
+          "outputsSha256": {
+            "bluetsc.manifest.json": "9e928ffd9e3b8bc9f342ca7ed0e4d17601325bd4f2fe7dfe254df653ad1406ad",
+            "main.d.ts": "3a10bb64d67b3abcbdebf3011affbb5dd4c5941e2e99ed8e09d9f5c16c3af98d",
+            "main.js": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+          },
+          "publishedOnRejectedInput": false
+        }
+      },
+      {
+        "id": "cross-file-contravariance",
+        "question": "Imported generic aliases retain contravariant candidate directions.",
+        "agrees": false,
+        "native": {
+          "id": "cross-file-contravariance",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: never;\nexport declare const check: never;\n",
+            "types.d.ts": "export type Infer<T> = T extends {\n    a: (x: infer U) => void;\n    b: (x: infer U) => void;\n} ? U : \"miss\";\n"
+          },
+          "outputsSha256": {
+            "main.d.ts": "10cb53307e0f494a0c31623e81cfc8beb69b1ac31a6f9936f8852161cd801505",
+            "main.js": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613",
+            "types.d.ts": "d1744e0950aa138411e661356448154054a4845a2a00a590dc495a815af322dd",
+            "types.js": "d43aa81f5bc89faa359e0f97c814ba25155591ff078fbb9bfd40f8c7c9683230"
+          },
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'string | number' is not assignable to type 'never'.",
+              "file": "main.ts",
+              "position": {
+                "column": 14,
+                "length": 5,
+                "line": 4
+              },
+              "relatedInformation": []
+            }
+          ],
+          "declarations": {},
+          "outputsSha256": {},
+          "publishedOnRejectedInput": false
+        }
+      },
+      {
+        "id": "aliased-candidate-positions",
+        "question": "Alias expansion preserves the parameter variance of infer occurrences.",
+        "agrees": false,
+        "native": {
+          "id": "aliased-candidate-positions",
+          "accepts": true,
+          "diagnostics": [],
+          "declarations": {
+            "main.d.ts": "export declare const result: never;\nexport declare const check: never;\n"
+          },
+          "outputsSha256": {
+            "main.d.ts": "10cb53307e0f494a0c31623e81cfc8beb69b1ac31a6f9936f8852161cd801505",
+            "main.js": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+          },
+          "publishedOnRejectedInput": false,
+          "authoringVerdictAgrees": true
+        },
+        "blue": {
+          "accepts": false,
+          "diagnostics": [
+            {
+              "code": 2322,
+              "message": "Type 'string | number' is not assignable to type 'never'.",
+              "file": "main.ts",
+              "position": {
+                "column": 14,
+                "length": 5,
+                "line": 5
+              },
+              "relatedInformation": []
+            }
+          ],
+          "declarations": {},
+          "outputsSha256": {},
+          "publishedOnRejectedInput": false
+        }
+      }
+    ]
+  },
+  "differenceClasses": {
+    "incorrectAcceptance": [
+      "contravariant-reject-union",
+      "function-zero-arguments-reject-literal"
+    ],
+    "incorrectRejection": [
+      "contravariant-disjoint",
+      "contravariant-related-literals",
+      "contravariant-record-intersection",
+      "mixed-covariance-precedence",
+      "mixed-incompatible-rejection-branch",
+      "tuple-suffix-rest",
+      "cross-file-contravariance",
+      "aliased-candidate-positions"
+    ],
+    "exactOutput": [
+      "function-zero-arguments",
+      "function-optional-position",
+      "function-constrained-missing",
+      "readonly-array",
+      "tuple-optional-empty",
+      "conditional-any"
+    ]
+  },
+  "evidenceSha256": {
+    "author.py": "9904ee9540406dd6cc74f1cdf7d35085969fe63d6737bbc1b9e68efdaabbaa67",
+    "probe.cjs": "8c3084f76be597cbeac0ebeb52689314fbed16d9d4fbc0edb9414bf47e6ce1b3",
+    "cases.json": "345781101a80b890ca4f3f2fd7c9b3f76c1bde119d1f3631481da0865d798a81",
+    "native.json": "8256999c594badf503459007a74e5c974dd011b6a87055a98aced6b56881766f",
+    "report.json": "3d33ff8dfae2148a9bcb4ab5e76c63c59226d7d1e1ee9c7a03604806ab206682"
+  },
+  "acceptedBaselineArtifacts": [
+    {
+      "archive": "SYMBOLIC_KEYS_COMPILERS_02.tar.gz",
+      "path": "accepted-workspace-cli",
+      "sha256": "683cc89a0417661178c05b7bfd2a0abab19e0088616562fc30744a3fe28576f6"
+    },
+    {
+      "archive": "SYMBOLIC_KEYS_AUDIT_01.tar.gz",
+      "path": "oracle-dependencies.tar.gz",
+      "sha256": "4d8fc4d9698abb5bc3b538ebb11d7dc08bdf7d51461d67afcb30e348f95f3362"
+    }
+  ],
+  "artifact": {
+    "path": "CONDITIONAL_INFERENCE_DISCOVERY_EVIDENCE.tar.gz",
+    "bytes": 20072,
+    "sha256": "d3f2abee8a7e38ad7bb0c67a3a7098982965bb94aece9d7e0425ff4b6b112cf4",
+    "members": [
+      {
+        "path": "author.py",
+        "bytes": 6350,
+        "sha256": "9904ee9540406dd6cc74f1cdf7d35085969fe63d6737bbc1b9e68efdaabbaa67"
+      },
+      {
+        "path": "blue/aliased-candidate-positions/build.stderr",
+        "bytes": 532,
+        "sha256": "4f693b58290e3d19f473f4801e2a6cc9b6af0b6948616ce2d6936c29fc30322e"
+      },
+      {
+        "path": "blue/aliased-candidate-positions/build.stdout",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/aliased-candidate-positions/main.ts",
+        "bytes": 265,
+        "sha256": "0bffb076f30a92e03b7b32941066f4138b99924d3ec02783d334ce88f2940f39"
+      },
+      {
+        "path": "blue/aliased-candidate-positions/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "blue/conditional-any/build.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/conditional-any/build.stdout",
+        "bytes": 78,
+        "sha256": "1a29a747a6c6f16a9ce86779056a04366416a7fd6fc6e9b1d396544ef8bf63a2"
+      },
+      {
+        "path": "blue/conditional-any/dist/bluetsc.manifest.json",
+        "bytes": 1405,
+        "sha256": "3b48a16508d255bd693e1880cb1114d2e956c95e5560d5687d53295d5e67e37c"
+      },
+      {
+        "path": "blue/conditional-any/dist/main.d.ts",
+        "bytes": 67,
+        "sha256": "e2cd84a25912c938300c5acac2ff39d9d051124d33dd30db8c69ff4a36d2d42f"
+      },
+      {
+        "path": "blue/conditional-any/dist/main.js",
+        "bytes": 175,
+        "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+      },
+      {
+        "path": "blue/conditional-any/main.ts",
+        "bytes": 140,
+        "sha256": "4807bdfe3272728087b53a7cd4a662b0f5b6b3969d68a286aff42feeb17191fc"
+      },
+      {
+        "path": "blue/conditional-any/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "blue/conditional-never-control/build.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/conditional-never-control/build.stdout",
+        "bytes": 78,
+        "sha256": "b7977d84ca6bb9740818af699e94a0a2faf7acead2172b901a2ff5421e2d6553"
+      },
+      {
+        "path": "blue/conditional-never-control/dist/bluetsc.manifest.json",
+        "bytes": 1405,
+        "sha256": "78839f5f139a157fb91a9997b21f62b37fc2b42f63fae92a9a3bf7423065be99"
+      },
+      {
+        "path": "blue/conditional-never-control/dist/main.d.ts",
+        "bytes": 71,
+        "sha256": "10cb53307e0f494a0c31623e81cfc8beb69b1ac31a6f9936f8852161cd801505"
+      },
+      {
+        "path": "blue/conditional-never-control/dist/main.js",
+        "bytes": 175,
+        "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+      },
+      {
+        "path": "blue/conditional-never-control/main.ts",
+        "bytes": 142,
+        "sha256": "72abb921931873eb9dc8dfcb6231cab08013acb034251b85ed6dfd95329bd059"
+      },
+      {
+        "path": "blue/conditional-never-control/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "blue/constrained-covariant-union/build.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/constrained-covariant-union/build.stdout",
+        "bytes": 78,
+        "sha256": "39f3c6020e9b73937fd8cec07fa56dca630c4f4491a12ba2e45e72e865ddea3d"
+      },
+      {
+        "path": "blue/constrained-covariant-union/dist/bluetsc.manifest.json",
+        "bytes": 1405,
+        "sha256": "9e928ffd9e3b8bc9f342ca7ed0e4d17601325bd4f2fe7dfe254df653ad1406ad"
+      },
+      {
+        "path": "blue/constrained-covariant-union/dist/main.d.ts",
+        "bytes": 79,
+        "sha256": "3a10bb64d67b3abcbdebf3011affbb5dd4c5941e2e99ed8e09d9f5c16c3af98d"
+      },
+      {
+        "path": "blue/constrained-covariant-union/dist/main.js",
+        "bytes": 175,
+        "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+      },
+      {
+        "path": "blue/constrained-covariant-union/main.ts",
+        "bytes": 214,
+        "sha256": "35533fe4462a066b75c682daa57b1c165f077512c1fabfcb388038e070ed6a83"
+      },
+      {
+        "path": "blue/constrained-covariant-union/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "blue/contravariant-disjoint/build.stderr",
+        "bytes": 532,
+        "sha256": "ef048c5028afad4f2a05c1c28a991941632e7e88dcc13d191d9f36f58fec6ece"
+      },
+      {
+        "path": "blue/contravariant-disjoint/build.stdout",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/contravariant-disjoint/main.ts",
+        "bytes": 238,
+        "sha256": "ce9b464c4c1bab2248b7d5d71d520bfd007f9068fa4b0c1007f67f6a48c01368"
+      },
+      {
+        "path": "blue/contravariant-disjoint/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "blue/contravariant-record-intersection/build.stderr",
+        "bytes": 685,
+        "sha256": "6a8c456bc9625003d795b8ae5b19678098699e36258294e6408c701ac5a8d706"
+      },
+      {
+        "path": "blue/contravariant-record-intersection/build.stdout",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/contravariant-record-intersection/main.ts",
+        "bytes": 271,
+        "sha256": "f7d92a1ee1241018eb530c092277a4ce8a0973bf1605fd15f4ecaf2e0f73eca9"
+      },
+      {
+        "path": "blue/contravariant-record-intersection/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "blue/contravariant-reject-union/build.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/contravariant-reject-union/build.stdout",
+        "bytes": 78,
+        "sha256": "2a9301c0b6648c491e187b6330283f2095c4b7f5bdb113b7d470fd020464434e"
+      },
+      {
+        "path": "blue/contravariant-reject-union/dist/bluetsc.manifest.json",
+        "bytes": 1405,
+        "sha256": "206bca20f6b296ff57128fc5f2ece5edc8a047c139faede849286458e5bd05ad"
+      },
+      {
+        "path": "blue/contravariant-reject-union/dist/main.d.ts",
+        "bytes": 92,
+        "sha256": "4f295d940ee0f37b9baca897417259c0ce863e70e0bd87cb1295de644670a7ee"
+      },
+      {
+        "path": "blue/contravariant-reject-union/dist/main.js",
+        "bytes": 174,
+        "sha256": "595178f543821843fd90dfeb192d87131e3b1650de6788d6e5319e875aee6cfe"
+      },
+      {
+        "path": "blue/contravariant-reject-union/main.ts",
+        "bytes": 250,
+        "sha256": "fd98ffb198942ad21d228e994f27909421b8b851d057598c96a6884a9aaec8d5"
+      },
+      {
+        "path": "blue/contravariant-reject-union/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "blue/contravariant-related-literals/build.stderr",
+        "bytes": 601,
+        "sha256": "ba3f29f71cc0a7780783dc96085a6d560c03a8f4cf60bdd7ab390a96df534600"
+      },
+      {
+        "path": "blue/contravariant-related-literals/build.stdout",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/contravariant-related-literals/main.ts",
+        "bytes": 242,
+        "sha256": "33a73d33d0940ce727f39c2b38cfeff080a556a1eaa793f84de3fc1eeb307233"
+      },
+      {
+        "path": "blue/contravariant-related-literals/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "blue/covariant-union-control/build.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/covariant-union-control/build.stdout",
+        "bytes": 78,
+        "sha256": "c3a03f396265b830ab90ac24287dc9e9788aa24732963dcfdb354b665fcd93fa"
+      },
+      {
+        "path": "blue/covariant-union-control/dist/bluetsc.manifest.json",
+        "bytes": 1405,
+        "sha256": "61f99026a04fe848e7173bc8b0ecd58be7ea00eec8976a127d11625f80a93fb9"
+      },
+      {
+        "path": "blue/covariant-union-control/dist/main.d.ts",
+        "bytes": 91,
+        "sha256": "26c39bf638c71e809313ba87f9c78badb8de79a0cae0e214876dbfa0e019e5df"
+      },
+      {
+        "path": "blue/covariant-union-control/dist/main.js",
+        "bytes": 175,
+        "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+      },
+      {
+        "path": "blue/covariant-union-control/main.ts",
+        "bytes": 196,
+        "sha256": "8a374b612a3ddf7fad6c5e588af5758e28102aa2598d1d96b34c8a81a2b0b77a"
+      },
+      {
+        "path": "blue/covariant-union-control/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "blue/cross-file-contravariance/build.stderr",
+        "bytes": 532,
+        "sha256": "17da4235f5af33ad7a01306bef296f25fec26bf79c32ab145ac857a9be8464df"
+      },
+      {
+        "path": "blue/cross-file-contravariance/build.stdout",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/cross-file-contravariance/main.ts",
+        "bytes": 183,
+        "sha256": "e52e1bb8a49526ccc475d7f4967fd1889c8596ec6c7c0354becd303e97574688"
+      },
+      {
+        "path": "blue/cross-file-contravariance/tsconfig.json",
+        "bytes": 297,
+        "sha256": "c8317db31a81a2b458e1c9298735b4c98834befb901764faa8b5ebaae76252cc"
+      },
+      {
+        "path": "blue/cross-file-contravariance/types.ts",
+        "bytes": 100,
+        "sha256": "649373adf158d2a456165915ef815c4daf094f1f53e0faa2c8d16d79d2c77b0b"
+      },
+      {
+        "path": "blue/double-contravariance/build.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/double-contravariance/build.stdout",
+        "bytes": 78,
+        "sha256": "7892631a821fb233c86351fb551bd042e7eb4d2aab14db1e3dbe8e703651afc1"
+      },
+      {
+        "path": "blue/double-contravariance/dist/bluetsc.manifest.json",
+        "bytes": 1405,
+        "sha256": "2d7d2cdf217427060e82067c4b494922d240234674a670d26fc2e3460218f9fb"
+      },
+      {
+        "path": "blue/double-contravariance/dist/main.d.ts",
+        "bytes": 69,
+        "sha256": "811aab9fa538912e353857de8eb1ac61faf7769633bd2a01eec00a98749d44d4"
+      },
+      {
+        "path": "blue/double-contravariance/dist/main.js",
+        "bytes": 175,
+        "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+      },
+      {
+        "path": "blue/double-contravariance/main.ts",
+        "bytes": 198,
+        "sha256": "bac17ef9924a591b8ea113ce26119b28b34cd23687b188876b0026d8a5a07f8e"
+      },
+      {
+        "path": "blue/double-contravariance/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "blue/function-constrained-missing/build.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/function-constrained-missing/build.stdout",
+        "bytes": 78,
+        "sha256": "554baa2a569ad39409eca97a25dd110048e766c03f85a8a18cd4ac7d10c599a5"
+      },
+      {
+        "path": "blue/function-constrained-missing/dist/bluetsc.manifest.json",
+        "bytes": 1405,
+        "sha256": "18fa35985cc6091b89db61675249638412387ce48a36d8a4b094df33d4246a4b"
+      },
+      {
+        "path": "blue/function-constrained-missing/dist/main.d.ts",
+        "bytes": 73,
+        "sha256": "9d42d79e23879d3e08e9c833af8f2f8a1469bb6eb0fe063d04427fd41f95a7c9"
+      },
+      {
+        "path": "blue/function-constrained-missing/dist/main.js",
+        "bytes": 175,
+        "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+      },
+      {
+        "path": "blue/function-constrained-missing/main.ts",
+        "bytes": 182,
+        "sha256": "7c76229a33bb8838272fb2ced0dec8146762a077f284fd45421527ec6537d1c1"
+      },
+      {
+        "path": "blue/function-constrained-missing/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "blue/function-optional-position/build.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/function-optional-position/build.stdout",
+        "bytes": 78,
+        "sha256": "d392b04f7d7c1b7631c26b416e50bc78931ecda59d96552d02c6f48300754df1"
+      },
+      {
+        "path": "blue/function-optional-position/dist/bluetsc.manifest.json",
+        "bytes": 1405,
+        "sha256": "7d19d8b46abeba97a2a9741d72546d99eedabee871831db6f1d4536922d1b3a7"
+      },
+      {
+        "path": "blue/function-optional-position/dist/main.d.ts",
+        "bytes": 37,
+        "sha256": "44e0ae6ca1e78321abb7e50836cac14a7a07007c1ff2d7677c8224ca0687d688"
+      },
+      {
+        "path": "blue/function-optional-position/dist/main.js",
+        "bytes": 128,
+        "sha256": "3e35d9d16bf414b1f2ca3bd67c8fdb79fb88c41166e8f42daf26a6a5a1ad2c6b"
+      },
+      {
+        "path": "blue/function-optional-position/main.ts",
+        "bytes": 131,
+        "sha256": "bfa7147e77d55ab8e43d510d5efe98712df3252ac30394e4632282a33989ec64"
+      },
+      {
+        "path": "blue/function-optional-position/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "blue/function-return-control/build.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/function-return-control/build.stdout",
+        "bytes": 78,
+        "sha256": "2fe64205703c2ffbc91f9735cfe94a126e0285b38949d2c82be5305b6e326487"
+      },
+      {
+        "path": "blue/function-return-control/dist/bluetsc.manifest.json",
+        "bytes": 1405,
+        "sha256": "00747e0d906b559201a84727da248a601c251ff5e1f681af2e6dc7c6a345ea92"
+      },
+      {
+        "path": "blue/function-return-control/dist/main.d.ts",
+        "bytes": 69,
+        "sha256": "811aab9fa538912e353857de8eb1ac61faf7769633bd2a01eec00a98749d44d4"
+      },
+      {
+        "path": "blue/function-return-control/dist/main.js",
+        "bytes": 175,
+        "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+      },
+      {
+        "path": "blue/function-return-control/main.ts",
+        "bytes": 181,
+        "sha256": "524fd49ff19b4bc8bfe3c8c0c2868e2cbc9b68b13a7418084321cbfcd5b0bc1e"
+      },
+      {
+        "path": "blue/function-return-control/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "blue/function-zero-arguments/build.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/function-zero-arguments/build.stdout",
+        "bytes": 78,
+        "sha256": "4a698e8cfd00dcd3519cbe69138d47b53a952655c0065ab0213dfa03b9ab339c"
+      },
+      {
+        "path": "blue/function-zero-arguments/dist/bluetsc.manifest.json",
+        "bytes": 1405,
+        "sha256": "afc26d989429044a164b2cc5f1fa93b2a8e27a1462ce9f67d9fab12bb57f8a89"
+      },
+      {
+        "path": "blue/function-zero-arguments/dist/main.d.ts",
+        "bytes": 37,
+        "sha256": "44e0ae6ca1e78321abb7e50836cac14a7a07007c1ff2d7677c8224ca0687d688"
+      },
+      {
+        "path": "blue/function-zero-arguments/dist/main.js",
+        "bytes": 128,
+        "sha256": "3e35d9d16bf414b1f2ca3bd67c8fdb79fb88c41166e8f42daf26a6a5a1ad2c6b"
+      },
+      {
+        "path": "blue/function-zero-arguments/main.ts",
+        "bytes": 130,
+        "sha256": "1bebe929048d7bdaf69b928028686c7ec50e2fa847df0047d7491b334682d792"
+      },
+      {
+        "path": "blue/function-zero-arguments/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "blue/function-zero-arguments-reject-literal/build.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/function-zero-arguments-reject-literal/build.stdout",
+        "bytes": 78,
+        "sha256": "1910c39d0660fdf1aa4499e0b914ae7e91e0aea3c7a64b4fb9e4c7ce5b1aac65"
+      },
+      {
+        "path": "blue/function-zero-arguments-reject-literal/dist/bluetsc.manifest.json",
+        "bytes": 1405,
+        "sha256": "f0282478d4ff7b59c80988b324de7732a0ecd2d1a24808195862fbdfb7aedc3b"
+      },
+      {
+        "path": "blue/function-zero-arguments-reject-literal/dist/main.d.ts",
+        "bytes": 73,
+        "sha256": "0d962136e6a573b1afc3a1bfb0575d491789c39c1f393bc36e159e508f31249e"
+      },
+      {
+        "path": "blue/function-zero-arguments-reject-literal/dist/main.js",
+        "bytes": 175,
+        "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+      },
+      {
+        "path": "blue/function-zero-arguments-reject-literal/main.ts",
+        "bytes": 167,
+        "sha256": "6aae342d3bb56d84d3146ce81b69e04411e06e6343870fa73e6688a4b78dbf48"
+      },
+      {
+        "path": "blue/function-zero-arguments-reject-literal/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "blue/mixed-covariance-precedence/build.stderr",
+        "bytes": 588,
+        "sha256": "def66819e8a44d42eda4acadab0b5c6f931625d1f03ca72d0583e6d80f024f28"
+      },
+      {
+        "path": "blue/mixed-covariance-precedence/build.stdout",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/mixed-covariance-precedence/main.ts",
+        "bytes": 177,
+        "sha256": "6b2b6cb63f8efbf37cbbd932d2f032364856eabb3416f7a2dbd4048e8a3e5dc9"
+      },
+      {
+        "path": "blue/mixed-covariance-precedence/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "blue/mixed-incompatible-rejection-branch/build.stderr",
+        "bytes": 612,
+        "sha256": "4a0c034d4eb362a738edac0caab0e34bd71ad5642228ce6c9565e8b64bf7e376"
+      },
+      {
+        "path": "blue/mixed-incompatible-rejection-branch/build.stdout",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/mixed-incompatible-rejection-branch/main.ts",
+        "bytes": 183,
+        "sha256": "2cc63de75fd218a0a28974f54261b1f5c9050c64e1b23016ad4559ed99788752"
+      },
+      {
+        "path": "blue/mixed-incompatible-rejection-branch/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "blue/non-distributive-union-control/build.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/non-distributive-union-control/build.stdout",
+        "bytes": 78,
+        "sha256": "1ea90ed60018528fabee1f03f398cc12a21b39a4d4197b93c1e4254177698e4d"
+      },
+      {
+        "path": "blue/non-distributive-union-control/dist/bluetsc.manifest.json",
+        "bytes": 1405,
+        "sha256": "5ab44d98f138eb547b85c7263bf21fb70b6802b49dd14ebf8e3697a6f0c4e643"
+      },
+      {
+        "path": "blue/non-distributive-union-control/dist/main.d.ts",
+        "bytes": 63,
+        "sha256": "50fd9e26c16d07670d05ec8c59c7b95aa701d1f1c2243b135da7ea0b15878e85"
+      },
+      {
+        "path": "blue/non-distributive-union-control/dist/main.js",
+        "bytes": 175,
+        "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+      },
+      {
+        "path": "blue/non-distributive-union-control/main.ts",
+        "bytes": 152,
+        "sha256": "d36c75006b8d5652bdb0370bbb5cd4057faaf1c4f6a070cdef6bc44c340feb12"
+      },
+      {
+        "path": "blue/non-distributive-union-control/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "blue/overload-last-signature-control/build.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/overload-last-signature-control/build.stdout",
+        "bytes": 78,
+        "sha256": "51e47e0dea1cc0e4d8e5641a4dea90aefe6d3bdaea3e76ee757f0ccbf6ad7de5"
+      },
+      {
+        "path": "blue/overload-last-signature-control/dist/bluetsc.manifest.json",
+        "bytes": 1405,
+        "sha256": "768286172cda915c5b0f6bc4dd42dc646747708bdf92628980b968168879cb84"
+      },
+      {
+        "path": "blue/overload-last-signature-control/dist/main.d.ts",
+        "bytes": 73,
+        "sha256": "e62a44ef461e686782c6879cddf895e1929a324062ac250855b5dcb84ef4af59"
+      },
+      {
+        "path": "blue/overload-last-signature-control/dist/main.js",
+        "bytes": 175,
+        "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+      },
+      {
+        "path": "blue/overload-last-signature-control/main.ts",
+        "bytes": 198,
+        "sha256": "0ec8bab81c66ea072ed5d5e3c659368e187fd6359e805947dfdf512dbde33a9b"
+      },
+      {
+        "path": "blue/overload-last-signature-control/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "blue/readonly-array/build.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/readonly-array/build.stdout",
+        "bytes": 78,
+        "sha256": "2e186575bc55ee47cc35da655ae4b7beb0f651e45883bad3a86ee1c1b834c083"
+      },
+      {
+        "path": "blue/readonly-array/dist/bluetsc.manifest.json",
+        "bytes": 1405,
+        "sha256": "012feca006ba6149641b42d164a6db59a3c78030706f1fd98c9d0d8f2dfb5fc0"
+      },
+      {
+        "path": "blue/readonly-array/dist/main.d.ts",
+        "bytes": 73,
+        "sha256": "9d42d79e23879d3e08e9c833af8f2f8a1469bb6eb0fe063d04427fd41f95a7c9"
+      },
+      {
+        "path": "blue/readonly-array/dist/main.js",
+        "bytes": 175,
+        "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+      },
+      {
+        "path": "blue/readonly-array/main.ts",
+        "bytes": 174,
+        "sha256": "9821ba236701fc0192be5aa4c5a25ad47948614ed33e702f99ad15dcf63c6106"
+      },
+      {
+        "path": "blue/readonly-array/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "blue/tuple-optional-empty/build.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/tuple-optional-empty/build.stdout",
+        "bytes": 78,
+        "sha256": "1b2fe6be6c205d40a2d9cc6c652435c2279b4934d344637c03557c237de39a69"
+      },
+      {
+        "path": "blue/tuple-optional-empty/dist/bluetsc.manifest.json",
+        "bytes": 1405,
+        "sha256": "5b08b3a40d2f6a9c9e45980d45a8e5b400888c1fcd85220fd644bb57f1da4dd0"
+      },
+      {
+        "path": "blue/tuple-optional-empty/dist/main.d.ts",
+        "bytes": 37,
+        "sha256": "44e0ae6ca1e78321abb7e50836cac14a7a07007c1ff2d7677c8224ca0687d688"
+      },
+      {
+        "path": "blue/tuple-optional-empty/dist/main.js",
+        "bytes": 128,
+        "sha256": "3e35d9d16bf414b1f2ca3bd67c8fdb79fb88c41166e8f42daf26a6a5a1ad2c6b"
+      },
+      {
+        "path": "blue/tuple-optional-empty/main.ts",
+        "bytes": 131,
+        "sha256": "fc3bf6e0f56e5a6d5906d661bcaaa1dbe1fda972107378cb91318bc839d605eb"
+      },
+      {
+        "path": "blue/tuple-optional-empty/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "blue/tuple-prefix-control/build.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/tuple-prefix-control/build.stdout",
+        "bytes": 78,
+        "sha256": "adce3d8cc2140d8e7570b217b05b46f4c41e49c982a5725905f07adefdda3adf"
+      },
+      {
+        "path": "blue/tuple-prefix-control/dist/bluetsc.manifest.json",
+        "bytes": 1405,
+        "sha256": "64c888a9f770651cc199fbd3a4e9d1fca4e9ba4009036b52466ead62164e5ea9"
+      },
+      {
+        "path": "blue/tuple-prefix-control/dist/main.d.ts",
+        "bytes": 115,
+        "sha256": "268174eff92943b0122e19ab9a32b5bf7af551d103621cedd170d2335d6e8dfd"
+      },
+      {
+        "path": "blue/tuple-prefix-control/dist/main.js",
+        "bytes": 175,
+        "sha256": "345c228ab21f9ec9aaa77ea5f22f7c7aebeb3344b0b95889cf9bb63ebaeb7334"
+      },
+      {
+        "path": "blue/tuple-prefix-control/main.ts",
+        "bytes": 209,
+        "sha256": "3c4c23e8880a150e7e99329747bbca8662da84f461c33e1ee54500ae1f1ff1e0"
+      },
+      {
+        "path": "blue/tuple-prefix-control/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "blue/tuple-suffix-rest/build.stderr",
+        "bytes": 565,
+        "sha256": "ca4b4510926fed51fa9fbdcb52a0c889b84de1d64f30b5cf02e813642258b942"
+      },
+      {
+        "path": "blue/tuple-suffix-rest/build.stdout",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "blue/tuple-suffix-rest/main.ts",
+        "bytes": 209,
+        "sha256": "1b41434a0809ce04d3dccd7f1cb3cbb3d0fbb280859a2acf740ce1da88d3d6f9"
+      },
+      {
+        "path": "blue/tuple-suffix-rest/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "cases.json",
+        "bytes": 10156,
+        "sha256": "345781101a80b890ca4f3f2fd7c9b3f76c1bde119d1f3631481da0865d798a81"
+      },
+      {
+        "path": "native/aliased-candidate-positions/dist/main.d.ts",
+        "bytes": 71,
+        "sha256": "10cb53307e0f494a0c31623e81cfc8beb69b1ac31a6f9936f8852161cd801505"
+      },
+      {
+        "path": "native/aliased-candidate-positions/dist/main.js",
+        "bytes": 174,
+        "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+      },
+      {
+        "path": "native/aliased-candidate-positions/main.ts",
+        "bytes": 265,
+        "sha256": "0bffb076f30a92e03b7b32941066f4138b99924d3ec02783d334ce88f2940f39"
+      },
+      {
+        "path": "native/aliased-candidate-positions/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "native/conditional-any/dist/main.d.ts",
+        "bytes": 71,
+        "sha256": "91271e3e62a3f2a7f9d004d49bfbf865f837558a54eccb90283ba6a55aa8acf6"
+      },
+      {
+        "path": "native/conditional-any/dist/main.js",
+        "bytes": 174,
+        "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+      },
+      {
+        "path": "native/conditional-any/main.ts",
+        "bytes": 140,
+        "sha256": "4807bdfe3272728087b53a7cd4a662b0f5b6b3969d68a286aff42feeb17191fc"
+      },
+      {
+        "path": "native/conditional-any/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "native/conditional-never-control/dist/main.d.ts",
+        "bytes": 71,
+        "sha256": "10cb53307e0f494a0c31623e81cfc8beb69b1ac31a6f9936f8852161cd801505"
+      },
+      {
+        "path": "native/conditional-never-control/dist/main.js",
+        "bytes": 174,
+        "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+      },
+      {
+        "path": "native/conditional-never-control/main.ts",
+        "bytes": 142,
+        "sha256": "72abb921931873eb9dc8dfcb6231cab08013acb034251b85ed6dfd95329bd059"
+      },
+      {
+        "path": "native/conditional-never-control/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "native/constrained-covariant-union/dist/main.d.ts",
+        "bytes": 79,
+        "sha256": "3a10bb64d67b3abcbdebf3011affbb5dd4c5941e2e99ed8e09d9f5c16c3af98d"
+      },
+      {
+        "path": "native/constrained-covariant-union/dist/main.js",
+        "bytes": 174,
+        "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+      },
+      {
+        "path": "native/constrained-covariant-union/main.ts",
+        "bytes": 214,
+        "sha256": "35533fe4462a066b75c682daa57b1c165f077512c1fabfcb388038e070ed6a83"
+      },
+      {
+        "path": "native/constrained-covariant-union/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "native/contravariant-disjoint/dist/main.d.ts",
+        "bytes": 71,
+        "sha256": "10cb53307e0f494a0c31623e81cfc8beb69b1ac31a6f9936f8852161cd801505"
+      },
+      {
+        "path": "native/contravariant-disjoint/dist/main.js",
+        "bytes": 174,
+        "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+      },
+      {
+        "path": "native/contravariant-disjoint/main.ts",
+        "bytes": 238,
+        "sha256": "ce9b464c4c1bab2248b7d5d71d520bfd007f9068fa4b0c1007f67f6a48c01368"
+      },
+      {
+        "path": "native/contravariant-disjoint/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "native/contravariant-record-intersection/dist/main.d.ts",
+        "bytes": 133,
+        "sha256": "da518d3ed27334a1f134edf7e7032499ab9e2a691006b72560f983b4fdd585a4"
+      },
+      {
+        "path": "native/contravariant-record-intersection/dist/main.js",
+        "bytes": 174,
+        "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+      },
+      {
+        "path": "native/contravariant-record-intersection/main.ts",
+        "bytes": 271,
+        "sha256": "f7d92a1ee1241018eb530c092277a4ce8a0973bf1605fd15f4ecaf2e0f73eca9"
+      },
+      {
+        "path": "native/contravariant-record-intersection/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "native/contravariant-reject-union/main.ts",
+        "bytes": 250,
+        "sha256": "fd98ffb198942ad21d228e994f27909421b8b851d057598c96a6884a9aaec8d5"
+      },
+      {
+        "path": "native/contravariant-reject-union/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "native/contravariant-related-literals/dist/main.d.ts",
+        "bytes": 67,
+        "sha256": "39c838248f6a8b5c501d81fdc5d799925d088303e98195e0e9982bba3cbc4aa1"
+      },
+      {
+        "path": "native/contravariant-related-literals/dist/main.js",
+        "bytes": 174,
+        "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+      },
+      {
+        "path": "native/contravariant-related-literals/main.ts",
+        "bytes": 242,
+        "sha256": "33a73d33d0940ce727f39c2b38cfeff080a556a1eaa793f84de3fc1eeb307233"
+      },
+      {
+        "path": "native/contravariant-related-literals/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "native/covariant-union-control/dist/main.d.ts",
+        "bytes": 91,
+        "sha256": "26c39bf638c71e809313ba87f9c78badb8de79a0cae0e214876dbfa0e019e5df"
+      },
+      {
+        "path": "native/covariant-union-control/dist/main.js",
+        "bytes": 174,
+        "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+      },
+      {
+        "path": "native/covariant-union-control/main.ts",
+        "bytes": 196,
+        "sha256": "8a374b612a3ddf7fad6c5e588af5758e28102aa2598d1d96b34c8a81a2b0b77a"
+      },
+      {
+        "path": "native/covariant-union-control/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "native/cross-file-contravariance/dist/main.d.ts",
+        "bytes": 71,
+        "sha256": "10cb53307e0f494a0c31623e81cfc8beb69b1ac31a6f9936f8852161cd801505"
+      },
+      {
+        "path": "native/cross-file-contravariance/dist/main.js",
+        "bytes": 174,
+        "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+      },
+      {
+        "path": "native/cross-file-contravariance/dist/types.d.ts",
+        "bytes": 109,
+        "sha256": "d1744e0950aa138411e661356448154054a4845a2a00a590dc495a815af322dd"
+      },
+      {
+        "path": "native/cross-file-contravariance/dist/types.js",
+        "bytes": 77,
+        "sha256": "d43aa81f5bc89faa359e0f97c814ba25155591ff078fbb9bfd40f8c7c9683230"
+      },
+      {
+        "path": "native/cross-file-contravariance/main.ts",
+        "bytes": 183,
+        "sha256": "e52e1bb8a49526ccc475d7f4967fd1889c8596ec6c7c0354becd303e97574688"
+      },
+      {
+        "path": "native/cross-file-contravariance/tsconfig.json",
+        "bytes": 297,
+        "sha256": "c8317db31a81a2b458e1c9298735b4c98834befb901764faa8b5ebaae76252cc"
+      },
+      {
+        "path": "native/cross-file-contravariance/types.ts",
+        "bytes": 100,
+        "sha256": "649373adf158d2a456165915ef815c4daf094f1f53e0faa2c8d16d79d2c77b0b"
+      },
+      {
+        "path": "native/double-contravariance/dist/main.d.ts",
+        "bytes": 69,
+        "sha256": "811aab9fa538912e353857de8eb1ac61faf7769633bd2a01eec00a98749d44d4"
+      },
+      {
+        "path": "native/double-contravariance/dist/main.js",
+        "bytes": 174,
+        "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+      },
+      {
+        "path": "native/double-contravariance/main.ts",
+        "bytes": 198,
+        "sha256": "bac17ef9924a591b8ea113ce26119b28b34cd23687b188876b0026d8a5a07f8e"
+      },
+      {
+        "path": "native/double-contravariance/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "native/function-constrained-missing/dist/main.d.ts",
+        "bytes": 73,
+        "sha256": "42349f04164eba8624f9c8524da1a118024c50411ff4a5328ebb963bca19b383"
+      },
+      {
+        "path": "native/function-constrained-missing/dist/main.js",
+        "bytes": 174,
+        "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+      },
+      {
+        "path": "native/function-constrained-missing/main.ts",
+        "bytes": 182,
+        "sha256": "7c76229a33bb8838272fb2ced0dec8146762a077f284fd45421527ec6537d1c1"
+      },
+      {
+        "path": "native/function-constrained-missing/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "native/function-optional-position/dist/main.d.ts",
+        "bytes": 38,
+        "sha256": "683df0449112210241ce9508bccc440c26cb02cad46fe960b59b6c6bb391fc2d"
+      },
+      {
+        "path": "native/function-optional-position/dist/main.js",
+        "bytes": 126,
+        "sha256": "760084d95f65183e128ecd914cdf4f31c97b07d8a816c025f82a8e0736b07a5f"
+      },
+      {
+        "path": "native/function-optional-position/main.ts",
+        "bytes": 131,
+        "sha256": "bfa7147e77d55ab8e43d510d5efe98712df3252ac30394e4632282a33989ec64"
+      },
+      {
+        "path": "native/function-optional-position/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "native/function-return-control/dist/main.d.ts",
+        "bytes": 69,
+        "sha256": "811aab9fa538912e353857de8eb1ac61faf7769633bd2a01eec00a98749d44d4"
+      },
+      {
+        "path": "native/function-return-control/dist/main.js",
+        "bytes": 174,
+        "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+      },
+      {
+        "path": "native/function-return-control/main.ts",
+        "bytes": 181,
+        "sha256": "524fd49ff19b4bc8bfe3c8c0c2868e2cbc9b68b13a7418084321cbfcd5b0bc1e"
+      },
+      {
+        "path": "native/function-return-control/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "native/function-zero-arguments/dist/main.d.ts",
+        "bytes": 38,
+        "sha256": "683df0449112210241ce9508bccc440c26cb02cad46fe960b59b6c6bb391fc2d"
+      },
+      {
+        "path": "native/function-zero-arguments/dist/main.js",
+        "bytes": 126,
+        "sha256": "760084d95f65183e128ecd914cdf4f31c97b07d8a816c025f82a8e0736b07a5f"
+      },
+      {
+        "path": "native/function-zero-arguments/main.ts",
+        "bytes": 130,
+        "sha256": "1bebe929048d7bdaf69b928028686c7ec50e2fa847df0047d7491b334682d792"
+      },
+      {
+        "path": "native/function-zero-arguments/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "native/function-zero-arguments-reject-literal/main.ts",
+        "bytes": 167,
+        "sha256": "6aae342d3bb56d84d3146ce81b69e04411e06e6343870fa73e6688a4b78dbf48"
+      },
+      {
+        "path": "native/function-zero-arguments-reject-literal/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "native/mixed-covariance-precedence/dist/main.d.ts",
+        "bytes": 69,
+        "sha256": "811aab9fa538912e353857de8eb1ac61faf7769633bd2a01eec00a98749d44d4"
+      },
+      {
+        "path": "native/mixed-covariance-precedence/dist/main.js",
+        "bytes": 174,
+        "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+      },
+      {
+        "path": "native/mixed-covariance-precedence/main.ts",
+        "bytes": 177,
+        "sha256": "6b2b6cb63f8efbf37cbbd932d2f032364856eabb3416f7a2dbd4048e8a3e5dc9"
+      },
+      {
+        "path": "native/mixed-covariance-precedence/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "native/mixed-incompatible-rejection-branch/dist/main.d.ts",
+        "bytes": 73,
+        "sha256": "0d962136e6a573b1afc3a1bfb0575d491789c39c1f393bc36e159e508f31249e"
+      },
+      {
+        "path": "native/mixed-incompatible-rejection-branch/dist/main.js",
+        "bytes": 174,
+        "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+      },
+      {
+        "path": "native/mixed-incompatible-rejection-branch/main.ts",
+        "bytes": 183,
+        "sha256": "2cc63de75fd218a0a28974f54261b1f5c9050c64e1b23016ad4559ed99788752"
+      },
+      {
+        "path": "native/mixed-incompatible-rejection-branch/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "native/non-distributive-union-control/dist/main.d.ts",
+        "bytes": 63,
+        "sha256": "50fd9e26c16d07670d05ec8c59c7b95aa701d1f1c2243b135da7ea0b15878e85"
+      },
+      {
+        "path": "native/non-distributive-union-control/dist/main.js",
+        "bytes": 174,
+        "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+      },
+      {
+        "path": "native/non-distributive-union-control/main.ts",
+        "bytes": 152,
+        "sha256": "d36c75006b8d5652bdb0370bbb5cd4057faaf1c4f6a070cdef6bc44c340feb12"
+      },
+      {
+        "path": "native/non-distributive-union-control/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "native/overload-last-signature-control/dist/main.d.ts",
+        "bytes": 73,
+        "sha256": "e62a44ef461e686782c6879cddf895e1929a324062ac250855b5dcb84ef4af59"
+      },
+      {
+        "path": "native/overload-last-signature-control/dist/main.js",
+        "bytes": 174,
+        "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+      },
+      {
+        "path": "native/overload-last-signature-control/main.ts",
+        "bytes": 198,
+        "sha256": "0ec8bab81c66ea072ed5d5e3c659368e187fd6359e805947dfdf512dbde33a9b"
+      },
+      {
+        "path": "native/overload-last-signature-control/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "native/readonly-array/dist/main.d.ts",
+        "bytes": 73,
+        "sha256": "42349f04164eba8624f9c8524da1a118024c50411ff4a5328ebb963bca19b383"
+      },
+      {
+        "path": "native/readonly-array/dist/main.js",
+        "bytes": 174,
+        "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+      },
+      {
+        "path": "native/readonly-array/main.ts",
+        "bytes": 174,
+        "sha256": "9821ba236701fc0192be5aa4c5a25ad47948614ed33e702f99ad15dcf63c6106"
+      },
+      {
+        "path": "native/readonly-array/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "native/tuple-optional-empty/dist/main.d.ts",
+        "bytes": 51,
+        "sha256": "8e2ab375d2f9fdf0805e5c43b280628d2f55ccd249c58ecefc757271f4f7b96d"
+      },
+      {
+        "path": "native/tuple-optional-empty/dist/main.js",
+        "bytes": 126,
+        "sha256": "760084d95f65183e128ecd914cdf4f31c97b07d8a816c025f82a8e0736b07a5f"
+      },
+      {
+        "path": "native/tuple-optional-empty/main.ts",
+        "bytes": 131,
+        "sha256": "fc3bf6e0f56e5a6d5906d661bcaaa1dbe1fda972107378cb91318bc839d605eb"
+      },
+      {
+        "path": "native/tuple-optional-empty/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "native/tuple-prefix-control/dist/main.d.ts",
+        "bytes": 115,
+        "sha256": "268174eff92943b0122e19ab9a32b5bf7af551d103621cedd170d2335d6e8dfd"
+      },
+      {
+        "path": "native/tuple-prefix-control/dist/main.js",
+        "bytes": 174,
+        "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+      },
+      {
+        "path": "native/tuple-prefix-control/main.ts",
+        "bytes": 209,
+        "sha256": "3c4c23e8880a150e7e99329747bbca8662da84f461c33e1ee54500ae1f1ff1e0"
+      },
+      {
+        "path": "native/tuple-prefix-control/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "native/tuple-suffix-rest/dist/main.d.ts",
+        "bytes": 115,
+        "sha256": "f2fbd0b5165aecafb43572a78ea44cf6b5e9fac24be1d8487abe48f4515fe997"
+      },
+      {
+        "path": "native/tuple-suffix-rest/dist/main.js",
+        "bytes": 174,
+        "sha256": "0485c14455184d23729450c97450c577059a668d05edac0f6e80930e99d11613"
+      },
+      {
+        "path": "native/tuple-suffix-rest/main.ts",
+        "bytes": 209,
+        "sha256": "1b41434a0809ce04d3dccd7f1cb3cbb3d0fbb280859a2acf740ce1da88d3d6f9"
+      },
+      {
+        "path": "native/tuple-suffix-rest/tsconfig.json",
+        "bytes": 281,
+        "sha256": "5d6538ed8e5e7b44cf67a5b8fd5d971180283c5d13a2f47dea0d1a9513172428"
+      },
+      {
+        "path": "native.json",
+        "bytes": 13713,
+        "sha256": "8256999c594badf503459007a74e5c974dd011b6a87055a98aced6b56881766f"
+      },
+      {
+        "path": "probe.cjs",
+        "bytes": 6130,
+        "sha256": "8c3084f76be597cbeac0ebeb52689314fbed16d9d4fbc0edb9414bf47e6ce1b3"
+      },
+      {
+        "path": "report.json",
+        "bytes": 31987,
+        "sha256": "3d33ff8dfae2148a9bcb4ab5e76c63c59226d7d1e1ee9c7a03604806ab206682"
+      }
+    ]
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "recordedAt": "2026-11-13T18:55:22.521292+00:00",
+  "scope": "Test-first expected failure; no implementation or acceptance credit.",
+  "measurement": {
+    "startedAt": "2026-11-13T18:52:44.468191+00:00",
+    "command": [
+      "cargo",
+      "test",
+      "-p",
+      "blueice-bluets",
+      "--test",
+      "conditional_inference",
+      "--locked",
+      "--offline"
+    ],
+    "conclusion": "red",
+    "finishedAt": "2026-11-13T18:54:01.644297+00:00",
+    "exit": 101,
+    "logSha256": "63ce4dc0dafdf4f768ca672872da20491fc2ea3fa073513bb69e0102ff3066cc",
+    "testSourceSha256": "9712590228f43a0464cb7920b4c1d0072d6000cced8acf9a8ce5a1e2d3fd0a73",
+    "compilerSha256": "c68ce68a5b3ef1983dba97d41c0ac925631c3e5526d44b3563171c2cf8fe644a"
+  },
+  "productionSourceUnchanged": true,
+  "previousFilesVerified": 14691,
+  "productionSourceRevision": "backend-tree:02abdba6835124bb585bf13149d5b6dcaf072911",
+  "primaryObservations": 384,
+  "completeAgreements": 144,
+  "completeDifferences": 240,
+  "allObservationsExactlyMatchIndependentBaseline": true,
+  "policyFailure": "readonly tuple normal compilation fails before parser limit application",
+  "artifact": {
+    "path": "CONDITIONAL_INFERENCE_RED_EVIDENCE.tar.gz",
+    "bytes": 10347100,
+    "sha256": "fa5c6070de556f948f78d7c38db98cb020ef068670ee2cda26e543d7f9e35c00",
+    "members": 2683,
+    "manifest": {
+      "path": "CONDITIONAL_INFERENCE_RED_MEMBERS.json",
+      "sha256": "4a7d7b935e15030eeb3ddc8607d60fc402ed980844514d3b09a51efac98989f8",
+      "bytes": 583143
+    }
+  },
+  "implementationStatus": "pending"
+}

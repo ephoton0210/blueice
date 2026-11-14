@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "archive": "CONDITIONAL_INFERENCE_COMPILERS_05.tar.gz",
+  "entries": [
+    {
+      "path": "native-map-test-executable",
+      "bytes": 59111056,
+      "sha256": "b98efeef8f2d6d183d55016c0c0856d1d6d6b9864ee3deb668c847f6534bd1c8"
+    }
+  ]
+}

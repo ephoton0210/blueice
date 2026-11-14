@@ -1,0 +1,152 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "archive": "CONDITIONAL_INFERENCE_DEVELOPMENT_03.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/canceled-acceptance-r2/source-snapshots/frozen-backend.tar.gz",
+      "bytes": 33590472,
+      "sha256": "fc02183f2fb6ce4c1ac90c02b9048bead3941a12adca08bcc612a38184f33af2"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/source-snapshots/frozen-oracle-tools.tar.gz",
+      "bytes": 812396,
+      "sha256": "3fe927012d9ce8ada344cf33c088b8ad5160300113d74562b942ecfa86c0ea59"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/source-snapshots/manifest.json",
+      "bytes": 640,
+      "sha256": "51207114dbcfdee7027b3a913f9f0609e05c3e98cbd40505bbb2b86e84d61eb6"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/suite-write.log",
+      "bytes": 352,
+      "sha256": "c85718ea2af0ed907589498865362b8fd107ce56b0c137b32ad57af5518a8a17"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/upload_windows.py",
+      "bytes": 2518,
+      "sha256": "5bbc334089b146d8feccf7e798bc4db5429d61bd09c681535ad0d0fc67744217"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/verify_windows.py",
+      "bytes": 19606,
+      "sha256": "deb82f3973ae38b727960baf5abe430980bf5adf765661f746a1ef57f38bd872"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/watch_maps.py",
+      "bytes": 3845,
+      "sha256": "8c771820cef64def360f84822e4037a98150be7a882e07ed3d4f253906ba2cfd"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/windows/bootstrap-terminal.json",
+      "bytes": 920,
+      "sha256": "a363d091a55a09fa1b854cdd6ad7af446830d357fb6de964a17e7f5c9f5771b4"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/windows/bootstrap.py",
+      "bytes": 5044,
+      "sha256": "71b8ce598176cc8caaa1ebc15030079ff547ef549bbea894f4d8d7981fd30b64"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/windows/complete-state.json",
+      "bytes": 2108,
+      "sha256": "454980d1b7a91d4bd6ce9183901a319b34df8b7af2ccc0cf6a9a75ab0cff2d9a"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/windows/failure-independent-audit.json",
+      "bytes": 607,
+      "sha256": "cca011fe761b48f1dc0315cb5fdcfeed50567bce15bba0c3ed09fa52f0679aad"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/windows/failure-package-process.json",
+      "bytes": 19,
+      "sha256": "7098c3691b71ee7b18620ac2f917b1e055c04fb915a9f028cdb056a53da717e8"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/windows/failure-package-terminal.json",
+      "bytes": 743,
+      "sha256": "b404944dc01ac5ae63fe0358346f180c7270dab6d2b2a314c1464c64140412b8"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/windows/failure-package.py",
+      "bytes": 2849,
+      "sha256": "ac6e8de92d351f78b60d6b5c18e218113639c8f73df7e881aeb615e7d5312fc6"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/windows/failure-receipt.json",
+      "bytes": 676,
+      "sha256": "ecb83913a64ac5d50846c3840a9941c17ec1c190b6b92286595b8d42a7382419"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/windows/gt2_inference.stderr",
+      "bytes": 2923,
+      "sha256": "93a91193d5d1518a958bfbb2018d2a46e858d38dd31b720a11e4cb95d7735144"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/windows/gt2_inference.stdout",
+      "bytes": 623,
+      "sha256": "2d49a031c5c09ac5ba1b66397b2518d44eaef8b71f1290bc38ea47d40666eef1"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/windows/launch.json",
+      "bytes": 39,
+      "sha256": "2edb344120b4d454b9e2ebf52b5519d951bde6e3e5a4ead3ca9cdce874628d10"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/windows/package-evidence.py",
+      "bytes": 7483,
+      "sha256": "053dce7bb60a4239191f3c262c1a20140e6c221873ca07d6f3355a25d0d1093a"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/windows/progress-1.json",
+      "bytes": 1304,
+      "sha256": "54bc6e990fb2f40b0494c8349bb0e93575a56a9c60841f2aced55fcae2f5401c"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/windows/progress-2.json",
+      "bytes": 2312,
+      "sha256": "cca55c2c75d01b7fd7fb45ffec640c45ec36379443786cf43789370882072f8a"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/windows/source-delta.tar.gz",
+      "bytes": 78073,
+      "sha256": "0690b5b765d5a0119e245bbd73b50e9148ae9d679b54c3b7ae1f5f0bf0ab40f1"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/windows/upload-driver.log",
+      "bytes": 1874,
+      "sha256": "91d137b5a795169cccc3c4a9e5113d9560cb5b4dc866d1079d281b72a799be5c"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/windows/upload-plan.json",
+      "bytes": 1773,
+      "sha256": "def312f1f397a9e61f9a1648dc3e6c0b310a63ead3a018fc2a33a5af0e8c2918"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/windows/upload-state.json",
+      "bytes": 1893,
+      "sha256": "6240fd3382684b93b0a1de8cc3246c8399f71004497de1ec37b6248a9c9fd7d4"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/windows/windows-runner.cjs",
+      "bytes": 9426,
+      "sha256": "8bbf9afb2e8f1207fe93edf72c1fbece917e303d4232d7db653be37b027a9cef"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/windows/windows-source-manifest.json",
+      "bytes": 4667793,
+      "sha256": "07b17fe3c1c574172d059088ffb671a06bdfb898de2446c66982c9e067412ab6"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/windows/windows-source-manifest.json.gz",
+      "bytes": 853694,
+      "sha256": "8f9b61bdc722f54ac868a4c2de61a96a7b3e78cefbebfab78c5ef79647aae3dc"
+    },
+    {
+      "path": "development-history/canceled-acceptance-r2/windows-driver.log",
+      "bytes": 1099,
+      "sha256": "3d0d9d7dbd4918509825daa1deb4b3f9c1c9f3155706514ebd942b4326818045"
+    }
+  ]
+}

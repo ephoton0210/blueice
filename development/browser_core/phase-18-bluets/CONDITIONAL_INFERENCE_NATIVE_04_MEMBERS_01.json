@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "archive": "CONDITIONAL_INFERENCE_NATIVE_04.tar.gz",
+  "entries": [
+    {
+      "path": "accepted-native/suite-artifacts/145/reports/async-arrow-finally.json",
+      "bytes": 8589417,
+      "sha256": "319cb6f7cb09fbefebba9a3d674ce9bcb5343db982457790622d3e091e331389"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/146/observations/decorator-literal-auto-accessors.json",
+      "bytes": 408165,
+      "sha256": "698cd54f320203decd07794d6969e88ba7687230c21af7779a58863de31d859b"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/146/reports/decorator-literal-auto-accessors.json",
+      "bytes": 4740914,
+      "sha256": "ce045dd3b13df8e1c7991189f06d3d0b12746b2e46cbb5039de5bac555fd9136"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/147/observations/async-generator-finally.json",
+      "bytes": 34736312,
+      "sha256": "89f57e6bd3619b9e21c1c093b191ba20d9f44c911eded9cc3a8f42f04f5d93ba"
+    }
+  ]
+}

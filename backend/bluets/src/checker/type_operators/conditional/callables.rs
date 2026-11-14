@@ -6,6 +6,90 @@
 
 use super::*;
 
+pub(super) fn checking_source(
+    actual: &Type,
+    pattern: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    budget: &mut TypeExpansionBudget,
+) -> Option<Type> {
+    if !budget.consume() {
+        return None;
+    }
+    if let Type::Intersection(parts) = pattern {
+        let mut source = actual.clone();
+        for part in parts {
+            source = checking_source(&source, part, aliases, budget)?;
+        }
+        return Some(source);
+    }
+    if matches!(pattern, Type::Named {name, ..} if aliases.get(name).is_some_and(|definition| definition.kind == TypeDefinitionKind::Alias))
+    {
+        let target = expanded(pattern, aliases, &mut HashSet::new(), budget);
+        if target != *pattern {
+            return checking_source(actual, &target, aliases, budget);
+        }
+    }
+    if let (Type::Record(fields), Type::Record(expected)) = (actual, pattern) {
+        let mut fields = fields.clone();
+        for target in expected {
+            if let PropertyType::Found { value, .. } =
+                property_type(actual, &target.name, aliases, &mut HashSet::new(), budget)
+            {
+                let value = expanded(&value, aliases, &mut HashSet::new(), budget);
+                let source = fields.iter_mut().find(|field| field.name == target.name)?;
+                source.value = checking_source(&value, &target.value, aliases, budget)?;
+            }
+        }
+        return Some(Type::Record(fields));
+    }
+    if !matches!(
+        pattern,
+        Type::Function { .. } | Type::GenericFunction { .. } | Type::CallableRecord { .. }
+    ) {
+        return Some(actual.clone());
+    }
+    match actual {
+        Type::Intersection(parts) => {
+            let parts = parts
+                .iter()
+                .map(|part| checking_source(part, pattern, aliases, budget))
+                .collect::<Option<Vec<_>>>()?;
+            Some(Type::Intersection(parts))
+        }
+        Type::GenericFunction {
+            type_parameters,
+            parameters,
+            result,
+            ..
+        } => erase(type_parameters, parameters, result, budget),
+        Type::CallableRecord { fields, signatures } => {
+            let mut signatures = signatures.clone();
+            for signature in &mut signatures {
+                if signature.type_parameters.is_empty() {
+                    continue;
+                }
+                let Type::Function { parameters, result } = erase(
+                    &signature.type_parameters,
+                    &signature.parameters,
+                    &signature.result,
+                    budget,
+                )?
+                else {
+                    return None;
+                };
+                signature.parameters = parameters;
+                signature.result = *result;
+                signature.type_parameters.clear();
+            }
+            Some(Type::CallableRecord {
+                fields: fields.clone(),
+                signatures,
+            })
+        }
+        _ => Some(actual.clone()),
+    }
+}
+
 pub(super) fn erase(
     type_parameters: &[TypeParameter],
     parameters: &[Parameter],

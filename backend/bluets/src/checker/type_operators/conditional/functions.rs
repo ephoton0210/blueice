@@ -24,10 +24,9 @@ pub(super) fn receiver(
     if !expected.infer_parameters().is_empty() {
         // An absent receiver contributes no evidence: Native infers unknown.
         // It is not a positional parameter and must not shift argument labels.
-        super::matches(
+        bindings.parameter(
             actual.unwrap_or(&Type::StrictUnknown),
             expected,
-            bindings,
             aliases,
             budget,
         )
@@ -72,17 +71,11 @@ pub(super) fn matches(
                         })
                         .collect(),
                 );
-                if !super::matches(
-                    &tuple,
-                    &Type::Infer(parameter.clone()),
-                    bindings,
-                    aliases,
-                    budget,
-                ) {
+                if !bindings.parameter(&tuple, &Type::Infer(parameter.clone()), aliases, budget) {
                     return false;
                 }
             }
-            return super::matches(result, expected, bindings, aliases, budget);
+            return returns(result, expected, bindings, aliases, budget);
         }
     }
     if let Some(rest_index) = pattern.iter().position(|parameter| parameter.rest) {
@@ -109,17 +102,20 @@ pub(super) fn matches(
             };
             let annotation = if actual.rest {
                 match &actual.annotation {
-                    Type::Array(item) => item.as_ref(),
+                    Type::Array(item) => (**item).clone(),
                     _ => return false,
                 }
             } else {
                 consumed += 1;
-                &actual.annotation
+                if actual.optional && budget.checking.strict_null_checks {
+                    union([actual.annotation.clone(), Type::Undefined])
+                } else {
+                    actual.annotation.clone()
+                }
             };
-            if !super::matches(
-                annotation,
+            if !bindings.parameter(
+                &annotation,
                 parameter.annotation.as_ref().unwrap_or(&Type::Any),
-                bindings,
                 aliases,
                 budget,
             ) {
@@ -127,26 +123,37 @@ pub(super) fn matches(
             }
         }
         let tail = Type::Tuple(positional[consumed..].to_vec());
-        return super::matches(
+        return bindings.parameter(
             &tail,
             pattern[rest_index]
                 .annotation
                 .as_ref()
                 .unwrap_or(&Type::Any),
-            bindings,
             aliases,
             budget,
-        ) && super::matches(result, expected, bindings, aliases, budget);
+        ) && returns(result, expected, bindings, aliases, budget);
     }
-    actual.len() == pattern.len()
-        && actual.iter().zip(pattern).all(|(actual, pattern)| {
-            super::matches(
-                actual.annotation.as_ref().unwrap_or(&Type::Any),
-                pattern.annotation.as_ref().unwrap_or(&Type::Any),
-                bindings,
-                aliases,
-                budget,
-            )
-        })
-        && super::matches(result, expected, bindings, aliases, budget)
+    actual.iter().zip(pattern).all(|(actual, pattern)| {
+        let mut annotation = actual.annotation.clone().unwrap_or(Type::Any);
+        if actual.optional && budget.checking.strict_null_checks {
+            annotation = union([annotation, Type::Undefined]);
+        }
+        bindings.parameter(
+            &annotation,
+            pattern.annotation.as_ref().unwrap_or(&Type::Any),
+            aliases,
+            budget,
+        )
+    }) && returns(result, expected, bindings, aliases, budget)
+}
+
+fn returns(
+    actual: &Type,
+    pattern: &Type,
+    bindings: &mut MatchBindings,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    budget: &mut TypeExpansionBudget,
+) -> bool {
+    // A void-returning callback permits a value that its caller ignores.
+    *pattern == Type::Void || super::matches(actual, pattern, bindings, aliases, budget)
 }

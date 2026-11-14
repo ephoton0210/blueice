@@ -16,11 +16,11 @@ function program(target,mode,source) {
     const name = path.join(root,'__gt3_keys__','entry.ts');
     const host = ts.createCompilerHost(options), read = host.getSourceFile;
     host.getSourceFile = (file,version,...args) => {
-        if(file===name) return ts.createSourceFile(file,source,version,true);
         const key = target+':'+mode+':'+file;
         if(!cache.has(key)) cache.set(key,read(file,version,...args));
         return cache.get(key);
     };
+    require('./virtual_compiler_host.cjs')(ts, host, [[name, source]]);
     const p = ts.createProgram([name],options,host);
     const diagnostics = ts.getPreEmitDiagnostics(p);
     if(diagnostics.length) throw Error(ts.formatDiagnosticsWithColorAndContext(diagnostics,host));

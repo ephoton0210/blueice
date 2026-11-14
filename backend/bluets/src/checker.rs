@@ -42,7 +42,7 @@ pub(crate) use scopes::emission::{
 pub(crate) use scopes::flow::VERSION as FLOW_VERSION;
 pub(crate) const CLASS_SURFACE_VERSION: &str = "class-surface-v5";
 pub(crate) const MODULE_EXPORTS_VERSION: &str = "module-exports-v11";
-pub(crate) const STRUCTURAL_BOUNDARIES_VERSION: &str = "bluets-structural-boundaries/5";
+pub(crate) const STRUCTURAL_BOUNDARIES_VERSION: &str = "bluets-structural-boundaries/6";
 pub(crate) const OVERLOAD_CHAINS_VERSION: &str = "bluets-overload-chains/2";
 pub(crate) const RETURN_CONTEXT_VERSION: &str = "bluets-return-context/5";
 mod computed_keys;

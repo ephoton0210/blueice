@@ -133,6 +133,7 @@ impl ModuleChecker<'_> {
                 &name_span,
                 None,
             );
+            self.explain_last_type_pair(&display, &Type::Never);
             return true;
         }
         if let (Type::Record(fields), Type::IndexedRecord { indices, .. }) = (&source, &target) {

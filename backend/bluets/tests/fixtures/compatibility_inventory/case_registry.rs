@@ -22,6 +22,9 @@ pub fn primary(snapshot: &Snapshot, suite: &Suite) -> Result<Option<Vec<Case>>> 
     if stem == "mapped_inference" {
         return super::case_mapped_inference::primary(snapshot).map(Some);
     }
+    if stem == "conditional_inference" {
+        return super::case_conditional_inference::primary(snapshot).map(Some);
+    }
     if stem == "symbolic_keys" {
         return super::case_symbolic_keys::primary(snapshot).map(Some);
     }

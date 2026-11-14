@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "archive": "CONDITIONAL_INFERENCE_NATIVE_02.tar.gz",
+  "entries": [
+    {
+      "path": "accepted-native/suite-artifacts/138/observations/static-super-complete.json",
+      "bytes": 3493134,
+      "sha256": "d0b4504e91d5631818a60b6d785ee3837935c54616ab73aa74e2a184bfc6c83f"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/138/reports/static-super-complete.json",
+      "bytes": 13933304,
+      "sha256": "17252cc8c566b1a5744ff9e7bb389b81c7fb182f32fbda8a6c49001feb0f0444"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/138/reports/static-super-complete.raw.log",
+      "bytes": 7809980,
+      "sha256": "a26675eed13c45b73518a705866ee9adf4bfed446f256e3636f52df01d2c4fb7"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/139/observations/generator-switch-delegation.json",
+      "bytes": 33837973,
+      "sha256": "21a62f54f0b4094b730b3f6bc7d8fee5c6c1d890bd49af2dfa30a826d525ea3b"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/140/reports/decorator-literal-methods.json",
+      "bytes": 7618790,
+      "sha256": "004687fdde69ff753bcd020216f74cac827f47146b970d984dcc070e8d34c143"
+    }
+  ]
+}

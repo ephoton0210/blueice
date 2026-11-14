@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "scope": "Separate policy controls; zero direct Native agreement credit.",
+  "controls": [
+    {
+      "id": "contravariant-candidates-work-0",
+      "kind": "resource-limit",
+      "source": "type Infer<T> = T extends { a: (x: infer U) => void; b: (x: infer U) => void } ? U : \"miss\";\ndeclare const value: Infer<{ a: (x: string) => void; b: (x: number) => void }>;\nexport const result = value;\n",
+      "limited": {
+        "max_type_expansions": 0
+      }
+    },
+    {
+      "id": "contravariant-candidates-work-1",
+      "kind": "resource-limit",
+      "source": "type Infer<T> = T extends { a: (x: infer U) => void; b: (x: infer U) => void } ? U : \"miss\";\ndeclare const value: Infer<{ a: (x: string) => void; b: (x: number) => void }>;\nexport const result = value;\n",
+      "limited": {
+        "max_type_expansions": 1
+      }
+    },
+    {
+      "id": "mixed-candidates-work-0",
+      "kind": "resource-limit",
+      "source": "type Infer<T> = T extends (x: infer U) => infer U ? U : \"miss\";\ndeclare const value: Infer<(x: string) => \"ok\">;\nexport const result = value;\n",
+      "limited": {
+        "max_type_expansions": 0
+      }
+    },
+    {
+      "id": "mixed-candidates-work-1",
+      "kind": "resource-limit",
+      "source": "type Infer<T> = T extends (x: infer U) => infer U ? U : \"miss\";\ndeclare const value: Infer<(x: string) => \"ok\">;\nexport const result = value;\n",
+      "limited": {
+        "max_type_expansions": 1
+      }
+    },
+    {
+      "id": "variadic-suffix-work-0",
+      "kind": "resource-limit",
+      "source": "type Infer<T> = T extends [...infer R, infer L] ? [R, L] : \"miss\";\ndeclare const value: Infer<[string, number, boolean]>;\nexport const result = value;\n",
+      "limited": {
+        "max_type_expansions": 0
+      }
+    },
+    {
+      "id": "variadic-suffix-work-1",
+      "kind": "resource-limit",
+      "source": "type Infer<T> = T extends [...infer R, infer L] ? [R, L] : \"miss\";\ndeclare const value: Infer<[string, number, boolean]>;\nexport const result = value;\n",
+      "limited": {
+        "max_type_expansions": 1
+      }
+    },
+    {
+      "id": "conditional-parser-0",
+      "kind": "resource-limit",
+      "source": "type Infer<T> = T extends readonly [infer A, infer B] ? [A, B] : never;\nexport const result: Infer<readonly [string, number]> = [\"ok\", 2];\n",
+      "limited": {
+        "parser.max_type_depth": 0
+      }
+    },
+    {
+      "id": "conditional-parser-1",
+      "kind": "resource-limit",
+      "source": "type Infer<T> = T extends readonly [infer A, infer B] ? [A, B] : never;\nexport const result: Infer<readonly [string, number]> = [\"ok\", 2];\n",
+      "limited": {
+        "parser.max_type_depth": 1
+      }
+    },
+    {
+      "id": "ambient-ExternalInfer",
+      "kind": "ambient-owner",
+      "declaration": "type ExternalInfer<T> = T extends { value: infer U } ? U : never;",
+      "source": "export const result: ExternalInfer<{ value: string }> = \"ok\";\n"
+    },
+    {
+      "id": "runtime-ExternalInfer",
+      "kind": "runtime-authority",
+      "declaration": "type ExternalInfer<T> = T extends { value: infer U } ? U : never;",
+      "source": "ExternalInfer(\"wrong\");\n"
+    },
+    {
+      "id": "ambient-ExternalPair",
+      "kind": "ambient-owner",
+      "declaration": "type ExternalPair<T> = T extends [infer A, infer B] ? [A, B] : never;",
+      "source": "export const result: ExternalPair<[string, number]> = [\"ok\", 2];\n"
+    },
+    {
+      "id": "runtime-ExternalPair",
+      "kind": "runtime-authority",
+      "declaration": "type ExternalPair<T> = T extends [infer A, infer B] ? [A, B] : never;",
+      "source": "ExternalPair(\"wrong\");\n"
+    }
+  ]
+}

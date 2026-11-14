@@ -1,0 +1,658 @@
+{
+  "schema": 1,
+  "scope": "Authored expanded inputs, independent of implementation and acceptance status.",
+  "originalDiscoveryInputSha256": "345781101a80b890ca4f3f2fd7c9b3f76c1bde119d1f3631481da0865d798a81",
+  "options": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "CommonJS",
+    "lib": [
+      "ES5"
+    ],
+    "types": [],
+    "declaration": true,
+    "noEmitOnError": true,
+    "skipLibCheck": true,
+    "outDir": "dist"
+  },
+  "profiles": [
+    {
+      "id": "es5-commonjs-functions-true",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "strictFunctionTypes": true
+      }
+    },
+    {
+      "id": "es5-commonjs-functions-false",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "strictFunctionTypes": false
+      }
+    },
+    {
+      "id": "es5-esnext-functions-true",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "ESNext",
+        "strictFunctionTypes": true
+      }
+    },
+    {
+      "id": "es5-esnext-functions-false",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "ESNext",
+        "strictFunctionTypes": false
+      }
+    },
+    {
+      "id": "es2022-commonjs-functions-true",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strictFunctionTypes": true
+      }
+    },
+    {
+      "id": "es2022-commonjs-functions-false",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strictFunctionTypes": false
+      }
+    },
+    {
+      "id": "es2022-esnext-functions-true",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strictFunctionTypes": true
+      }
+    },
+    {
+      "id": "es2022-esnext-functions-false",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strictFunctionTypes": false
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "covariant-union-control",
+      "source": "type Infer<T> = T extends { a: infer U; b: infer U } ? U : \"miss\";\ndeclare const value: Infer<{ a: string; b: number }>;\nexport const result = value;\nexport const check: string | number = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "question": "Covariant candidates form a union.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: string | number = result;\nconst input0: typeof result = \"ok\";\nconst input1: typeof result = 2;\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = true;\n"
+      }
+    },
+    {
+      "id": "contravariant-disjoint",
+      "source": "type Infer<T> = T extends { a: (x: infer U) => void; b: (x: infer U) => void } ? U : \"miss\";\ndeclare const value: Infer<{ a: (x: string) => void; b: (x: number) => void }>;\nexport const result = value;\nexport const check: never = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "question": "Contravariant disjoint candidates intersect to never.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: never = result;\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = \"wrong\";\n"
+      }
+    },
+    {
+      "id": "contravariant-related-literals",
+      "source": "type Infer<T> = T extends { a: (x: infer U) => void; b: (x: infer U) => void } ? U : \"miss\";\ndeclare const value: Infer<{ a: (x: \"a\" | \"b\") => void; b: (x: \"b\" | \"c\") => void }>;\nexport const result = value;\nexport const check: \"b\" = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "question": "Contravariant overlapping candidates retain their shared literal.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: \"b\" = result;\nconst input0: typeof result = \"b\";\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = \"a\";\n"
+      }
+    },
+    {
+      "id": "contravariant-record-intersection",
+      "source": "type Infer<T> = T extends { a: (x: infer U) => void; b: (x: infer U) => void } ? U : \"miss\";\ndeclare const value: Infer<{ a: (x: { a: string }) => void; b: (x: { b: number }) => void }>;\nexport const result = value;\nexport const check: { a: string; b: number } = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "question": "Both record obligations survive contravariant inference.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: { a: string; b: number } = result;\nconst input0: typeof result = { a: \"ok\", b: 2 };\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = { a: \"ok\" };\n"
+      }
+    },
+    {
+      "id": "contravariant-reject-union",
+      "source": "type Infer<T> = T extends { a: (x: infer U) => void; b: (x: infer U) => void } ? U : \"miss\";\ndeclare const value: Infer<{ a: (x: string) => void; b: (x: number) => void }>;\nexport const result = value;\nexport const rejected: typeof result = \"wrong\";\n",
+      "files": {},
+      "nativeExpectedAccepts": false,
+      "question": "A never candidate cannot admit an ordinary string.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: never = result;\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = \"wrong\";\n"
+      }
+    },
+    {
+      "id": "mixed-covariance-precedence",
+      "source": "type Infer<T> = T extends (x: infer U) => infer U ? U : \"miss\";\ndeclare const value: Infer<(x: string) => \"ok\">;\nexport const result = value;\nexport const check: \"ok\" = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "question": "Covariant evidence takes precedence over contravariant evidence.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: \"ok\" = result;\nconst input0: typeof result = \"ok\";\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = \"wrong\";\n"
+      }
+    },
+    {
+      "id": "mixed-incompatible-rejection-branch",
+      "source": "type Infer<T> = T extends (x: infer U) => infer U ? U : \"miss\";\ndeclare const value: Infer<(x: \"narrow\") => string>;\nexport const result = value;\nexport const check: \"miss\" = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "question": "An inferred covariant result must still satisfy the contravariant position.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: \"miss\" = result;\nconst input0: typeof result = \"miss\";\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = \"wrong\";\n"
+      },
+      "nativeExpectedAcceptsByProfile": {
+        "es5-commonjs-functions-false": false,
+        "es5-esnext-functions-false": false,
+        "es2022-commonjs-functions-false": false,
+        "es2022-esnext-functions-false": false
+      }
+    },
+    {
+      "id": "double-contravariance",
+      "source": "type Infer<T> = T extends (f: (x: infer U) => void) => void ? U : \"miss\";\ndeclare const value: Infer<(f: (x: \"ok\") => void) => void>;\nexport const result = value;\nexport const check: \"ok\" = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "question": "Nested parameter positions flip variance twice.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: \"ok\" = result;\nconst input0: typeof result = \"ok\";\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = \"wrong\";\n"
+      }
+    },
+    {
+      "id": "function-zero-arguments",
+      "source": "type Infer<T> = T extends (x: infer U) => void ? U : \"miss\";\ndeclare const value: Infer<() => void>;\nexport const result = value;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "question": "A function may ignore a required caller argument; missing inference is unknown.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: unknown = result;\nconst input0: typeof result = { any: true };\n",
+        "negative": "import { result } from \"./main\";\nconst bad: string = result;\n"
+      }
+    },
+    {
+      "id": "function-zero-arguments-reject-literal",
+      "source": "type Infer<T> = T extends (x: infer U) => void ? U : \"miss\";\ndeclare const value: Infer<() => void>;\nexport const result = value;\nexport const check: \"miss\" = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": false,
+      "question": "An uninferred unknown result cannot be treated as the false-branch literal.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: unknown = result;\nconst input0: typeof result = 42;\n",
+        "negative": "import { result } from \"./main\";\nconst bad: string = result;\n"
+      }
+    },
+    {
+      "id": "function-optional-position",
+      "source": "type Infer<T> = T extends (x?: infer U) => void ? U : \"miss\";\ndeclare const value: Infer<() => void>;\nexport const result = value;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "question": "Missing optional function positions contribute no evidence.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: unknown = result;\nconst input0: typeof result = { any: true };\n",
+        "negative": "import { result } from \"./main\";\nconst bad: string = result;\n"
+      }
+    },
+    {
+      "id": "function-constrained-missing",
+      "source": "type Infer<T> = T extends (x: infer U extends string) => void ? U : \"miss\";\ndeclare const value: Infer<() => void>;\nexport const result = value;\nexport const check: string = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "question": "Missing candidates use a declared infer constraint.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: string = result;\nconst input0: typeof result = \"ok\";\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = 42;\n"
+      }
+    },
+    {
+      "id": "function-return-control",
+      "source": "type Infer<T> = T extends (...args: any[]) => infer U ? U : \"miss\";\ndeclare const value: Infer<(x: number) => \"ok\">;\nexport const result = value;\nexport const check: \"ok\" = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "question": "Ordinary covariant return inference remains unchanged.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: \"ok\" = result;\nconst input0: typeof result = \"ok\";\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = \"wrong\";\n"
+      }
+    },
+    {
+      "id": "overload-last-signature-control",
+      "source": "type Infer<T> = T extends (x: infer U) => void ? U : \"miss\";\ndeclare const value: Infer<{ (x: \"first\"): void; (x: \"last\"): void }>;\nexport const result = value;\nexport const check: \"last\" = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "question": "Conditional function inference uses the final overload.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: \"last\" = result;\nconst input0: typeof result = \"last\";\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = \"first\";\n"
+      }
+    },
+    {
+      "id": "readonly-array",
+      "source": "type Infer<T> = T extends readonly (infer U)[] ? U : \"miss\";\ndeclare const value: Infer<readonly string[]>;\nexport const result = value;\nexport const check: string = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "question": "Readonly array patterns infer their element.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: string = result;\nconst input0: typeof result = \"ok\";\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = 42;\n"
+      }
+    },
+    {
+      "id": "tuple-prefix-control",
+      "source": "type Infer<T> = T extends [infer H, ...infer R] ? [H, R] : \"miss\";\ndeclare const value: Infer<[string, number, boolean]>;\nexport const result = value;\nexport const check: [string, [number, boolean]] = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "question": "Existing head/rest matching remains unchanged.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: [string, [number, boolean]] = result;\nconst input0: typeof result = [\"ok\", [2, true]];\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = [\"ok\", [\"wrong\", true]];\n"
+      }
+    },
+    {
+      "id": "tuple-suffix-rest",
+      "source": "type Infer<T> = T extends [...infer R, infer L] ? [R, L] : \"miss\";\ndeclare const value: Infer<[string, number, boolean]>;\nexport const result = value;\nexport const check: [[string, number], boolean] = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "question": "A variadic prefix must retain its trailing fixed element.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: [[string, number], boolean] = result;\nconst input0: typeof result = [[\"ok\", 2], true];\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = [[\"ok\", \"wrong\"], true];\n"
+      }
+    },
+    {
+      "id": "tuple-optional-empty",
+      "source": "type Infer<T> = T extends [(infer H)?, ...infer R] ? [H, R] : \"miss\";\ndeclare const value: Infer<[]>;\nexport const result = value;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "question": "Optional tuple slots may be absent.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: [unknown, unknown[]] = result;\nconst input0: typeof result = [42, []];\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = [];\n"
+      }
+    },
+    {
+      "id": "conditional-any",
+      "source": "type Infer<T> = T extends string ? 1 : 2;\ndeclare const value: Infer<any>;\nexport const result = value;\nexport const check: 1 | 2 = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "question": "Any retains both possible conditional branches.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: 1 | 2 = result;\nconst input0: typeof result = 1;\nconst input1: typeof result = 2;\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = 3;\n"
+      }
+    },
+    {
+      "id": "conditional-never-control",
+      "source": "type Infer<T> = T extends string ? 1 : 2;\ndeclare const value: Infer<never>;\nexport const result = value;\nexport const check: never = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "question": "A naked never check distributes to never.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: never = result;\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = 1;\n"
+      }
+    },
+    {
+      "id": "non-distributive-union-control",
+      "source": "type Infer<T> = [T] extends [string] ? 1 : 2;\ndeclare const value: Infer<string | number>;\nexport const result = value;\nexport const check: 2 = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "question": "Tuple wrappers prevent distributivity.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: 2 = result;\nconst input0: typeof result = 2;\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = 1;\n"
+      }
+    },
+    {
+      "id": "constrained-covariant-union",
+      "source": "type Infer<T> = T extends { a: infer U extends string; b: infer U extends string } ? U : \"miss\";\ndeclare const value: Infer<{ a: \"a\"; b: \"b\" }>;\nexport const result = value;\nexport const check: \"a\" | \"b\" = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "question": "Covariant constrained candidates retain a union.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: \"a\" | \"b\" = result;\nconst input0: typeof result = \"a\";\nconst input1: typeof result = \"b\";\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = \"c\";\n"
+      }
+    },
+    {
+      "id": "cross-file-contravariance",
+      "source": "import type { Infer } from \"./types\";\ndeclare const value: Infer<{ a: (x: string) => void; b: (x: number) => void }>;\nexport const result = value;\nexport const check: never = result;\n",
+      "files": {
+        "types.ts": "export type Infer<T> = T extends { a: (x: infer U) => void; b: (x: infer U) => void } ? U : \"miss\";\n"
+      },
+      "nativeExpectedAccepts": true,
+      "question": "Imported generic aliases retain contravariant candidate directions.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: never = result;\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = \"wrong\";\n"
+      }
+    },
+    {
+      "id": "aliased-candidate-positions",
+      "source": "type Callback<X> = (value: X) => void;\ntype Infer<T> = T extends { a: Callback<infer U>; b: Callback<infer U> } ? U : \"miss\";\ndeclare const value: Infer<{ a: Callback<string>; b: Callback<number> }>;\nexport const result = value;\nexport const check: never = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "question": "Alias expansion preserves the parameter variance of infer occurrences.",
+      "origin": "unchanged-discovery-24",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: never = result;\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = \"wrong\";\n"
+      },
+      "nativeExpectedAcceptsByProfile": {
+        "es5-commonjs-functions-false": false,
+        "es5-esnext-functions-false": false,
+        "es2022-commonjs-functions-false": false,
+        "es2022-esnext-functions-false": false
+      }
+    },
+    {
+      "id": "contravariant-identical-control",
+      "source": "type Infer<T> = T extends { a: (x: infer U) => void; b: (x: infer U) => void } ? U : \"miss\";\ndeclare const value: Infer<{ a: (x: string) => void; b: (x: string) => void }>;\nexport const result = value;\nexport const check: string = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: string = result;\nconst input0: typeof result = \"ok\";\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = 42;\n"
+      }
+    },
+    {
+      "id": "contravariant-three-observations",
+      "source": "type Infer<T> = T extends { a: (x: infer U) => void; b: (x: infer U) => void; c: (x: infer U) => void } ? U : \"miss\";\ndeclare const value: Infer<{ a: (x: \"a\" | \"b\") => void; b: (x: \"b\" | \"c\") => void; c: (x: \"b\" | \"d\") => void }>;\nexport const result = value;\nexport const check: \"b\" = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: \"b\" = result;\nconst input0: typeof result = \"b\";\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = \"a\";\n"
+      }
+    },
+    {
+      "id": "method-bivariant-candidates",
+      "source": "type Infer<T> = T extends { a(x: infer U): void; b(x: infer U): void } ? U : \"miss\";\ndeclare const value: Infer<{ a(x: string): void; b(x: number): void }>;\nexport const result = value;\nexport const check: string | number = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: string | number = result;\nconst input0: typeof result = \"ok\";\nconst input1: typeof result = 2;\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = true;\n"
+      }
+    },
+    {
+      "id": "nested-double-contravariant-candidates",
+      "source": "type Infer<T> = T extends { a: (f: (x: infer U) => void) => void; b: (f: (x: infer U) => void) => void } ? U : \"miss\";\ndeclare const value: Infer<{ a: (f: (x: string) => void) => void; b: (f: (x: number) => void) => void }>;\nexport const result = value;\nexport const check: string | number = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: string | number = result;\nconst input0: typeof result = \"ok\";\nconst input1: typeof result = 2;\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = true;\n"
+      }
+    },
+    {
+      "id": "covariant-array-candidates",
+      "source": "type Infer<T> = T extends { a: (infer U)[]; b: (infer U)[] } ? U : \"miss\";\ndeclare const value: Infer<{ a: string[]; b: number[] }>;\nexport const result = value;\nexport const check: string | number = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: string | number = result;\nconst input0: typeof result = \"ok\";\nconst input1: typeof result = 2;\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = true;\n"
+      }
+    },
+    {
+      "id": "contravariant-array-candidates",
+      "source": "type Infer<T> = T extends { a: (x: (infer U)[]) => void; b: (x: (infer U)[]) => void } ? U : \"miss\";\ndeclare const value: Infer<{ a: (x: string[]) => void; b: (x: number[]) => void }>;\nexport const result = value;\nexport const check: never = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: never = result;\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = \"wrong\";\n"
+      }
+    },
+    {
+      "id": "independent-infer-positions",
+      "source": "type Infer<T> = T extends (x: infer A) => infer B ? [A, B] : \"miss\";\ndeclare const value: Infer<(x: string) => number>;\nexport const result = value;\nexport const check: [string, number] = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: [string, number] = result;\nconst input0: typeof result = [\"ok\", 2];\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = [2, \"wrong\"];\n"
+      }
+    },
+    {
+      "id": "two-missing-function-positions",
+      "source": "type Infer<T> = T extends (a: infer A, b: infer B) => void ? [A, B] : \"miss\";\ndeclare const value: Infer<() => void>;\nexport const result = value;\nexport const check: [unknown, unknown] = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: [unknown, unknown] = result;\nconst input0: typeof result = [42, {}];\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = [];\n"
+      }
+    },
+    {
+      "id": "one-missing-function-position",
+      "source": "type Infer<T> = T extends (a: infer A, b: infer B) => void ? [A, B] : \"miss\";\ndeclare const value: Infer<(a: string) => void>;\nexport const result = value;\nexport const check: [string, unknown] = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: [string, unknown] = result;\nconst input0: typeof result = [\"ok\", {}];\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = [42, {}];\n"
+      }
+    },
+    {
+      "id": "optional-source-parameter-candidate",
+      "source": "type Infer<T> = T extends (a: infer A) => void ? A : \"miss\";\ndeclare const value: Infer<(a?: string) => void>;\nexport const result = value;\nexport const check: string | undefined = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: string | undefined = result;\nconst input0: typeof result = \"ok\";\nconst input1: typeof result = undefined;\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = 42;\n"
+      }
+    },
+    {
+      "id": "complete-function-rest-tuple-control",
+      "source": "type Infer<T> = T extends (...args: infer A) => void ? A : \"miss\";\ndeclare const value: Infer<(a: string, ...tail: number[]) => void>;\nexport const result = value;\nexport const check: [a: string, ...tail: number[]] = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: [a: string, ...tail: number[]] = result;\nconst input0: typeof result = [\"ok\", 1, 2];\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = [42];\n"
+      }
+    },
+    {
+      "id": "mutable-array-to-readonly-pattern",
+      "source": "type Infer<T> = T extends readonly (infer U)[] ? U : \"miss\";\ndeclare const value: Infer<string[]>;\nexport const result = value;\nexport const check: string = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: string = result;\nconst input0: typeof result = \"ok\";\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = 42;\n"
+      }
+    },
+    {
+      "id": "readonly-array-to-mutable-pattern",
+      "source": "type Infer<T> = T extends (infer U)[] ? U : \"miss\";\ndeclare const value: Infer<readonly string[]>;\nexport const result = value;\nexport const check: \"miss\" = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: \"miss\" = result;\nconst input0: typeof result = \"miss\";\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = \"wrong\";\n"
+      }
+    },
+    {
+      "id": "readonly-tuple-pattern",
+      "source": "type Infer<T> = T extends readonly [infer A, infer B] ? [A, B] : \"miss\";\ndeclare const value: Infer<readonly [string, number]>;\nexport const result = value;\nexport const check: [string, number] = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: [string, number] = result;\nconst input0: typeof result = [\"ok\", 2];\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = [2, \"wrong\"];\n"
+      }
+    },
+    {
+      "id": "tuple-suffix-empty-control",
+      "source": "type Infer<T> = T extends [...infer R, infer L] ? [R, L] : \"miss\";\ndeclare const value: Infer<[]>;\nexport const result = value;\nexport const check: \"miss\" = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: \"miss\" = result;\nconst input0: typeof result = \"miss\";\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = \"wrong\";\n"
+      }
+    },
+    {
+      "id": "tuple-fixed-prefix-and-suffix",
+      "source": "type Infer<T> = T extends [string, ...infer R, number] ? R : \"miss\";\ndeclare const value: Infer<[string, boolean, number]>;\nexport const result = value;\nexport const check: [boolean] = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: [boolean] = result;\nconst input0: typeof result = [true];\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = [\"wrong\"];\n"
+      }
+    },
+    {
+      "id": "any-unconditional-unknown-target-control",
+      "source": "type Infer<T> = T extends unknown ? 1 : 2;\ndeclare const value: Infer<any>;\nexport const result = value;\nexport const check: 1 = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: 1 = result;\nconst input0: typeof result = 1;\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = 2;\n"
+      }
+    },
+    {
+      "id": "unknown-conditional-control",
+      "source": "type Infer<T> = T extends string ? 1 : 2;\ndeclare const value: Infer<unknown>;\nexport const result = value;\nexport const check: 2 = result;\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: 2 = result;\nconst input0: typeof result = 2;\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = 1;\n"
+      }
+    },
+    {
+      "id": "runtime-covariant-union",
+      "source": "type Infer<T> = T extends { a: infer U; b: infer U } ? U : \"miss\";\nfunction identity<T>(value: T): T { return value; }\nexport const result = identity<Infer<{ a: string; b: number }>>(\"ok\");\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: string | number = result;\nconst input0: typeof result = \"ok\";\nconst input1: typeof result = 2;\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = true;\n"
+      },
+      "runtime": "if (JSON.stringify(check) !== JSON.stringify(\"ok\")) throw new Error(\"unexpected runtime value\");"
+    },
+    {
+      "id": "runtime-contravariant-literal",
+      "source": "type Infer<T> = T extends { a: (x: infer U) => void; b: (x: infer U) => void } ? U : \"miss\";\nfunction identity<T>(value: T): T { return value; }\nexport const result = identity<Infer<{ a: (x: \"a\" | \"b\") => void; b: (x: \"b\" | \"c\") => void }>>(\"b\");\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: \"b\" = result;\nconst input0: typeof result = \"b\";\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = \"a\";\n"
+      },
+      "runtime": "if (JSON.stringify(check) !== JSON.stringify(\"b\")) throw new Error(\"unexpected runtime value\");"
+    },
+    {
+      "id": "runtime-contravariant-record",
+      "source": "type Infer<T> = T extends { a: (x: infer U) => void; b: (x: infer U) => void } ? U : \"miss\";\nfunction identity<T>(value: T): T { return value; }\nexport const result = identity<Infer<{ a: (x: { a: string }) => void; b: (x: { b: number }) => void }>>({ a: \"ok\", b: 2 });\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: { a: string; b: number } = result;\nconst input0: typeof result = { a: \"ok\", b: 2 };\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = { a: \"ok\" };\n"
+      },
+      "runtime": "if (JSON.stringify(check) !== JSON.stringify({ a: \"ok\", b: 2 })) throw new Error(\"unexpected runtime value\");"
+    },
+    {
+      "id": "runtime-mixed-candidate-precedence",
+      "source": "type Infer<T> = T extends (x: infer U) => infer U ? U : \"miss\";\nfunction identity<T>(value: T): T { return value; }\nexport const result = identity<Infer<(x: string) => \"ok\">>(\"ok\");\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: \"ok\" = result;\nconst input0: typeof result = \"ok\";\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = \"wrong\";\n"
+      },
+      "runtime": "if (JSON.stringify(check) !== JSON.stringify(\"ok\")) throw new Error(\"unexpected runtime value\");"
+    },
+    {
+      "id": "runtime-readonly-element",
+      "source": "type Infer<T> = T extends readonly (infer U)[] ? U : \"miss\";\nfunction identity<T>(value: T): T { return value; }\nexport const result = identity<Infer<readonly string[]>>(\"ok\");\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: string = result;\nconst input0: typeof result = \"ok\";\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = 42;\n"
+      },
+      "runtime": "if (JSON.stringify(check) !== JSON.stringify(\"ok\")) throw new Error(\"unexpected runtime value\");"
+    },
+    {
+      "id": "runtime-variadic-suffix",
+      "source": "type Infer<T> = T extends [...infer R, infer L] ? [R, L] : \"miss\";\nfunction identity<T>(value: T): T { return value; }\nexport const result = identity<Infer<[string, number, boolean]>>([[\"ok\", 2], true]);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-before-repair",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst output: [[string, number], boolean] = result;\nconst input0: typeof result = [[\"ok\", 2], true];\n",
+        "negative": "import { result } from \"./main\";\nconst bad: typeof result = [[\"ok\", \"wrong\"], true];\n"
+      },
+      "runtime": "if (JSON.stringify(check) !== JSON.stringify([[\"ok\", 2], true])) throw new Error(\"unexpected runtime value\");"
+    }
+  ]
+}

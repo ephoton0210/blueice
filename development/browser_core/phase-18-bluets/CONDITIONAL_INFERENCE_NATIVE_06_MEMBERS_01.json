@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "archive": "CONDITIONAL_INFERENCE_NATIVE_06.tar.gz",
+  "entries": [
+    {
+      "path": "accepted-native/suite-artifacts/150/observations/async-generator-finally.json",
+      "bytes": 34736312,
+      "sha256": "89f57e6bd3619b9e21c1c093b191ba20d9f44c911eded9cc3a8f42f04f5d93ba"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/150/reports/async-generator-finally.json",
+      "bytes": 3511999,
+      "sha256": "7d9ff7076c239169f74557a3da14ec25de175f55cfad6e65396d7caf07e92658"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/151/observations/class-expression-arrow-prefix.json",
+      "bytes": 28928,
+      "sha256": "f82e8052aeea3d5baa278823379bfc588357bc542fff0b0de17ab25f22afcdf7"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/151/observations/class-expression-boundaries.json",
+      "bytes": 113229,
+      "sha256": "412ba24620964b9cb7418e219fef7b7bd8fb9e09dd546ff76aea3a8bb9fb2313"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/151/observations/class-expression-closings.json",
+      "bytes": 233919,
+      "sha256": "d203b1d92cad54c5e507f1c05fcab5f67d28d3bd495eb34ea685e53ca394bbd7"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/151/observations/class-expression-decorated-factory.json",
+      "bytes": 672768,
+      "sha256": "25808a8e7a79bea2d0c6c71b921401436d259b2d8d02d5114f30455a5b4eb63e"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/151/observations/class-expression-evaluation-endpoints.json",
+      "bytes": 1518474,
+      "sha256": "7a3f8cac2de1fb59766ff2a108509c8367ab249c009bad019445658e45830c06"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/151/observations/class-expression-factory.json",
+      "bytes": 116141,
+      "sha256": "ec7f93efb15ed26f7577ea3666c2168bf91cd506b5ca1f6940186d0b59df7efb"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/151/observations/class-expression-generated-gaps.json",
+      "bytes": 494271,
+      "sha256": "9392cbf02502020a471dce48a75256372f1b23701cec18836ace9b2de3fd6d65"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/151/observations/class-expression-heritage-roles.json",
+      "bytes": 412300,
+      "sha256": "5df864c8eef19396794517ef826fb3bbaaac64628973ca964f99027ac58bbeac"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/151/observations/class-expression-heritage-state.json",
+      "bytes": 412300,
+      "sha256": "5df864c8eef19396794517ef826fb3bbaaac64628973ca964f99027ac58bbeac"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/151/observations/class-expression-initializers.json",
+      "bytes": 494271,
+      "sha256": "9392cbf02502020a471dce48a75256372f1b23701cec18836ace9b2de3fd6d65"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/151/observations/class-expression-literal-method.json",
+      "bytes": 128995,
+      "sha256": "136883b26322c479264cb91d320316171d5f26166c224e76afbddc2240ed9cc7"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/151/observations/class-expression-metadata-calls.json",
+      "bytes": 494271,
+      "sha256": "9392cbf02502020a471dce48a75256372f1b23701cec18836ace9b2de3fd6d65"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/151/observations/class-expression-plain-boundaries.json",
+      "bytes": 200865,
+      "sha256": "8c0a73e4ce5072e9cf28b8cea218e59b00cfc89c51aa7442d74edf0b2938b890"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/151/observations/class-expression-prefix.json",
+      "bytes": 417871,
+      "sha256": "17abe0f3bf5b173b473b2bfba0419b50879524e4dab076f4efcc446964442f40"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/151/observations/class-expressions.json",
+      "bytes": 1631702,
+      "sha256": "7236bcf57a025c28e38ab011e9d2feef33b0549beae45694ca5724eb545b8130"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/151/reports/class-expressions.json",
+      "bytes": 821016,
+      "sha256": "cad855d1af650d277b234f5a29cb0ed80699e408320701e854b4830afb1bff72"
+    }
+  ]
+}

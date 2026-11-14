@@ -1,0 +1,3687 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "archive": "CONDITIONAL_INFERENCE_NATIVE_10.tar.gz",
+  "entries": [
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-generic-bounded-accept/consumers/consumer.ts",
+      "bytes": 79,
+      "sha256": "a69e60da9ceec775f0301dda9c1868bfc661cca72ae604bbceeab16b583dcf6d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-generic-bounded-accept/consumers/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-generic-bounded-accept/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "2f05c3b55e48faf3f1d2170ddd93cad8ef0fb071223258bd48ab55fb263849d5"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-generic-bounded-accept/dist/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-generic-bounded-accept/dist/main.js",
+      "bytes": 182,
+      "sha256": "9a45926ab6bb5a781534be6ca2d4c5a0e160ea4f43c7724886d15f4424d74a8a"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-generic-bounded-accept/main.ts",
+      "bytes": 165,
+      "sha256": "6c6f8c5fc52abd0c416289d55cef6e7403ba345af69febabd559d829a55f5d4a"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-generic-bounded-accept/tsconfig.json",
+      "bytes": 262,
+      "sha256": "a963cc27175ce562811fb7355bac82945cacdabbde0898509498030dc5d4a70b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-generic-unbounded-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-generic-unbounded-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "e2576d25696f375ffca66ed8bb8ccf9f2cd7d708e87740b2e06e9b0eeb0e7dbd"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-generic-unbounded-accept/consumers/consumer.ts",
+      "bytes": 70,
+      "sha256": "2aa3fb84967254cf87efb242bb1ae694b2d29ae1dae203baa0773fa2a827f93c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-generic-unbounded-accept/consumers/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-generic-unbounded-accept/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "e9a91c603a3537bfe4177669f9ec896b999be3e1668430439585d855a5b3b87b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-generic-unbounded-accept/dist/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-generic-unbounded-accept/dist/main.js",
+      "bytes": 170,
+      "sha256": "8a12afbb805a4f1dd38798c580359af8281a464e8ddbbafabc01eebcdc576618"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-generic-unbounded-accept/main.ts",
+      "bytes": 129,
+      "sha256": "17509b712d809a59ec0e972245d9c7a459ee49b06759fe00fd76c45a6d0aff80"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-generic-unbounded-accept/tsconfig.json",
+      "bytes": 262,
+      "sha256": "a963cc27175ce562811fb7355bac82945cacdabbde0898509498030dc5d4a70b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-intersection-last-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-intersection-last-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "499b0652d136b116970379b4d679542591647dfaae76b95992d229a398a86e6a"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-intersection-last-accept/consumers/consumer.ts",
+      "bytes": 79,
+      "sha256": "a69e60da9ceec775f0301dda9c1868bfc661cca72ae604bbceeab16b583dcf6d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-intersection-last-accept/consumers/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-intersection-last-accept/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "8727b057bf5159701ab4ce7e66ee63e260c17da799688811fd06d324094f8780"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-intersection-last-accept/dist/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-intersection-last-accept/dist/main.js",
+      "bytes": 183,
+      "sha256": "88e5414b319b594eda0a645ef2c0c54f3b39279a3d9b6e1bb90197773f5c3ab8"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-intersection-last-accept/main.ts",
+      "bytes": 239,
+      "sha256": "a01d527e83e51552846382d4830611236ad0b0fda890d010264f40576d2ec69e"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-intersection-last-accept/tsconfig.json",
+      "bytes": 262,
+      "sha256": "a963cc27175ce562811fb7355bac82945cacdabbde0898509498030dc5d4a70b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-last-overload-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-last-overload-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "e2753a4b49a327e9cdd12402943b58267db739ace5249c1f5024793039744255"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-last-overload-accept/consumers/consumer.ts",
+      "bytes": 79,
+      "sha256": "a69e60da9ceec775f0301dda9c1868bfc661cca72ae604bbceeab16b583dcf6d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-last-overload-accept/consumers/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-last-overload-accept/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "a59a9986e3a8f1fa1ec100e8b6b17883427b2501e381a632602c5aaa1e5949e3"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-last-overload-accept/dist/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-last-overload-accept/dist/main.js",
+      "bytes": 183,
+      "sha256": "88e5414b319b594eda0a645ef2c0c54f3b39279a3d9b6e1bb90197773f5c3ab8"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-last-overload-accept/main.ts",
+      "bytes": 237,
+      "sha256": "e9eba0d790bfba98d9aa49c09d558b71de59fd2e1f6be85920b048aee88e599a"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-last-overload-accept/tsconfig.json",
+      "bytes": 262,
+      "sha256": "a963cc27175ce562811fb7355bac82945cacdabbde0898509498030dc5d4a70b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-never-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-never-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "96cfee91735cd9ad4c3bfee960e7847b1550b7594c02a99f4fd8d5295a1e4327"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-never-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "c43892f44d3c157052191a504b98cb55ebacd456a449fcd41496faf1ae332535"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-never-accept/consumers/main.d.ts",
+      "bytes": 107,
+      "sha256": "2b13078699bddad33d523190b268bfcf58bb1cc9a88ae486385e59fbea968397"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-never-accept/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "059e151aa3ede12b2e718db91c1049f4cc0a77aebd4632125b3de9d80e38db57"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-never-accept/dist/main.d.ts",
+      "bytes": 107,
+      "sha256": "2b13078699bddad33d523190b268bfcf58bb1cc9a88ae486385e59fbea968397"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-never-accept/dist/main.js",
+      "bytes": 148,
+      "sha256": "aa5ff9f447852f165078aefc44dd888bad6c3c29f5e2ab4ce7de927544df3c87"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-never-accept/main.ts",
+      "bytes": 116,
+      "sha256": "b0ae4d2d624fb5817931fcee74e8efddc5a030a8b378a6c22c136097cad973f2"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-never-accept/tsconfig.json",
+      "bytes": 262,
+      "sha256": "a963cc27175ce562811fb7355bac82945cacdabbde0898509498030dc5d4a70b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-never-operand-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-never-operand-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "7c21c262799687174f07251628c3cc6100bb8d489dbeff8d3ae080a566d505cc"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-never-operand-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "c43892f44d3c157052191a504b98cb55ebacd456a449fcd41496faf1ae332535"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-never-operand-accept/consumers/main.d.ts",
+      "bytes": 74,
+      "sha256": "f6d32ebae283093c8260fb676a9a1d48576988143cea0620192394a6639c0552"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-never-operand-accept/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "317c466f30551eb64d2cbf744794536a4bb01603363d6f1591ab3dcdb34aed64"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-never-operand-accept/dist/main.d.ts",
+      "bytes": 74,
+      "sha256": "f6d32ebae283093c8260fb676a9a1d48576988143cea0620192394a6639c0552"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-never-operand-accept/dist/main.js",
+      "bytes": 148,
+      "sha256": "aa5ff9f447852f165078aefc44dd888bad6c3c29f5e2ab4ce7de927544df3c87"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-never-operand-accept/main.ts",
+      "bytes": 83,
+      "sha256": "759face176d52184b2e712eb5f6349e82ab7a5f84595459007131f7a9b563a29"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-never-operand-accept/tsconfig.json",
+      "bytes": 262,
+      "sha256": "a963cc27175ce562811fb7355bac82945cacdabbde0898509498030dc5d4a70b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-null-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-null-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "519a81887835abdd72bb81d0d413789159fc67863fdbc2ac3440594aafc61ba9"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-null-accept/consumers/consumer.ts",
+      "bytes": 70,
+      "sha256": "facb13f496587f76a6b5fedfff859cf76a1376359af268ec701222f04241b323"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-null-accept/consumers/main.d.ts",
+      "bytes": 37,
+      "sha256": "0541af575ffc054411d85c168aac466f191163189c91c9a8db8f9f4a6c5a67c0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-null-accept/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "6d1b99c47d9fabde8a73af518b76e446c8defab763dc129e683079b5f4c1469c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-null-accept/dist/main.d.ts",
+      "bytes": 37,
+      "sha256": "0541af575ffc054411d85c168aac466f191163189c91c9a8db8f9f4a6c5a67c0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-null-accept/dist/main.js",
+      "bytes": 173,
+      "sha256": "064d73b57e14a992d9f0f5b32cc882aaab5b942f3bc442338b96daf8bbec67d1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-null-accept/main.ts",
+      "bytes": 142,
+      "sha256": "90f12ff3409f743bfb4ef2cf351c52264337f1b755e9d5f75b83685d65429e79"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-null-accept/tsconfig.json",
+      "bytes": 262,
+      "sha256": "a963cc27175ce562811fb7355bac82945cacdabbde0898509498030dc5d4a70b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-object-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-object-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "3025416ce9e3f7a3dfc9048fc39aa18ad693185ee654ac3c65f18fe19b2438c2"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-object-accept/consumers/consumer.ts",
+      "bytes": 79,
+      "sha256": "a69e60da9ceec775f0301dda9c1868bfc661cca72ae604bbceeab16b583dcf6d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-object-accept/consumers/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-object-accept/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "e87302bcc8eb740608a640ecd7e507c3c9edb8be8d298d35a4b525bd1631ec5e"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-object-accept/dist/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-object-accept/dist/main.js",
+      "bytes": 292,
+      "sha256": "236b51278eaa513b9b257f65b347fb2c819b40c5abd408fe26d23969d0723490"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-object-accept/main.ts",
+      "bytes": 322,
+      "sha256": "636244c0ec1923a3926d6d9c486f4a9be0fdd2d20674a9c8bcee630ef5eece68"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-object-accept/tsconfig.json",
+      "bytes": 262,
+      "sha256": "a963cc27175ce562811fb7355bac82945cacdabbde0898509498030dc5d4a70b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-rest-optional-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-rest-optional-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "8bb47bd309300fdce930d125d836fac0955a2e186f62567ee0466d47561e801c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-rest-optional-accept/consumers/consumer.ts",
+      "bytes": 79,
+      "sha256": "a69e60da9ceec775f0301dda9c1868bfc661cca72ae604bbceeab16b583dcf6d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-rest-optional-accept/consumers/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-rest-optional-accept/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "0b32b1861a6fc08000a77635c79cb0848d247137e76a4f7b4c8a94b54916c6b4"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-rest-optional-accept/dist/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-rest-optional-accept/dist/main.js",
+      "bytes": 182,
+      "sha256": "9a45926ab6bb5a781534be6ca2d4c5a0e160ea4f43c7724886d15f4424d74a8a"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-rest-optional-accept/main.ts",
+      "bytes": 181,
+      "sha256": "8e95289c90cfa5e9394d8a302325b023e78cdf1ef4e5389de6130d5c6b280f27"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-rest-optional-accept/tsconfig.json",
+      "bytes": 262,
+      "sha256": "a963cc27175ce562811fb7355bac82945cacdabbde0898509498030dc5d4a70b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-string-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-string-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "cd09a622213c133f2a8a962b29ccfb8b957f5c1ff53f9a28fe75a6965df6eaaf"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-string-accept/consumers/consumer.ts",
+      "bytes": 70,
+      "sha256": "facb13f496587f76a6b5fedfff859cf76a1376359af268ec701222f04241b323"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-string-accept/consumers/main.d.ts",
+      "bytes": 39,
+      "sha256": "17875ed063b9572e9e1c7816b46cc9cc5a4f046b8352c53da9ebcc6e098c260c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-string-accept/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "2eaf98b8300613566864f0afd3949f2908715e34727b7e55688f998eb7972efe"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-string-accept/dist/main.d.ts",
+      "bytes": 39,
+      "sha256": "17875ed063b9572e9e1c7816b46cc9cc5a4f046b8352c53da9ebcc6e098c260c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-string-accept/dist/main.js",
+      "bytes": 173,
+      "sha256": "a8a63e6c62833cdca3ce228c931eb8154a49b014124e5232b5562daea3d19931"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-string-accept/main.ts",
+      "bytes": 142,
+      "sha256": "3fe7a8fd2f5c47cea22e2140734acda24127036d0daea3351bdeb6ac10bd4e19"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-string-accept/tsconfig.json",
+      "bytes": 262,
+      "sha256": "a963cc27175ce562811fb7355bac82945cacdabbde0898509498030dc5d4a70b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-union-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-union-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "32fd19c17413845245546c18c7c8c4b9aa4ad51dbce717ba43ddf91040e83205"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-union-accept/consumers/consumer.ts",
+      "bytes": 71,
+      "sha256": "c6c8db36ed700f35cf4ce192897f88f47be433199256e7d8d5ef1256b96ea411"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-union-accept/consumers/main.d.ts",
+      "bytes": 48,
+      "sha256": "cb7c43d09d79573e3240db78c1ab931617e9648d0c907a55681ef6fb9d239953"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-union-accept/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "5566540d7e47bd0edda010d9e01b6eb7d28a07c293b95b6a881ce81e38f1a650"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-union-accept/dist/main.d.ts",
+      "bytes": 48,
+      "sha256": "cb7c43d09d79573e3240db78c1ab931617e9648d0c907a55681ef6fb9d239953"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-union-accept/dist/main.js",
+      "bytes": 171,
+      "sha256": "2f8545a4b80aecc0b68188cfcee04cbd8ef7876ad7133cc566eed8c4a0fdc7d5"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-union-accept/main.ts",
+      "bytes": 209,
+      "sha256": "b154427ccea2ad7ffd9b1d0dc63683859c411d1874102a4ec4d5c06d95dbd930"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-union-accept/tsconfig.json",
+      "bytes": 262,
+      "sha256": "a963cc27175ce562811fb7355bac82945cacdabbde0898509498030dc5d4a70b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-unknown-operand-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-unknown-operand-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "db72596ef7a35780af74c5377d4ec2f53b8bff6a5b0333e5be8884ea8eb0f32e"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-unknown-operand-accept/consumers/consumer.ts",
+      "bytes": 70,
+      "sha256": "2aa3fb84967254cf87efb242bb1ae694b2d29ae1dae203baa0773fa2a827f93c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-unknown-operand-accept/consumers/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-unknown-operand-accept/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "8e67b2354aa35a25efa514133c5715aa1ac39c71dfe08c2ddcaf6bc1b428c88f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-unknown-operand-accept/dist/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-unknown-operand-accept/dist/main.js",
+      "bytes": 170,
+      "sha256": "8a12afbb805a4f1dd38798c580359af8281a464e8ddbbafabc01eebcdc576618"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-unknown-operand-accept/main.ts",
+      "bytes": 109,
+      "sha256": "adc75dce5c4365005ff02ff222083b392c996f15719bc2d5da8fb0f3bb7f27e7"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-commonjs/receiver-unknown-operand-accept/tsconfig.json",
+      "bytes": 262,
+      "sha256": "a963cc27175ce562811fb7355bac82945cacdabbde0898509498030dc5d4a70b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-absent-generic-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-absent-generic-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "b43168233e854041fab6dfe58dc065a2fd35621a3984eb9c0122ff3980c01af3"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-absent-generic-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "c1f985a8f7ad5b7a80f8e94a6b909adfda6cd077ebfd10eecec25fc3625cba22"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-absent-generic-accept/consumers/main.d.ts",
+      "bytes": 84,
+      "sha256": "97a67e90ef5deca5ea15bbd2439d7ea6770a86544470f589aaa12f0990f99dac"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-absent-generic-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "0c94177bd2035b24a770df5fb51ae3966b32df46816ed1d4b3c6e18a6ac77935"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-absent-generic-accept/dist/main.d.ts",
+      "bytes": 84,
+      "sha256": "97a67e90ef5deca5ea15bbd2439d7ea6770a86544470f589aaa12f0990f99dac"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-absent-generic-accept/dist/main.js",
+      "bytes": 121,
+      "sha256": "a23fd741dd1063dcdb010a8d1a0b566372795ebfe90cf3335c5a09f8f4fb3b3c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-absent-generic-accept/main.ts",
+      "bytes": 201,
+      "sha256": "e62131087319dbcd9c73db02da952055f398d04de0fb07897752aad84d6f1b27"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-absent-generic-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-any-operand-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-any-operand-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "0278aff096272c827f13c26e4c495188496433c8b6d26fc6ba9e3c0c042896a2"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-any-operand-accept/consumers/consumer.ts",
+      "bytes": 69,
+      "sha256": "4d0ccb3ea15369c220c882c5301aad0f42742af3d3241b7133b58957da4b2374"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-any-operand-accept/consumers/main.d.ts",
+      "bytes": 36,
+      "sha256": "fc2c6806a130391ad570f6780ad7f1bb87e8faf28d6c7f1e48eb8410918ea460"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-any-operand-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "2b58cc2527f68048502d4770ce86c34af98cfcd580bd0dc593ed0b0b56772944"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-any-operand-accept/dist/main.d.ts",
+      "bytes": 36,
+      "sha256": "fc2c6806a130391ad570f6780ad7f1bb87e8faf28d6c7f1e48eb8410918ea460"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-any-operand-accept/dist/main.js",
+      "bytes": 71,
+      "sha256": "c1207991d38ca54023734b594e11678af0f7679daf18b40b91a57261b09c9616"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-any-operand-accept/main.ts",
+      "bytes": 105,
+      "sha256": "c581faf8816c3dff2b4bcc07e056a99ff73f376e669fe344f89994243be3e970"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-any-operand-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-any-receiver-generic-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-any-receiver-generic-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "ab07e392ce81a24c3f64efab4925019033aa07357c3efb2aa96a64439e20c09d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-any-receiver-generic-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "c1f985a8f7ad5b7a80f8e94a6b909adfda6cd077ebfd10eecec25fc3625cba22"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-any-receiver-generic-accept/consumers/main.d.ts",
+      "bytes": 95,
+      "sha256": "fea3c57997814124a7326e03f65bc1a3c84e655ec2cfa662322a52cfa0ad5a65"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-any-receiver-generic-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "6118fa3afd39a13aecf3c85b85e002171dd7ce9a736bf667dcf9fbf52c2f6d9d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-any-receiver-generic-accept/dist/main.d.ts",
+      "bytes": 95,
+      "sha256": "fea3c57997814124a7326e03f65bc1a3c84e655ec2cfa662322a52cfa0ad5a65"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-any-receiver-generic-accept/dist/main.js",
+      "bytes": 122,
+      "sha256": "936461c2721cf2ad320a57080437dbbd24c254703e053f3a3b5428370c7f3eed"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-any-receiver-generic-accept/main.ts",
+      "bytes": 223,
+      "sha256": "84253ccdd6b6dd2d7dd10452040766178ff1aa167ee4718ed6f85e1d535c8153"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-any-receiver-generic-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-callable-record-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-callable-record-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "8a9c25549075ee31dc6807682445b6bce0121e9fd088344d0a2be1a3af38d896"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-callable-record-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "905936f403df71c1d6385e0022ff061bde78d040abd183da20596842d7873580"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-callable-record-accept/consumers/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-callable-record-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "79ed449b17cc35c6c0fd3571501071b558ea2f171e12c09024b970f13ee1b8e8"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-callable-record-accept/dist/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-callable-record-accept/dist/main.js",
+      "bytes": 132,
+      "sha256": "a65f5bab6b5c6ed31cd356577d602676f5ee9d4ab3082f6a3ae83b08df70a3ac"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-callable-record-accept/main.ts",
+      "bytes": 279,
+      "sha256": "81af0ce6529ac75ca7a13b45b26b6631ed99f7e52581a0fa8f2edbe10c4305f2"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-callable-record-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-constructor-operand-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-constructor-operand-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "2ff77e08c0e9796abd5c16f68941b1a21ab37318fc1c22bbaf38ba830fe6e8df"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-constructor-operand-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "c1f985a8f7ad5b7a80f8e94a6b909adfda6cd077ebfd10eecec25fc3625cba22"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-constructor-operand-accept/consumers/main.d.ts",
+      "bytes": 133,
+      "sha256": "0567fb65ef213a530b21bae9ae7b1111ae70d39ce75276261b7b663609eecb84"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-constructor-operand-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "2a8eec85a15d4ca2be48716a3ba0d6ee98909ad75110fe600af47b538b1df081"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-constructor-operand-accept/dist/main.d.ts",
+      "bytes": 133,
+      "sha256": "0567fb65ef213a530b21bae9ae7b1111ae70d39ce75276261b7b663609eecb84"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-constructor-operand-accept/dist/main.js",
+      "bytes": 142,
+      "sha256": "ddd9b9b56dd2130d87c40f0d268d55668fa52f9e04dbdb8e3d3265925ff90f76"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-constructor-operand-accept/main.ts",
+      "bytes": 174,
+      "sha256": "c217fd5b255688d66ffcdac79c168c786a8969edddd4e68f74999bdec8d8ab3b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-constructor-operand-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-fixed-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-fixed-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "a6faafcc9bdd08335da4de667adf3ff38942706c5c50e5f3d4b11553b21db74b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-fixed-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "905936f403df71c1d6385e0022ff061bde78d040abd183da20596842d7873580"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-fixed-accept/consumers/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-fixed-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "d42999122a9fc57ed4b6fd2e591d07e271e667a1204d14e5f497ba8ce50ae22b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-fixed-accept/dist/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-fixed-accept/dist/main.js",
+      "bytes": 240,
+      "sha256": "e44d7b766007123d18951a6da55107a6bad85b88436f888d5af238f4550aab37"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-fixed-accept/main.ts",
+      "bytes": 394,
+      "sha256": "c06f91f6a3951c8167c1caba7d39e80b68f12fb40cc4b32e3c941cc29de9a7a3"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-fixed-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-generic-bounded-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-generic-bounded-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "5a61ae5af5b81a46d294e7abf43a48893ae5623c3877d8dbb08980dcd97b666f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-generic-bounded-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "c43892f44d3c157052191a504b98cb55ebacd456a449fcd41496faf1ae332535"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-generic-bounded-accept/consumers/main.d.ts",
+      "bytes": 58,
+      "sha256": "35413964ba0900d3f0a8a7bef67fdd08b15a437c228121f3056db3c4234a9377"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-generic-bounded-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "42072dce1ed216d788eae5d50ae27becc15a7372b6add98858974887c200ed88"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-generic-bounded-accept/dist/main.d.ts",
+      "bytes": 58,
+      "sha256": "35413964ba0900d3f0a8a7bef67fdd08b15a437c228121f3056db3c4234a9377"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-generic-bounded-accept/dist/main.js",
+      "bytes": 120,
+      "sha256": "95096a000b186736272a796699436ffdbbad7824298cccc444f55f4b93be90e9"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-generic-bounded-accept/main.ts",
+      "bytes": 219,
+      "sha256": "b9af4d06e371af13a155d32a6cbc15371fccb697ab4b67581ce63359762ee6d4"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-generic-bounded-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-intersection-last-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-intersection-last-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "88bdf23f62f294a2f4298a2438595c1b745653856c19c6ad0889b7eb50e1f409"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-intersection-last-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "905936f403df71c1d6385e0022ff061bde78d040abd183da20596842d7873580"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-intersection-last-accept/consumers/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-intersection-last-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "3d9c534c430583dd6938f61c2afce527000e12bc0fa1d307d712275f32fe287d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-intersection-last-accept/dist/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-intersection-last-accept/dist/main.js",
+      "bytes": 132,
+      "sha256": "a65f5bab6b5c6ed31cd356577d602676f5ee9d4ab3082f6a3ae83b08df70a3ac"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-intersection-last-accept/main.ts",
+      "bytes": 304,
+      "sha256": "aee529727287be15e410b6ab9e96fa068e8cec4835636db52b3d129fce04e469"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-intersection-last-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-last-overload-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-last-overload-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "39c205da7588fffb538a73a31ec07c5115bdfba083f79bf3df2de8a7d1156257"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-last-overload-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "905936f403df71c1d6385e0022ff061bde78d040abd183da20596842d7873580"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-last-overload-accept/consumers/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-last-overload-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "a11c9a6f1f56b97ab7ea38e5be902b2b4ca71d2c4bef941475c5102ef9495ea0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-last-overload-accept/dist/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-last-overload-accept/dist/main.js",
+      "bytes": 132,
+      "sha256": "a65f5bab6b5c6ed31cd356577d602676f5ee9d4ab3082f6a3ae83b08df70a3ac"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-last-overload-accept/main.ts",
+      "bytes": 302,
+      "sha256": "144cfa7ff3cb82479dcc278eb6175e7de994981b7907f966ff98b5dbdd610a5d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-last-overload-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-never-operand-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-never-operand-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "d566d8bd50bec1cf603846c82dec47411cda0c66e0e634c95ef92bfd4aac407b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-never-operand-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "c43892f44d3c157052191a504b98cb55ebacd456a449fcd41496faf1ae332535"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-never-operand-accept/consumers/main.d.ts",
+      "bytes": 74,
+      "sha256": "375352f4ee92ca62c1aeb7dc9a1f6974c65889ae26990a00e8de1a2051ff9c74"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-never-operand-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "9c6fc356d883d58d0f742edd713f1b34c0b2766c0161657337f33bdfd4f4eaf3"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-never-operand-accept/dist/main.d.ts",
+      "bytes": 74,
+      "sha256": "375352f4ee92ca62c1aeb7dc9a1f6974c65889ae26990a00e8de1a2051ff9c74"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-never-operand-accept/dist/main.js",
+      "bytes": 49,
+      "sha256": "17e914e835f1aaed79cede427fa6ce854db7722cb343be0b1104377b298269a7"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-never-operand-accept/main.ts",
+      "bytes": 83,
+      "sha256": "95ad1074f9c47e70a88915d9ce769a8d8df2bcaf7815b615355a95088e298324"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-never-operand-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-never-receiver-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-never-receiver-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "86c111423f1e324af064728f979ff856e5b853c9fb2d16ce22caee1b57e97e27"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-never-receiver-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "905936f403df71c1d6385e0022ff061bde78d040abd183da20596842d7873580"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-never-receiver-accept/consumers/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-never-receiver-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "ab28b8389ff393f13f9d9acfe4301ad66e9faac4dbb6fb1347942c50374e5df3"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-never-receiver-accept/dist/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-never-receiver-accept/dist/main.js",
+      "bytes": 131,
+      "sha256": "0bec4c66d02cb23a8b0012eb8d68976c2ecac90124da19a843a95fc8a59c5439"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-never-receiver-accept/main.ts",
+      "bytes": 217,
+      "sha256": "47fe5851d9bcc677cac49dc07d93897f8e3e416a6a943e75ff96a8272e475fb6"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-never-receiver-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-null-receiver-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-null-receiver-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "6154662f02daddddeaa9020a3e839544b28355066b8f105a5317292579ddb7a3"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-null-receiver-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "905936f403df71c1d6385e0022ff061bde78d040abd183da20596842d7873580"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-null-receiver-accept/consumers/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-null-receiver-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "60cf58a5140f34b0a960d3744d43915d5e07425ef1e72cecea78cc3cf1f37614"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-null-receiver-accept/dist/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-null-receiver-accept/dist/main.js",
+      "bytes": 131,
+      "sha256": "0bec4c66d02cb23a8b0012eb8d68976c2ecac90124da19a843a95fc8a59c5439"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-null-receiver-accept/main.ts",
+      "bytes": 216,
+      "sha256": "5b52c52fdfab416bd99aa9a523e5234c74ea1aa37b132de126a9e801d448c514"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-null-receiver-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-record-operand-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-record-operand-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "da7714b9365277ef042ebcf08ac30375667236be938312ad05d49d1afe515e72"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-record-operand-accept/consumers/consumer.ts",
+      "bytes": 79,
+      "sha256": "a69e60da9ceec775f0301dda9c1868bfc661cca72ae604bbceeab16b583dcf6d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-record-operand-accept/consumers/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-record-operand-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "ff65e42c7a17913846264d924d0e9637b3499ea995b57a601105cc77609c4166"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-record-operand-accept/dist/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-record-operand-accept/dist/main.js",
+      "bytes": 83,
+      "sha256": "603b2bada2d776c3b95f89da2dfe4b62f263f90df69778593b91e3e004c49f62"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-record-operand-accept/main.ts",
+      "bytes": 129,
+      "sha256": "438a5fdacfbbc4c6999c1ed0e09f98328b7f9f9d6de2d43e6eb1d4c19b38683f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-record-operand-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-rest-optional-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-rest-optional-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "ecc5d84a2556c4fe8205842deb7c4f9b311b99b9003c5d8a57c36547a9b387fd"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-rest-optional-accept/consumers/consumer.ts",
+      "bytes": 90,
+      "sha256": "d94b6b58b5db91c583bfaa30782fb9846292c5017bb4a21d4f85eb0eacbe2dcf"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-rest-optional-accept/consumers/main.d.ts",
+      "bytes": 90,
+      "sha256": "89f3c773a4e8bd5dd79b4037765c40035c8021beb1a72ed3b42cc17068079444"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-rest-optional-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "f353330df19eabc74cfdea0e28880092a2919ec996a7a7a8eaaf3736981b0b39"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-rest-optional-accept/dist/main.d.ts",
+      "bytes": 90,
+      "sha256": "89f3c773a4e8bd5dd79b4037765c40035c8021beb1a72ed3b42cc17068079444"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-rest-optional-accept/dist/main.js",
+      "bytes": 128,
+      "sha256": "f692a7c9d4521cd5d5ec3d17997fea1e79c71726bfd2e74d8fa4fd960163465c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-rest-optional-accept/main.ts",
+      "bytes": 255,
+      "sha256": "6a96c5ef243c9e349f1098ac28208e556e7a4c8e8a55a7fc3ff6a9f09e273c36"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-rest-optional-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-union-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-union-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "082abf319d9a9d1f24bb19ac31a66d24cea8119a2e405d2f77dbd760d6ba7e9b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-union-accept/consumers/consumer.ts",
+      "bytes": 91,
+      "sha256": "71dfc1940a5bbedb95d324745fd9b5da32e2d0fc42a520e7eb809805ee50df53"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-union-accept/consumers/main.d.ts",
+      "bytes": 90,
+      "sha256": "0170b56e87ca3e42ccbfe65b9757266724203437cf7561485338f4a676b30634"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-union-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "836ff9c88fc9f8b90dba0103e48365ac6b774b01ee7dec4644fb2eef1c9b35e7"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-union-accept/dist/main.d.ts",
+      "bytes": 90,
+      "sha256": "0170b56e87ca3e42ccbfe65b9757266724203437cf7561485338f4a676b30634"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-union-accept/dist/main.js",
+      "bytes": 121,
+      "sha256": "a23fd741dd1063dcdb010a8d1a0b566372795ebfe90cf3335c5a09f8f4fb3b3c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-union-accept/main.ts",
+      "bytes": 293,
+      "sha256": "ea76232b725132aa2957754513c9a6f05c0ca5802fe1aa912c4fb0e5f92af31d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-union-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-unknown-operand-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-unknown-operand-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "234736e2cd90fd2aa368700c3890b4f2bd46ca030ac9494a8d0a57f09bdc4066"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-unknown-operand-accept/consumers/consumer.ts",
+      "bytes": 70,
+      "sha256": "2aa3fb84967254cf87efb242bb1ae694b2d29ae1dae203baa0773fa2a827f93c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-unknown-operand-accept/consumers/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-unknown-operand-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "38f12800fb6ec0aff73e62a2a10d750002618ea13ecd0b08034c1a8ca86117a8"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-unknown-operand-accept/dist/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-unknown-operand-accept/dist/main.js",
+      "bytes": 71,
+      "sha256": "c1207991d38ca54023734b594e11678af0f7679daf18b40b91a57261b09c9616"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-unknown-operand-accept/main.ts",
+      "bytes": 109,
+      "sha256": "7bbad979f63b804a8737f89019e45830581c9caf770fffb61f0868855002bc7e"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-unknown-operand-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-unknown-receiver-generic-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-unknown-receiver-generic-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "b1d2ae92533b18f4238c1f472f35cc0ecfd6e21160cfe24b657a7e075005594e"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-unknown-receiver-generic-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "c1f985a8f7ad5b7a80f8e94a6b909adfda6cd077ebfd10eecec25fc3625cba22"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-unknown-receiver-generic-accept/consumers/main.d.ts",
+      "bytes": 99,
+      "sha256": "f07bdd049c13cfb29d168adf896eedd3db3ecc8a6e567a60209d2073101a6202"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-unknown-receiver-generic-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "956cb429fdb077b7b01749262bde271dfc593a0700c223b451575c9b7ffbebdd"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-unknown-receiver-generic-accept/dist/main.d.ts",
+      "bytes": 99,
+      "sha256": "f07bdd049c13cfb29d168adf896eedd3db3ecc8a6e567a60209d2073101a6202"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-unknown-receiver-generic-accept/dist/main.js",
+      "bytes": 122,
+      "sha256": "936461c2721cf2ad320a57080437dbbd24c254703e053f3a3b5428370c7f3eed"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-unknown-receiver-generic-accept/main.ts",
+      "bytes": 231,
+      "sha256": "eb6ac8df156af930ca2ee6c3eb34f787d47f7a54f126cb498bf20d3d17647101"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/omit-unknown-receiver-generic-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/owner-omission-alias-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/owner-omission-alias-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "8c42573c031042077a9084460dc39abd54ec0d27d19f004d50994559978a13bc"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/owner-omission-alias-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "905936f403df71c1d6385e0022ff061bde78d040abd183da20596842d7873580"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/owner-omission-alias-accept/consumers/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/owner-omission-alias-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "1c62e7f076400589c97e68ad3a64f7d5b8a91c56d39cb63ccb537e88b294cc1b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/owner-omission-alias-accept/dist/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/owner-omission-alias-accept/dist/main.js",
+      "bytes": 133,
+      "sha256": "0c843706bdbde531565abc2107a3de25cc4c1473882a3f31a566d1303e6707fe"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/owner-omission-alias-accept/main.ts",
+      "bytes": 433,
+      "sha256": "074153fd77e5fb7d84ca8ca9635afedd714f19de088332898e3ddaa3dc1f0e12"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/owner-omission-alias-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/owner-receiver-alias-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/owner-receiver-alias-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "0f77a847977c6607f4f48b18ae2040b2a74605f75e05ccc3aafffbbd3a60ad99"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/owner-receiver-alias-accept/consumers/consumer.ts",
+      "bytes": 79,
+      "sha256": "a69e60da9ceec775f0301dda9c1868bfc661cca72ae604bbceeab16b583dcf6d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/owner-receiver-alias-accept/consumers/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/owner-receiver-alias-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "85ed87b19a49a07e9875c1d900471778fb67a8f91ca768d4b1c5eb3bd0f3c051"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/owner-receiver-alias-accept/dist/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/owner-receiver-alias-accept/dist/main.js",
+      "bytes": 84,
+      "sha256": "8f046eb868ca8d5416983c6d921ee1073a66dbbfc31ba8e0b32e3333d344f61c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/owner-receiver-alias-accept/main.ts",
+      "bytes": 236,
+      "sha256": "8e45c66787b24b070be8b9d1596f8fb3c9cfade64a9fad4dfc0f0544f42cba71"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/owner-receiver-alias-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-absent-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-absent-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "9f2401a4d532a5ddf692734fda7506e46bc1a1566521bd51c7da9396a599ab9b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-absent-accept/consumers/consumer.ts",
+      "bytes": 70,
+      "sha256": "2aa3fb84967254cf87efb242bb1ae694b2d29ae1dae203baa0773fa2a827f93c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-absent-accept/consumers/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-absent-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "e67ce9efd9d2b286873f2827d9c28c56899de551d731bb2c1929ac748d5ef783"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-absent-accept/dist/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-absent-accept/dist/main.js",
+      "bytes": 71,
+      "sha256": "c1207991d38ca54023734b594e11678af0f7679daf18b40b91a57261b09c9616"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-absent-accept/main.ts",
+      "bytes": 127,
+      "sha256": "d7feb1cad40ed5b95ff3dc2e3232d2dbf124dca6c40df02438a4ee81c1d81784"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-absent-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-any-operand-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-any-operand-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "b7603028839fc589f60c2797e85c6250056dd718733a739471abd9ab12719b65"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-any-operand-accept/consumers/consumer.ts",
+      "bytes": 70,
+      "sha256": "2aa3fb84967254cf87efb242bb1ae694b2d29ae1dae203baa0773fa2a827f93c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-any-operand-accept/consumers/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-any-operand-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "4338dffaee7731c868998ab13824ac656be50bce9395ad93cbdc7467678fade0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-any-operand-accept/dist/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-any-operand-accept/dist/main.js",
+      "bytes": 71,
+      "sha256": "c1207991d38ca54023734b594e11678af0f7679daf18b40b91a57261b09c9616"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-any-operand-accept/main.ts",
+      "bytes": 105,
+      "sha256": "c75d47890fccb8ce0684b6d17cee3d480e36432ce95ecdd9b5a3d05a492135ff"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-any-operand-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-callable-record-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-callable-record-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "569b941f2094b1129e442a39c969adf3d51789f0cc2c6bf633345dbebd89c673"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-callable-record-accept/consumers/consumer.ts",
+      "bytes": 79,
+      "sha256": "a69e60da9ceec775f0301dda9c1868bfc661cca72ae604bbceeab16b583dcf6d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-callable-record-accept/consumers/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-callable-record-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "d0f48753f24c616791beacdeb543de61513fb7bb69089d93bdf6f59900cda5c9"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-callable-record-accept/dist/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-callable-record-accept/dist/main.js",
+      "bytes": 84,
+      "sha256": "8f046eb868ca8d5416983c6d921ee1073a66dbbfc31ba8e0b32e3333d344f61c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-callable-record-accept/main.ts",
+      "bytes": 214,
+      "sha256": "ece26e5f34b3aa34f49bfa9d95db0fcd2586057a124905f34231ba2e090c0274"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-callable-record-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-constructor-operand-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-constructor-operand-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "3eb4829314646095eb8585671bbbe59e61c907de11c93a8b462dddcc198d4524"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-constructor-operand-accept/consumers/consumer.ts",
+      "bytes": 70,
+      "sha256": "2aa3fb84967254cf87efb242bb1ae694b2d29ae1dae203baa0773fa2a827f93c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-constructor-operand-accept/consumers/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-constructor-operand-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "8ba53a5bebb333dd3b101bbe2270acb7bca0147eae9bd3f1952ae41e1a877aa4"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-constructor-operand-accept/dist/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-constructor-operand-accept/dist/main.js",
+      "bytes": 71,
+      "sha256": "c1207991d38ca54023734b594e11678af0f7679daf18b40b91a57261b09c9616"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-constructor-operand-accept/main.ts",
+      "bytes": 142,
+      "sha256": "5c69a9bc6bf4d2ce939b570fe53b1ba0c020c0c7e0f63f7d646089cd1df6ba69"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-constructor-operand-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-generic-bounded-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-generic-bounded-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "a9a30b499041f6ab1afee39190c2024203c54b6e7c357264e9467ca8ca5e4c99"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-generic-bounded-accept/consumers/consumer.ts",
+      "bytes": 79,
+      "sha256": "a69e60da9ceec775f0301dda9c1868bfc661cca72ae604bbceeab16b583dcf6d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-generic-bounded-accept/consumers/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-generic-bounded-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "6b6172df83cf87983e4416ca4c4dc57312a15eda457ab574974cb7609d0f146b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-generic-bounded-accept/dist/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-generic-bounded-accept/dist/main.js",
+      "bytes": 83,
+      "sha256": "603b2bada2d776c3b95f89da2dfe4b62f263f90df69778593b91e3e004c49f62"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-generic-bounded-accept/main.ts",
+      "bytes": 165,
+      "sha256": "6c6f8c5fc52abd0c416289d55cef6e7403ba345af69febabd559d829a55f5d4a"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-generic-bounded-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-generic-unbounded-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-generic-unbounded-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "4f640a1f1826ea66d7ea34b9df3a2ba30514b87f2720405c853f46aef8f3e239"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-generic-unbounded-accept/consumers/consumer.ts",
+      "bytes": 70,
+      "sha256": "2aa3fb84967254cf87efb242bb1ae694b2d29ae1dae203baa0773fa2a827f93c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-generic-unbounded-accept/consumers/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-generic-unbounded-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "b9b228671aa3039f098057e16ffa886055c6ab7375bbf01bba9baacd38ad2265"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-generic-unbounded-accept/dist/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-generic-unbounded-accept/dist/main.js",
+      "bytes": 71,
+      "sha256": "c1207991d38ca54023734b594e11678af0f7679daf18b40b91a57261b09c9616"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-generic-unbounded-accept/main.ts",
+      "bytes": 129,
+      "sha256": "17509b712d809a59ec0e972245d9c7a459ee49b06759fe00fd76c45a6d0aff80"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-generic-unbounded-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-intersection-last-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-intersection-last-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "cf438a63645484c35532192d1be1de50d9c16fdb17bae28d44e5efb3850df310"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-intersection-last-accept/consumers/consumer.ts",
+      "bytes": 79,
+      "sha256": "a69e60da9ceec775f0301dda9c1868bfc661cca72ae604bbceeab16b583dcf6d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-intersection-last-accept/consumers/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-intersection-last-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "34b938fc0700b462279cee24f1c43db8b1c67d33e52f3061d31a6ab57a117bc0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-intersection-last-accept/dist/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-intersection-last-accept/dist/main.js",
+      "bytes": 84,
+      "sha256": "8f046eb868ca8d5416983c6d921ee1073a66dbbfc31ba8e0b32e3333d344f61c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-intersection-last-accept/main.ts",
+      "bytes": 239,
+      "sha256": "a01d527e83e51552846382d4830611236ad0b0fda890d010264f40576d2ec69e"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-intersection-last-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-last-overload-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-last-overload-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "c0fb2ad3971f3465a2fa2786ba48a8f88af8ebb52b8b898142cc193ea58d7168"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-last-overload-accept/consumers/consumer.ts",
+      "bytes": 79,
+      "sha256": "a69e60da9ceec775f0301dda9c1868bfc661cca72ae604bbceeab16b583dcf6d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-last-overload-accept/consumers/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-last-overload-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "9794d7dc261197b59793d6df8d1114c9bdabfa3a944965a07daced3a0e477f20"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-last-overload-accept/dist/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-last-overload-accept/dist/main.js",
+      "bytes": 84,
+      "sha256": "8f046eb868ca8d5416983c6d921ee1073a66dbbfc31ba8e0b32e3333d344f61c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-last-overload-accept/main.ts",
+      "bytes": 237,
+      "sha256": "e9eba0d790bfba98d9aa49c09d558b71de59fd2e1f6be85920b048aee88e599a"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-last-overload-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-never-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-never-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "00f382c174030cf6f0303b328635abe91d5251ced600203dcc4a99fa715ec2a6"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-never-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "c43892f44d3c157052191a504b98cb55ebacd456a449fcd41496faf1ae332535"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-never-accept/consumers/main.d.ts",
+      "bytes": 107,
+      "sha256": "2b13078699bddad33d523190b268bfcf58bb1cc9a88ae486385e59fbea968397"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-never-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "9c324b63bfb901911c30233b8e77c242ae288b4e103ba6fe80d80c1440a51a9c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-never-accept/dist/main.d.ts",
+      "bytes": 107,
+      "sha256": "2b13078699bddad33d523190b268bfcf58bb1cc9a88ae486385e59fbea968397"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-never-accept/dist/main.js",
+      "bytes": 49,
+      "sha256": "17e914e835f1aaed79cede427fa6ce854db7722cb343be0b1104377b298269a7"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-never-accept/main.ts",
+      "bytes": 116,
+      "sha256": "b0ae4d2d624fb5817931fcee74e8efddc5a030a8b378a6c22c136097cad973f2"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-never-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-never-operand-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-never-operand-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "fef2d35b2e4e24e4f485b7bdf4ed8505a8366c8a4de9af031cb379853a3e2bdb"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-never-operand-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "c43892f44d3c157052191a504b98cb55ebacd456a449fcd41496faf1ae332535"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-never-operand-accept/consumers/main.d.ts",
+      "bytes": 74,
+      "sha256": "f6d32ebae283093c8260fb676a9a1d48576988143cea0620192394a6639c0552"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-never-operand-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "e2c97b575feb5f6bfc82062cb9f8629e3eb8928285f40edf78ef4d1b8a093ded"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-never-operand-accept/dist/main.d.ts",
+      "bytes": 74,
+      "sha256": "f6d32ebae283093c8260fb676a9a1d48576988143cea0620192394a6639c0552"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-never-operand-accept/dist/main.js",
+      "bytes": 49,
+      "sha256": "17e914e835f1aaed79cede427fa6ce854db7722cb343be0b1104377b298269a7"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-never-operand-accept/main.ts",
+      "bytes": 83,
+      "sha256": "759face176d52184b2e712eb5f6349e82ab7a5f84595459007131f7a9b563a29"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-never-operand-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-null-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-null-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "b0f59fc8cf361ed9736f821c1022a4fd2a066d16418f1fb7718206d135a40bd8"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-null-accept/consumers/consumer.ts",
+      "bytes": 70,
+      "sha256": "facb13f496587f76a6b5fedfff859cf76a1376359af268ec701222f04241b323"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-null-accept/consumers/main.d.ts",
+      "bytes": 37,
+      "sha256": "0541af575ffc054411d85c168aac466f191163189c91c9a8db8f9f4a6c5a67c0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-null-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "14b741629510de38bf66d30521f2f0cf687f97034913e79c9f4ec04871d335ee"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-null-accept/dist/main.d.ts",
+      "bytes": 37,
+      "sha256": "0541af575ffc054411d85c168aac466f191163189c91c9a8db8f9f4a6c5a67c0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-null-accept/dist/main.js",
+      "bytes": 74,
+      "sha256": "b9cad1b301d4c3cc35dd1344cae8fe2aa52388c90ca4a2fabce8fadd872423e9"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-null-accept/main.ts",
+      "bytes": 142,
+      "sha256": "90f12ff3409f743bfb4ef2cf351c52264337f1b755e9d5f75b83685d65429e79"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-null-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-object-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-object-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "564569b51cd1b7f4378e3f1061dcd3f9ab5f20f8351e057bfa71a163a52e2c74"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-object-accept/consumers/consumer.ts",
+      "bytes": 79,
+      "sha256": "a69e60da9ceec775f0301dda9c1868bfc661cca72ae604bbceeab16b583dcf6d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-object-accept/consumers/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-object-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "47892fe9df974ca244806ab1d5325b1282ff7fd6c8f1dfa8bf81158c8427c56d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-object-accept/dist/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-object-accept/dist/main.js",
+      "bytes": 185,
+      "sha256": "6b20fae0dac70bb5ebd4dd7ac554acf7f2c1c1103249b2f64aa935a76c3b5002"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-object-accept/main.ts",
+      "bytes": 322,
+      "sha256": "636244c0ec1923a3926d6d9c486f4a9be0fdd2d20674a9c8bcee630ef5eece68"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-object-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-rest-optional-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-rest-optional-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "ed700feba17ab5e413c415294afc70c98c0ff946586b61eb639b38ed512e6e9d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-rest-optional-accept/consumers/consumer.ts",
+      "bytes": 79,
+      "sha256": "a69e60da9ceec775f0301dda9c1868bfc661cca72ae604bbceeab16b583dcf6d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-rest-optional-accept/consumers/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-rest-optional-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "c58338a56d97c04ac77ebbff661696487031834e07515d61be3c3d4d4e821e5c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-rest-optional-accept/dist/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-rest-optional-accept/dist/main.js",
+      "bytes": 83,
+      "sha256": "603b2bada2d776c3b95f89da2dfe4b62f263f90df69778593b91e3e004c49f62"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-rest-optional-accept/main.ts",
+      "bytes": 181,
+      "sha256": "8e95289c90cfa5e9394d8a302325b023e78cdf1ef4e5389de6130d5c6b280f27"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-rest-optional-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-string-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-string-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "041df01747eeda28734e427cd650b513294d6f9968f49c04ff9d87fc607bd04f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-string-accept/consumers/consumer.ts",
+      "bytes": 70,
+      "sha256": "facb13f496587f76a6b5fedfff859cf76a1376359af268ec701222f04241b323"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-string-accept/consumers/main.d.ts",
+      "bytes": 39,
+      "sha256": "17875ed063b9572e9e1c7816b46cc9cc5a4f046b8352c53da9ebcc6e098c260c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-string-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "fa41eeafe9f21d22d63a0dbdab8a1dc1f627d0d887ee51907edb20b4d345e0b8"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-string-accept/dist/main.d.ts",
+      "bytes": 39,
+      "sha256": "17875ed063b9572e9e1c7816b46cc9cc5a4f046b8352c53da9ebcc6e098c260c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-string-accept/dist/main.js",
+      "bytes": 74,
+      "sha256": "00e73e886d2657e470ad9553107fb7a86978495d9077c821bb7b2ce5478ed32d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-string-accept/main.ts",
+      "bytes": 142,
+      "sha256": "3fe7a8fd2f5c47cea22e2140734acda24127036d0daea3351bdeb6ac10bd4e19"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-string-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-union-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-union-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "d4b36a8c9ed6e2223ed012ca1734cb7a12566e931c989a32f22377727bed00ab"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-union-accept/consumers/consumer.ts",
+      "bytes": 71,
+      "sha256": "c6c8db36ed700f35cf4ce192897f88f47be433199256e7d8d5ef1256b96ea411"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-union-accept/consumers/main.d.ts",
+      "bytes": 48,
+      "sha256": "cb7c43d09d79573e3240db78c1ab931617e9648d0c907a55681ef6fb9d239953"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-union-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "9c4f2aa07fbae6c766b891f98f53e276348ccd3bc136de66aaefe78d5bc0c3d7"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-union-accept/dist/main.d.ts",
+      "bytes": 48,
+      "sha256": "cb7c43d09d79573e3240db78c1ab931617e9648d0c907a55681ef6fb9d239953"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-union-accept/dist/main.js",
+      "bytes": 72,
+      "sha256": "5ad15536e747bca0ea75766db1a78d7e6d186614e19515bcb1857037f60a01a8"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-union-accept/main.ts",
+      "bytes": 209,
+      "sha256": "b154427ccea2ad7ffd9b1d0dc63683859c411d1874102a4ec4d5c06d95dbd930"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-union-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-unknown-operand-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-unknown-operand-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "086da4746843fff08e4b76db7bb41e153ccb124130857fb26e4bd2f6b4637347"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-unknown-operand-accept/consumers/consumer.ts",
+      "bytes": 70,
+      "sha256": "2aa3fb84967254cf87efb242bb1ae694b2d29ae1dae203baa0773fa2a827f93c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-unknown-operand-accept/consumers/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-unknown-operand-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "918ba572ec56c73b91589942630a3b435fec6684dab4fbc6f6dfc5343b49b120"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-unknown-operand-accept/dist/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-unknown-operand-accept/dist/main.js",
+      "bytes": 71,
+      "sha256": "c1207991d38ca54023734b594e11678af0f7679daf18b40b91a57261b09c9616"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-unknown-operand-accept/main.ts",
+      "bytes": 109,
+      "sha256": "adc75dce5c4365005ff02ff222083b392c996f15719bc2d5da8fb0f3bb7f27e7"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es2022-esnext-es5lib/receiver-unknown-operand-accept/tsconfig.json",
+      "bytes": 257,
+      "sha256": "5eeb20e90f24b0ae1ea434bfecb1933e79dbafb9b697c82f2edd50b20c94b46f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-absent-generic-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-absent-generic-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "830756d4880ae68a0d40037ac8b03711bb2c6164674f076976ed65bb6fdc5f6d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-absent-generic-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "c1f985a8f7ad5b7a80f8e94a6b909adfda6cd077ebfd10eecec25fc3625cba22"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-absent-generic-accept/consumers/main.d.ts",
+      "bytes": 84,
+      "sha256": "97a67e90ef5deca5ea15bbd2439d7ea6770a86544470f589aaa12f0990f99dac"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-absent-generic-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "0303e1cefdd93b598088204614ad23bbfb78aa3de5e25dc095d329d8d930d1ff"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-absent-generic-accept/dist/main.d.ts",
+      "bytes": 84,
+      "sha256": "97a67e90ef5deca5ea15bbd2439d7ea6770a86544470f589aaa12f0990f99dac"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-absent-generic-accept/dist/main.js",
+      "bytes": 220,
+      "sha256": "bd47b3fa60350c6aba840f5003341748ee3786a63a0d15e08050dd99a2c11786"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-absent-generic-accept/main.ts",
+      "bytes": 201,
+      "sha256": "e62131087319dbcd9c73db02da952055f398d04de0fb07897752aad84d6f1b27"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-absent-generic-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-any-operand-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-any-operand-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "aa363a49f12adaed5fc653f71ee74af6a4c7f9a6c2f8446ec14c1d0a134df484"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-any-operand-accept/consumers/consumer.ts",
+      "bytes": 69,
+      "sha256": "4d0ccb3ea15369c220c882c5301aad0f42742af3d3241b7133b58957da4b2374"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-any-operand-accept/consumers/main.d.ts",
+      "bytes": 36,
+      "sha256": "fc2c6806a130391ad570f6780ad7f1bb87e8faf28d6c7f1e48eb8410918ea460"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-any-operand-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "8f18c7a3e4eb4db74ad953fd1f0b72ee8c2111a4b06f5526499c98eebb2165b5"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-any-operand-accept/dist/main.d.ts",
+      "bytes": 36,
+      "sha256": "fc2c6806a130391ad570f6780ad7f1bb87e8faf28d6c7f1e48eb8410918ea460"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-any-operand-accept/dist/main.js",
+      "bytes": 170,
+      "sha256": "8a12afbb805a4f1dd38798c580359af8281a464e8ddbbafabc01eebcdc576618"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-any-operand-accept/main.ts",
+      "bytes": 105,
+      "sha256": "c581faf8816c3dff2b4bcc07e056a99ff73f376e669fe344f89994243be3e970"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-any-operand-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-any-receiver-generic-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-any-receiver-generic-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "8ef914f2f5b62df48bfcb2312636be8861630f3a95951fb3cfb279c313041f3a"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-any-receiver-generic-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "c1f985a8f7ad5b7a80f8e94a6b909adfda6cd077ebfd10eecec25fc3625cba22"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-any-receiver-generic-accept/consumers/main.d.ts",
+      "bytes": 95,
+      "sha256": "fea3c57997814124a7326e03f65bc1a3c84e655ec2cfa662322a52cfa0ad5a65"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-any-receiver-generic-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "59280e02d7d2c3b67a5d17c64822ba5550441e938888d2b131fcb3340283f977"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-any-receiver-generic-accept/dist/main.d.ts",
+      "bytes": 95,
+      "sha256": "fea3c57997814124a7326e03f65bc1a3c84e655ec2cfa662322a52cfa0ad5a65"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-any-receiver-generic-accept/dist/main.js",
+      "bytes": 221,
+      "sha256": "7e1785c4f7616b3de25262fb2de5bb11ae9605b058a3b105759314cb5d533d90"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-any-receiver-generic-accept/main.ts",
+      "bytes": 223,
+      "sha256": "84253ccdd6b6dd2d7dd10452040766178ff1aa167ee4718ed6f85e1d535c8153"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-any-receiver-generic-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-callable-record-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-callable-record-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "7b1db69175c9d43dbd5233f30dc68c17b8bc50379080d82b241e2663cb1e60db"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-callable-record-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "905936f403df71c1d6385e0022ff061bde78d040abd183da20596842d7873580"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-callable-record-accept/consumers/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-callable-record-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "68b9848c6b36aeccc3a58bff4a28ca7ef77d398ca43cf06f671002577379dd87"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-callable-record-accept/dist/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-callable-record-accept/dist/main.js",
+      "bytes": 231,
+      "sha256": "ecacc13ecced1c998b3bb98cf6829770c356fb1c3c10db3d6abeb504a1ad14b6"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-callable-record-accept/main.ts",
+      "bytes": 279,
+      "sha256": "81af0ce6529ac75ca7a13b45b26b6631ed99f7e52581a0fa8f2edbe10c4305f2"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-callable-record-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-constructor-operand-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-constructor-operand-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "2c1dfca9ca46cd0ef40741661bcbb86e8f14ff7199b8aa2243f4f9ea36db2fe2"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-constructor-operand-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "c1f985a8f7ad5b7a80f8e94a6b909adfda6cd077ebfd10eecec25fc3625cba22"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-constructor-operand-accept/consumers/main.d.ts",
+      "bytes": 133,
+      "sha256": "0567fb65ef213a530b21bae9ae7b1111ae70d39ce75276261b7b663609eecb84"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-constructor-operand-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "4ec2e9e6cb400cc3ea49fb962614895b588705ea1fad0cb30e335debcb981e9c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-constructor-operand-accept/dist/main.d.ts",
+      "bytes": 133,
+      "sha256": "0567fb65ef213a530b21bae9ae7b1111ae70d39ce75276261b7b663609eecb84"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-constructor-operand-accept/dist/main.js",
+      "bytes": 1649,
+      "sha256": "043763bf7fd7c4c9693d1804823abd6c9d36650695dc4e8cdbee234a5247e374"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-constructor-operand-accept/main.ts",
+      "bytes": 174,
+      "sha256": "c217fd5b255688d66ffcdac79c168c786a8969edddd4e68f74999bdec8d8ab3b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-constructor-operand-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-fixed-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-fixed-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "3eb74a5de59d4d89eee233e76bd12498bc528fe1a505ad31b3d50f63d7b49951"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-fixed-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "905936f403df71c1d6385e0022ff061bde78d040abd183da20596842d7873580"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-fixed-accept/consumers/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-fixed-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "1f6a4a4fca0de7c3b308a1fddddac61c141db05f634cd33589945a6d80675d95"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-fixed-accept/dist/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-fixed-accept/dist/main.js",
+      "bytes": 347,
+      "sha256": "7a71992254213e686abf3e51336e14032d13406359f7f8585566bbd664831067"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-fixed-accept/main.ts",
+      "bytes": 394,
+      "sha256": "c06f91f6a3951c8167c1caba7d39e80b68f12fb40cc4b32e3c941cc29de9a7a3"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-fixed-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-generic-bounded-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-generic-bounded-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "db895691b3427a657e9447e1990fa5fe85102fd234afcb210746ca21abb879ed"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-generic-bounded-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "c43892f44d3c157052191a504b98cb55ebacd456a449fcd41496faf1ae332535"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-generic-bounded-accept/consumers/main.d.ts",
+      "bytes": 58,
+      "sha256": "35413964ba0900d3f0a8a7bef67fdd08b15a437c228121f3056db3c4234a9377"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-generic-bounded-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "81dca2b703309bffb7637ed9e183dad10b9a9737371166714b90826fef0cb985"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-generic-bounded-accept/dist/main.d.ts",
+      "bytes": 58,
+      "sha256": "35413964ba0900d3f0a8a7bef67fdd08b15a437c228121f3056db3c4234a9377"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-generic-bounded-accept/dist/main.js",
+      "bytes": 219,
+      "sha256": "30e9c89944b0ade0a65bb90dbf3fcd403bed9f81fee894919178b7bb2c16272d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-generic-bounded-accept/main.ts",
+      "bytes": 219,
+      "sha256": "b9af4d06e371af13a155d32a6cbc15371fccb697ab4b67581ce63359762ee6d4"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-generic-bounded-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-intersection-last-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-intersection-last-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "76faaa4387ba553bd0f13aaea42016b6ad6cd5cf1dd625e2782bc4e1539dd645"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-intersection-last-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "905936f403df71c1d6385e0022ff061bde78d040abd183da20596842d7873580"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-intersection-last-accept/consumers/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-intersection-last-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "8e3fb9b40f7ef7fe09de24311a7f6dd7c201a75fc9d809afdcf81a111f7e19bb"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-intersection-last-accept/dist/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-intersection-last-accept/dist/main.js",
+      "bytes": 231,
+      "sha256": "ecacc13ecced1c998b3bb98cf6829770c356fb1c3c10db3d6abeb504a1ad14b6"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-intersection-last-accept/main.ts",
+      "bytes": 304,
+      "sha256": "aee529727287be15e410b6ab9e96fa068e8cec4835636db52b3d129fce04e469"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-intersection-last-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-last-overload-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-last-overload-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "17622c2c5db3d395708457c44fbb3232cb9a05d167766ba26ee14c336ed97631"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-last-overload-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "905936f403df71c1d6385e0022ff061bde78d040abd183da20596842d7873580"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-last-overload-accept/consumers/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-last-overload-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "fe6e00aaa08b1ef24a948ac0cc6b5e8b6146dbe1985f0aa4400ff69692e002ae"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-last-overload-accept/dist/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-last-overload-accept/dist/main.js",
+      "bytes": 231,
+      "sha256": "ecacc13ecced1c998b3bb98cf6829770c356fb1c3c10db3d6abeb504a1ad14b6"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-last-overload-accept/main.ts",
+      "bytes": 302,
+      "sha256": "144cfa7ff3cb82479dcc278eb6175e7de994981b7907f966ff98b5dbdd610a5d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-last-overload-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-never-operand-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-never-operand-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "c93aed6e4a93666081a1471acf36ba9b54484d7d170bafa030e0b7e7581c615f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-never-operand-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "c43892f44d3c157052191a504b98cb55ebacd456a449fcd41496faf1ae332535"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-never-operand-accept/consumers/main.d.ts",
+      "bytes": 74,
+      "sha256": "375352f4ee92ca62c1aeb7dc9a1f6974c65889ae26990a00e8de1a2051ff9c74"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-never-operand-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "1e0edc4db385ea981fe5bc24271bb4a3d279cf48216bad44bb0845c6520e942d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-never-operand-accept/dist/main.d.ts",
+      "bytes": 74,
+      "sha256": "375352f4ee92ca62c1aeb7dc9a1f6974c65889ae26990a00e8de1a2051ff9c74"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-never-operand-accept/dist/main.js",
+      "bytes": 148,
+      "sha256": "aa5ff9f447852f165078aefc44dd888bad6c3c29f5e2ab4ce7de927544df3c87"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-never-operand-accept/main.ts",
+      "bytes": 83,
+      "sha256": "95ad1074f9c47e70a88915d9ce769a8d8df2bcaf7815b615355a95088e298324"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-never-operand-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-never-receiver-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-never-receiver-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "250d84d91d2f6c266ab3a1d775296881d6c6518f4b3f5a36de8f32c67a5a778b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-never-receiver-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "905936f403df71c1d6385e0022ff061bde78d040abd183da20596842d7873580"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-never-receiver-accept/consumers/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-never-receiver-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "aeafe27787032d24065e07fb18dc4dd460c35ec400f342e9a6dd9042a468d617"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-never-receiver-accept/dist/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-never-receiver-accept/dist/main.js",
+      "bytes": 230,
+      "sha256": "8894bcdf7c6e88ceda2815c0383921d02acaa38ac386a1bb577cf34f87cac252"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-never-receiver-accept/main.ts",
+      "bytes": 217,
+      "sha256": "47fe5851d9bcc677cac49dc07d93897f8e3e416a6a943e75ff96a8272e475fb6"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-never-receiver-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-null-receiver-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-null-receiver-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "183a1c679f5e89c411f72fb9075616f7c9e47a72991dae5f50ef8fff46865c2d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-null-receiver-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "905936f403df71c1d6385e0022ff061bde78d040abd183da20596842d7873580"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-null-receiver-accept/consumers/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-null-receiver-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "a1b3c92ac45fb50f2a6eb2ec25f8c9579702f72a5212a4dfd048918e3ba1695f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-null-receiver-accept/dist/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-null-receiver-accept/dist/main.js",
+      "bytes": 230,
+      "sha256": "8894bcdf7c6e88ceda2815c0383921d02acaa38ac386a1bb577cf34f87cac252"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-null-receiver-accept/main.ts",
+      "bytes": 216,
+      "sha256": "5b52c52fdfab416bd99aa9a523e5234c74ea1aa37b132de126a9e801d448c514"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-null-receiver-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-record-operand-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-record-operand-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "c4bbb9b3b5e67f9ac5eb18b0497c24c679568a2c8b65ef88d0f81615581dfca8"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-record-operand-accept/consumers/consumer.ts",
+      "bytes": 79,
+      "sha256": "a69e60da9ceec775f0301dda9c1868bfc661cca72ae604bbceeab16b583dcf6d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-record-operand-accept/consumers/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-record-operand-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "3f3b8b0da603c7a10dfe7d22da435a2fa439d69ab44df2cec08c602f4eb35c7b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-record-operand-accept/dist/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-record-operand-accept/dist/main.js",
+      "bytes": 182,
+      "sha256": "9a45926ab6bb5a781534be6ca2d4c5a0e160ea4f43c7724886d15f4424d74a8a"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-record-operand-accept/main.ts",
+      "bytes": 129,
+      "sha256": "438a5fdacfbbc4c6999c1ed0e09f98328b7f9f9d6de2d43e6eb1d4c19b38683f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-record-operand-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-rest-optional-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-rest-optional-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "8337a27bf0e83853813318674e73a4662601bc8b86aa1c822f86f6b9c818daec"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-rest-optional-accept/consumers/consumer.ts",
+      "bytes": 90,
+      "sha256": "d94b6b58b5db91c583bfaa30782fb9846292c5017bb4a21d4f85eb0eacbe2dcf"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-rest-optional-accept/consumers/main.d.ts",
+      "bytes": 90,
+      "sha256": "89f3c773a4e8bd5dd79b4037765c40035c8021beb1a72ed3b42cc17068079444"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-rest-optional-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "83715ed1cff7fe6c0919ee99be9388e34fc894eb4cddffe439667cc848649ee2"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-rest-optional-accept/dist/main.d.ts",
+      "bytes": 90,
+      "sha256": "89f3c773a4e8bd5dd79b4037765c40035c8021beb1a72ed3b42cc17068079444"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-rest-optional-accept/dist/main.js",
+      "bytes": 439,
+      "sha256": "da7599b6c735101a292120191400ed38be57e526c4a202e60d1e42c3c03ef497"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-rest-optional-accept/main.ts",
+      "bytes": 255,
+      "sha256": "6a96c5ef243c9e349f1098ac28208e556e7a4c8e8a55a7fc3ff6a9f09e273c36"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-rest-optional-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-union-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-union-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "84ab00712f63ec0d775f1ee3118e25505c0f7a45b71e9eb2f47fac5ba62f0527"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-union-accept/consumers/consumer.ts",
+      "bytes": 91,
+      "sha256": "71dfc1940a5bbedb95d324745fd9b5da32e2d0fc42a520e7eb809805ee50df53"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-union-accept/consumers/main.d.ts",
+      "bytes": 90,
+      "sha256": "0170b56e87ca3e42ccbfe65b9757266724203437cf7561485338f4a676b30634"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-union-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "77a6a74bf62886722d4674cd290f6f67e77239de81e46b14f23c803f0d3cfc27"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-union-accept/dist/main.d.ts",
+      "bytes": 90,
+      "sha256": "0170b56e87ca3e42ccbfe65b9757266724203437cf7561485338f4a676b30634"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-union-accept/dist/main.js",
+      "bytes": 220,
+      "sha256": "bd47b3fa60350c6aba840f5003341748ee3786a63a0d15e08050dd99a2c11786"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-union-accept/main.ts",
+      "bytes": 293,
+      "sha256": "ea76232b725132aa2957754513c9a6f05c0ca5802fe1aa912c4fb0e5f92af31d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-union-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-unknown-operand-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-unknown-operand-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "e5f0f15cf68facd0e499e90952064faa448c49d3113ca1ea43e9f20ea8f5e51f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-unknown-operand-accept/consumers/consumer.ts",
+      "bytes": 70,
+      "sha256": "2aa3fb84967254cf87efb242bb1ae694b2d29ae1dae203baa0773fa2a827f93c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-unknown-operand-accept/consumers/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-unknown-operand-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "415e4ce5aac67f54053f3e7435dd4734744c450649748b08e86b5a66fedcb3d0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-unknown-operand-accept/dist/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-unknown-operand-accept/dist/main.js",
+      "bytes": 170,
+      "sha256": "8a12afbb805a4f1dd38798c580359af8281a464e8ddbbafabc01eebcdc576618"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-unknown-operand-accept/main.ts",
+      "bytes": 109,
+      "sha256": "7bbad979f63b804a8737f89019e45830581c9caf770fffb61f0868855002bc7e"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-unknown-operand-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-unknown-receiver-generic-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-unknown-receiver-generic-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "79f2d397559ef36d32f22e58af2b0ba64ddab75616b72d46f603ea43054bd4ac"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-unknown-receiver-generic-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "c1f985a8f7ad5b7a80f8e94a6b909adfda6cd077ebfd10eecec25fc3625cba22"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-unknown-receiver-generic-accept/consumers/main.d.ts",
+      "bytes": 99,
+      "sha256": "f07bdd049c13cfb29d168adf896eedd3db3ecc8a6e567a60209d2073101a6202"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-unknown-receiver-generic-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "d2022f27e7c115a970248a67d2046e6e1f89a43aaa58dfa4767b11f669c8e423"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-unknown-receiver-generic-accept/dist/main.d.ts",
+      "bytes": 99,
+      "sha256": "f07bdd049c13cfb29d168adf896eedd3db3ecc8a6e567a60209d2073101a6202"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-unknown-receiver-generic-accept/dist/main.js",
+      "bytes": 221,
+      "sha256": "7e1785c4f7616b3de25262fb2de5bb11ae9605b058a3b105759314cb5d533d90"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-unknown-receiver-generic-accept/main.ts",
+      "bytes": 231,
+      "sha256": "eb6ac8df156af930ca2ee6c3eb34f787d47f7a54f126cb498bf20d3d17647101"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/omit-unknown-receiver-generic-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/owner-omission-alias-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/owner-omission-alias-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "b3648889e62934e9564dd7c10c1babfc28e02e3a5b5000d8b286be13fa11e87d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/owner-omission-alias-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "905936f403df71c1d6385e0022ff061bde78d040abd183da20596842d7873580"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/owner-omission-alias-accept/consumers/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/owner-omission-alias-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "f71c28e3bbb90c2d4ea19279a2aba0a9f3c7f7e2a02d081768da08800dc5f59b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/owner-omission-alias-accept/dist/main.d.ts",
+      "bytes": 58,
+      "sha256": "0afa96051dc05b61a25ef5551bf3562f472ed1f8e0e005ee8e1e3d618207e989"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/owner-omission-alias-accept/dist/main.js",
+      "bytes": 232,
+      "sha256": "647d68f162ce7ab9d433f3194a6f3e1dfe8f739db1f7c8aea0cd94fea1e3570d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/owner-omission-alias-accept/main.ts",
+      "bytes": 433,
+      "sha256": "074153fd77e5fb7d84ca8ca9635afedd714f19de088332898e3ddaa3dc1f0e12"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/owner-omission-alias-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/owner-receiver-alias-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/owner-receiver-alias-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "2e71b788829a067fbf57128d5070af90523c5b8d87f2a65b2f1baf0027ddb964"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/owner-receiver-alias-accept/consumers/consumer.ts",
+      "bytes": 79,
+      "sha256": "a69e60da9ceec775f0301dda9c1868bfc661cca72ae604bbceeab16b583dcf6d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/owner-receiver-alias-accept/consumers/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/owner-receiver-alias-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "96e09ae4a41b79c0be52b98bdfbb319b9d72d8081867bb75bc130d8500713908"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/owner-receiver-alias-accept/dist/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/owner-receiver-alias-accept/dist/main.js",
+      "bytes": 183,
+      "sha256": "88e5414b319b594eda0a645ef2c0c54f3b39279a3d9b6e1bb90197773f5c3ab8"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/owner-receiver-alias-accept/main.ts",
+      "bytes": 236,
+      "sha256": "8e45c66787b24b070be8b9d1596f8fb3c9cfade64a9fad4dfc0f0544f42cba71"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/owner-receiver-alias-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-absent-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-absent-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "1da3b2b0507af7a6264736841d4ecba6e51d78beda193ba1780064a6d8c17bb6"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-absent-accept/consumers/consumer.ts",
+      "bytes": 70,
+      "sha256": "2aa3fb84967254cf87efb242bb1ae694b2d29ae1dae203baa0773fa2a827f93c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-absent-accept/consumers/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-absent-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "02d363473065793dd305842ab99d7a4ccc2e536e4f67128c9b3c980f05997faf"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-absent-accept/dist/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-absent-accept/dist/main.js",
+      "bytes": 170,
+      "sha256": "8a12afbb805a4f1dd38798c580359af8281a464e8ddbbafabc01eebcdc576618"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-absent-accept/main.ts",
+      "bytes": 127,
+      "sha256": "d7feb1cad40ed5b95ff3dc2e3232d2dbf124dca6c40df02438a4ee81c1d81784"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-absent-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-any-operand-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-any-operand-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "f4764f5fa2afb063a6a9e30a522b3b0a9d2d4554b46399bb260f87e3f9ba3a1c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-any-operand-accept/consumers/consumer.ts",
+      "bytes": 70,
+      "sha256": "2aa3fb84967254cf87efb242bb1ae694b2d29ae1dae203baa0773fa2a827f93c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-any-operand-accept/consumers/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-any-operand-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "4330aa5047d14363ef25dbbc053fe553f46e9b9a177e1a9aa08c9280b00eb5d9"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-any-operand-accept/dist/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-any-operand-accept/dist/main.js",
+      "bytes": 170,
+      "sha256": "8a12afbb805a4f1dd38798c580359af8281a464e8ddbbafabc01eebcdc576618"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-any-operand-accept/main.ts",
+      "bytes": 105,
+      "sha256": "c75d47890fccb8ce0684b6d17cee3d480e36432ce95ecdd9b5a3d05a492135ff"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-any-operand-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-callable-record-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-callable-record-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "d15f6fe544b4c9ca53329fd3ac22eaf82473b5f669a896ecd12ca55bd5f537c5"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-callable-record-accept/consumers/consumer.ts",
+      "bytes": 79,
+      "sha256": "a69e60da9ceec775f0301dda9c1868bfc661cca72ae604bbceeab16b583dcf6d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-callable-record-accept/consumers/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-callable-record-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "555f6fc50af3537afbfd681d2aa300f6833c997f4b964ecca691f2b8439f69fc"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-callable-record-accept/dist/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-callable-record-accept/dist/main.js",
+      "bytes": 183,
+      "sha256": "88e5414b319b594eda0a645ef2c0c54f3b39279a3d9b6e1bb90197773f5c3ab8"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-callable-record-accept/main.ts",
+      "bytes": 214,
+      "sha256": "ece26e5f34b3aa34f49bfa9d95db0fcd2586057a124905f34231ba2e090c0274"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-callable-record-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-constructor-operand-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-constructor-operand-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "d4e8ed8ca3d69a1d4b20ed9889d5af5feb99ba638a36f3316826c6c3f362e2e8"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-constructor-operand-accept/consumers/consumer.ts",
+      "bytes": 70,
+      "sha256": "2aa3fb84967254cf87efb242bb1ae694b2d29ae1dae203baa0773fa2a827f93c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-constructor-operand-accept/consumers/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-constructor-operand-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "d5a089718ee056dd3ca5e569c259a5eae519bbbc9d0b3fdc9396f6c86ae12462"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-constructor-operand-accept/dist/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-constructor-operand-accept/dist/main.js",
+      "bytes": 170,
+      "sha256": "8a12afbb805a4f1dd38798c580359af8281a464e8ddbbafabc01eebcdc576618"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-constructor-operand-accept/main.ts",
+      "bytes": 142,
+      "sha256": "5c69a9bc6bf4d2ce939b570fe53b1ba0c020c0c7e0f63f7d646089cd1df6ba69"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-constructor-operand-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-generic-bounded-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-generic-bounded-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "5e15b3c2a189fde57f15d1449b3881f5671f05f3e0aec6c4223648818b062e17"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-generic-bounded-accept/consumers/consumer.ts",
+      "bytes": 79,
+      "sha256": "a69e60da9ceec775f0301dda9c1868bfc661cca72ae604bbceeab16b583dcf6d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-generic-bounded-accept/consumers/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-generic-bounded-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "d29f3b459c95ed2348f6fb61c228092662d286940cc0f941bb5f07d12ec954b9"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-generic-bounded-accept/dist/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-generic-bounded-accept/dist/main.js",
+      "bytes": 182,
+      "sha256": "9a45926ab6bb5a781534be6ca2d4c5a0e160ea4f43c7724886d15f4424d74a8a"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-generic-bounded-accept/main.ts",
+      "bytes": 165,
+      "sha256": "6c6f8c5fc52abd0c416289d55cef6e7403ba345af69febabd559d829a55f5d4a"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-generic-bounded-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-generic-unbounded-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-generic-unbounded-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "d114fb0845d72aadfc2c37ecb6ae961b99c34a58ba9e4b05389965af71eb9071"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-generic-unbounded-accept/consumers/consumer.ts",
+      "bytes": 70,
+      "sha256": "2aa3fb84967254cf87efb242bb1ae694b2d29ae1dae203baa0773fa2a827f93c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-generic-unbounded-accept/consumers/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-generic-unbounded-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "278680d7954d1f18fa95a0e0fdcc7ed5e39dd59d9e433a5c18be1fb70f6176c7"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-generic-unbounded-accept/dist/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-generic-unbounded-accept/dist/main.js",
+      "bytes": 170,
+      "sha256": "8a12afbb805a4f1dd38798c580359af8281a464e8ddbbafabc01eebcdc576618"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-generic-unbounded-accept/main.ts",
+      "bytes": 129,
+      "sha256": "17509b712d809a59ec0e972245d9c7a459ee49b06759fe00fd76c45a6d0aff80"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-generic-unbounded-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-intersection-last-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-intersection-last-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "eb5be093c07278979f4170c662063ce33cd9392a98d55fcf7ff1281100a6a2ea"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-intersection-last-accept/consumers/consumer.ts",
+      "bytes": 79,
+      "sha256": "a69e60da9ceec775f0301dda9c1868bfc661cca72ae604bbceeab16b583dcf6d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-intersection-last-accept/consumers/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-intersection-last-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "36161e69fb4706b2e7aa1d9abc37efda08392338ac71bba1c3bb670adfcf5fa1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-intersection-last-accept/dist/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-intersection-last-accept/dist/main.js",
+      "bytes": 183,
+      "sha256": "88e5414b319b594eda0a645ef2c0c54f3b39279a3d9b6e1bb90197773f5c3ab8"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-intersection-last-accept/main.ts",
+      "bytes": 239,
+      "sha256": "a01d527e83e51552846382d4830611236ad0b0fda890d010264f40576d2ec69e"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-intersection-last-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-last-overload-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-last-overload-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "0a3457683a1014269a935bf861445b639caa3e2664e72fc18b02c2749cd832b0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-last-overload-accept/consumers/consumer.ts",
+      "bytes": 79,
+      "sha256": "a69e60da9ceec775f0301dda9c1868bfc661cca72ae604bbceeab16b583dcf6d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-last-overload-accept/consumers/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-last-overload-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "5b8a0bc3b3524800e47be94e1ca879271d7468d5ba270fc27d7c859fceda5a58"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-last-overload-accept/dist/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-last-overload-accept/dist/main.js",
+      "bytes": 183,
+      "sha256": "88e5414b319b594eda0a645ef2c0c54f3b39279a3d9b6e1bb90197773f5c3ab8"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-last-overload-accept/main.ts",
+      "bytes": 237,
+      "sha256": "e9eba0d790bfba98d9aa49c09d558b71de59fd2e1f6be85920b048aee88e599a"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-last-overload-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-never-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-never-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "efaa4f863276aed4bfd70c2627fb200fc4decf94ab7db7fe786457410be63cb8"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-never-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "c43892f44d3c157052191a504b98cb55ebacd456a449fcd41496faf1ae332535"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-never-accept/consumers/main.d.ts",
+      "bytes": 107,
+      "sha256": "2b13078699bddad33d523190b268bfcf58bb1cc9a88ae486385e59fbea968397"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-never-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "7263fbba20d094c4a0f5325609792328d693d221f8000084c5dcc1bb7b35451c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-never-accept/dist/main.d.ts",
+      "bytes": 107,
+      "sha256": "2b13078699bddad33d523190b268bfcf58bb1cc9a88ae486385e59fbea968397"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-never-accept/dist/main.js",
+      "bytes": 148,
+      "sha256": "aa5ff9f447852f165078aefc44dd888bad6c3c29f5e2ab4ce7de927544df3c87"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-never-accept/main.ts",
+      "bytes": 116,
+      "sha256": "b0ae4d2d624fb5817931fcee74e8efddc5a030a8b378a6c22c136097cad973f2"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-never-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-never-operand-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-never-operand-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "105f53da15d9240b4a76c207a0ceed8697316fcd34851b5d81de741aa25aa62b"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-never-operand-accept/consumers/consumer.ts",
+      "bytes": 89,
+      "sha256": "c43892f44d3c157052191a504b98cb55ebacd456a449fcd41496faf1ae332535"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-never-operand-accept/consumers/main.d.ts",
+      "bytes": 74,
+      "sha256": "f6d32ebae283093c8260fb676a9a1d48576988143cea0620192394a6639c0552"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-never-operand-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "62cb8b483a7a53228ba4957a4eeb55132d469b0d6941ab21006b5be8ca040e13"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-never-operand-accept/dist/main.d.ts",
+      "bytes": 74,
+      "sha256": "f6d32ebae283093c8260fb676a9a1d48576988143cea0620192394a6639c0552"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-never-operand-accept/dist/main.js",
+      "bytes": 148,
+      "sha256": "aa5ff9f447852f165078aefc44dd888bad6c3c29f5e2ab4ce7de927544df3c87"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-never-operand-accept/main.ts",
+      "bytes": 83,
+      "sha256": "759face176d52184b2e712eb5f6349e82ab7a5f84595459007131f7a9b563a29"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-never-operand-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-null-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-null-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "fb3f224c59d1cdb1bc18b99e2f124825d810accd8b96531ffa77e42fee41b99f"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-null-accept/consumers/consumer.ts",
+      "bytes": 70,
+      "sha256": "facb13f496587f76a6b5fedfff859cf76a1376359af268ec701222f04241b323"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-null-accept/consumers/main.d.ts",
+      "bytes": 37,
+      "sha256": "0541af575ffc054411d85c168aac466f191163189c91c9a8db8f9f4a6c5a67c0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-null-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "2b0b73b09a2881aec90749a113b11ea01e5a06ce14afa6193600e10df471c1da"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-null-accept/dist/main.d.ts",
+      "bytes": 37,
+      "sha256": "0541af575ffc054411d85c168aac466f191163189c91c9a8db8f9f4a6c5a67c0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-null-accept/dist/main.js",
+      "bytes": 173,
+      "sha256": "064d73b57e14a992d9f0f5b32cc882aaab5b942f3bc442338b96daf8bbec67d1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-null-accept/main.ts",
+      "bytes": 142,
+      "sha256": "90f12ff3409f743bfb4ef2cf351c52264337f1b755e9d5f75b83685d65429e79"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-null-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-object-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-object-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "ee48a4faeaa4021aecb768c8965e4cea08fb06b0132a6dd0cd4fd559b1d45ce3"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-object-accept/consumers/consumer.ts",
+      "bytes": 79,
+      "sha256": "a69e60da9ceec775f0301dda9c1868bfc661cca72ae604bbceeab16b583dcf6d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-object-accept/consumers/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-object-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "6cf60fa5cb9853fc6fc1a8cfd323dbe6c454cba0492ce9737c8d6e5872e04348"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-object-accept/dist/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-object-accept/dist/main.js",
+      "bytes": 292,
+      "sha256": "236b51278eaa513b9b257f65b347fb2c819b40c5abd408fe26d23969d0723490"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-object-accept/main.ts",
+      "bytes": 322,
+      "sha256": "636244c0ec1923a3926d6d9c486f4a9be0fdd2d20674a9c8bcee630ef5eece68"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-object-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-rest-optional-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-rest-optional-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "ce8f3aeaa6603ab7382864c305ddcf5d765c64c3e83f8537bd9c26fb72047c5c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-rest-optional-accept/consumers/consumer.ts",
+      "bytes": 79,
+      "sha256": "a69e60da9ceec775f0301dda9c1868bfc661cca72ae604bbceeab16b583dcf6d"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-rest-optional-accept/consumers/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-rest-optional-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "24f755b4ed814b80cfcb9dd3ffee2f514cda17798250e23302fedd41676d54fd"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-rest-optional-accept/dist/main.d.ts",
+      "bytes": 53,
+      "sha256": "7ffe1ec0b703ff7ba49e4fa0228b6de98e3aedeed16264659d9327b9fc4043e0"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-rest-optional-accept/dist/main.js",
+      "bytes": 182,
+      "sha256": "9a45926ab6bb5a781534be6ca2d4c5a0e160ea4f43c7724886d15f4424d74a8a"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-rest-optional-accept/main.ts",
+      "bytes": 181,
+      "sha256": "8e95289c90cfa5e9394d8a302325b023e78cdf1ef4e5389de6130d5c6b280f27"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-rest-optional-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-string-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-string-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "e6996b80cc2b9cfcd37a78ec5b2ff48fb9fea4919dfd1f14ec51e56832596184"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-string-accept/consumers/consumer.ts",
+      "bytes": 70,
+      "sha256": "facb13f496587f76a6b5fedfff859cf76a1376359af268ec701222f04241b323"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-string-accept/consumers/main.d.ts",
+      "bytes": 39,
+      "sha256": "17875ed063b9572e9e1c7816b46cc9cc5a4f046b8352c53da9ebcc6e098c260c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-string-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "70765a1494fbfd868ce7f6bb2a812f9b36d54c751d1dcf261de3daeaa8ed2343"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-string-accept/dist/main.d.ts",
+      "bytes": 39,
+      "sha256": "17875ed063b9572e9e1c7816b46cc9cc5a4f046b8352c53da9ebcc6e098c260c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-string-accept/dist/main.js",
+      "bytes": 173,
+      "sha256": "a8a63e6c62833cdca3ce228c931eb8154a49b014124e5232b5562daea3d19931"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-string-accept/main.ts",
+      "bytes": 142,
+      "sha256": "3fe7a8fd2f5c47cea22e2140734acda24127036d0daea3351bdeb6ac10bd4e19"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-string-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-union-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-union-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "a64d981ddfb3aadaf35307fc5ee023db032d2b355df56aee0f654b84ceb1f395"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-union-accept/consumers/consumer.ts",
+      "bytes": 71,
+      "sha256": "c6c8db36ed700f35cf4ce192897f88f47be433199256e7d8d5ef1256b96ea411"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-union-accept/consumers/main.d.ts",
+      "bytes": 48,
+      "sha256": "cb7c43d09d79573e3240db78c1ab931617e9648d0c907a55681ef6fb9d239953"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-union-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "2d10493f7bebeec6c12319990e9ba25b7829eea7c212477edcfb3f8d13ed0ec9"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-union-accept/dist/main.d.ts",
+      "bytes": 48,
+      "sha256": "cb7c43d09d79573e3240db78c1ab931617e9648d0c907a55681ef6fb9d239953"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-union-accept/dist/main.js",
+      "bytes": 171,
+      "sha256": "2f8545a4b80aecc0b68188cfcee04cbd8ef7876ad7133cc566eed8c4a0fdc7d5"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-union-accept/main.ts",
+      "bytes": 209,
+      "sha256": "b154427ccea2ad7ffd9b1d0dc63683859c411d1874102a4ec4d5c06d95dbd930"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-union-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-unknown-operand-accept/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-unknown-operand-accept/build.stdout",
+      "bytes": 78,
+      "sha256": "2a2ac8c2759f5a8248021af53b19d1ac6909e34ff12fa3c12fbc0cd058336277"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-unknown-operand-accept/consumers/consumer.ts",
+      "bytes": 70,
+      "sha256": "2aa3fb84967254cf87efb242bb1ae694b2d29ae1dae203baa0773fa2a827f93c"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-unknown-operand-accept/consumers/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-unknown-operand-accept/dist/bluetsc.manifest.json",
+      "bytes": 1400,
+      "sha256": "877e3563a3dced085b0c405a7032a24534db58b4def4dddfc41daeaa7440b4dc"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-unknown-operand-accept/dist/main.d.ts",
+      "bytes": 40,
+      "sha256": "427598575f84e3fa1961f2fdc60d42fa5ae9dceec4e6919a9a1ab65c257ca3e1"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-unknown-operand-accept/dist/main.js",
+      "bytes": 170,
+      "sha256": "8a12afbb805a4f1dd38798c580359af8281a464e8ddbbafabc01eebcdc576618"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-unknown-operand-accept/main.ts",
+      "bytes": 109,
+      "sha256": "adc75dce5c4365005ff02ff222083b392c996f15719bc2d5da8fb0f3bb7f27e7"
+    },
+    {
+      "path": "native-capture/receivers/blue-44415/es5-commonjs/receiver-unknown-operand-accept/tsconfig.json",
+      "bytes": 256,
+      "sha256": "6cc36798ddb65d1d67c19bb35c33f3d66d60612cdb5f3d7fe45a5a26cf8afd2c"
+    }
+  ]
+}

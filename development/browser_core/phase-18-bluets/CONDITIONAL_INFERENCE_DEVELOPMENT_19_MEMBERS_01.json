@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "archive": "CONDITIONAL_INFERENCE_DEVELOPMENT_19.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/contract/symbol-work-probe-1/accepted-e-bluetsc",
+      "bytes": 50125232,
+      "sha256": "683cc89a0417661178c05b7bfd2a0abab19e0088616562fc30744a3fe28576f6"
+    },
+    {
+      "path": "development-history/contract/symbol-work-probe-1/candidate-f/shared-well-known-symbol-identity-accept/build.stderr",
+      "bytes": 540,
+      "sha256": "7ed58ba18c1492d6711d0541a072ff0d4c4ae7ee95f0d501328685eb6ef8dcd1"
+    },
+    {
+      "path": "development-history/contract/symbol-work-probe-1/candidate-f/shared-well-known-symbol-identity-accept/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/symbol-work-probe-1/candidate-f/shared-well-known-symbol-identity-accept/entry.ts",
+      "bytes": 191,
+      "sha256": "ffc87ccd715aad6cb893052196740450b3b083fb8aa2ca73dbf409b701acd48f"
+    },
+    {
+      "path": "development-history/contract/symbol-work-probe-1/candidate-f/shared-well-known-symbol-identity-accept/tsconfig.json",
+      "bytes": 243,
+      "sha256": "5ba688c498bb5e7b1ed47fa096aab91ca3ed9d04638acf07b70f3a82f18875a7"
+    },
+    {
+      "path": "development-history/contract/symbol-work-probe-1/candidate-f/shared-well-known-symbol-identity-reject/build.stderr",
+      "bytes": 540,
+      "sha256": "03f9114634d2fb57e39c346f86cc635af9ab63c3b05866b80f21cd3ddfd722ec"
+    },
+    {
+      "path": "development-history/contract/symbol-work-probe-1/candidate-f/shared-well-known-symbol-identity-reject/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/symbol-work-probe-1/candidate-f/shared-well-known-symbol-identity-reject/entry.ts",
+      "bytes": 192,
+      "sha256": "69ab04b7dccf7f2b2e3e0aa9cbcb88364861132a4c860379734fdcadbbc4b761"
+    },
+    {
+      "path": "development-history/contract/symbol-work-probe-1/candidate-f/shared-well-known-symbol-identity-reject/tsconfig.json",
+      "bytes": 243,
+      "sha256": "5ba688c498bb5e7b1ed47fa096aab91ca3ed9d04638acf07b70f3a82f18875a7"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "archive": "CONDITIONAL_INFERENCE_COMPILERS_03.tar.gz",
+  "entries": [
+    {
+      "path": "baseline-cli",
+      "bytes": 50125232,
+      "sha256": "683cc89a0417661178c05b7bfd2a0abab19e0088616562fc30744a3fe28576f6"
+    }
+  ]
+}

@@ -11,6 +11,7 @@ impl ModuleChecker<'_> {
         let mut value = value.clone();
         let mut visited = HashSet::new();
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+        budget.checking = self.checking;
         while let Some(next) = instantiate_named(
             &value,
             &self.types,

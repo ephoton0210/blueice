@@ -1,0 +1,92 @@
+{
+  "typescript": "5.9.3",
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "inputSha256": "26b3e4d8ce210c7133c6133bf164a9ab88c6a01b3dc1004fd15db6d89fe54ad8",
+  "controls": [
+    {
+      "id": "contravariant-candidates-work-0",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "contravariant-candidates-work-1",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "mixed-candidates-work-0",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "mixed-candidates-work-1",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "variadic-suffix-work-0",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "variadic-suffix-work-1",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "conditional-parser-0",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "conditional-parser-1",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient-ExternalInfer",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "runtime-ExternalInfer",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2693,
+          "message": "'ExternalInfer' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 1,
+            "length": 13
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "ambient-ExternalPair",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "runtime-ExternalPair",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2693,
+          "message": "'ExternalPair' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 1,
+            "length": 12
+          },
+          "relatedInformation": []
+        }
+      ]
+    }
+  ],
+  "directAgreementCredit": 0
+}

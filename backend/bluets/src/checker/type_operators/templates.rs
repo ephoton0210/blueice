@@ -190,12 +190,7 @@ fn match_spans(
             if parameter.constraint.as_ref().is_none_or(|constraint| {
                 is_assignable(&literal, constraint, aliases, &mut HashSet::new(), budget)
             }) {
-                let literal = match candidate.get(&parameter.name) {
-                    Some(previous) => union([previous.clone(), literal]),
-                    None => literal,
-                };
-                candidate.insert(parameter.name.clone(), literal);
-                true
+                candidate.record(&parameter.name, &literal, aliases, budget)
             } else {
                 false
             }

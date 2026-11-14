@@ -8,24 +8,24 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-11-13).**
+**Current BlueTS / BlueTSC compatibility status (2026-11-14).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 42,320 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 42,716 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 41,413/41,419 (99.9855%); 3 open, 3 refused observations |
-| Separate controls | 633 native-reference + 268 BlueTS owner = 901; excluded from direct agreement |
-| Case labels | 42,314 scoped closed (including controls), 3 open, 3 refused |
-| Suite inventory | 189 suites / 394 ignored Rust functions; not a case denominator |
-| Suite labels | 185 scoped closed, 1 open, 3 refused |
+| Direct agreement | 41,797/41,803 (99.9856%); 3 open, 3 refused observations |
+| Separate controls | 633 native-reference + 280 BlueTS owner = 913; excluded from direct agreement |
+| Case labels | 42,710 scoped closed (including controls), 3 open, 3 refused |
+| Suite inventory | 190 suites / 395 ignored Rust functions; not a case denominator |
+| Suite labels | 186 scoped closed, 1 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 230 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 42,320 recorded case expectations pass; expected differences/refusals are not
+All 42,716 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,8 +33,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:02abdba6835124bb585bf13149d5b6dcaf072911`.
-Input graph SHA-256: `2fc9d30cf0dfc7c2795e5f8454df0c75ee1f6eeb7aa36ecb4c9302c32ca96b15`.
+Compiler/oracle source: `backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66`.
+Input graph SHA-256: `a7cbc686748f1c4eb50b977d4e91b621635c40ead22cadd3f811a1aa363ff8e9`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -60,13 +60,12 @@ broader G-C1 inventory row remains open for unmeasured CLI/recovery coverage;
 the finite checklist does not claim full parity. See the
 [acceptance record](PLAN.md#phase-l--g-c1-implementation).
 
-**Latest completed follow-up:** P0-E repairs symbolic key relations and
-exact presentation, preserving scoped generic identities, constraint direction,
-compound-key ordering and bounded owner/resource policies.
-[Acceptance](SYMBOLIC_KEYS_ACCEPTANCE.md) binds complete Native/local/Windows,
-maps, project and tooling gates to its source. P0-A/B/C/D retain their dated
-evidence. All 22 broader rows remain open; further closure requires a frozen
-contract and measurements for the remaining scope.
+**Latest completed follow-up:** P0-F repairs conditional inference candidate
+variance, completed-pattern checks, missing positions and tuple matching.
+[Acceptance](CONDITIONAL_INFERENCE_ACCEPTANCE.md) binds complete
+Native/local/Windows, maps, projects and tooling to the frozen source and oracle
+tools. Earlier packages retain their dated evidence. All 22 broader rows remain
+open; their remaining scope needs separate frozen contracts and measurements.
 
 ## Open gaps and implementation priority — 2026-11-11
 
@@ -148,7 +147,7 @@ Code supporting these dependencies:
 
 The [current presence witnesses](STRING_INTRINSIC_MEASUREMENT.json#/presenceInventory/corrected)
 pass all22 names in both selected profiles. These44 witnesses carry no semantic
-denominator credit; broader catalogs and compositions remain open. P0-A/B/C/D have
+denominator credit; broader catalogs and compositions remain open. P0-A/B/C/D/E/F have
 complete source-bound acceptance within their frozen contracts.
 
 - [x] **P0-A — NoInfer and shared candidate boundaries.** Delivered the frozen
@@ -196,6 +195,16 @@ complete source-bound acceptance within their frozen contracts.
   and tooling pass. All 42052 prior assertion IDs/classes remain unchanged;
   268 additions bring N to 42320. [Acceptance](SYMBOLIC_KEYS_ACCEPTANCE.md) ·
   [measurement](SYMBOLIC_KEYS_MEASUREMENT.json). Broader rows remain open.
+
+- [x] **P0-F — Conditional infer candidates and complete matching.** Delivered
+  48 forms ×eight profiles =384 complete comparisons: 360 accepts /24 rejects,
+  368 exact declarations, 720 isolated consumers, 368 parses and 48 executions
+  per actual compiler. Twelve policy controls remain separate; 24 alias identity
+  controls and the original 24-program replay add zero inventory credit.
+  Complete same-source Native/local/Windows, maps, projects and tooling pass.
+  All 42320 prior assertion IDs/classes remain unchanged; 396 additions bring
+  N to 42716. [Acceptance](CONDITIONAL_INFERENCE_ACCEPTANCE.md) ·
+  [measurement](CONDITIONAL_INFERENCE_MEASUREMENT.json). Broader rows remain open.
 
 Each package needs frozen authored inputs and Native expectations before
 production changes, complete primary/related diagnostics and UTF-16 positions,
