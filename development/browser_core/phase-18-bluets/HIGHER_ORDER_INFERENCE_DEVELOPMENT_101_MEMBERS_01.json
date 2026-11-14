@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_101.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/151/observations/helper-name-collision.json",
+      "bytes": 33445732,
+      "sha256": "8cd868d49eed5749d7d444bad860af2e9d3e00c7351f787599eba6c83c483206"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/151/reports/helper-name-collision.json",
+      "bytes": 4367162,
+      "sha256": "71eaaaee0ecd1e7948547bb0b19ec30086535044d68629bc2b18361860d3f595"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/152/observations/class-expression-arrow-prefix.json",
+      "bytes": 28928,
+      "sha256": "866e960c86f8235a9604a9457d088b75d7a3f27bc28c9e8182629c184a5c47fb"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/152/observations/class-expression-boundaries.json",
+      "bytes": 113229,
+      "sha256": "5415da87d5a7fddab3cd09cd16cec3522b9add9ebb8a94673692c77cdb147d71"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/152/observations/class-expression-closings.json",
+      "bytes": 233919,
+      "sha256": "96ce6334f07d03acf6a9f1989d7428b8fa2eb52a8cb22fb982f9f36513763914"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/152/observations/class-expression-decorated-factory.json",
+      "bytes": 672768,
+      "sha256": "f70e6bfb3952017de56daf37ce67f487eb617f6f553278c5f0d50b6233e0188a"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/152/observations/class-expression-evaluation-endpoints.json",
+      "bytes": 1518474,
+      "sha256": "391c7169d87af84a5e4c8af94d0e4d529b1343a9fc5e05c131a99b77520a97f7"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/152/observations/class-expression-factory.json",
+      "bytes": 116141,
+      "sha256": "fa66c0990b0dd2ace97cb83a441e66ed85e5b6f101829a61e129bbeaf3841aa8"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/152/observations/class-expression-generated-gaps.json",
+      "bytes": 494271,
+      "sha256": "8575dd97f4501af100697e6b9a221ff522037fa1e7edd8703156b9720d0a5130"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/152/observations/class-expression-heritage-roles.json",
+      "bytes": 412300,
+      "sha256": "532327e9e64d01a6bb18564b84aab9b3e10aa3f361ed0ff605673e970cdea6e8"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/152/observations/class-expression-heritage-state.json",
+      "bytes": 412300,
+      "sha256": "532327e9e64d01a6bb18564b84aab9b3e10aa3f361ed0ff605673e970cdea6e8"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/152/observations/class-expression-initializers.json",
+      "bytes": 494271,
+      "sha256": "8575dd97f4501af100697e6b9a221ff522037fa1e7edd8703156b9720d0a5130"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/152/observations/class-expression-literal-method.json",
+      "bytes": 128995,
+      "sha256": "649cf109c57e0f3fc7916c15086a6daa0f487abae3629934bbe2449ba5a0621e"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/152/observations/class-expression-metadata-calls.json",
+      "bytes": 494271,
+      "sha256": "8575dd97f4501af100697e6b9a221ff522037fa1e7edd8703156b9720d0a5130"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/152/observations/class-expression-plain-boundaries.json",
+      "bytes": 200865,
+      "sha256": "845d87efd138957ea7efa33d28136012cc8d30a2fdfb23ff7b846b9aef7226cb"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/152/observations/class-expression-prefix.json",
+      "bytes": 417871,
+      "sha256": "846a297fc11daafb1f9160fb83f4db915a69301ca7eff61deccbac95fcc243f5"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/152/observations/class-expressions.json",
+      "bytes": 1631702,
+      "sha256": "708ebbe0600cbc92f08f9fd66755d3d4bf0164192b75dca7d9a190df332e2d34"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/152/reports/class-expressions.json",
+      "bytes": 821016,
+      "sha256": "7c319973b2a47adfff9054037d3137dc484c878579fb0c91cf41fca1a5898d42"
+    }
+  ]
+}

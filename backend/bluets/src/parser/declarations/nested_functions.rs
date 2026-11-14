@@ -367,7 +367,12 @@ impl Parser {
     /// Whether the nearest enclosing bracket belongs to an object operand.
     /// A statement body also uses braces, but its control-flow keywords must
     /// not be parsed as object methods.
-    fn directly_in_braces(&self, range_start: usize, index: usize, statement_range: bool) -> bool {
+    pub(super) fn directly_in_braces(
+        &self,
+        range_start: usize,
+        index: usize,
+        statement_range: bool,
+    ) -> bool {
         let mut depth = 0usize;
         for cursor in (range_start..index).rev() {
             match self.tokens[cursor].text.as_str() {

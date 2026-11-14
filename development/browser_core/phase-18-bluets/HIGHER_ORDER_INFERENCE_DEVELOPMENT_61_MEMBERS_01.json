@@ -1,0 +1,3782 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_61.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/contract/r9-diagnostics-version-repair-1/generated-authorities-before/COMPATIBILITY_CASES.json",
+      "bytes": 33407342,
+      "sha256": "39e5db7a31ff67bf32d61181176a85ed62c5414915b96c31d27fd82209f14f3c"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-repair-1/generated-authorities-before/COMPATIBILITY_INVENTORY.md",
+      "bytes": 127087,
+      "sha256": "8013b8a9b4b83fc0a78d77faa10f579f252ea024dd6d80c2fdd11229535abbae"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-repair-1/generated-authorities-before/COMPATIBILITY_MEASUREMENT.json",
+      "bytes": 460469,
+      "sha256": "c9f3500954b51ca47e2b8c11f579617641a0519c3d5c5411b67702c755f227a0"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-repair-1/generated-authorities-before/COMPATIBILITY_SUITES.json",
+      "bytes": 231547,
+      "sha256": "28fbf23afe82232c244951aa9cf57af38f5de64b05b1d55f7131a951893c529e"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-repair-1/generated-authorities-before/PLAN.md",
+      "bytes": 1327413,
+      "sha256": "0596a5eace485a5d4cfa29ba40b3db8874a091bb202caaa7eed0cd2c5740f549"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-repair-1/generated-authorities-before/TODO.md",
+      "bytes": 106292,
+      "sha256": "2aff3c927e0f52427d29d46677d245c6633d373c15e692adc6431f1609060c5f"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-repair-1/generated-authorities-before/manifest.json",
+      "bytes": 566,
+      "sha256": "f73baaa7225ed87f2f1d3cb6738e6b89d0043cf25f07974c65c441bbd4391c5a"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-repair-1/measurement.json",
+      "bytes": 752,
+      "sha256": "91b6af35606df1c0b0e20201fef0c5a57ec1f461b8e7c86625ad63da80b6ae01"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-repair-1/source-revision.json",
+      "bytes": 191,
+      "sha256": "17ae0634ed20a45f004fd39523eb8b1673024282712a7b50b5bf01a3b55b6091"
+    },
+    {
+      "path": "development-history/contract/r9-fresh-contract-prerequisites-preflight-1/annotation.json",
+      "bytes": 340,
+      "sha256": "1f4fc0f9e48b428af9d5f1769363feb419579e3a0c18941bbfb2d6f719a1765f"
+    },
+    {
+      "path": "development-history/contract/r9-fresh-contract-prerequisites-preflight-1/result.json",
+      "bytes": 526,
+      "sha256": "edfa9845ae4b64673cb657886ab656e6c2eae9ea11505114f2ada7821995b8ac"
+    },
+    {
+      "path": "development-history/contract/r9-fresh-scope-products-preflight-1/result.json",
+      "bytes": 18167,
+      "sha256": "2114c971c1bfd95c20b6774c74070b832432f0f9fcbd6ccde397aaf6d8e75056"
+    },
+    {
+      "path": "development-history/contract/r9-history-preflight-1/result.json",
+      "bytes": 4379,
+      "sha256": "e1eefa257f6ff321ce1ac682632c68aa1b44ad8b1eb536a37cfd3a96843f4837"
+    },
+    {
+      "path": "development-history/contract/r9-partial-source-review-1.json",
+      "bytes": 3748,
+      "sha256": "5e972a4a12042c20ca4dd764988e42ce4760b3c382436999e42c90b2cd10cc95"
+    },
+    {
+      "path": "development-history/contract/r9-scope-publication-adaptation-1/previous-g_recursive_scope_audit.py",
+      "bytes": 8280,
+      "sha256": "12180992808668e48a36dee1e30dd9b8ed3ddd52b7d1adf03b2fb8e92b4283e6"
+    },
+    {
+      "path": "development-history/contract/r9-scope-publication-adaptation-1/receipt.json",
+      "bytes": 504,
+      "sha256": "154c92a6ca4863b0521edc6acb3d2f0624da4a22f578fcae6f2576fe695de16a"
+    },
+    {
+      "path": "development-history/contract/r9-source-diff-review-2.json",
+      "bytes": 8716,
+      "sha256": "9fff8878c4bd5e10743bd235bc854f222315d0bd444a4af37c024fd1810d47bb"
+    },
+    {
+      "path": "development-history/contract/recover_r10_windows_packaging.py",
+      "bytes": 9284,
+      "sha256": "90534f76e5ffceec60537e011e6616654eb8f5d9bcc8f67b5e0e3d4c1c11b485"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/external-colliding-name/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/external-colliding-name/build.stdout",
+      "bytes": 78,
+      "sha256": "4d13a8b3e137b527fc7616ffd47ded729688e7829351aa54196c94e6c33d01f0"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/external-colliding-name/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "b3187e8cc314eb5b820f4063211a3785fd31665447e3add7c0e809b200f442f0"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/external-colliding-name/dist/main.d.ts",
+      "bytes": 46,
+      "sha256": "dfd14e8da20a8ebede4312c849857538745b4e68fd437c44ee1fa1b417e9d178"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/external-colliding-name/dist/main.js",
+      "bytes": 169,
+      "sha256": "285b8a38dbebd1eddb33a2b7e6646da7c86adf7cd346698bc97732bd112fbf47"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/external-colliding-name/main.ts",
+      "bytes": 137,
+      "sha256": "6b25d405cbadff5adc5a1a924df9859c72d592e247bed597cf8de93a4c69502e"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/external-colliding-name/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/external-unknown/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/external-unknown/build.stdout",
+      "bytes": 78,
+      "sha256": "bbb54eafb15dcf9b6d37f269cfb04cb58f81beb835676598ee7b724cde21085a"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/external-unknown/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "c205bbdfee54b25e5fee8800b67525d3b8044bf331e530d274a8ecc5d5ef5210"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/external-unknown/dist/main.d.ts",
+      "bytes": 46,
+      "sha256": "68c7bac83041cee58d2afc5cfe4d8336f6af1eb1d54c2407bddae47eab921323"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/external-unknown/dist/main.js",
+      "bytes": 169,
+      "sha256": "285b8a38dbebd1eddb33a2b7e6646da7c86adf7cd346698bc97732bd112fbf47"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/external-unknown/main.ts",
+      "bytes": 137,
+      "sha256": "5910c1c7c34195c1db726baf80e2dafeb66e4d5c6c38a7567aa9db3e854d59bb"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/external-unknown/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-any/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-any/build.stdout",
+      "bytes": 78,
+      "sha256": "1a5a707b54456527438c1ee16cfdc757ed298d3d077b2171ff8bb86409cb7e69"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-any/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "a48e57003ff019139f0dc428b6b418dd0d8d8e39ac125f90d409225d51c620fc"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-any/dist/main.d.ts",
+      "bytes": 47,
+      "sha256": "4f6ea46203c7a89f5a129c0fcf252b71b64b87f745f5e3d91774e6821b24c631"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-any/dist/main.js",
+      "bytes": 171,
+      "sha256": "0b87782c50ef5f84ac71d5bfd33dfbe63708e42a234cec8eca329292750f8068"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-any/main.ts",
+      "bytes": 94,
+      "sha256": "5c152df47325fc867639f52bb3b2bdba8ed337856d9deb65b1610a0e79283c58"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-any/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-indexed/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-indexed/build.stdout",
+      "bytes": 78,
+      "sha256": "ce9fa934bfc3e48761e6b84059c78ba9a3d5c52ef23e97441a89e2d679481ed5"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-indexed/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "7415242c265f4c49329d6484c4abf02a1f7167bb6dc90de896db2681d60e9d80"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-indexed/dist/main.d.ts",
+      "bytes": 47,
+      "sha256": "4f6ea46203c7a89f5a129c0fcf252b71b64b87f745f5e3d91774e6821b24c631"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-indexed/dist/main.js",
+      "bytes": 206,
+      "sha256": "085d263a952ce6d89ee7c45106b267cda8d8ef0b2f474927ab1db69c1e0e95a4"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-indexed/main.ts",
+      "bytes": 123,
+      "sha256": "c6bb017b60d77d9d7295701e7442dac8680deaf49442dbcff86fde0c50c6ad00"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-indexed/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-indexed-assignment/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-indexed-assignment/build.stdout",
+      "bytes": 78,
+      "sha256": "fa18fad1cd0853d397897d919977955337de8f719acedfbda412151bac18f9a6"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-indexed-assignment/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "c5ff48ef1ca0c574144078b5f8e46c8c72d85d007773b1c5be27b11ca647c46b"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-indexed-assignment/dist/main.d.ts",
+      "bytes": 62,
+      "sha256": "7e9999b466c35e1752fde7f7b6bdfd715caa450172d5ae544c0e637a8631d9a5"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-indexed-assignment/dist/main.js",
+      "bytes": 288,
+      "sha256": "609a2a6e7821e1811dd155d124cf79599f734e2be9e92f815309dcbd76ed0ad7"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-indexed-assignment/main.ts",
+      "bytes": 210,
+      "sha256": "09d2a1e46f6fac3394ed1de39d692bdb070e7556a6ff08ed7be23e1827494da8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-indexed-assignment/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-renamed-parameter/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-renamed-parameter/build.stdout",
+      "bytes": 78,
+      "sha256": "75cdf5537d53b68868755ef28575e6df1ee452d8346ff0e2abc193644e7a9e70"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-renamed-parameter/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "957b826b4933cca8a856a9c489386e9a4ce95b0756b3877705a5af36bdc782ad"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-renamed-parameter/dist/main.d.ts",
+      "bytes": 62,
+      "sha256": "565da7019ba503bd0b75911a9d4362885381995de281952b151e4ff2cd2b0b85"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-renamed-parameter/dist/main.js",
+      "bytes": 171,
+      "sha256": "0b87782c50ef5f84ac71d5bfd33dfbe63708e42a234cec8eca329292750f8068"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-renamed-parameter/main.ts",
+      "bytes": 113,
+      "sha256": "8d468a43f43b349cb11ae8baf5ec7e330cd6c8c673cc338cf2eb6c2d988cf693"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-renamed-parameter/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-self/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-self/build.stdout",
+      "bytes": 78,
+      "sha256": "8e7221ae67dde53b403cf37c242e39fa3361bb7f82039fad8ea8b61772b70f3e"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-self/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "0d454fa535c0386f12aa76566e878f3387eba512ea47ec8c7b0cf40dadc8c4dc"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-self/dist/main.d.ts",
+      "bytes": 47,
+      "sha256": "4f6ea46203c7a89f5a129c0fcf252b71b64b87f745f5e3d91774e6821b24c631"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-self/dist/main.js",
+      "bytes": 153,
+      "sha256": "93151a7dcf413d79fee0d6f834120fa3b7ffff13ebb0d7adf8730c24b241cde3"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-self/main.ts",
+      "bytes": 70,
+      "sha256": "fd22755f869f7b871b6e7aef242802aef88569806089d87d179fd3ecb9fecd33"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-self/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-unknown/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-unknown/build.stdout",
+      "bytes": 78,
+      "sha256": "f4de744443cb152ee9d8041e914fe1a36eaeca1eb3db16202e837c707865b8ae"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-unknown/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "34f7217b37acf9718f8138ddc33ee2cfdf06f172fce03c0318d05ca9412c84f4"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-unknown/dist/main.d.ts",
+      "bytes": 47,
+      "sha256": "4f6ea46203c7a89f5a129c0fcf252b71b64b87f745f5e3d91774e6821b24c631"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-unknown/dist/main.js",
+      "bytes": 171,
+      "sha256": "0b87782c50ef5f84ac71d5bfd33dfbe63708e42a234cec8eca329292750f8068"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-unknown/main.ts",
+      "bytes": 98,
+      "sha256": "c7d639844fab3196b39ee92911d904a15f56d89f04161e5c5c2b24ed2d8af97e"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/acceptedParent/strict-commonjs/recursive-unknown/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/external-colliding-name/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/external-colliding-name/build.stdout",
+      "bytes": 78,
+      "sha256": "ab2970025a19b6d7e7530919b7bb05785f7d078deff567bc2f40493e7d900e2e"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/external-colliding-name/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "e41569070eb9cae93253594583695935dd3c90d49b6ef72cda70cd3e7a7ccc0b"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/external-colliding-name/dist/main.d.ts",
+      "bytes": 46,
+      "sha256": "dfd14e8da20a8ebede4312c849857538745b4e68fd437c44ee1fa1b417e9d178"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/external-colliding-name/dist/main.js",
+      "bytes": 169,
+      "sha256": "285b8a38dbebd1eddb33a2b7e6646da7c86adf7cd346698bc97732bd112fbf47"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/external-colliding-name/main.ts",
+      "bytes": 137,
+      "sha256": "6b25d405cbadff5adc5a1a924df9859c72d592e247bed597cf8de93a4c69502e"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/external-colliding-name/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/external-unknown/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/external-unknown/build.stdout",
+      "bytes": 78,
+      "sha256": "12d03456b8e5739cdfaae0bce164bdfe6fd2ec4478d6e23d9e340ff776e16e69"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/external-unknown/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "0e07cf51195834638e698e09ec920e6070d6588402986efef05b18d0010c9ca2"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/external-unknown/dist/main.d.ts",
+      "bytes": 46,
+      "sha256": "68c7bac83041cee58d2afc5cfe4d8336f6af1eb1d54c2407bddae47eab921323"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/external-unknown/dist/main.js",
+      "bytes": 169,
+      "sha256": "285b8a38dbebd1eddb33a2b7e6646da7c86adf7cd346698bc97732bd112fbf47"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/external-unknown/main.ts",
+      "bytes": 137,
+      "sha256": "5910c1c7c34195c1db726baf80e2dafeb66e4d5c6c38a7567aa9db3e854d59bb"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/external-unknown/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-any/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-any/build.stdout",
+      "bytes": 78,
+      "sha256": "6b346352f6c7937ad65bb127d922407c9b22c7247c118149b687e36f60ceb610"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-any/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "ca3a40116c130c4e24c5a7d76eb39b4e68e6a468f3d9473201c68e62dcee1d97"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-any/dist/main.d.ts",
+      "bytes": 47,
+      "sha256": "4f6ea46203c7a89f5a129c0fcf252b71b64b87f745f5e3d91774e6821b24c631"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-any/dist/main.js",
+      "bytes": 171,
+      "sha256": "0b87782c50ef5f84ac71d5bfd33dfbe63708e42a234cec8eca329292750f8068"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-any/main.ts",
+      "bytes": 94,
+      "sha256": "5c152df47325fc867639f52bb3b2bdba8ed337856d9deb65b1610a0e79283c58"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-any/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-indexed/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-indexed/build.stdout",
+      "bytes": 78,
+      "sha256": "7d9af261eb33248ac04ddedb5cd21b315da8da0bd9a54a7c6c48a3ae85a2c415"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-indexed/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "5a5a409be39f4cf3f5e2d90221370e6a76bc549f2f450ca65937de5afd70c965"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-indexed/dist/main.d.ts",
+      "bytes": 47,
+      "sha256": "4f6ea46203c7a89f5a129c0fcf252b71b64b87f745f5e3d91774e6821b24c631"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-indexed/dist/main.js",
+      "bytes": 206,
+      "sha256": "085d263a952ce6d89ee7c45106b267cda8d8ef0b2f474927ab1db69c1e0e95a4"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-indexed/main.ts",
+      "bytes": 123,
+      "sha256": "c6bb017b60d77d9d7295701e7442dac8680deaf49442dbcff86fde0c50c6ad00"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-indexed/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-indexed-assignment/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-indexed-assignment/build.stdout",
+      "bytes": 78,
+      "sha256": "8fd84b1d6572d47f38e388b93b781debfd7de4df76be16bae4ba1a80c4f4fbd3"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-indexed-assignment/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "e38d6e898cd299576784f90fb0531ac1d09eb80ed3ee43fa92b7b2365de2be06"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-indexed-assignment/dist/main.d.ts",
+      "bytes": 62,
+      "sha256": "7e9999b466c35e1752fde7f7b6bdfd715caa450172d5ae544c0e637a8631d9a5"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-indexed-assignment/dist/main.js",
+      "bytes": 288,
+      "sha256": "609a2a6e7821e1811dd155d124cf79599f734e2be9e92f815309dcbd76ed0ad7"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-indexed-assignment/main.ts",
+      "bytes": 210,
+      "sha256": "09d2a1e46f6fac3394ed1de39d692bdb070e7556a6ff08ed7be23e1827494da8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-indexed-assignment/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-renamed-parameter/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-renamed-parameter/build.stdout",
+      "bytes": 78,
+      "sha256": "f8212e5828ec886ec038ce9af8a1460c577a825891eb7fde951e6aa26371bf11"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-renamed-parameter/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "fd145011d1ae5e13bb4b0774c59c2b7507e640dc5d1f39b29911c740fc671bc1"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-renamed-parameter/dist/main.d.ts",
+      "bytes": 62,
+      "sha256": "565da7019ba503bd0b75911a9d4362885381995de281952b151e4ff2cd2b0b85"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-renamed-parameter/dist/main.js",
+      "bytes": 171,
+      "sha256": "0b87782c50ef5f84ac71d5bfd33dfbe63708e42a234cec8eca329292750f8068"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-renamed-parameter/main.ts",
+      "bytes": 113,
+      "sha256": "8d468a43f43b349cb11ae8baf5ec7e330cd6c8c673cc338cf2eb6c2d988cf693"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-renamed-parameter/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-self/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-self/build.stdout",
+      "bytes": 78,
+      "sha256": "cabe0585dbc7605ebac13267b5c6c2aeca9d76481a992d65c97aa56701f6ffdd"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-self/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "ddfb6f5a3922f5f2dcd5704485bae8b05319b37d5c7384effb6c134126753fbb"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-self/dist/main.d.ts",
+      "bytes": 47,
+      "sha256": "4f6ea46203c7a89f5a129c0fcf252b71b64b87f745f5e3d91774e6821b24c631"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-self/dist/main.js",
+      "bytes": 153,
+      "sha256": "93151a7dcf413d79fee0d6f834120fa3b7ffff13ebb0d7adf8730c24b241cde3"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-self/main.ts",
+      "bytes": 70,
+      "sha256": "fd22755f869f7b871b6e7aef242802aef88569806089d87d179fd3ecb9fecd33"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-self/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-unknown/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-unknown/build.stdout",
+      "bytes": 78,
+      "sha256": "cef3ade9003382bbb82a4bfe4d08cd75b9ec305b4d0c260568ea6314acc95036"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-unknown/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "527af460ca81c7b637b629b600853a5fe5b5b30a1b33daaf98bc3f61201baefb"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-unknown/dist/main.d.ts",
+      "bytes": 47,
+      "sha256": "4f6ea46203c7a89f5a129c0fcf252b71b64b87f745f5e3d91774e6821b24c631"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-unknown/dist/main.js",
+      "bytes": 171,
+      "sha256": "0b87782c50ef5f84ac71d5bfd33dfbe63708e42a234cec8eca329292750f8068"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-unknown/main.ts",
+      "bytes": 98,
+      "sha256": "c7d639844fab3196b39ee92911d904a15f56d89f04161e5c5c2b24ed2d8af97e"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/current/strict-commonjs/recursive-unknown/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/external-colliding-name/dist/main.d.ts",
+      "bytes": 46,
+      "sha256": "dfd14e8da20a8ebede4312c849857538745b4e68fd437c44ee1fa1b417e9d178"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/external-colliding-name/dist/main.js",
+      "bytes": 170,
+      "sha256": "62c2e46a88797de8bc5f33f103992045daebbbeacfcc39f7fdd9b5d75b72f217"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/external-colliding-name/main.ts",
+      "bytes": 137,
+      "sha256": "6b25d405cbadff5adc5a1a924df9859c72d592e247bed597cf8de93a4c69502e"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/external-colliding-name/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/external-unknown/dist/main.d.ts",
+      "bytes": 46,
+      "sha256": "68c7bac83041cee58d2afc5cfe4d8336f6af1eb1d54c2407bddae47eab921323"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/external-unknown/dist/main.js",
+      "bytes": 170,
+      "sha256": "62c2e46a88797de8bc5f33f103992045daebbbeacfcc39f7fdd9b5d75b72f217"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/external-unknown/main.ts",
+      "bytes": 137,
+      "sha256": "5910c1c7c34195c1db726baf80e2dafeb66e4d5c6c38a7567aa9db3e854d59bb"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/external-unknown/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-any/dist/main.d.ts",
+      "bytes": 47,
+      "sha256": "4f6ea46203c7a89f5a129c0fcf252b71b64b87f745f5e3d91774e6821b24c631"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-any/dist/main.js",
+      "bytes": 173,
+      "sha256": "c31ea7fdec65f2785095168ba6c2a41e558d280a086dbcd5e5db50016bdeeb86"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-any/main.ts",
+      "bytes": 94,
+      "sha256": "5c152df47325fc867639f52bb3b2bdba8ed337856d9deb65b1610a0e79283c58"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-any/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-indexed/dist/main.d.ts",
+      "bytes": 47,
+      "sha256": "4f6ea46203c7a89f5a129c0fcf252b71b64b87f745f5e3d91774e6821b24c631"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-indexed/dist/main.js",
+      "bytes": 215,
+      "sha256": "54ecb11b83b843dfe8f8064ee422fe9984f364a898fd77937b08eb4241ad08d5"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-indexed/main.ts",
+      "bytes": 123,
+      "sha256": "c6bb017b60d77d9d7295701e7442dac8680deaf49442dbcff86fde0c50c6ad00"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-indexed/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-indexed-assignment/dist/main.d.ts",
+      "bytes": 62,
+      "sha256": "7e9999b466c35e1752fde7f7b6bdfd715caa450172d5ae544c0e637a8631d9a5"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-indexed-assignment/dist/main.js",
+      "bytes": 297,
+      "sha256": "80df19c422b051b88104db29e12b4d1bbac513d2b1de31659064cdbf776f27ae"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-indexed-assignment/main.ts",
+      "bytes": 210,
+      "sha256": "09d2a1e46f6fac3394ed1de39d692bdb070e7556a6ff08ed7be23e1827494da8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-indexed-assignment/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-renamed-parameter/dist/main.d.ts",
+      "bytes": 62,
+      "sha256": "565da7019ba503bd0b75911a9d4362885381995de281952b151e4ff2cd2b0b85"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-renamed-parameter/dist/main.js",
+      "bytes": 173,
+      "sha256": "c31ea7fdec65f2785095168ba6c2a41e558d280a086dbcd5e5db50016bdeeb86"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-renamed-parameter/main.ts",
+      "bytes": 113,
+      "sha256": "8d468a43f43b349cb11ae8baf5ec7e330cd6c8c673cc338cf2eb6c2d988cf693"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-renamed-parameter/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-self/dist/main.d.ts",
+      "bytes": 47,
+      "sha256": "4f6ea46203c7a89f5a129c0fcf252b71b64b87f745f5e3d91774e6821b24c631"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-self/dist/main.js",
+      "bytes": 154,
+      "sha256": "23f354ae6353234d5b7bf54b0960e2b33fb27004882f64f65fd7f77ebe347733"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-self/main.ts",
+      "bytes": 70,
+      "sha256": "fd22755f869f7b871b6e7aef242802aef88569806089d87d179fd3ecb9fecd33"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-self/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-unknown/dist/main.d.ts",
+      "bytes": 47,
+      "sha256": "4f6ea46203c7a89f5a129c0fcf252b71b64b87f745f5e3d91774e6821b24c631"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-unknown/dist/main.js",
+      "bytes": 173,
+      "sha256": "c31ea7fdec65f2785095168ba6c2a41e558d280a086dbcd5e5db50016bdeeb86"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-unknown/main.ts",
+      "bytes": 98,
+      "sha256": "c7d639844fab3196b39ee92911d904a15f56d89f04161e5c5c2b24ed2d8af97e"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/native/strict-commonjs/recursive-unknown/tsconfig.json",
+      "bytes": 241,
+      "sha256": "6b0eb298108bb0c5ed9b9b593725b2f7d8a6fe4e86f1edbef8f37c1e90e1d0a8"
+    },
+    {
+      "path": "development-history/contract/recursive-call-red-2/report.json",
+      "bytes": 9582,
+      "sha256": "b43b93a27dbd27e8e5fc8ebde9c699377f09530e0d768e5b450f91c4a87f8e2e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/captured-result-mismatch-is-rejected/build.stderr",
+      "bytes": 708,
+      "sha256": "325d699c7f962d351c790a575de79c164fb0e1cd5cb2c43129016d1c94eb6adf"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/captured-result-mismatch-is-rejected/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/captured-result-mismatch-is-rejected/main.ts",
+      "bytes": 164,
+      "sha256": "3d24da84d02da4a9790133b76a476b8faf7e391f523f7b8421826b92f3f5ed41"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/captured-result-mismatch-is-rejected/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/captured-result-remains-inferable/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/captured-result-remains-inferable/build.stdout",
+      "bytes": 78,
+      "sha256": "96219f8cd710f6004fe5d637fe11c15a95394011fe297fb79f98b881a61c788d"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/captured-result-remains-inferable/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "5bd2e7c41b277f2b7d5ed49e031355180c7a7e2bcb1644911f5c5909907940b4"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/captured-result-remains-inferable/dist/main.d.ts",
+      "bytes": 37,
+      "sha256": "b649a5239f026b238c3da9f09eea8c77ab2b3c5e10ed916ce8cea3f77d93219f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/captured-result-remains-inferable/dist/main.js",
+      "bytes": 137,
+      "sha256": "db9ed4a056b27dcddd3e3c134363e3c788e4919e9b29860886484913f4e0c098"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/captured-result-remains-inferable/main.ts",
+      "bytes": 145,
+      "sha256": "1a13ac88941d8c325fe716c980b7f341f529d1d283677b57b765ad92382cf9b9"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/captured-result-remains-inferable/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-callback-import/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-callback-import/build.stdout",
+      "bytes": 78,
+      "sha256": "84fb2a47f7224bd83ea47cbac02f7467a0d8a5be5b292e994408e705ae4a070f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-callback-import/callback.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-callback-import/dist/bluetsc.manifest.json",
+      "bytes": 1762,
+      "sha256": "c42248b3b86b87c0053e96b27899035bcbe7839f727794a82942d5e01d960ad6"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-callback-import/dist/callback.d.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-callback-import/dist/callback.js",
+      "bytes": 78,
+      "sha256": "da8815cd26bbc3418b07e59306164fc5e2bf2a9a7ac668fdd183fd7805b6cda3"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-callback-import/dist/main.d.ts",
+      "bytes": 120,
+      "sha256": "1cfee1dd569c8a09565f58ec5c34c6513244e1970ae6531e5b25417455f974fa"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-callback-import/dist/main.js",
+      "bytes": 306,
+      "sha256": "1279a32d5236a2c61b99bfed7a0a20c99e7310564d798fd9751397d94899820b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-callback-import/main.ts",
+      "bytes": 288,
+      "sha256": "90d7cde21abc3b9012594284c1dfac1f77d3e8fc96f60b07c9def60de3024ce2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-callback-import/tsconfig.json",
+      "bytes": 260,
+      "sha256": "4ad5c94f8fdab237e28813192c74b083a64f02a04f974d880682eaf06651a7db"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-callback-in-property/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-callback-in-property/build.stdout",
+      "bytes": 78,
+      "sha256": "c9f8b6229762e3e8ea428a24f41d3996e8461fcd911c77a1c1ef14a445e6df3f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-callback-in-property/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "0acbd723c9752ad037d14ccdcf480520a44554b5aa4b74a93c01322de16a88d5"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-callback-in-property/dist/main.d.ts",
+      "bytes": 203,
+      "sha256": "4e15848418be8ce2e3061cd25f3ae9cef1d30eca6094e5edef9d291b62036e2f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-callback-in-property/dist/main.js",
+      "bytes": 306,
+      "sha256": "1279a32d5236a2c61b99bfed7a0a20c99e7310564d798fd9751397d94899820b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-callback-in-property/main.ts",
+      "bytes": 355,
+      "sha256": "9035e0d59f37578f68edd7e17e4ad8ba301d4961f7f1e9a53f2f6c7ab65e75d8"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-callback-in-property/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-dependent-callback/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-dependent-callback/build.stdout",
+      "bytes": 78,
+      "sha256": "76eeb18cbbcd210dd5fd71a5c3379fa4077dc1a978af75487195186f865705bc"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-dependent-callback/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "93b66b355294bd67e0d8ad941322a6205185f8a6af44011b7e0ef004f4d41b4f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-dependent-callback/dist/main.d.ts",
+      "bytes": 187,
+      "sha256": "0dee8d6f756fffd0dc5f5ff58ba0d30082bf5034b80552fd5d5fc04aae03ebea"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-dependent-callback/dist/main.js",
+      "bytes": 306,
+      "sha256": "1279a32d5236a2c61b99bfed7a0a20c99e7310564d798fd9751397d94899820b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-dependent-callback/main.ts",
+      "bytes": 344,
+      "sha256": "5c114b64d6a09fd15ca28eecc1043aa80dfb9b094634805fc9ad742b34c70053"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-dependent-callback/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-dependent-default/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-dependent-default/build.stdout",
+      "bytes": 78,
+      "sha256": "29410e6ee47385e82cd9e24342ff03669185ed69cf67927a573d763485f17afa"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-dependent-default/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "ec1380026c1935162fc273fe8293f356f38a3aac909e6c6d21ca209b21e5ed91"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-dependent-default/dist/main.d.ts",
+      "bytes": 197,
+      "sha256": "b3aa812a8813f0d2d85d5b4befe32f59910221db3181e74b540eebfda98975f4"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-dependent-default/dist/main.js",
+      "bytes": 306,
+      "sha256": "1279a32d5236a2c61b99bfed7a0a20c99e7310564d798fd9751397d94899820b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-dependent-default/main.ts",
+      "bytes": 354,
+      "sha256": "2c7a39096bafb12dc6d4d5e40c7156c1ecc6d4fd1dd1c1e36ec866cd2188dbe7"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-dependent-default/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-value-default/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-value-default/build.stdout",
+      "bytes": 78,
+      "sha256": "0be04bd6d3bce62871429e9444377cd238d69d6120eb9df4157a25c3c13a2baf"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-value-default/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "946d6fbbbd270561a92f7bcaeb3deb50522c8dfab075ca299774582c4dcb280b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-value-default/dist/main.d.ts",
+      "bytes": 204,
+      "sha256": "7db7b94bec552f36c0426edc4e2c375862cd5d97d3f91f7977df86fc6e0bee91"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-value-default/dist/main.js",
+      "bytes": 306,
+      "sha256": "1279a32d5236a2c61b99bfed7a0a20c99e7310564d798fd9751397d94899820b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-value-default/main.ts",
+      "bytes": 359,
+      "sha256": "dd52a3962623978e1d3055f11d4330ab51d8c1c3ae0ad5a79cae91d9cec06f87"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/closed-value-default/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/renamed-closed-callback/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/renamed-closed-callback/build.stdout",
+      "bytes": 78,
+      "sha256": "c12ef15d5be692df3312f44bf8d030aa1574326fd1fd5a95181abde083a51986"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/renamed-closed-callback/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "31d9f9703d4b64c2aa1a9c2865053dbdc805ba61519deed8df48489445d0bd84"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/renamed-closed-callback/dist/main.d.ts",
+      "bytes": 202,
+      "sha256": "d5a5bcc28d74150bbf6b4214e4e20146dba3d6de74bf1a1642f568aa0147942b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/renamed-closed-callback/dist/main.js",
+      "bytes": 306,
+      "sha256": "1279a32d5236a2c61b99bfed7a0a20c99e7310564d798fd9751397d94899820b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/renamed-closed-callback/main.ts",
+      "bytes": 359,
+      "sha256": "a09e66fde0a3e1a67fc289768cbff9a0d36acfbd7ec88121d7df992e1a934e3c"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es2022/renamed-closed-callback/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/captured-result-mismatch-is-rejected/build.stderr",
+      "bytes": 708,
+      "sha256": "325d699c7f962d351c790a575de79c164fb0e1cd5cb2c43129016d1c94eb6adf"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/captured-result-mismatch-is-rejected/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/captured-result-mismatch-is-rejected/main.ts",
+      "bytes": 164,
+      "sha256": "3d24da84d02da4a9790133b76a476b8faf7e391f523f7b8421826b92f3f5ed41"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/captured-result-mismatch-is-rejected/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/captured-result-remains-inferable/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/captured-result-remains-inferable/build.stdout",
+      "bytes": 78,
+      "sha256": "fcb9723b921d05471689c76adf78fd478cffbd4b109714fd847bfaab6cb4c3c8"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/captured-result-remains-inferable/dist/bluetsc.manifest.json",
+      "bytes": 1738,
+      "sha256": "29f624ad2b0bcec114fe120051a0d660ec167a0c8bde42a867f1037c69932c9f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/captured-result-remains-inferable/dist/main.d.ts",
+      "bytes": 37,
+      "sha256": "b649a5239f026b238c3da9f09eea8c77ab2b3c5e10ed916ce8cea3f77d93219f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/captured-result-remains-inferable/dist/main.js",
+      "bytes": 137,
+      "sha256": "db9ed4a056b27dcddd3e3c134363e3c788e4919e9b29860886484913f4e0c098"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/captured-result-remains-inferable/main.ts",
+      "bytes": 145,
+      "sha256": "1a13ac88941d8c325fe716c980b7f341f529d1d283677b57b765ad92382cf9b9"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/captured-result-remains-inferable/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-callback-import/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-callback-import/build.stdout",
+      "bytes": 78,
+      "sha256": "130b29ea94abb63cf4fe913eee2dbfba4b8cb1763d080b69f0fdabf3f9afcd27"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-callback-import/callback.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-callback-import/dist/bluetsc.manifest.json",
+      "bytes": 1757,
+      "sha256": "60a25dcad3958d329b7bdf18bf42c2dc8f70a907d14ad9036d35a74510ea040b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-callback-import/dist/callback.d.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-callback-import/dist/callback.js",
+      "bytes": 78,
+      "sha256": "da8815cd26bbc3418b07e59306164fc5e2bf2a9a7ac668fdd183fd7805b6cda3"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-callback-import/dist/main.d.ts",
+      "bytes": 120,
+      "sha256": "1cfee1dd569c8a09565f58ec5c34c6513244e1970ae6531e5b25417455f974fa"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-callback-import/dist/main.js",
+      "bytes": 434,
+      "sha256": "f808d432b71275417c33aa7d9984f1d273eedd0af7f84651fb2aef6aaf2944be"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-callback-import/main.ts",
+      "bytes": 288,
+      "sha256": "90d7cde21abc3b9012594284c1dfac1f77d3e8fc96f60b07c9def60de3024ce2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-callback-import/tsconfig.json",
+      "bytes": 257,
+      "sha256": "b4b948b7818414eb66587596734c49aef79f1c0594846679677ddc4b67b675a3"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-callback-in-property/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-callback-in-property/build.stdout",
+      "bytes": 78,
+      "sha256": "02b4344b8580f4de4872e29e3cc81ca0d058350fe1d2cd50035bf86d39c0d695"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-callback-in-property/dist/bluetsc.manifest.json",
+      "bytes": 1738,
+      "sha256": "b06a1906ed7311cb46908e5e0cbe2fd6dc1bfaa2e4c94b2a1ef8988781f6260b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-callback-in-property/dist/main.d.ts",
+      "bytes": 203,
+      "sha256": "4e15848418be8ce2e3061cd25f3ae9cef1d30eca6094e5edef9d291b62036e2f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-callback-in-property/dist/main.js",
+      "bytes": 434,
+      "sha256": "f808d432b71275417c33aa7d9984f1d273eedd0af7f84651fb2aef6aaf2944be"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-callback-in-property/main.ts",
+      "bytes": 355,
+      "sha256": "9035e0d59f37578f68edd7e17e4ad8ba301d4961f7f1e9a53f2f6c7ab65e75d8"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-callback-in-property/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-dependent-callback/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-dependent-callback/build.stdout",
+      "bytes": 78,
+      "sha256": "eec60d0360b7629f51c88a7ece0b149d88783dddfe95aaeb5153ab9a8ca2b7b8"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-dependent-callback/dist/bluetsc.manifest.json",
+      "bytes": 1738,
+      "sha256": "ab85f184f9232212e96afd7803c1317768d1ab04f4ef89a7a8f4d1cddfe1dc31"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-dependent-callback/dist/main.d.ts",
+      "bytes": 187,
+      "sha256": "0dee8d6f756fffd0dc5f5ff58ba0d30082bf5034b80552fd5d5fc04aae03ebea"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-dependent-callback/dist/main.js",
+      "bytes": 434,
+      "sha256": "f808d432b71275417c33aa7d9984f1d273eedd0af7f84651fb2aef6aaf2944be"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-dependent-callback/main.ts",
+      "bytes": 344,
+      "sha256": "5c114b64d6a09fd15ca28eecc1043aa80dfb9b094634805fc9ad742b34c70053"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-dependent-callback/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-dependent-default/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-dependent-default/build.stdout",
+      "bytes": 78,
+      "sha256": "2e1149b390d61d9c73dd01549ded370fb9fbe6c6681836a868dd294b01e06ba0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-dependent-default/dist/bluetsc.manifest.json",
+      "bytes": 1738,
+      "sha256": "0ad7f2c6d79ecc97bdfe7fd3f68d169ec127f577f6cb2ebba982219a8b6cdf16"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-dependent-default/dist/main.d.ts",
+      "bytes": 197,
+      "sha256": "b3aa812a8813f0d2d85d5b4befe32f59910221db3181e74b540eebfda98975f4"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-dependent-default/dist/main.js",
+      "bytes": 434,
+      "sha256": "f808d432b71275417c33aa7d9984f1d273eedd0af7f84651fb2aef6aaf2944be"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-dependent-default/main.ts",
+      "bytes": 354,
+      "sha256": "2c7a39096bafb12dc6d4d5e40c7156c1ecc6d4fd1dd1c1e36ec866cd2188dbe7"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-dependent-default/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-value-default/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-value-default/build.stdout",
+      "bytes": 78,
+      "sha256": "d51a15330afb21659edddfbb00ebb7c59c749b0f07e16546b75ca9586e5759ab"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-value-default/dist/bluetsc.manifest.json",
+      "bytes": 1738,
+      "sha256": "2fba06a36c22c67fda1c8b8658e4182f7987bbf07197dce0f436a20eb8d9fa1c"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-value-default/dist/main.d.ts",
+      "bytes": 204,
+      "sha256": "7db7b94bec552f36c0426edc4e2c375862cd5d97d3f91f7977df86fc6e0bee91"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-value-default/dist/main.js",
+      "bytes": 434,
+      "sha256": "f808d432b71275417c33aa7d9984f1d273eedd0af7f84651fb2aef6aaf2944be"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-value-default/main.ts",
+      "bytes": 359,
+      "sha256": "dd52a3962623978e1d3055f11d4330ab51d8c1c3ae0ad5a79cae91d9cec06f87"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/closed-value-default/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/renamed-closed-callback/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/renamed-closed-callback/build.stdout",
+      "bytes": 78,
+      "sha256": "e060afed29fdaf5b81472242cdbb06a3a7348d6413ef9926f92d4d8d81361bf5"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/renamed-closed-callback/dist/bluetsc.manifest.json",
+      "bytes": 1738,
+      "sha256": "29705934b08bbd25d121beadeff22af268de89caa14bcbc66d210b91229f8ae2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/renamed-closed-callback/dist/main.d.ts",
+      "bytes": 202,
+      "sha256": "d5a5bcc28d74150bbf6b4214e4e20146dba3d6de74bf1a1642f568aa0147942b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/renamed-closed-callback/dist/main.js",
+      "bytes": 434,
+      "sha256": "f808d432b71275417c33aa7d9984f1d273eedd0af7f84651fb2aef6aaf2944be"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/renamed-closed-callback/main.ts",
+      "bytes": 359,
+      "sha256": "a09e66fde0a3e1a67fc289768cbff9a0d36acfbd7ec88121d7df992e1a934e3c"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/blue/es5/renamed-closed-callback/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/cases.json",
+      "bytes": 3685,
+      "sha256": "8b399ec0bb21adfb6e7c53b580eb91e5164eb42e33e92982c6233d247e617e1a"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/captured-result-mismatch-is-rejected/main.ts",
+      "bytes": 164,
+      "sha256": "3d24da84d02da4a9790133b76a476b8faf7e391f523f7b8421826b92f3f5ed41"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/captured-result-mismatch-is-rejected/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/captured-result-remains-inferable/dist/main.d.ts",
+      "bytes": 37,
+      "sha256": "b649a5239f026b238c3da9f09eea8c77ab2b3c5e10ed916ce8cea3f77d93219f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/captured-result-remains-inferable/dist/main.js",
+      "bytes": 135,
+      "sha256": "7f384eb999f2ca662e14e5cb7a433aa7b7780c450d1d0b5d7ea38813c723e471"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/captured-result-remains-inferable/main.ts",
+      "bytes": 145,
+      "sha256": "1a13ac88941d8c325fe716c980b7f341f529d1d283677b57b765ad92382cf9b9"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/captured-result-remains-inferable/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/closed-callback-import/callback.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/closed-callback-import/dist/callback.d.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/closed-callback-import/dist/callback.js",
+      "bytes": 77,
+      "sha256": "d43aa81f5bc89faa359e0f97c814ba25155591ff078fbb9bfd40f8c7c9683230"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/closed-callback-import/dist/main.d.ts",
+      "bytes": 120,
+      "sha256": "1cfee1dd569c8a09565f58ec5c34c6513244e1970ae6531e5b25417455f974fa"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/closed-callback-import/dist/main.js",
+      "bytes": 336,
+      "sha256": "fc63505dc22ef77d77baa17470e48f663c7ae76978c314e1b9f71fbacc691048"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/closed-callback-import/main.ts",
+      "bytes": 288,
+      "sha256": "90d7cde21abc3b9012594284c1dfac1f77d3e8fc96f60b07c9def60de3024ce2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/closed-callback-import/tsconfig.json",
+      "bytes": 260,
+      "sha256": "4ad5c94f8fdab237e28813192c74b083a64f02a04f974d880682eaf06651a7db"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/closed-callback-in-property/dist/main.d.ts",
+      "bytes": 203,
+      "sha256": "4e15848418be8ce2e3061cd25f3ae9cef1d30eca6094e5edef9d291b62036e2f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/closed-callback-in-property/dist/main.js",
+      "bytes": 336,
+      "sha256": "fc63505dc22ef77d77baa17470e48f663c7ae76978c314e1b9f71fbacc691048"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/closed-callback-in-property/main.ts",
+      "bytes": 355,
+      "sha256": "9035e0d59f37578f68edd7e17e4ad8ba301d4961f7f1e9a53f2f6c7ab65e75d8"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/closed-callback-in-property/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/closed-dependent-callback/dist/main.d.ts",
+      "bytes": 187,
+      "sha256": "0dee8d6f756fffd0dc5f5ff58ba0d30082bf5034b80552fd5d5fc04aae03ebea"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/closed-dependent-callback/dist/main.js",
+      "bytes": 336,
+      "sha256": "fc63505dc22ef77d77baa17470e48f663c7ae76978c314e1b9f71fbacc691048"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/closed-dependent-callback/main.ts",
+      "bytes": 344,
+      "sha256": "5c114b64d6a09fd15ca28eecc1043aa80dfb9b094634805fc9ad742b34c70053"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/closed-dependent-callback/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/closed-dependent-default/dist/main.d.ts",
+      "bytes": 197,
+      "sha256": "b3aa812a8813f0d2d85d5b4befe32f59910221db3181e74b540eebfda98975f4"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/closed-dependent-default/dist/main.js",
+      "bytes": 336,
+      "sha256": "fc63505dc22ef77d77baa17470e48f663c7ae76978c314e1b9f71fbacc691048"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/closed-dependent-default/main.ts",
+      "bytes": 354,
+      "sha256": "2c7a39096bafb12dc6d4d5e40c7156c1ecc6d4fd1dd1c1e36ec866cd2188dbe7"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/closed-dependent-default/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/closed-value-default/dist/main.d.ts",
+      "bytes": 202,
+      "sha256": "152eec7924b8ed2960b68a05c1429b7d7680d2d1ce1facab1554a95d0232cdb9"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/closed-value-default/dist/main.js",
+      "bytes": 336,
+      "sha256": "fc63505dc22ef77d77baa17470e48f663c7ae76978c314e1b9f71fbacc691048"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/closed-value-default/main.ts",
+      "bytes": 359,
+      "sha256": "dd52a3962623978e1d3055f11d4330ab51d8c1c3ae0ad5a79cae91d9cec06f87"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/closed-value-default/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/renamed-closed-callback/dist/main.d.ts",
+      "bytes": 202,
+      "sha256": "d5a5bcc28d74150bbf6b4214e4e20146dba3d6de74bf1a1642f568aa0147942b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/renamed-closed-callback/dist/main.js",
+      "bytes": 336,
+      "sha256": "fc63505dc22ef77d77baa17470e48f663c7ae76978c314e1b9f71fbacc691048"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/renamed-closed-callback/main.ts",
+      "bytes": 359,
+      "sha256": "a09e66fde0a3e1a67fc289768cbff9a0d36acfbd7ec88121d7df992e1a934e3c"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es2022/renamed-closed-callback/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/captured-result-mismatch-is-rejected/main.ts",
+      "bytes": 164,
+      "sha256": "3d24da84d02da4a9790133b76a476b8faf7e391f523f7b8421826b92f3f5ed41"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/captured-result-mismatch-is-rejected/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/captured-result-remains-inferable/dist/main.d.ts",
+      "bytes": 37,
+      "sha256": "b649a5239f026b238c3da9f09eea8c77ab2b3c5e10ed916ce8cea3f77d93219f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/captured-result-remains-inferable/dist/main.js",
+      "bytes": 135,
+      "sha256": "7f384eb999f2ca662e14e5cb7a433aa7b7780c450d1d0b5d7ea38813c723e471"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/captured-result-remains-inferable/main.ts",
+      "bytes": 145,
+      "sha256": "1a13ac88941d8c325fe716c980b7f341f529d1d283677b57b765ad92382cf9b9"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/captured-result-remains-inferable/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/closed-callback-import/callback.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/closed-callback-import/dist/callback.d.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/closed-callback-import/dist/callback.js",
+      "bytes": 77,
+      "sha256": "d43aa81f5bc89faa359e0f97c814ba25155591ff078fbb9bfd40f8c7c9683230"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/closed-callback-import/dist/main.d.ts",
+      "bytes": 120,
+      "sha256": "1cfee1dd569c8a09565f58ec5c34c6513244e1970ae6531e5b25417455f974fa"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/closed-callback-import/dist/main.js",
+      "bytes": 330,
+      "sha256": "6bfaa2a6be5118045e2feb4a3efea157047a5b4ae421086f6f895c519d3d7eb2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/closed-callback-import/main.ts",
+      "bytes": 288,
+      "sha256": "90d7cde21abc3b9012594284c1dfac1f77d3e8fc96f60b07c9def60de3024ce2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/closed-callback-import/tsconfig.json",
+      "bytes": 257,
+      "sha256": "b4b948b7818414eb66587596734c49aef79f1c0594846679677ddc4b67b675a3"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/closed-callback-in-property/dist/main.d.ts",
+      "bytes": 203,
+      "sha256": "4e15848418be8ce2e3061cd25f3ae9cef1d30eca6094e5edef9d291b62036e2f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/closed-callback-in-property/dist/main.js",
+      "bytes": 330,
+      "sha256": "6bfaa2a6be5118045e2feb4a3efea157047a5b4ae421086f6f895c519d3d7eb2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/closed-callback-in-property/main.ts",
+      "bytes": 355,
+      "sha256": "9035e0d59f37578f68edd7e17e4ad8ba301d4961f7f1e9a53f2f6c7ab65e75d8"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/closed-callback-in-property/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/closed-dependent-callback/dist/main.d.ts",
+      "bytes": 187,
+      "sha256": "0dee8d6f756fffd0dc5f5ff58ba0d30082bf5034b80552fd5d5fc04aae03ebea"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/closed-dependent-callback/dist/main.js",
+      "bytes": 330,
+      "sha256": "6bfaa2a6be5118045e2feb4a3efea157047a5b4ae421086f6f895c519d3d7eb2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/closed-dependent-callback/main.ts",
+      "bytes": 344,
+      "sha256": "5c114b64d6a09fd15ca28eecc1043aa80dfb9b094634805fc9ad742b34c70053"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/closed-dependent-callback/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/closed-dependent-default/dist/main.d.ts",
+      "bytes": 197,
+      "sha256": "b3aa812a8813f0d2d85d5b4befe32f59910221db3181e74b540eebfda98975f4"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/closed-dependent-default/dist/main.js",
+      "bytes": 330,
+      "sha256": "6bfaa2a6be5118045e2feb4a3efea157047a5b4ae421086f6f895c519d3d7eb2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/closed-dependent-default/main.ts",
+      "bytes": 354,
+      "sha256": "2c7a39096bafb12dc6d4d5e40c7156c1ecc6d4fd1dd1c1e36ec866cd2188dbe7"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/closed-dependent-default/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/closed-value-default/dist/main.d.ts",
+      "bytes": 202,
+      "sha256": "152eec7924b8ed2960b68a05c1429b7d7680d2d1ce1facab1554a95d0232cdb9"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/closed-value-default/dist/main.js",
+      "bytes": 330,
+      "sha256": "6bfaa2a6be5118045e2feb4a3efea157047a5b4ae421086f6f895c519d3d7eb2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/closed-value-default/main.ts",
+      "bytes": 359,
+      "sha256": "dd52a3962623978e1d3055f11d4330ab51d8c1c3ae0ad5a79cae91d9cec06f87"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/closed-value-default/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/renamed-closed-callback/dist/main.d.ts",
+      "bytes": 202,
+      "sha256": "d5a5bcc28d74150bbf6b4214e4e20146dba3d6de74bf1a1642f568aa0147942b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/renamed-closed-callback/dist/main.js",
+      "bytes": 330,
+      "sha256": "6bfaa2a6be5118045e2feb4a3efea157047a5b4ae421086f6f895c519d3d7eb2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/renamed-closed-callback/main.ts",
+      "bytes": 359,
+      "sha256": "a09e66fde0a3e1a67fc289768cbff9a0d36acfbd7ec88121d7df992e1a934e3c"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/native/es5/renamed-closed-callback/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-1/report.json",
+      "bytes": 14528,
+      "sha256": "fd2b0d363f33c09586941955ed884f1cbceb06d8afd829fd3178c1d7eafb5fc0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/captured-result-mismatch-is-rejected/build.stderr",
+      "bytes": 708,
+      "sha256": "325d699c7f962d351c790a575de79c164fb0e1cd5cb2c43129016d1c94eb6adf"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/captured-result-mismatch-is-rejected/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/captured-result-mismatch-is-rejected/main.ts",
+      "bytes": 164,
+      "sha256": "3d24da84d02da4a9790133b76a476b8faf7e391f523f7b8421826b92f3f5ed41"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/captured-result-mismatch-is-rejected/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/captured-result-remains-inferable/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/captured-result-remains-inferable/build.stdout",
+      "bytes": 78,
+      "sha256": "17f19c4ce10453a935bbc1fa3fd25affb078527ab45ef39c4681d2f547656822"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/captured-result-remains-inferable/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "3c93d3c508fb373629ad42b0fdad4598d133880bf6af9f78a2d628269ff1447c"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/captured-result-remains-inferable/dist/main.d.ts",
+      "bytes": 37,
+      "sha256": "b649a5239f026b238c3da9f09eea8c77ab2b3c5e10ed916ce8cea3f77d93219f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/captured-result-remains-inferable/dist/main.js",
+      "bytes": 137,
+      "sha256": "db9ed4a056b27dcddd3e3c134363e3c788e4919e9b29860886484913f4e0c098"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/captured-result-remains-inferable/main.ts",
+      "bytes": 145,
+      "sha256": "1a13ac88941d8c325fe716c980b7f341f529d1d283677b57b765ad92382cf9b9"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/captured-result-remains-inferable/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-callback-import/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-callback-import/build.stdout",
+      "bytes": 78,
+      "sha256": "3334e87335143270711bb63cfc0d28e85fa9b2c331d83a9dc31659ee663eefcc"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-callback-import/callback.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-callback-import/dist/bluetsc.manifest.json",
+      "bytes": 1762,
+      "sha256": "d21ed47c43dfeaea073919dbfb921b969e78f34a299f9b557566f819b405f1f5"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-callback-import/dist/callback.d.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-callback-import/dist/callback.js",
+      "bytes": 78,
+      "sha256": "da8815cd26bbc3418b07e59306164fc5e2bf2a9a7ac668fdd183fd7805b6cda3"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-callback-import/dist/main.d.ts",
+      "bytes": 120,
+      "sha256": "1cfee1dd569c8a09565f58ec5c34c6513244e1970ae6531e5b25417455f974fa"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-callback-import/dist/main.js",
+      "bytes": 306,
+      "sha256": "1279a32d5236a2c61b99bfed7a0a20c99e7310564d798fd9751397d94899820b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-callback-import/main.ts",
+      "bytes": 288,
+      "sha256": "90d7cde21abc3b9012594284c1dfac1f77d3e8fc96f60b07c9def60de3024ce2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-callback-import/tsconfig.json",
+      "bytes": 260,
+      "sha256": "4ad5c94f8fdab237e28813192c74b083a64f02a04f974d880682eaf06651a7db"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-callback-in-property/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-callback-in-property/build.stdout",
+      "bytes": 78,
+      "sha256": "cf35c078f3f15b362f86995f193a37eaec3b99eb809d1db934bcf8bfd504773b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-callback-in-property/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "1162a551e63b11bf4c22f45fff1a527f2b1d8f167ff2b345fa3b214a15993d19"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-callback-in-property/dist/main.d.ts",
+      "bytes": 203,
+      "sha256": "4e15848418be8ce2e3061cd25f3ae9cef1d30eca6094e5edef9d291b62036e2f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-callback-in-property/dist/main.js",
+      "bytes": 306,
+      "sha256": "1279a32d5236a2c61b99bfed7a0a20c99e7310564d798fd9751397d94899820b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-callback-in-property/main.ts",
+      "bytes": 355,
+      "sha256": "9035e0d59f37578f68edd7e17e4ad8ba301d4961f7f1e9a53f2f6c7ab65e75d8"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-callback-in-property/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-dependent-callback/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-dependent-callback/build.stdout",
+      "bytes": 78,
+      "sha256": "5d8fcb12e8333b6a15120ce3759fd3229b42e25b9fe69511c78eec717a6f12e3"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-dependent-callback/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "3e97002cbfced6463904411e82df5501a40dfcdcf6992f70a98ea959bba235ec"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-dependent-callback/dist/main.d.ts",
+      "bytes": 187,
+      "sha256": "0dee8d6f756fffd0dc5f5ff58ba0d30082bf5034b80552fd5d5fc04aae03ebea"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-dependent-callback/dist/main.js",
+      "bytes": 306,
+      "sha256": "1279a32d5236a2c61b99bfed7a0a20c99e7310564d798fd9751397d94899820b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-dependent-callback/main.ts",
+      "bytes": 344,
+      "sha256": "5c114b64d6a09fd15ca28eecc1043aa80dfb9b094634805fc9ad742b34c70053"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-dependent-callback/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-dependent-default/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-dependent-default/build.stdout",
+      "bytes": 78,
+      "sha256": "472cfa88e328cf673dbdf8d254429a79c2075708e05f9310ec18a818bd36f644"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-dependent-default/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "da36b23aeb9f23ac163733fa98685771f524ad8318493e1f26b7f0cc5b93d000"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-dependent-default/dist/main.d.ts",
+      "bytes": 197,
+      "sha256": "b3aa812a8813f0d2d85d5b4befe32f59910221db3181e74b540eebfda98975f4"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-dependent-default/dist/main.js",
+      "bytes": 306,
+      "sha256": "1279a32d5236a2c61b99bfed7a0a20c99e7310564d798fd9751397d94899820b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-dependent-default/main.ts",
+      "bytes": 354,
+      "sha256": "2c7a39096bafb12dc6d4d5e40c7156c1ecc6d4fd1dd1c1e36ec866cd2188dbe7"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-dependent-default/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-value-default/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-value-default/build.stdout",
+      "bytes": 78,
+      "sha256": "4343de44f9fa0e12a4f7922b61ab8478a3c132ec6e990e1370a951d752989ad8"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-value-default/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "18dcf28e22b715dea9badb8fd6fa5add74f14e971634a89de69dc38dadc0d901"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-value-default/dist/main.d.ts",
+      "bytes": 202,
+      "sha256": "152eec7924b8ed2960b68a05c1429b7d7680d2d1ce1facab1554a95d0232cdb9"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-value-default/dist/main.js",
+      "bytes": 306,
+      "sha256": "1279a32d5236a2c61b99bfed7a0a20c99e7310564d798fd9751397d94899820b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-value-default/main.ts",
+      "bytes": 359,
+      "sha256": "dd52a3962623978e1d3055f11d4330ab51d8c1c3ae0ad5a79cae91d9cec06f87"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/closed-value-default/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/renamed-closed-callback/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/renamed-closed-callback/build.stdout",
+      "bytes": 78,
+      "sha256": "0a07eab8922ed599906b6e5e2ac035d0b05ee8f3dde73b65b10dc9687a88ed1e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/renamed-closed-callback/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "96fa2aad1b00ed3ff9aeab4d87dca51cd62d6309b8061953c7d58d9198d8dc2b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/renamed-closed-callback/dist/main.d.ts",
+      "bytes": 202,
+      "sha256": "d5a5bcc28d74150bbf6b4214e4e20146dba3d6de74bf1a1642f568aa0147942b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/renamed-closed-callback/dist/main.js",
+      "bytes": 306,
+      "sha256": "1279a32d5236a2c61b99bfed7a0a20c99e7310564d798fd9751397d94899820b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/renamed-closed-callback/main.ts",
+      "bytes": 359,
+      "sha256": "a09e66fde0a3e1a67fc289768cbff9a0d36acfbd7ec88121d7df992e1a934e3c"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es2022/renamed-closed-callback/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/captured-result-mismatch-is-rejected/build.stderr",
+      "bytes": 708,
+      "sha256": "325d699c7f962d351c790a575de79c164fb0e1cd5cb2c43129016d1c94eb6adf"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/captured-result-mismatch-is-rejected/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/captured-result-mismatch-is-rejected/main.ts",
+      "bytes": 164,
+      "sha256": "3d24da84d02da4a9790133b76a476b8faf7e391f523f7b8421826b92f3f5ed41"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/captured-result-mismatch-is-rejected/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/captured-result-remains-inferable/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/captured-result-remains-inferable/build.stdout",
+      "bytes": 78,
+      "sha256": "850dc5cdf0261ee3ff37eb7c8e16f068f477cfb97f5f0a9834c000c9dab2ff84"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/captured-result-remains-inferable/dist/bluetsc.manifest.json",
+      "bytes": 1738,
+      "sha256": "56007fd5a99aedff64c89f5684412a155902657cd5d9182055215eada1adbd5c"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/captured-result-remains-inferable/dist/main.d.ts",
+      "bytes": 37,
+      "sha256": "b649a5239f026b238c3da9f09eea8c77ab2b3c5e10ed916ce8cea3f77d93219f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/captured-result-remains-inferable/dist/main.js",
+      "bytes": 137,
+      "sha256": "db9ed4a056b27dcddd3e3c134363e3c788e4919e9b29860886484913f4e0c098"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/captured-result-remains-inferable/main.ts",
+      "bytes": 145,
+      "sha256": "1a13ac88941d8c325fe716c980b7f341f529d1d283677b57b765ad92382cf9b9"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/captured-result-remains-inferable/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-callback-import/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-callback-import/build.stdout",
+      "bytes": 78,
+      "sha256": "fe53a7724e1ab2f65e3b5dc6a2431845a0e36a24d5ebc73231f11b9bd31e389f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-callback-import/callback.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-callback-import/dist/bluetsc.manifest.json",
+      "bytes": 1757,
+      "sha256": "e043c82f76be6a77ebbe29320d0ca3c810e39df279f3b247014efc4882b32537"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-callback-import/dist/callback.d.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-callback-import/dist/callback.js",
+      "bytes": 78,
+      "sha256": "da8815cd26bbc3418b07e59306164fc5e2bf2a9a7ac668fdd183fd7805b6cda3"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-callback-import/dist/main.d.ts",
+      "bytes": 120,
+      "sha256": "1cfee1dd569c8a09565f58ec5c34c6513244e1970ae6531e5b25417455f974fa"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-callback-import/dist/main.js",
+      "bytes": 434,
+      "sha256": "f808d432b71275417c33aa7d9984f1d273eedd0af7f84651fb2aef6aaf2944be"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-callback-import/main.ts",
+      "bytes": 288,
+      "sha256": "90d7cde21abc3b9012594284c1dfac1f77d3e8fc96f60b07c9def60de3024ce2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-callback-import/tsconfig.json",
+      "bytes": 257,
+      "sha256": "b4b948b7818414eb66587596734c49aef79f1c0594846679677ddc4b67b675a3"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-callback-in-property/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-callback-in-property/build.stdout",
+      "bytes": 78,
+      "sha256": "c48bea5cc0f31608621c1da325e75820065c49724a35bf9011d1079608bbd487"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-callback-in-property/dist/bluetsc.manifest.json",
+      "bytes": 1738,
+      "sha256": "ba86f1204fa95cb6097c1630a800716bf1aa6324ff9896c7c2b1c243f2da367e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-callback-in-property/dist/main.d.ts",
+      "bytes": 203,
+      "sha256": "4e15848418be8ce2e3061cd25f3ae9cef1d30eca6094e5edef9d291b62036e2f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-callback-in-property/dist/main.js",
+      "bytes": 434,
+      "sha256": "f808d432b71275417c33aa7d9984f1d273eedd0af7f84651fb2aef6aaf2944be"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-callback-in-property/main.ts",
+      "bytes": 355,
+      "sha256": "9035e0d59f37578f68edd7e17e4ad8ba301d4961f7f1e9a53f2f6c7ab65e75d8"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-callback-in-property/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-dependent-callback/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-dependent-callback/build.stdout",
+      "bytes": 78,
+      "sha256": "6cc0b7cb6b27bdc5e2faeeb07ce46b5ea32e5f82c4efd5f579a431a7f27743ce"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-dependent-callback/dist/bluetsc.manifest.json",
+      "bytes": 1738,
+      "sha256": "2822ad26bec263c6cdda171d2bf9b96ec388058053832ad6f97596aec71685d8"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-dependent-callback/dist/main.d.ts",
+      "bytes": 187,
+      "sha256": "0dee8d6f756fffd0dc5f5ff58ba0d30082bf5034b80552fd5d5fc04aae03ebea"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-dependent-callback/dist/main.js",
+      "bytes": 434,
+      "sha256": "f808d432b71275417c33aa7d9984f1d273eedd0af7f84651fb2aef6aaf2944be"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-dependent-callback/main.ts",
+      "bytes": 344,
+      "sha256": "5c114b64d6a09fd15ca28eecc1043aa80dfb9b094634805fc9ad742b34c70053"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-dependent-callback/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-dependent-default/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-dependent-default/build.stdout",
+      "bytes": 78,
+      "sha256": "1d443d08d23bf54dd92ad157e00590dd1271b84db94eb85b98f6c08c490f7d3b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-dependent-default/dist/bluetsc.manifest.json",
+      "bytes": 1738,
+      "sha256": "36bb22937c52de769e98ed937312b747cf57f8583929c43d94c12f9db196025e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-dependent-default/dist/main.d.ts",
+      "bytes": 197,
+      "sha256": "b3aa812a8813f0d2d85d5b4befe32f59910221db3181e74b540eebfda98975f4"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-dependent-default/dist/main.js",
+      "bytes": 434,
+      "sha256": "f808d432b71275417c33aa7d9984f1d273eedd0af7f84651fb2aef6aaf2944be"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-dependent-default/main.ts",
+      "bytes": 354,
+      "sha256": "2c7a39096bafb12dc6d4d5e40c7156c1ecc6d4fd1dd1c1e36ec866cd2188dbe7"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-dependent-default/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-value-default/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-value-default/build.stdout",
+      "bytes": 78,
+      "sha256": "865310a67bef779cb6e97b68e9e088bbac1a3468e38dca89a66c2c52bd77b8f9"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-value-default/dist/bluetsc.manifest.json",
+      "bytes": 1738,
+      "sha256": "39849e365e8c7d23fdbb5fc44353510c25670d4c364607f707d42dca8760dc52"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-value-default/dist/main.d.ts",
+      "bytes": 202,
+      "sha256": "152eec7924b8ed2960b68a05c1429b7d7680d2d1ce1facab1554a95d0232cdb9"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-value-default/dist/main.js",
+      "bytes": 434,
+      "sha256": "f808d432b71275417c33aa7d9984f1d273eedd0af7f84651fb2aef6aaf2944be"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-value-default/main.ts",
+      "bytes": 359,
+      "sha256": "dd52a3962623978e1d3055f11d4330ab51d8c1c3ae0ad5a79cae91d9cec06f87"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/closed-value-default/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/renamed-closed-callback/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/renamed-closed-callback/build.stdout",
+      "bytes": 78,
+      "sha256": "b4699c98cbd122677441b8513fb455397f7185524edb0e7e1a0f2ff4dee2c384"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/renamed-closed-callback/dist/bluetsc.manifest.json",
+      "bytes": 1738,
+      "sha256": "2fa50c63eb41e07aeee851c3c60f914bd7ea15758db4b13079bc0949047f2a41"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/renamed-closed-callback/dist/main.d.ts",
+      "bytes": 202,
+      "sha256": "d5a5bcc28d74150bbf6b4214e4e20146dba3d6de74bf1a1642f568aa0147942b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/renamed-closed-callback/dist/main.js",
+      "bytes": 434,
+      "sha256": "f808d432b71275417c33aa7d9984f1d273eedd0af7f84651fb2aef6aaf2944be"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/renamed-closed-callback/main.ts",
+      "bytes": 359,
+      "sha256": "a09e66fde0a3e1a67fc289768cbff9a0d36acfbd7ec88121d7df992e1a934e3c"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/blue/es5/renamed-closed-callback/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/cases.json",
+      "bytes": 3685,
+      "sha256": "8b399ec0bb21adfb6e7c53b580eb91e5164eb42e33e92982c6233d247e617e1a"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/captured-result-mismatch-is-rejected/main.ts",
+      "bytes": 164,
+      "sha256": "3d24da84d02da4a9790133b76a476b8faf7e391f523f7b8421826b92f3f5ed41"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/captured-result-mismatch-is-rejected/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/captured-result-remains-inferable/dist/main.d.ts",
+      "bytes": 37,
+      "sha256": "b649a5239f026b238c3da9f09eea8c77ab2b3c5e10ed916ce8cea3f77d93219f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/captured-result-remains-inferable/dist/main.js",
+      "bytes": 135,
+      "sha256": "7f384eb999f2ca662e14e5cb7a433aa7b7780c450d1d0b5d7ea38813c723e471"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/captured-result-remains-inferable/main.ts",
+      "bytes": 145,
+      "sha256": "1a13ac88941d8c325fe716c980b7f341f529d1d283677b57b765ad92382cf9b9"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/captured-result-remains-inferable/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/closed-callback-import/callback.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/closed-callback-import/dist/callback.d.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/closed-callback-import/dist/callback.js",
+      "bytes": 77,
+      "sha256": "d43aa81f5bc89faa359e0f97c814ba25155591ff078fbb9bfd40f8c7c9683230"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/closed-callback-import/dist/main.d.ts",
+      "bytes": 120,
+      "sha256": "1cfee1dd569c8a09565f58ec5c34c6513244e1970ae6531e5b25417455f974fa"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/closed-callback-import/dist/main.js",
+      "bytes": 336,
+      "sha256": "fc63505dc22ef77d77baa17470e48f663c7ae76978c314e1b9f71fbacc691048"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/closed-callback-import/main.ts",
+      "bytes": 288,
+      "sha256": "90d7cde21abc3b9012594284c1dfac1f77d3e8fc96f60b07c9def60de3024ce2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/closed-callback-import/tsconfig.json",
+      "bytes": 260,
+      "sha256": "4ad5c94f8fdab237e28813192c74b083a64f02a04f974d880682eaf06651a7db"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/closed-callback-in-property/dist/main.d.ts",
+      "bytes": 203,
+      "sha256": "4e15848418be8ce2e3061cd25f3ae9cef1d30eca6094e5edef9d291b62036e2f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/closed-callback-in-property/dist/main.js",
+      "bytes": 336,
+      "sha256": "fc63505dc22ef77d77baa17470e48f663c7ae76978c314e1b9f71fbacc691048"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/closed-callback-in-property/main.ts",
+      "bytes": 355,
+      "sha256": "9035e0d59f37578f68edd7e17e4ad8ba301d4961f7f1e9a53f2f6c7ab65e75d8"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/closed-callback-in-property/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/closed-dependent-callback/dist/main.d.ts",
+      "bytes": 187,
+      "sha256": "0dee8d6f756fffd0dc5f5ff58ba0d30082bf5034b80552fd5d5fc04aae03ebea"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/closed-dependent-callback/dist/main.js",
+      "bytes": 336,
+      "sha256": "fc63505dc22ef77d77baa17470e48f663c7ae76978c314e1b9f71fbacc691048"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/closed-dependent-callback/main.ts",
+      "bytes": 344,
+      "sha256": "5c114b64d6a09fd15ca28eecc1043aa80dfb9b094634805fc9ad742b34c70053"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/closed-dependent-callback/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/closed-dependent-default/dist/main.d.ts",
+      "bytes": 197,
+      "sha256": "b3aa812a8813f0d2d85d5b4befe32f59910221db3181e74b540eebfda98975f4"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/closed-dependent-default/dist/main.js",
+      "bytes": 336,
+      "sha256": "fc63505dc22ef77d77baa17470e48f663c7ae76978c314e1b9f71fbacc691048"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/closed-dependent-default/main.ts",
+      "bytes": 354,
+      "sha256": "2c7a39096bafb12dc6d4d5e40c7156c1ecc6d4fd1dd1c1e36ec866cd2188dbe7"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/closed-dependent-default/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/closed-value-default/dist/main.d.ts",
+      "bytes": 202,
+      "sha256": "152eec7924b8ed2960b68a05c1429b7d7680d2d1ce1facab1554a95d0232cdb9"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/closed-value-default/dist/main.js",
+      "bytes": 336,
+      "sha256": "fc63505dc22ef77d77baa17470e48f663c7ae76978c314e1b9f71fbacc691048"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/closed-value-default/main.ts",
+      "bytes": 359,
+      "sha256": "dd52a3962623978e1d3055f11d4330ab51d8c1c3ae0ad5a79cae91d9cec06f87"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/closed-value-default/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/renamed-closed-callback/dist/main.d.ts",
+      "bytes": 202,
+      "sha256": "d5a5bcc28d74150bbf6b4214e4e20146dba3d6de74bf1a1642f568aa0147942b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/renamed-closed-callback/dist/main.js",
+      "bytes": 336,
+      "sha256": "fc63505dc22ef77d77baa17470e48f663c7ae76978c314e1b9f71fbacc691048"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/renamed-closed-callback/main.ts",
+      "bytes": 359,
+      "sha256": "a09e66fde0a3e1a67fc289768cbff9a0d36acfbd7ec88121d7df992e1a934e3c"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es2022/renamed-closed-callback/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/captured-result-mismatch-is-rejected/main.ts",
+      "bytes": 164,
+      "sha256": "3d24da84d02da4a9790133b76a476b8faf7e391f523f7b8421826b92f3f5ed41"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/captured-result-mismatch-is-rejected/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/captured-result-remains-inferable/dist/main.d.ts",
+      "bytes": 37,
+      "sha256": "b649a5239f026b238c3da9f09eea8c77ab2b3c5e10ed916ce8cea3f77d93219f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/captured-result-remains-inferable/dist/main.js",
+      "bytes": 135,
+      "sha256": "7f384eb999f2ca662e14e5cb7a433aa7b7780c450d1d0b5d7ea38813c723e471"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/captured-result-remains-inferable/main.ts",
+      "bytes": 145,
+      "sha256": "1a13ac88941d8c325fe716c980b7f341f529d1d283677b57b765ad92382cf9b9"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/captured-result-remains-inferable/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/closed-callback-import/callback.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/closed-callback-import/dist/callback.d.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/closed-callback-import/dist/callback.js",
+      "bytes": 77,
+      "sha256": "d43aa81f5bc89faa359e0f97c814ba25155591ff078fbb9bfd40f8c7c9683230"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/closed-callback-import/dist/main.d.ts",
+      "bytes": 120,
+      "sha256": "1cfee1dd569c8a09565f58ec5c34c6513244e1970ae6531e5b25417455f974fa"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/closed-callback-import/dist/main.js",
+      "bytes": 330,
+      "sha256": "6bfaa2a6be5118045e2feb4a3efea157047a5b4ae421086f6f895c519d3d7eb2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/closed-callback-import/main.ts",
+      "bytes": 288,
+      "sha256": "90d7cde21abc3b9012594284c1dfac1f77d3e8fc96f60b07c9def60de3024ce2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/closed-callback-import/tsconfig.json",
+      "bytes": 257,
+      "sha256": "b4b948b7818414eb66587596734c49aef79f1c0594846679677ddc4b67b675a3"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/closed-callback-in-property/dist/main.d.ts",
+      "bytes": 203,
+      "sha256": "4e15848418be8ce2e3061cd25f3ae9cef1d30eca6094e5edef9d291b62036e2f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/closed-callback-in-property/dist/main.js",
+      "bytes": 330,
+      "sha256": "6bfaa2a6be5118045e2feb4a3efea157047a5b4ae421086f6f895c519d3d7eb2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/closed-callback-in-property/main.ts",
+      "bytes": 355,
+      "sha256": "9035e0d59f37578f68edd7e17e4ad8ba301d4961f7f1e9a53f2f6c7ab65e75d8"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/closed-callback-in-property/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/closed-dependent-callback/dist/main.d.ts",
+      "bytes": 187,
+      "sha256": "0dee8d6f756fffd0dc5f5ff58ba0d30082bf5034b80552fd5d5fc04aae03ebea"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/closed-dependent-callback/dist/main.js",
+      "bytes": 330,
+      "sha256": "6bfaa2a6be5118045e2feb4a3efea157047a5b4ae421086f6f895c519d3d7eb2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/closed-dependent-callback/main.ts",
+      "bytes": 344,
+      "sha256": "5c114b64d6a09fd15ca28eecc1043aa80dfb9b094634805fc9ad742b34c70053"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/closed-dependent-callback/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/closed-dependent-default/dist/main.d.ts",
+      "bytes": 197,
+      "sha256": "b3aa812a8813f0d2d85d5b4befe32f59910221db3181e74b540eebfda98975f4"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/closed-dependent-default/dist/main.js",
+      "bytes": 330,
+      "sha256": "6bfaa2a6be5118045e2feb4a3efea157047a5b4ae421086f6f895c519d3d7eb2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/closed-dependent-default/main.ts",
+      "bytes": 354,
+      "sha256": "2c7a39096bafb12dc6d4d5e40c7156c1ecc6d4fd1dd1c1e36ec866cd2188dbe7"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/closed-dependent-default/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/closed-value-default/dist/main.d.ts",
+      "bytes": 202,
+      "sha256": "152eec7924b8ed2960b68a05c1429b7d7680d2d1ce1facab1554a95d0232cdb9"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/closed-value-default/dist/main.js",
+      "bytes": 330,
+      "sha256": "6bfaa2a6be5118045e2feb4a3efea157047a5b4ae421086f6f895c519d3d7eb2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/closed-value-default/main.ts",
+      "bytes": 359,
+      "sha256": "dd52a3962623978e1d3055f11d4330ab51d8c1c3ae0ad5a79cae91d9cec06f87"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/closed-value-default/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/renamed-closed-callback/dist/main.d.ts",
+      "bytes": 202,
+      "sha256": "d5a5bcc28d74150bbf6b4214e4e20146dba3d6de74bf1a1642f568aa0147942b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/renamed-closed-callback/dist/main.js",
+      "bytes": 330,
+      "sha256": "6bfaa2a6be5118045e2feb4a3efea157047a5b4ae421086f6f895c519d3d7eb2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/renamed-closed-callback/main.ts",
+      "bytes": 359,
+      "sha256": "a09e66fde0a3e1a67fc289768cbff9a0d36acfbd7ec88121d7df992e1a934e3c"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/native/es5/renamed-closed-callback/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-green-2/report.json",
+      "bytes": 13417,
+      "sha256": "0acdfe5fe6feac41f870bea59e32659d8d3335b20cd7cbf4e914e6b1e3c64fec"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-production-review-1/review.json",
+      "bytes": 2232,
+      "sha256": "ffbff44bbe19c2a297992abbcdaa796770c1586b5553fd8ecb72e056db86da50"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/captured-result-mismatch-is-rejected/build.stderr",
+      "bytes": 656,
+      "sha256": "6e3860a41cf6a43c5436a49533e5847fe9e61eaf72feee4f1c1ccbc357e653a0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/captured-result-mismatch-is-rejected/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/captured-result-mismatch-is-rejected/main.ts",
+      "bytes": 164,
+      "sha256": "3d24da84d02da4a9790133b76a476b8faf7e391f523f7b8421826b92f3f5ed41"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/captured-result-mismatch-is-rejected/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/captured-result-remains-inferable/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/captured-result-remains-inferable/build.stdout",
+      "bytes": 78,
+      "sha256": "0e79bd55d79b86eb9053b696cda1020d64639454fac8b28dffd9e17884a8208a"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/captured-result-remains-inferable/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "f550a147a15d61daf58a53324b1b80cb4e24836602e1a32ff6ccb151037774ae"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/captured-result-remains-inferable/dist/main.d.ts",
+      "bytes": 37,
+      "sha256": "b649a5239f026b238c3da9f09eea8c77ab2b3c5e10ed916ce8cea3f77d93219f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/captured-result-remains-inferable/dist/main.js",
+      "bytes": 137,
+      "sha256": "db9ed4a056b27dcddd3e3c134363e3c788e4919e9b29860886484913f4e0c098"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/captured-result-remains-inferable/main.ts",
+      "bytes": 145,
+      "sha256": "1a13ac88941d8c325fe716c980b7f341f529d1d283677b57b765ad92382cf9b9"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/captured-result-remains-inferable/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/closed-callback-import/build.stderr",
+      "bytes": 661,
+      "sha256": "e7618181325d1a2fa43bf03a2235057087e8c684c98d03c3c56d00aeddbae84c"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/closed-callback-import/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/closed-callback-import/callback.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/closed-callback-import/main.ts",
+      "bytes": 288,
+      "sha256": "90d7cde21abc3b9012594284c1dfac1f77d3e8fc96f60b07c9def60de3024ce2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/closed-callback-import/tsconfig.json",
+      "bytes": 260,
+      "sha256": "4ad5c94f8fdab237e28813192c74b083a64f02a04f974d880682eaf06651a7db"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/closed-callback-in-property/build.stderr",
+      "bytes": 661,
+      "sha256": "d5b89a19d2d94967e22cf741551df7562216e7dcc878a886b1f8e2a06f4c98fb"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/closed-callback-in-property/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/closed-callback-in-property/main.ts",
+      "bytes": 355,
+      "sha256": "9035e0d59f37578f68edd7e17e4ad8ba301d4961f7f1e9a53f2f6c7ab65e75d8"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/closed-callback-in-property/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/closed-dependent-callback/build.stderr",
+      "bytes": 661,
+      "sha256": "76a20a93dc1e388cf5d3657b62cd376253bb2924f8e5d2219d5841af8f5ff3a1"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/closed-dependent-callback/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/closed-dependent-callback/main.ts",
+      "bytes": 344,
+      "sha256": "5c114b64d6a09fd15ca28eecc1043aa80dfb9b094634805fc9ad742b34c70053"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/closed-dependent-callback/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/closed-dependent-default/build.stderr",
+      "bytes": 661,
+      "sha256": "8f200945e0a1627e208f8b4c6cac7e422fe90660d7a6bd5e21a05e774509292b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/closed-dependent-default/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/closed-dependent-default/main.ts",
+      "bytes": 354,
+      "sha256": "2c7a39096bafb12dc6d4d5e40c7156c1ecc6d4fd1dd1c1e36ec866cd2188dbe7"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/closed-dependent-default/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/closed-value-default/build.stderr",
+      "bytes": 661,
+      "sha256": "6e31779cb30b75abd641413d4549d10d45bd2704130ca6e0064aac88ec3b9172"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/closed-value-default/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/closed-value-default/main.ts",
+      "bytes": 359,
+      "sha256": "dd52a3962623978e1d3055f11d4330ab51d8c1c3ae0ad5a79cae91d9cec06f87"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/closed-value-default/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/renamed-closed-callback/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/renamed-closed-callback/build.stdout",
+      "bytes": 78,
+      "sha256": "8fc62b993c00c21da9cc7f93e7bea51c6531c67bd9d50b8112f7fd13d35cd62c"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/renamed-closed-callback/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "a50d3a9358f66e72cc10029a22bfd0c879c336865b6543d44f7d4eb8f7dd701b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/renamed-closed-callback/dist/main.d.ts",
+      "bytes": 202,
+      "sha256": "d5a5bcc28d74150bbf6b4214e4e20146dba3d6de74bf1a1642f568aa0147942b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/renamed-closed-callback/dist/main.js",
+      "bytes": 306,
+      "sha256": "1279a32d5236a2c61b99bfed7a0a20c99e7310564d798fd9751397d94899820b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/renamed-closed-callback/main.ts",
+      "bytes": 359,
+      "sha256": "a09e66fde0a3e1a67fc289768cbff9a0d36acfbd7ec88121d7df992e1a934e3c"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es2022/renamed-closed-callback/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/captured-result-mismatch-is-rejected/build.stderr",
+      "bytes": 656,
+      "sha256": "6e3860a41cf6a43c5436a49533e5847fe9e61eaf72feee4f1c1ccbc357e653a0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/captured-result-mismatch-is-rejected/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/captured-result-mismatch-is-rejected/main.ts",
+      "bytes": 164,
+      "sha256": "3d24da84d02da4a9790133b76a476b8faf7e391f523f7b8421826b92f3f5ed41"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/captured-result-mismatch-is-rejected/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/captured-result-remains-inferable/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/captured-result-remains-inferable/build.stdout",
+      "bytes": 78,
+      "sha256": "f8aa82ad868e6954bf941aeab139541d6106db39d7f30516d29cbf312fd696b5"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/captured-result-remains-inferable/dist/bluetsc.manifest.json",
+      "bytes": 1738,
+      "sha256": "b57131611389f8f98f486248c7815b38a4a568d794910e005b111c4749f2f241"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/captured-result-remains-inferable/dist/main.d.ts",
+      "bytes": 37,
+      "sha256": "b649a5239f026b238c3da9f09eea8c77ab2b3c5e10ed916ce8cea3f77d93219f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/captured-result-remains-inferable/dist/main.js",
+      "bytes": 137,
+      "sha256": "db9ed4a056b27dcddd3e3c134363e3c788e4919e9b29860886484913f4e0c098"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/captured-result-remains-inferable/main.ts",
+      "bytes": 145,
+      "sha256": "1a13ac88941d8c325fe716c980b7f341f529d1d283677b57b765ad92382cf9b9"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/captured-result-remains-inferable/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/closed-callback-import/build.stderr",
+      "bytes": 661,
+      "sha256": "e7618181325d1a2fa43bf03a2235057087e8c684c98d03c3c56d00aeddbae84c"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/closed-callback-import/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/closed-callback-import/callback.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/closed-callback-import/main.ts",
+      "bytes": 288,
+      "sha256": "90d7cde21abc3b9012594284c1dfac1f77d3e8fc96f60b07c9def60de3024ce2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/closed-callback-import/tsconfig.json",
+      "bytes": 257,
+      "sha256": "b4b948b7818414eb66587596734c49aef79f1c0594846679677ddc4b67b675a3"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/closed-callback-in-property/build.stderr",
+      "bytes": 661,
+      "sha256": "d5b89a19d2d94967e22cf741551df7562216e7dcc878a886b1f8e2a06f4c98fb"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/closed-callback-in-property/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/closed-callback-in-property/main.ts",
+      "bytes": 355,
+      "sha256": "9035e0d59f37578f68edd7e17e4ad8ba301d4961f7f1e9a53f2f6c7ab65e75d8"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/closed-callback-in-property/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/closed-dependent-callback/build.stderr",
+      "bytes": 661,
+      "sha256": "76a20a93dc1e388cf5d3657b62cd376253bb2924f8e5d2219d5841af8f5ff3a1"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/closed-dependent-callback/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/closed-dependent-callback/main.ts",
+      "bytes": 344,
+      "sha256": "5c114b64d6a09fd15ca28eecc1043aa80dfb9b094634805fc9ad742b34c70053"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/closed-dependent-callback/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/closed-dependent-default/build.stderr",
+      "bytes": 661,
+      "sha256": "8f200945e0a1627e208f8b4c6cac7e422fe90660d7a6bd5e21a05e774509292b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/closed-dependent-default/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/closed-dependent-default/main.ts",
+      "bytes": 354,
+      "sha256": "2c7a39096bafb12dc6d4d5e40c7156c1ecc6d4fd1dd1c1e36ec866cd2188dbe7"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/closed-dependent-default/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/closed-value-default/build.stderr",
+      "bytes": 661,
+      "sha256": "6e31779cb30b75abd641413d4549d10d45bd2704130ca6e0064aac88ec3b9172"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/closed-value-default/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/closed-value-default/main.ts",
+      "bytes": 359,
+      "sha256": "dd52a3962623978e1d3055f11d4330ab51d8c1c3ae0ad5a79cae91d9cec06f87"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/closed-value-default/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/renamed-closed-callback/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/renamed-closed-callback/build.stdout",
+      "bytes": 78,
+      "sha256": "28d5f679e53b49973cd940543ae3f4996e618cb807b51e909c366f1a7d5ad5dc"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/renamed-closed-callback/dist/bluetsc.manifest.json",
+      "bytes": 1738,
+      "sha256": "95d82beb450a8d3f68b4f8a8ec73275cebe3ee5a42026e84572a3d888b38f03a"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/renamed-closed-callback/dist/main.d.ts",
+      "bytes": 202,
+      "sha256": "d5a5bcc28d74150bbf6b4214e4e20146dba3d6de74bf1a1642f568aa0147942b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/renamed-closed-callback/dist/main.js",
+      "bytes": 434,
+      "sha256": "f808d432b71275417c33aa7d9984f1d273eedd0af7f84651fb2aef6aaf2944be"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/renamed-closed-callback/main.ts",
+      "bytes": 359,
+      "sha256": "a09e66fde0a3e1a67fc289768cbff9a0d36acfbd7ec88121d7df992e1a934e3c"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/blue/es5/renamed-closed-callback/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/cases.json",
+      "bytes": 3685,
+      "sha256": "8b399ec0bb21adfb6e7c53b580eb91e5164eb42e33e92982c6233d247e617e1a"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/executed-recursive_scope_contract.cjs",
+      "bytes": 4906,
+      "sha256": "ccfefdbe27d92e9192bb3d41b8c989aedd869fb47c4826bf082271f437b95bdc"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/captured-result-mismatch-is-rejected/main.ts",
+      "bytes": 164,
+      "sha256": "3d24da84d02da4a9790133b76a476b8faf7e391f523f7b8421826b92f3f5ed41"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/captured-result-mismatch-is-rejected/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/captured-result-remains-inferable/dist/main.d.ts",
+      "bytes": 37,
+      "sha256": "b649a5239f026b238c3da9f09eea8c77ab2b3c5e10ed916ce8cea3f77d93219f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/captured-result-remains-inferable/dist/main.js",
+      "bytes": 135,
+      "sha256": "7f384eb999f2ca662e14e5cb7a433aa7b7780c450d1d0b5d7ea38813c723e471"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/captured-result-remains-inferable/main.ts",
+      "bytes": 145,
+      "sha256": "1a13ac88941d8c325fe716c980b7f341f529d1d283677b57b765ad92382cf9b9"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/captured-result-remains-inferable/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/closed-callback-import/callback.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/closed-callback-import/dist/callback.d.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/closed-callback-import/dist/callback.js",
+      "bytes": 77,
+      "sha256": "d43aa81f5bc89faa359e0f97c814ba25155591ff078fbb9bfd40f8c7c9683230"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/closed-callback-import/dist/main.d.ts",
+      "bytes": 120,
+      "sha256": "1cfee1dd569c8a09565f58ec5c34c6513244e1970ae6531e5b25417455f974fa"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/closed-callback-import/dist/main.js",
+      "bytes": 336,
+      "sha256": "fc63505dc22ef77d77baa17470e48f663c7ae76978c314e1b9f71fbacc691048"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/closed-callback-import/main.ts",
+      "bytes": 288,
+      "sha256": "90d7cde21abc3b9012594284c1dfac1f77d3e8fc96f60b07c9def60de3024ce2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/closed-callback-import/tsconfig.json",
+      "bytes": 260,
+      "sha256": "4ad5c94f8fdab237e28813192c74b083a64f02a04f974d880682eaf06651a7db"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/closed-callback-in-property/dist/main.d.ts",
+      "bytes": 203,
+      "sha256": "4e15848418be8ce2e3061cd25f3ae9cef1d30eca6094e5edef9d291b62036e2f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/closed-callback-in-property/dist/main.js",
+      "bytes": 336,
+      "sha256": "fc63505dc22ef77d77baa17470e48f663c7ae76978c314e1b9f71fbacc691048"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/closed-callback-in-property/main.ts",
+      "bytes": 355,
+      "sha256": "9035e0d59f37578f68edd7e17e4ad8ba301d4961f7f1e9a53f2f6c7ab65e75d8"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/closed-callback-in-property/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/closed-dependent-callback/dist/main.d.ts",
+      "bytes": 187,
+      "sha256": "0dee8d6f756fffd0dc5f5ff58ba0d30082bf5034b80552fd5d5fc04aae03ebea"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/closed-dependent-callback/dist/main.js",
+      "bytes": 336,
+      "sha256": "fc63505dc22ef77d77baa17470e48f663c7ae76978c314e1b9f71fbacc691048"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/closed-dependent-callback/main.ts",
+      "bytes": 344,
+      "sha256": "5c114b64d6a09fd15ca28eecc1043aa80dfb9b094634805fc9ad742b34c70053"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/closed-dependent-callback/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/closed-dependent-default/dist/main.d.ts",
+      "bytes": 197,
+      "sha256": "b3aa812a8813f0d2d85d5b4befe32f59910221db3181e74b540eebfda98975f4"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/closed-dependent-default/dist/main.js",
+      "bytes": 336,
+      "sha256": "fc63505dc22ef77d77baa17470e48f663c7ae76978c314e1b9f71fbacc691048"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/closed-dependent-default/main.ts",
+      "bytes": 354,
+      "sha256": "2c7a39096bafb12dc6d4d5e40c7156c1ecc6d4fd1dd1c1e36ec866cd2188dbe7"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/closed-dependent-default/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/closed-value-default/dist/main.d.ts",
+      "bytes": 202,
+      "sha256": "152eec7924b8ed2960b68a05c1429b7d7680d2d1ce1facab1554a95d0232cdb9"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/closed-value-default/dist/main.js",
+      "bytes": 336,
+      "sha256": "fc63505dc22ef77d77baa17470e48f663c7ae76978c314e1b9f71fbacc691048"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/closed-value-default/main.ts",
+      "bytes": 359,
+      "sha256": "dd52a3962623978e1d3055f11d4330ab51d8c1c3ae0ad5a79cae91d9cec06f87"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/closed-value-default/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/renamed-closed-callback/dist/main.d.ts",
+      "bytes": 202,
+      "sha256": "d5a5bcc28d74150bbf6b4214e4e20146dba3d6de74bf1a1642f568aa0147942b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/renamed-closed-callback/dist/main.js",
+      "bytes": 336,
+      "sha256": "fc63505dc22ef77d77baa17470e48f663c7ae76978c314e1b9f71fbacc691048"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/renamed-closed-callback/main.ts",
+      "bytes": 359,
+      "sha256": "a09e66fde0a3e1a67fc289768cbff9a0d36acfbd7ec88121d7df992e1a934e3c"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es2022/renamed-closed-callback/tsconfig.json",
+      "bytes": 241,
+      "sha256": "06dea2df0afcc3aff320bddb63bcd7d5f14683c44a92c9f9bbfac8ee8fe2712e"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/captured-result-mismatch-is-rejected/main.ts",
+      "bytes": 164,
+      "sha256": "3d24da84d02da4a9790133b76a476b8faf7e391f523f7b8421826b92f3f5ed41"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/captured-result-mismatch-is-rejected/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/captured-result-remains-inferable/dist/main.d.ts",
+      "bytes": 37,
+      "sha256": "b649a5239f026b238c3da9f09eea8c77ab2b3c5e10ed916ce8cea3f77d93219f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/captured-result-remains-inferable/dist/main.js",
+      "bytes": 135,
+      "sha256": "7f384eb999f2ca662e14e5cb7a433aa7b7780c450d1d0b5d7ea38813c723e471"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/captured-result-remains-inferable/main.ts",
+      "bytes": 145,
+      "sha256": "1a13ac88941d8c325fe716c980b7f341f529d1d283677b57b765ad92382cf9b9"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/captured-result-remains-inferable/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/closed-callback-import/callback.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/closed-callback-import/dist/callback.d.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/closed-callback-import/dist/callback.js",
+      "bytes": 77,
+      "sha256": "d43aa81f5bc89faa359e0f97c814ba25155591ff078fbb9bfd40f8c7c9683230"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/closed-callback-import/dist/main.d.ts",
+      "bytes": 120,
+      "sha256": "1cfee1dd569c8a09565f58ec5c34c6513244e1970ae6531e5b25417455f974fa"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/closed-callback-import/dist/main.js",
+      "bytes": 330,
+      "sha256": "6bfaa2a6be5118045e2feb4a3efea157047a5b4ae421086f6f895c519d3d7eb2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/closed-callback-import/main.ts",
+      "bytes": 288,
+      "sha256": "90d7cde21abc3b9012594284c1dfac1f77d3e8fc96f60b07c9def60de3024ce2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/closed-callback-import/tsconfig.json",
+      "bytes": 257,
+      "sha256": "b4b948b7818414eb66587596734c49aef79f1c0594846679677ddc4b67b675a3"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/closed-callback-in-property/dist/main.d.ts",
+      "bytes": 203,
+      "sha256": "4e15848418be8ce2e3061cd25f3ae9cef1d30eca6094e5edef9d291b62036e2f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/closed-callback-in-property/dist/main.js",
+      "bytes": 330,
+      "sha256": "6bfaa2a6be5118045e2feb4a3efea157047a5b4ae421086f6f895c519d3d7eb2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/closed-callback-in-property/main.ts",
+      "bytes": 355,
+      "sha256": "9035e0d59f37578f68edd7e17e4ad8ba301d4961f7f1e9a53f2f6c7ab65e75d8"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/closed-callback-in-property/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/closed-dependent-callback/dist/main.d.ts",
+      "bytes": 187,
+      "sha256": "0dee8d6f756fffd0dc5f5ff58ba0d30082bf5034b80552fd5d5fc04aae03ebea"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/closed-dependent-callback/dist/main.js",
+      "bytes": 330,
+      "sha256": "6bfaa2a6be5118045e2feb4a3efea157047a5b4ae421086f6f895c519d3d7eb2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/closed-dependent-callback/main.ts",
+      "bytes": 344,
+      "sha256": "5c114b64d6a09fd15ca28eecc1043aa80dfb9b094634805fc9ad742b34c70053"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/closed-dependent-callback/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/closed-dependent-default/dist/main.d.ts",
+      "bytes": 197,
+      "sha256": "b3aa812a8813f0d2d85d5b4befe32f59910221db3181e74b540eebfda98975f4"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/closed-dependent-default/dist/main.js",
+      "bytes": 330,
+      "sha256": "6bfaa2a6be5118045e2feb4a3efea157047a5b4ae421086f6f895c519d3d7eb2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/closed-dependent-default/main.ts",
+      "bytes": 354,
+      "sha256": "2c7a39096bafb12dc6d4d5e40c7156c1ecc6d4fd1dd1c1e36ec866cd2188dbe7"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/closed-dependent-default/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/closed-value-default/dist/main.d.ts",
+      "bytes": 202,
+      "sha256": "152eec7924b8ed2960b68a05c1429b7d7680d2d1ce1facab1554a95d0232cdb9"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/closed-value-default/dist/main.js",
+      "bytes": 330,
+      "sha256": "6bfaa2a6be5118045e2feb4a3efea157047a5b4ae421086f6f895c519d3d7eb2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/closed-value-default/main.ts",
+      "bytes": 359,
+      "sha256": "dd52a3962623978e1d3055f11d4330ab51d8c1c3ae0ad5a79cae91d9cec06f87"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/closed-value-default/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/renamed-closed-callback/dist/main.d.ts",
+      "bytes": 202,
+      "sha256": "d5a5bcc28d74150bbf6b4214e4e20146dba3d6de74bf1a1642f568aa0147942b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/renamed-closed-callback/dist/main.js",
+      "bytes": 330,
+      "sha256": "6bfaa2a6be5118045e2feb4a3efea157047a5b4ae421086f6f895c519d3d7eb2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/renamed-closed-callback/main.ts",
+      "bytes": 359,
+      "sha256": "a09e66fde0a3e1a67fc289768cbff9a0d36acfbd7ec88121d7df992e1a934e3c"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/native/es5/renamed-closed-callback/tsconfig.json",
+      "bytes": 238,
+      "sha256": "5d9137f2dc914a9d6d3cdf5a11ce3a7ad36e08fe22d1bbbf81bdd564e837d7b0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/pre-repair-freeze.json",
+      "bytes": 596,
+      "sha256": "e204306661876c3bad5bed90045d403cc5d98e1496efdae6f0ba5fb955fa3b98"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-red-1/report.json",
+      "bytes": 25281,
+      "sha256": "f439cb3d801c0c732f7913cc8d1724fdbdd4f6ee4f614c92f821d7a3f3316ddc"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/higher_order_inference.rs",
+      "bytes": 19212,
+      "sha256": "e66f99af464023ab7d50d415e5775bba4e7fd86d4bf53776036c502158ebd020"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/measurement.json",
+      "bytes": 570,
+      "sha256": "14a9bfca2d92ccf66bdc20924b14a74d783610396e5c251781cd02d1137f280b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/captured-result-mismatch-is-rejected/build.stderr",
+      "bytes": 656,
+      "sha256": "6e3860a41cf6a43c5436a49533e5847fe9e61eaf72feee4f1c1ccbc357e653a0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/captured-result-mismatch-is-rejected/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/captured-result-mismatch-is-rejected/main.ts",
+      "bytes": 164,
+      "sha256": "3d24da84d02da4a9790133b76a476b8faf7e391f523f7b8421826b92f3f5ed41"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/captured-result-mismatch-is-rejected/tsconfig.json",
+      "bytes": 240,
+      "sha256": "508111f239cc442143a32a04a1941abfbd6f95f79938d2483940fa8226d9c637"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/captured-result-remains-inferable/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/captured-result-remains-inferable/build.stdout",
+      "bytes": 78,
+      "sha256": "bcf27aff683c9cfb4119295959356974646ae57e5d23b928805a05147f1a5086"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/captured-result-remains-inferable/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "4a0809c01b05ea12f0042b18e8bb10b05cd8933260463a7690520a361b2cf751"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/captured-result-remains-inferable/dist/main.d.ts",
+      "bytes": 37,
+      "sha256": "b649a5239f026b238c3da9f09eea8c77ab2b3c5e10ed916ce8cea3f77d93219f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/captured-result-remains-inferable/dist/main.js",
+      "bytes": 137,
+      "sha256": "db9ed4a056b27dcddd3e3c134363e3c788e4919e9b29860886484913f4e0c098"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/captured-result-remains-inferable/main.ts",
+      "bytes": 145,
+      "sha256": "1a13ac88941d8c325fe716c980b7f341f529d1d283677b57b765ad92382cf9b9"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/captured-result-remains-inferable/tsconfig.json",
+      "bytes": 240,
+      "sha256": "508111f239cc442143a32a04a1941abfbd6f95f79938d2483940fa8226d9c637"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/closed-callback-import/build.stderr",
+      "bytes": 661,
+      "sha256": "e7618181325d1a2fa43bf03a2235057087e8c684c98d03c3c56d00aeddbae84c"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/closed-callback-import/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/closed-callback-import/callback.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/closed-callback-import/main.ts",
+      "bytes": 288,
+      "sha256": "90d7cde21abc3b9012594284c1dfac1f77d3e8fc96f60b07c9def60de3024ce2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/closed-callback-import/tsconfig.json",
+      "bytes": 259,
+      "sha256": "2370e53da5a5cb21869e5e13c351349438797f63f6ff425f26a9e61566121acb"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/closed-callback-in-property/build.stderr",
+      "bytes": 661,
+      "sha256": "d5b89a19d2d94967e22cf741551df7562216e7dcc878a886b1f8e2a06f4c98fb"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/closed-callback-in-property/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/closed-callback-in-property/main.ts",
+      "bytes": 355,
+      "sha256": "9035e0d59f37578f68edd7e17e4ad8ba301d4961f7f1e9a53f2f6c7ab65e75d8"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/closed-callback-in-property/tsconfig.json",
+      "bytes": 240,
+      "sha256": "508111f239cc442143a32a04a1941abfbd6f95f79938d2483940fa8226d9c637"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/closed-dependent-callback/build.stderr",
+      "bytes": 661,
+      "sha256": "76a20a93dc1e388cf5d3657b62cd376253bb2924f8e5d2219d5841af8f5ff3a1"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/closed-dependent-callback/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/closed-dependent-callback/main.ts",
+      "bytes": 344,
+      "sha256": "5c114b64d6a09fd15ca28eecc1043aa80dfb9b094634805fc9ad742b34c70053"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/closed-dependent-callback/tsconfig.json",
+      "bytes": 240,
+      "sha256": "508111f239cc442143a32a04a1941abfbd6f95f79938d2483940fa8226d9c637"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/closed-dependent-default/build.stderr",
+      "bytes": 661,
+      "sha256": "8f200945e0a1627e208f8b4c6cac7e422fe90660d7a6bd5e21a05e774509292b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/closed-dependent-default/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/closed-dependent-default/main.ts",
+      "bytes": 354,
+      "sha256": "2c7a39096bafb12dc6d4d5e40c7156c1ecc6d4fd1dd1c1e36ec866cd2188dbe7"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/closed-dependent-default/tsconfig.json",
+      "bytes": 240,
+      "sha256": "508111f239cc442143a32a04a1941abfbd6f95f79938d2483940fa8226d9c637"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/closed-value-default/build.stderr",
+      "bytes": 661,
+      "sha256": "6e31779cb30b75abd641413d4549d10d45bd2704130ca6e0064aac88ec3b9172"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/closed-value-default/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/closed-value-default/main.ts",
+      "bytes": 359,
+      "sha256": "dd52a3962623978e1d3055f11d4330ab51d8c1c3ae0ad5a79cae91d9cec06f87"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/closed-value-default/tsconfig.json",
+      "bytes": 240,
+      "sha256": "508111f239cc442143a32a04a1941abfbd6f95f79938d2483940fa8226d9c637"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/renamed-closed-callback/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/renamed-closed-callback/build.stdout",
+      "bytes": 78,
+      "sha256": "65b267860d94d8f64b5f57aa5ef057a7d60b60fff3d67ae7745beed0ff37363c"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/renamed-closed-callback/dist/bluetsc.manifest.json",
+      "bytes": 1743,
+      "sha256": "9114d5472f21a2ef5389ae0afceb771a6393c729173acf302d358043186f9be7"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/renamed-closed-callback/dist/main.d.ts",
+      "bytes": 202,
+      "sha256": "d5a5bcc28d74150bbf6b4214e4e20146dba3d6de74bf1a1642f568aa0147942b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/renamed-closed-callback/dist/main.js",
+      "bytes": 306,
+      "sha256": "1279a32d5236a2c61b99bfed7a0a20c99e7310564d798fd9751397d94899820b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/renamed-closed-callback/main.ts",
+      "bytes": 359,
+      "sha256": "a09e66fde0a3e1a67fc289768cbff9a0d36acfbd7ec88121d7df992e1a934e3c"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es2022/renamed-closed-callback/tsconfig.json",
+      "bytes": 240,
+      "sha256": "508111f239cc442143a32a04a1941abfbd6f95f79938d2483940fa8226d9c637"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/captured-result-mismatch-is-rejected/build.stderr",
+      "bytes": 656,
+      "sha256": "6e3860a41cf6a43c5436a49533e5847fe9e61eaf72feee4f1c1ccbc357e653a0"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/captured-result-mismatch-is-rejected/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/captured-result-mismatch-is-rejected/main.ts",
+      "bytes": 164,
+      "sha256": "3d24da84d02da4a9790133b76a476b8faf7e391f523f7b8421826b92f3f5ed41"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/captured-result-mismatch-is-rejected/tsconfig.json",
+      "bytes": 237,
+      "sha256": "69b76ee9504459134ecb3fa1bf002f38f433e2a9616b141605427ea04701874d"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/captured-result-remains-inferable/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/captured-result-remains-inferable/build.stdout",
+      "bytes": 78,
+      "sha256": "4186eb13e5f107b75ff16ff696566071c56b7117693b73f47d4dd166cb8df663"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/captured-result-remains-inferable/dist/bluetsc.manifest.json",
+      "bytes": 1738,
+      "sha256": "8e26909de8e493bdadfa9efcd7adf7286aba11966010cc29ce9a51f8b6468cac"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/captured-result-remains-inferable/dist/main.d.ts",
+      "bytes": 37,
+      "sha256": "b649a5239f026b238c3da9f09eea8c77ab2b3c5e10ed916ce8cea3f77d93219f"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/captured-result-remains-inferable/dist/main.js",
+      "bytes": 137,
+      "sha256": "db9ed4a056b27dcddd3e3c134363e3c788e4919e9b29860886484913f4e0c098"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/captured-result-remains-inferable/main.ts",
+      "bytes": 145,
+      "sha256": "1a13ac88941d8c325fe716c980b7f341f529d1d283677b57b765ad92382cf9b9"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/captured-result-remains-inferable/tsconfig.json",
+      "bytes": 237,
+      "sha256": "69b76ee9504459134ecb3fa1bf002f38f433e2a9616b141605427ea04701874d"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/closed-callback-import/build.stderr",
+      "bytes": 661,
+      "sha256": "e7618181325d1a2fa43bf03a2235057087e8c684c98d03c3c56d00aeddbae84c"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/closed-callback-import/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/closed-callback-import/callback.ts",
+      "bytes": 105,
+      "sha256": "9fa284f3139013d753da61f5a5163a57fad7ff46fbb1a8393de0dc0883e90c55"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/closed-callback-import/main.ts",
+      "bytes": 288,
+      "sha256": "90d7cde21abc3b9012594284c1dfac1f77d3e8fc96f60b07c9def60de3024ce2"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/closed-callback-import/tsconfig.json",
+      "bytes": 256,
+      "sha256": "e47c237ae03f7af352d45e9e6bb348785586d79dc60c9914ea3541be26cb737a"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/closed-callback-in-property/build.stderr",
+      "bytes": 661,
+      "sha256": "d5b89a19d2d94967e22cf741551df7562216e7dcc878a886b1f8e2a06f4c98fb"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/closed-callback-in-property/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/closed-callback-in-property/main.ts",
+      "bytes": 355,
+      "sha256": "9035e0d59f37578f68edd7e17e4ad8ba301d4961f7f1e9a53f2f6c7ab65e75d8"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/closed-callback-in-property/tsconfig.json",
+      "bytes": 237,
+      "sha256": "69b76ee9504459134ecb3fa1bf002f38f433e2a9616b141605427ea04701874d"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/closed-dependent-callback/build.stderr",
+      "bytes": 661,
+      "sha256": "76a20a93dc1e388cf5d3657b62cd376253bb2924f8e5d2219d5841af8f5ff3a1"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/closed-dependent-callback/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/closed-dependent-callback/main.ts",
+      "bytes": 344,
+      "sha256": "5c114b64d6a09fd15ca28eecc1043aa80dfb9b094634805fc9ad742b34c70053"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/closed-dependent-callback/tsconfig.json",
+      "bytes": 237,
+      "sha256": "69b76ee9504459134ecb3fa1bf002f38f433e2a9616b141605427ea04701874d"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/closed-dependent-default/build.stderr",
+      "bytes": 661,
+      "sha256": "8f200945e0a1627e208f8b4c6cac7e422fe90660d7a6bd5e21a05e774509292b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/closed-dependent-default/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/closed-dependent-default/main.ts",
+      "bytes": 354,
+      "sha256": "2c7a39096bafb12dc6d4d5e40c7156c1ecc6d4fd1dd1c1e36ec866cd2188dbe7"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/closed-dependent-default/tsconfig.json",
+      "bytes": 237,
+      "sha256": "69b76ee9504459134ecb3fa1bf002f38f433e2a9616b141605427ea04701874d"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/closed-value-default/build.stderr",
+      "bytes": 661,
+      "sha256": "6e31779cb30b75abd641413d4549d10d45bd2704130ca6e0064aac88ec3b9172"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/closed-value-default/build.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/closed-value-default/main.ts",
+      "bytes": 359,
+      "sha256": "dd52a3962623978e1d3055f11d4330ab51d8c1c3ae0ad5a79cae91d9cec06f87"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/closed-value-default/tsconfig.json",
+      "bytes": 237,
+      "sha256": "69b76ee9504459134ecb3fa1bf002f38f433e2a9616b141605427ea04701874d"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/renamed-closed-callback/build.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/renamed-closed-callback/build.stdout",
+      "bytes": 78,
+      "sha256": "7410daa214ba6e7cba25888bae4ba7f9c032cfa70ec64c01ce01f95f2c271028"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/renamed-closed-callback/dist/bluetsc.manifest.json",
+      "bytes": 1738,
+      "sha256": "96b69f759eb176ec1b6e73ad11927b926f940afa225ab87bfaa6fe24d0afa308"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/renamed-closed-callback/dist/main.d.ts",
+      "bytes": 202,
+      "sha256": "d5a5bcc28d74150bbf6b4214e4e20146dba3d6de74bf1a1642f568aa0147942b"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/renamed-closed-callback/dist/main.js",
+      "bytes": 434,
+      "sha256": "f808d432b71275417c33aa7d9984f1d273eedd0af7f84651fb2aef6aaf2944be"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/renamed-closed-callback/main.ts",
+      "bytes": 359,
+      "sha256": "a09e66fde0a3e1a67fc289768cbff9a0d36acfbd7ec88121d7df992e1a934e3c"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/observations/recursive-scope/es5/renamed-closed-callback/tsconfig.json",
+      "bytes": 237,
+      "sha256": "69b76ee9504459134ecb3fa1bf002f38f433e2a9616b141605427ea04701874d"
+    },
+    {
+      "path": "development-history/contract/recursive-scope-rust-red-1/test.log",
+      "bytes": 8642,
+      "sha256": "84194586ecb084ad100f05148b9f615ccad47ed54a8ff86f556d55dbed97adc3"
+    },
+    {
+      "path": "development-history/contract/recursive_call_regressions.cjs",
+      "bytes": 4805,
+      "sha256": "f7159b1e27ac6dc3c01a911b84342b67164093819426d712f049a789ea012eea"
+    },
+    {
+      "path": "development-history/contract/recursive_scope_contract.cjs",
+      "bytes": 4906,
+      "sha256": "ccfefdbe27d92e9192bb3d41b8c989aedd869fb47c4826bf082271f437b95bdc"
+    }
+  ]
+}

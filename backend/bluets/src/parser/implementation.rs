@@ -20,6 +20,7 @@ pub(super) struct Parser {
     import_types: Vec<ImportTypeReference>,
     expression_variable_types: BTreeMap<usize, Type>,
     type_assertions: BTreeMap<usize, Type>,
+    object_shorthands: BTreeMap<usize, String>,
     diagnostics: Vec<Diagnostic>,
     recovered_primitive_values: Vec<Token>,
     max_type_depth: usize,

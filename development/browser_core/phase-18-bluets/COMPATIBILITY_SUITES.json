@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "typescript": "5.9.3",
-  "source_revision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
-  "source_graph_sha256": "a7cbc686748f1c4eb50b977d4e91b621635c40ead22cadd3f811a1aa363ff8e9",
+  "source_revision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "source_graph_sha256": "519e50a7b4cb3aa4e04325faa5893c6d8ba5891939866ee2f8e51095c2a74767",
   "fixture_directories": 3392,
   "diagnostic_programs": 3182,
   "diagnostic_templates": 221,
@@ -1652,6 +1652,24 @@
         "backend/bluets/tests/fixtures/typescript_oracle/guards-checker-matrix.tsv": "f315c3a6c959bde33d3351fa8490459a58a17afc",
         "backend/bluets/tests/fixtures/typescript_oracle/guards-reference.json": "1c149b995a99bee6c9864ace7b1c4af90dd2b046",
         "backend/bluets/tests/guards_checker_matrix.rs": "93e18ad1717f72dfc3cc21cef079f5b129fd0066"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/higher_order_inference.rs",
+      "ignored_tests": [
+        "native_producers_consumers_syntax_and_execution_are_reproducible"
+      ],
+      "inputs": {
+        "backend/bluets/tests/fixtures/higher_order_inference/FROZEN.json": "00061d6dbf19c702571aa85174e8af802cf3170b",
+        "backend/bluets/tests/fixtures/higher_order_inference/boundary-controls.json": "4d155d7b7135df249e29f6bf7ddf37aac2cb30bd",
+        "backend/bluets/tests/fixtures/higher_order_inference/boundary-reference.json": "76fd02d86077aa96cfd9c3ccfe85859254b30708",
+        "backend/bluets/tests/fixtures/higher_order_inference/cases.json": "eefd3bbe002ea0d1bc5c25c8d6c8b05af64bfd9f",
+        "backend/bluets/tests/fixtures/higher_order_inference/reference.json": "b71bc9594721ae08c4a712e9f3eee8e183677e84",
+        "backend/bluets/tests/fixtures/higher_order_promise_scope/cases.json": "c66c22cf6c19306842443596630527f720b2615c",
+        "backend/bluets/tests/fixtures/higher_order_promise_scope/reference.json": "0a57de36436bf3eae19b27d31e1d52676127fc91",
+        "backend/bluets/tests/fixtures/higher_order_recursive_scope/cases.json": "b30546c37332ad78166e4aafb1314070089e1df5",
+        "backend/bluets/tests/fixtures/higher_order_recursive_scope/reference.json": "65c51a80174479fe84c7ebfb324d269ffe3cab47",
+        "backend/bluets/tests/higher_order_inference.rs": "f85c122ab8f3bf1a344ec568efcd10b45de9868f"
       }
     },
     {

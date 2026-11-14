@@ -603,14 +603,27 @@ impl<'a> ModuleChecker<'a> {
                             return value.clone();
                         }
                     }
-                    if let Some(signature) =
-                        self.functions.get(&first.text).and_then(|set| set.first())
+                    if let Some(signatures) = self
+                        .functions
+                        .get(&first.text)
+                        .filter(|_| self.values.get(&first.text) == scope.get(&first.text))
                     {
-                        return super::super::binding::declared_function_type(
-                            &signature.parameters,
-                            signature.return_type.clone(),
-                            &signature.type_parameters,
-                        );
+                        let mut values = signatures
+                            .iter()
+                            .map(|signature| {
+                                super::super::binding::declared_function_type(
+                                    &signature.parameters,
+                                    signature.return_type.clone(),
+                                    &signature.type_parameters,
+                                )
+                            })
+                            .collect::<Vec<_>>();
+                        if values.len() == 1 {
+                            return values.pop().unwrap();
+                        }
+                        if !values.is_empty() {
+                            return Type::Intersection(values);
+                        }
                     }
                 }
                 self.finish_copied_type(scope.get(&first.text).cloned().unwrap_or(Type::Unknown))

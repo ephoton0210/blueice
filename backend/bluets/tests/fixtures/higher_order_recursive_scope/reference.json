@@ -1,0 +1,159 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "inputSha256": "8b399ec0bb21adfb6e7c53b580eb91e5164eb42e33e92982c6233d247e617e1a",
+  "inventoryCredit": 0,
+  "cases": [
+    {
+      "id": "es5/closed-dependent-callback",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Merger = <T extends object, K extends keyof T>(object: T, key: keyof T, value: T[K]) => any;\nexport declare function recur<T>(base: T, defaults: any, merger?: Merger): T;\nexport {};\n"
+      }
+    },
+    {
+      "id": "es5/renamed-closed-callback",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Merger = <Item extends object, K extends keyof Item>(object: Item, key: keyof Item, value: Item[K]) => any;\nexport declare function recur<T>(base: T, defaults: any, merger?: Merger): T;\nexport {};\n"
+      }
+    },
+    {
+      "id": "es5/closed-dependent-default",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Merger = <T extends object, K extends keyof T = keyof T>(object: T, key: keyof T, value: T[K]) => any;\nexport declare function recur<T>(base: T, defaults: any, merger?: Merger): T;\nexport {};\n"
+      }
+    },
+    {
+      "id": "es5/closed-value-default",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Merger = <T extends object = {}, K extends keyof T = keyof T>(object: T, key: keyof T, value: T[K]) => any;\nexport declare function recur<T>(base: T, defaults: any, merger?: Merger): T;\nexport {};\n"
+      }
+    },
+    {
+      "id": "es5/closed-callback-in-property",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Merger = <T extends object, K extends keyof T>(object: T, key: keyof T, value: T[K]) => any;\nexport declare function recur<T>(base: T, defaults: any, merger?: {\n    apply: Merger;\n}): T;\nexport {};\n"
+      }
+    },
+    {
+      "id": "es5/closed-callback-import",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "callback.d.ts": "export type Merger = <T extends object, K extends keyof T>(object: T, key: keyof T, value: T[K]) => any;\n",
+        "main.d.ts": "import type { Merger } from \"./callback\";\nexport declare function recur<T>(base: T, defaults: any, merger?: Merger): T;\n"
+      }
+    },
+    {
+      "id": "es5/captured-result-remains-inferable",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: string;\n"
+      }
+    },
+    {
+      "id": "es5/captured-result-mismatch-is-rejected",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '<U>(input: U) => number' is not assignable to parameter of type '<U>(input: U) => \"s\"'.\n  Type 'number' is not assignable to type '\"s\"'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 36,
+            "length": 7
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "es2022/closed-dependent-callback",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Merger = <T extends object, K extends keyof T>(object: T, key: keyof T, value: T[K]) => any;\nexport declare function recur<T>(base: T, defaults: any, merger?: Merger): T;\nexport {};\n"
+      }
+    },
+    {
+      "id": "es2022/renamed-closed-callback",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Merger = <Item extends object, K extends keyof Item>(object: Item, key: keyof Item, value: Item[K]) => any;\nexport declare function recur<T>(base: T, defaults: any, merger?: Merger): T;\nexport {};\n"
+      }
+    },
+    {
+      "id": "es2022/closed-dependent-default",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Merger = <T extends object, K extends keyof T = keyof T>(object: T, key: keyof T, value: T[K]) => any;\nexport declare function recur<T>(base: T, defaults: any, merger?: Merger): T;\nexport {};\n"
+      }
+    },
+    {
+      "id": "es2022/closed-value-default",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Merger = <T extends object = {}, K extends keyof T = keyof T>(object: T, key: keyof T, value: T[K]) => any;\nexport declare function recur<T>(base: T, defaults: any, merger?: Merger): T;\nexport {};\n"
+      }
+    },
+    {
+      "id": "es2022/closed-callback-in-property",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Merger = <T extends object, K extends keyof T>(object: T, key: keyof T, value: T[K]) => any;\nexport declare function recur<T>(base: T, defaults: any, merger?: {\n    apply: Merger;\n}): T;\nexport {};\n"
+      }
+    },
+    {
+      "id": "es2022/closed-callback-import",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "callback.d.ts": "export type Merger = <T extends object, K extends keyof T>(object: T, key: keyof T, value: T[K]) => any;\n",
+        "main.d.ts": "import type { Merger } from \"./callback\";\nexport declare function recur<T>(base: T, defaults: any, merger?: Merger): T;\n"
+      }
+    },
+    {
+      "id": "es2022/captured-result-remains-inferable",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: string;\n"
+      }
+    },
+    {
+      "id": "es2022/captured-result-mismatch-is-rejected",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type '<U>(input: U) => number' is not assignable to parameter of type '<U>(input: U) => \"s\"'.\n  Type 'number' is not assignable to type '\"s\"'.",
+          "file": "main.ts",
+          "position": {
+            "line": 3,
+            "column": 36,
+            "length": 7
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    }
+  ]
+}

@@ -13,6 +13,14 @@ pub(super) fn end(tokens: &[Token], start: usize, limit: usize) -> Option<usize>
     let mut cursor = start;
     loop {
         let token = tokens.get(cursor)?;
+        if token.kind == TokenKind::Identifier
+            && tokens.get(cursor + 1).is_some_and(|next| next.is(":"))
+        {
+            // Labels own exactly their following statement. A braced label
+            // must not absorb later module declarations up to a semicolon.
+            cursor += 2;
+            continue;
+        }
         let mut next = match token.text.as_str() {
             "{" => block_end(tokens, cursor, limit)?,
             "for" | "while" | "if" | "switch" | "with" => {

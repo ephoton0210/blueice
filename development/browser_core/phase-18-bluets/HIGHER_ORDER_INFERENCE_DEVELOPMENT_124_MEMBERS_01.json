@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_124.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/failed-r9/accepted-native/suite-artifacts/146/observations/async-arrow-finally.json",
+      "bytes": 34243434,
+      "sha256": "7c915e8885f2c4303d6b374d2c5a6baddb3aa6c5aa5fb141473f03dcd6a50fda"
+    },
+    {
+      "path": "development-history/failed-r9/accepted-native/suite-artifacts/146/reports/async-arrow-finally.json",
+      "bytes": 8589417,
+      "sha256": "a0257403cd3438135b3d8a227dff1a3e51fbaad8deaf5be2c2d966d87e146aa9"
+    }
+  ]
+}

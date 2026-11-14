@@ -1,0 +1,13 @@
+{
+  "conclusion": "success",
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "scope": "Independent archived publication-tool correction; original failure retained, no compiler/runtime/test changes.",
+  "manifestSha256": "8643f7e5c2b620c44bc9f654ec556bed68c9c4da6af05f99419b4b8a5ec9da24",
+  "correctedAuditorSha256": "8442c08c7bcaf6a37f76c82cce1145a9153c75223980a1940720a3a839349f92",
+  "measurementSha256": "c00a4b371ca5546dce60d473267d56e25ff2808de1362ab58ecf9b34af0c630d",
+  "artifactIndexSha256": "89901da6f7ee4cd74d77aa5b0c5223bcac7184101372d068d771767d3af6381d",
+  "beforeTodo": false,
+  "backendFiles": 14117,
+  "testReruns": 0,
+  "runtimeDriverChanges": 0
+}

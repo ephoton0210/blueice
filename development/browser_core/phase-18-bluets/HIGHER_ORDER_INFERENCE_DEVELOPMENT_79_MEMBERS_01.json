@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_79.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/contract-members.json",
+      "bytes": 71994243,
+      "sha256": "04ba625f461a42fa45e5533c908adc02294cf474aaad8dc33b64e5f80b217d96"
+    }
+  ]
+}

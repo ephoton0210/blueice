@@ -1,0 +1,112 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_103.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/154/observations/helper-name-collision.json",
+      "bytes": 33445732,
+      "sha256": "8cd868d49eed5749d7d444bad860af2e9d3e00c7351f787599eba6c83c483206"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/155/adjacent-observations/class-super.json",
+      "bytes": 2254779,
+      "sha256": "9638f6efd3f88d2ad77041089a7732af7829fb478dbd2bacfe83bdbcbb855bd8"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/155/adjacent-observations/decorator-legacy-whole.json",
+      "bytes": 1110975,
+      "sha256": "77009ababcc3fdb047ccba8da91417a4c1dc51590f59e372dc1d0029d8f3f338"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/156/observations/iteration-iterable-bindings-forof.json",
+      "bytes": 1523388,
+      "sha256": "8092a3bae866ff1ed93ee88d0058c8a7b4a955309e52c543bb62ca2b879f40c7"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/156/reports/iteration-iterable-bindings-forof.json",
+      "bytes": 3995057,
+      "sha256": "ae9127374f83af86a554709d5512f97e9ead7ddcae4805e6c9a5e8a5a97d6f82"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/157/observations/metadata-class-adjacent.json",
+      "bytes": 54339,
+      "sha256": "e3e8311be450bc80deaa78265abfe455cdb5826466f07313069e3e009b049c41"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/157/observations/metadata-classes.json",
+      "bytes": 1627116,
+      "sha256": "b5120982df077f3dd5d014365e645f7d7dd348b531e8ab99ef1cf8f582c8107a"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/157/reports/metadata-class-adjacent.json",
+      "bytes": 4623,
+      "sha256": "3bc037d45405fd263274aad391ec468bab301608d436eaa0b91e80bf67f7ec85"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/157/reports/metadata-class-controls-progress.jsonl",
+      "bytes": 24620,
+      "sha256": "c513aabb7af50e5611a69ab901c0ac464156365bab0144a3740f6d502002bb85"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/157/reports/metadata-class-controls.json",
+      "bytes": 12893602,
+      "sha256": "0acf4ff69aead3db727f337538e5fbe0ce0b5cfee6430583ad03a52344d47c6b"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/157/reports/metadata-classes.json",
+      "bytes": 479609,
+      "sha256": "c467e77418d180724b397415cb5359fe863e2070f2aaa4bd4631aaa8d281c361"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/158/observations/decorator-legacy-whole.json",
+      "bytes": 1110975,
+      "sha256": "77009ababcc3fdb047ccba8da91417a4c1dc51590f59e372dc1d0029d8f3f338"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/158/reports/decorator-legacy-whole.json",
+      "bytes": 1533199,
+      "sha256": "ff133b1f9bb2569f404e77a57c96d5720cc19150f5c5059ee1219a4541902ce0"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/159/observations/decorator-private-static-super.json",
+      "bytes": 53872,
+      "sha256": "e3f7fce10e2f7e91c6aaf3d276f8b7a4be39015b6a0131913bc10fc7cd2506a8"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/159/observations/decorator-private-super-accessors.json",
+      "bytes": 55569,
+      "sha256": "4db7cc0cb184d66e84007bd194c6cef5057e0c23be4edb8d6109d2f052cb3adf"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/159/observations/decorator-private-super-async-generator.json",
+      "bytes": 58811,
+      "sha256": "ccf23a2b6ac1e184a8f0d18e122d24d891a246b3901cdc7a4fd8a737c418e240"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/159/observations/decorator-private-super-method.json",
+      "bytes": 53185,
+      "sha256": "3fb24f35e7abc62c991d8086fc2143fd03245ffe59177e60ee2e0e094f103ca1"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/159/reports/decorator-private-static-super.json",
+      "bytes": 1151494,
+      "sha256": "dec1d383824f0a94b79ad6915731cda6083c90d7798f1b3ec5859f4ed654bfe0"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/159/reports/decorator-private-super-accessors.json",
+      "bytes": 1214770,
+      "sha256": "070347202457fbc49e480a6ee48d082a22b9f58529d7102c4624836ed76c78a1"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/159/reports/decorator-private-super-async-generator.json",
+      "bytes": 1296704,
+      "sha256": "2473bcad9201ded1406b0010857048aa4d0529845b9b487a8f7c6ea5b23651cb"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/159/reports/decorator-private-super-method.json",
+      "bytes": 1155071,
+      "sha256": "b3824e5697e5b9aaf1ad10baddd48014054570296d831caf518d994ce4b5e0c3"
+    }
+  ]
+}

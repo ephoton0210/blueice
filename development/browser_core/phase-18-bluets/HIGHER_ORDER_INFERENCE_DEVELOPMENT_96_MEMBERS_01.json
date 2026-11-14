@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_96.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/139/reports/static-super-complete.json",
+      "bytes": 13933304,
+      "sha256": "b6a62a67c925554fd013460c256d52117d7003d3513ec4af5fbbde867c336ed8"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/139/reports/static-super-complete.raw.log",
+      "bytes": 7809980,
+      "sha256": "a80f1013c28de94be313e68e609ac4130708615ac887d71d08300a31e94452b9"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/140/observations/generator-switch-delegation.json",
+      "bytes": 33837973,
+      "sha256": "8a161071248c782d8df3fe52c976b80227d4c6a9eaf7ca26cfcc82931eb44673"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/141/reports/decorator-literal-methods.json",
+      "bytes": 7618790,
+      "sha256": "c010a5869bcd140db5f1a1508aec0c2f035dc9e534aaaaf18489815e707179e0"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/142/observations/decorator-literal-accessors.json",
+      "bytes": 535191,
+      "sha256": "bf45a3a2e76a205c393615a40a2d6146b60f6c9da62de1154aafb0ac84ded227"
+    }
+  ]
+}

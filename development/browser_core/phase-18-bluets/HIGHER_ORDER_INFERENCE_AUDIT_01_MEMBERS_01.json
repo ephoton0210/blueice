@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_AUDIT_01.tar.gz",
+  "entries": [
+    {
+      "path": "accepted-parent-source-manifest.json",
+      "bytes": 4355386,
+      "sha256": "4687e00a0d14cddb3830ad7473b40166da549edad15991317bce93fafe9eb964"
+    },
+    {
+      "path": "accepted-parent-source.tar.gz",
+      "bytes": 34039753,
+      "sha256": "f96c562ba7f2765ee3681bc1badeebe01067249f94430b43edfeaa4fa0504d99"
+    },
+    {
+      "path": "accepted-source.patch",
+      "bytes": 642060,
+      "sha256": "a98551e3bcd8edf2048980a04ed2ae9e7faa90e3b649ee8245ab983173fdd216"
+    },
+    {
+      "path": "account-final.log",
+      "bytes": 108,
+      "sha256": "34f8066881efdedea810e80e6b3026a96545474c895e1b0444247476816994db"
+    },
+    {
+      "path": "account-write.log",
+      "bytes": 108,
+      "sha256": "34f8066881efdedea810e80e6b3026a96545474c895e1b0444247476816994db"
+    },
+    {
+      "path": "audit_conditional_inference.py",
+      "bytes": 6800,
+      "sha256": "3928884180edd29fa18157a310a9838718d8151a17a8a2405cadb7114c7f502c"
+    },
+    {
+      "path": "audit_higher_order_inference.py",
+      "bytes": 6247,
+      "sha256": "24baacf1e6569eee59d4ea1c4e08e306b2bd417679425970bfb5d3eaa64b36b9"
+    },
+    {
+      "path": "audit_symbolic_keys.py",
+      "bytes": 6833,
+      "sha256": "56d0d34a62cb20ef3f9337fe941584271be790d93d254ed474173bd7ed7e38a4"
+    }
+  ]
+}

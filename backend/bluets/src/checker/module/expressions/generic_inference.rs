@@ -154,12 +154,18 @@ impl ModuleChecker<'_> {
             .ok()??;
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
         budget.checking = self.checking;
-        let substitutions = crate::checker::inference::infer_contextual_substitutions(
+        let result = self.instantiate_signature_result(
             signature,
             &actuals,
-            &self.types,
-            &mut budget,
+            None,
             Some(expected),
+            &mut budget,
+            higher_order::ResultOrigin::contextual(
+                tokens
+                    .first()
+                    .zip(tokens.last())
+                    .map(|(first, last)| SourceSpan::new(&self.module.id, first.start, last.end)),
+            ),
         );
         if budget.exhausted && self.enforce_types {
             if let (Some(first), Some(last)) = (tokens.first(), tokens.last()) {
@@ -170,16 +176,6 @@ impl ModuleChecker<'_> {
                 )));
             }
         }
-        Some(
-            self.materialize_result_at(
-                &signature.return_type,
-                &substitutions,
-                &mut budget,
-                tokens
-                    .first()
-                    .zip(tokens.last())
-                    .map(|(first, last)| SourceSpan::new(&self.module.id, first.start, last.end)),
-            ),
-        )
+        Some(result)
     }
 }

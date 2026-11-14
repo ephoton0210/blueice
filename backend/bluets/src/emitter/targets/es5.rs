@@ -8,6 +8,7 @@ use super::*;
 use crate::parser::{NestedFunctionBody, NestedFunctionKind};
 
 mod arrow_origins;
+pub(crate) const OBJECT_LOWERING_VERSION: &str = "bluets-es5-object-lowering/1";
 
 pub(in crate::emitter) fn prepare(
     module: &Module,
@@ -55,6 +56,13 @@ fn prepare_with_origins(
     }
     let lexical = crate::checker::lexical_emission(project, module);
     edits.extend(lexical.edits.iter().cloned());
+    for (&offset, name) in &module.object_shorthands {
+        edits.push(TextEdit {
+            start: offset,
+            end: offset,
+            replacement: format!("{name}: "),
+        });
+    }
     let tokens = crate::syntax::lex_with_limits(
         &module.id,
         &module.source,

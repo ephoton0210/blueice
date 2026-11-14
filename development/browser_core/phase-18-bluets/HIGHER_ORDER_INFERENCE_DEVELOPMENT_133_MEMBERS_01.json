@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_133.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/failed-r9/accepted-parent-source.tar.gz",
+      "bytes": 34039753,
+      "sha256": "f96c562ba7f2765ee3681bc1badeebe01067249f94430b43edfeaa4fa0504d99"
+    }
+  ]
+}

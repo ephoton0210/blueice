@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_55.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/contract/r8-oracle-failure-preservation-1/frozen-source.tar.gz",
+      "bytes": 34454171,
+      "sha256": "bf9810ac776da4678554584bc148832b354939d14411962582c9a3662ff2c890"
+    },
+    {
+      "path": "development-history/contract/r8-oracle-failure-preservation-1/observed/accepted-native/current.json",
+      "bytes": 585,
+      "sha256": "5e29baeb8760adb8c4a71a4c85c629a60bd14cb7ce74f3ca32db6b1e3577066c"
+    },
+    {
+      "path": "development-history/contract/r8-oracle-failure-preservation-1/observed/accepted-native/measurement.json",
+      "bytes": 154485,
+      "sha256": "b84f470456f8a72cfc950a1e0ac6df6d15f8cf7a5ca90a70e1ef8981b7255801"
+    },
+    {
+      "path": "development-history/contract/r8-oracle-failure-preservation-1/observed/launch-state.json",
+      "bytes": 1729,
+      "sha256": "253f4c915d5e8e6041e8b840a710ffa50b783a7edca01de2fe3c9113826d4fb2"
+    },
+    {
+      "path": "development-history/contract/r8-oracle-failure-preservation-1/observed/mac-driver.json",
+      "bytes": 1954,
+      "sha256": "09f08746663be083d3501566866f5e42aa23e76d477747b475898e082848f09d"
+    },
+    {
+      "path": "development-history/contract/r8-oracle-failure-preservation-1/observed/native-gates.json",
+      "bytes": 2034,
+      "sha256": "acf5ccf6b480114e5169e155a632dcb96c2d7dcbf43eac2268964c6afb55f25c"
+    },
+    {
+      "path": "development-history/contract/r8-oracle-failure-preservation-1/observed/windows/complete-state.json",
+      "bytes": 2111,
+      "sha256": "c6b2668455d8c60ce96eeb6403743fac9df6d551d818d3a828f0ba6023d2241d"
+    },
+    {
+      "path": "development-history/contract/r8-oracle-failure-preservation-1/observed/windows/live-observation-2.json",
+      "bytes": 3735,
+      "sha256": "6078c1090b05bdb6346b0310200b6c661c16377041126a19d9dc5cf3c0dbf460"
+    },
+    {
+      "path": "development-history/contract/r8-oracle-failure-preservation-1/preserve_r8_failure.py",
+      "bytes": 7546,
+      "sha256": "ba996a7dbdc89470e08af4bdee8935ed8aa1cb5e4f90340f1f92f49b63cf2546"
+    },
+    {
+      "path": "development-history/contract/r8-oracle-failure-preservation-1/receipt.json",
+      "bytes": 2325451,
+      "sha256": "63f3a84815c0adf6f75b24d3735e71e4b36fbbe2121838f2cfad6a28d4e8faa5"
+    },
+    {
+      "path": "development-history/contract/r8-oracle-failure-preservation-1/terminal/accepted-native/measurement.json",
+      "bytes": 169202,
+      "sha256": "a3b282d197910559b99b81c38a49ec0d542e9dcd19a6dee7a23c2e3187bfd6c6"
+    },
+    {
+      "path": "development-history/contract/r8-oracle-failure-preservation-1/terminal/launch-state.json",
+      "bytes": 2016,
+      "sha256": "cc69091ca997cce77d97bdf56882f7d3d01f58618bff2f6d043ead8db0ece48f"
+    },
+    {
+      "path": "development-history/contract/r8-oracle-failure-preservation-1/terminal/mac-driver.json",
+      "bytes": 2448,
+      "sha256": "1e3b0a683d53168dc18e0e86ef91095675cfbdaf7a2c1cf83a38ed874461bb54"
+    },
+    {
+      "path": "development-history/contract/r8-oracle-failure-preservation-1/terminal/native-gates.json",
+      "bytes": 2453,
+      "sha256": "23ac64a1c6f56daae730b6f4b4a8a181d8366de7e14a679d3ff3b635ac54a60b"
+    },
+    {
+      "path": "development-history/contract/r8-oracle-failure-preservation-1/terminal/owned-mac-stop-1/receipt.json",
+      "bytes": 6780,
+      "sha256": "ce4afbb744c1a9823b813642f8867396ea662d109d2e10c3b845e8fec07d6ba1"
+    }
+  ]
+}

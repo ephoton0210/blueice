@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_NATIVE_02.tar.gz",
+  "entries": [
+    {
+      "path": "accepted-native/suite-artifacts/139/observations/static-super-complete.json",
+      "bytes": 3493134,
+      "sha256": "bae0910f725a034a5224b64c8f0f1e94d69909b437becb0a98ddc58aea310da2"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/139/reports/static-super-complete.json",
+      "bytes": 13933304,
+      "sha256": "c7504adbee36352b482a30281973a744e927e8e047a2082641679b5ba9a388c9"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/139/reports/static-super-complete.raw.log",
+      "bytes": 7809980,
+      "sha256": "e6bfca8287ef00dc35688dd8332deb405c7b638396d38a0c62cc66fdce930521"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/140/observations/generator-switch-delegation.json",
+      "bytes": 33837973,
+      "sha256": "d45da12e117d57eea119295b29b5b8d927c5e2f82b1e9f2c1b62f825ca282b4b"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/141/reports/decorator-literal-methods.json",
+      "bytes": 7618790,
+      "sha256": "8aa04ec3a2a60202c44937ef002b7caed6e2fb349a03bb4b1d5fe9b2e9091c14"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_10.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/contract/candidate-13/actual-cli",
+      "bytes": 50551424,
+      "sha256": "85ee284d96640c9e8d2de9955bf94713bd7e9ca56dd9113a6824f5ab6dd9d579"
+    }
+  ]
+}

@@ -90,22 +90,31 @@ pub(super) fn generic_functions_assignable(
         },
     ) = (actual, expected)
     {
-        if let Some(actuals) = target
+        let Some(scoped) =
+            crate::checker::inference::parameter_scope(aliases, type_parameters, budget)
+        else {
+            return Some(false);
+        };
+        let aliases = &scoped;
+        if target
             .iter()
-            .map(|parameter| parameter.annotation.clone())
-            .collect::<Option<Vec<_>>>()
+            .all(|parameter| parameter.annotation.is_some())
         {
             let signature = FunctionSignature {
                 type_parameters: type_parameters.clone(),
                 parameters: parameters.clone(),
                 return_type: (**result).clone(),
             };
-            let inferred = crate::checker::inference::infer_contextual_result(
+            let target_signature = FunctionSignature {
+                type_parameters: Vec::new(),
+                parameters: target.clone(),
+                return_type: (**target_result).clone(),
+            };
+            let inferred = crate::checker::inference::infer_signature_context(
                 &signature,
-                &actuals,
+                &target_signature,
                 aliases,
                 budget,
-                (**target_result != Type::Void).then_some(&**target_result),
             );
             if inferred.rejected_constraint.is_some() || budget.exhausted {
                 return Some(false);

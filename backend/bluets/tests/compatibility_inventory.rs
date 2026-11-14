@@ -10,6 +10,8 @@ mod accounting;
 mod case_conditional_inference;
 #[path = "fixtures/compatibility_inventory/case_ge5.rs"]
 mod case_ge5;
+#[path = "fixtures/compatibility_inventory/case_higher_order_inference.rs"]
+mod case_higher_order_inference;
 #[path = "fixtures/compatibility_inventory/case_inline.rs"]
 mod case_inline;
 #[path = "fixtures/compatibility_inventory/case_mapped_inference.rs"]

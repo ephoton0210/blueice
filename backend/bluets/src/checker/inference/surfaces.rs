@@ -36,13 +36,35 @@ impl collect::Collector<'_> {
                 self.collect(annotation, &Type::Tuple(values), !contra);
                 break;
             }
+            if template.rest {
+                if let Type::Array(element) = annotation {
+                    for actual in &actuals[index..] {
+                        let actual = if actual.rest {
+                            rest_parameter_element_annotation(actual)
+                        } else {
+                            actual.annotation.as_ref()
+                        };
+                        if let Some(actual) = actual {
+                            self.collect(element, actual, !contra);
+                        }
+                    }
+                    break;
+                }
+            }
             let Some(actual) = actuals.get(index) else {
                 break;
             };
-            if let Some(actual) = &actual.annotation {
-                self.collect(annotation, actual, !contra);
+            let value = if actual.rest {
+                rest_parameter_element_annotation(actual)
+            } else {
+                actual.annotation.as_ref()
+            };
+            if let Some(value) = value {
+                self.collect(annotation, value, !contra);
             }
-            index += 1;
+            if !actual.rest {
+                index += 1;
+            }
         }
     }
 

@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_84.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/failed-r2/accepted-native/cargo-artifacts.jsonl",
+      "bytes": 375265,
+      "sha256": "afcc744eeaa1a595f2c0cfdea810c43a9073c1e29c445dc35e17b613eed26ac6"
+    },
+    {
+      "path": "development-history/failed-r2/accepted-native/current.json",
+      "bytes": 775,
+      "sha256": "9a4b9de3613d32e9a15fcff1aa85e3076a3ec9b07dc6a37ed763329ac834a427"
+    },
+    {
+      "path": "development-history/failed-r2/accepted-native/measurement.json",
+      "bytes": 159127,
+      "sha256": "b2ba38a4c8826c2c6bc589526bd4fb8ece8e27d268d80973b46f56d9a7cb18e8"
+    },
+    {
+      "path": "development-history/failed-r2/accepted-native-cli",
+      "bytes": 50462848,
+      "sha256": "fb7306dd2039a3ee8e2f078a4a6a9117c222621f4f4421e1978665a3856eb916"
+    },
+    {
+      "path": "development-history/failed-r2/all-source-module-size-audit.json",
+      "bytes": 108419,
+      "sha256": "0c44d464a977352036fc561760f37f36607921a413c1babd996f01a719d85681"
+    },
+    {
+      "path": "development-history/failed-r2/audit_conditional_inference.py",
+      "bytes": 6800,
+      "sha256": "3928884180edd29fa18157a310a9838718d8151a17a8a2405cadb7114c7f502c"
+    },
+    {
+      "path": "development-history/failed-r2/audit_higher_order_inference.py",
+      "bytes": 6247,
+      "sha256": "24baacf1e6569eee59d4ea1c4e08e306b2bd417679425970bfb5d3eaa64b36b9"
+    },
+    {
+      "path": "development-history/failed-r2/audit_symbolic_keys.py",
+      "bytes": 6833,
+      "sha256": "56d0d34a62cb20ef3f9337fe941584271be790d93d254ed474173bd7ed7e38a4"
+    }
+  ]
+}

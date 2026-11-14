@@ -589,7 +589,13 @@ fn declaration_type_to_ts(value: &Type) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
-        Type::Record(fields) if !fields.is_empty() => callable_objects::render(fields, &[]),
+        Type::Record(fields) => {
+            if fields.is_empty() {
+                "{}".into()
+            } else {
+                callable_objects::render(fields, &[])
+            }
+        }
         _ => type_to_ts(value),
     }
 }

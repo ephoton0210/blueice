@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_97.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/142/reports/decorator-literal-accessors.json",
+      "bytes": 6263751,
+      "sha256": "f894204fa1a3a7906c2f765dcc57648fa3e5330b683a0bfb4e94db8eee0036d4"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/143/observations/decorator-literal-fields.json",
+      "bytes": 588191,
+      "sha256": "5ff5cc09e617ee0385f26823f7c16348e6604ad03e30fe3c199cefd536f9498e"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/143/reports/decorator-literal-fields.json",
+      "bytes": 6023239,
+      "sha256": "803de2821938a6de2e2b930fdfdf66ede9aaf3bc1d83ec2989533c965e517755"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/144/observations/decorator-literal-auto-accessors.json",
+      "bytes": 408165,
+      "sha256": "74c8a0d08531eaf6cd0fd79263eecf86b31ed63bde85e9b5bf85c222920255d2"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/144/reports/decorator-literal-auto-accessors.json",
+      "bytes": 4740914,
+      "sha256": "574f9fcc3c306fa907926b5da1110a0a2001e9e4e09d38d319508955639fc384"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/145/reports/decorator-double-accessors.json",
+      "bytes": 5722603,
+      "sha256": "6ea3658e59230e1079e9c7fc4d8a13e4a2557c9d2f221589f6bc5895a8ed55f8"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/146/observations/async-arrow-finally.json",
+      "bytes": 34243434,
+      "sha256": "1ddda7eb068125db3e7e08c8a52899007a9767cc39cdef7fa45a920cb0959031"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/146/reports/async-arrow-finally.json",
+      "bytes": 8589417,
+      "sha256": "fc4210075e8f26af04a9001a3620b8f70cc889ceb92f74465e3254f7350fd494"
+    }
+  ]
+}

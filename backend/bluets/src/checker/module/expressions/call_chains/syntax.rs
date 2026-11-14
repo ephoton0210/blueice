@@ -14,6 +14,14 @@ pub(super) struct Call<'a> {
 
 pub(super) fn call(tokens: &[Token]) -> Option<Call<'_>> {
     let tokens = strip_outer_parentheses(tokens);
+    if matches!(
+        tokens.first()?.text.as_str(),
+        "+" | "-" | "!" | "~" | "typeof" | "void" | "delete" | "await"
+    ) {
+        // Prefix operators apply to the complete postfix call expression.
+        // They are not part of the callable's receiver or returned signature.
+        return None;
+    }
     if !tokens.last()?.is(")") {
         return None;
     }

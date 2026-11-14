@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_52.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/contract/r6-gt7-failure-preservation-1/frozen-source.tar.gz",
+      "bytes": 34384077,
+      "sha256": "86442683b08712af16e3799f20363e1ace256573e89783023dcd117670b4203a"
+    },
+    {
+      "path": "development-history/contract/r6-gt7-failure-preservation-1/observed/accepted-native/024-backend_bluets_tests_gt7_library_manifest_rs.log",
+      "bytes": 3006,
+      "sha256": "ca4f069ec6123a5b7cca6ddc82f74693135a26b802a33573dbde192f70ff2329"
+    },
+    {
+      "path": "development-history/contract/r6-gt7-failure-preservation-1/observed/accepted-native/current.json",
+      "bytes": 384,
+      "sha256": "42104c14bdd3bb2e6a6a94e601361ea243938cf9e07623bf82069d828b169ce8"
+    },
+    {
+      "path": "development-history/contract/r6-gt7-failure-preservation-1/observed/accepted-native/measurement.json",
+      "bytes": 127133,
+      "sha256": "f2e4801a73c7b44c008164acf6a0b06c92f1fc9ea34db9b15211a012b752b249"
+    },
+    {
+      "path": "development-history/contract/r6-gt7-failure-preservation-1/observed/frozen-source-preflight.json",
+      "bytes": 2326204,
+      "sha256": "9d23d4150bfbe085c686b7e5fc990e97388e6f31a4c18d874084a6d053f77a0e"
+    },
+    {
+      "path": "development-history/contract/r6-gt7-failure-preservation-1/observed/launch-state.json",
+      "bytes": 1684,
+      "sha256": "b7246851e829a4ab015739805a2fa34871f661f326f52feac7d64af704b61db1"
+    },
+    {
+      "path": "development-history/contract/r6-gt7-failure-preservation-1/observed/mac-driver.json",
+      "bytes": 1948,
+      "sha256": "5c39fa23976003b395c22766263cc388609940142cd13e58f66575f13a50f75d"
+    },
+    {
+      "path": "development-history/contract/r6-gt7-failure-preservation-1/receipt.json",
+      "bytes": 2325198,
+      "sha256": "604365bde9664979592600ab4a02925e7611f622d5265bd775f15e32ab971193"
+    },
+    {
+      "path": "development-history/contract/r6-gt7-failure-preservation-1/status-after-owned-stop.json",
+      "bytes": 7079,
+      "sha256": "e6f7d0592f4e890bb10533e11eab11e5c0a17abc52e547c37bcab240e80e0625"
+    },
+    {
+      "path": "development-history/contract/r6-preflight-authority-restoration-1/CLAUDE.md",
+      "bytes": 40219,
+      "sha256": "7a12ad7cc1dd7ed6f68717586ff5b915c8a7d1c465652b11464221065d2dfee0"
+    }
+  ]
+}

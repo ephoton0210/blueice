@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_108.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/failed-r5/native-cli-snapshot",
+      "bytes": 50470848,
+      "sha256": "08de57fdda21a4072c13a5e795bd748dd59743a2eaae04a7466a937589f24d1e"
+    },
+    {
+      "path": "development-history/failed-r5/native-declaration-map-report.json",
+      "bytes": 184,
+      "sha256": "bb4ed58276c250e79ee79e930738f41f639b9fee173b504c82e2831101ae6c7e"
+    },
+    {
+      "path": "development-history/failed-r5/native-driver.log",
+      "bytes": 172,
+      "sha256": "abc8cf7728bb627645e7c6c8b219c2547e4565b162e2baee4bae6ffb6eca8b5c"
+    },
+    {
+      "path": "development-history/failed-r5/native-gates.json",
+      "bytes": 2540,
+      "sha256": "8ce086f084a9749bd18cb78ac96d77f56c97568837178169fcf4a5ac4e0c290c"
+    },
+    {
+      "path": "development-history/failed-r5/native-map-binding.json",
+      "bytes": 1358,
+      "sha256": "aee40cf91bc3db491c7a6e99a1b66c9601d823e8bc3fb017ab796b2fe248b4cd"
+    },
+    {
+      "path": "development-history/failed-r5/native-map-independent-audit.json",
+      "bytes": 587,
+      "sha256": "00a08634163fa01ad402fb14e57f7c4a3421366d33d6d5adb80ce062ac01981c"
+    }
+  ]
+}

@@ -20,6 +20,7 @@ pub(crate) use module_wrappers::VERSION as MODULE_WRAPPERS_VERSION;
 pub use private_lowering::CLASS_HELPER_V1_VERSION;
 pub use source_map_lookup::{SourceMapLookupError, SourceMapOriginalPosition};
 pub(crate) use system::HELPER_SOURCE as SYSTEM_HELPER_SOURCE;
+pub(crate) use targets::es5::OBJECT_LOWERING_VERSION as ES5_OBJECT_LOWERING_VERSION;
 pub use targets::TARGET_HELPER_V1_VERSION;
 pub(crate) use targets::{STRING_LITERAL_LOWERING_VERSION, TARGET_HELPER_V1_SOURCES};
 

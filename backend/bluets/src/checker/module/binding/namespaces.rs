@@ -304,6 +304,7 @@ impl ModuleChecker<'_> {
             import_types: owner.import_types.clone(),
             expression_variable_types: owner.expression_variable_types.clone(),
             type_assertions: owner.type_assertions.clone(),
+            object_shorthands: owner.object_shorthands.clone(),
         };
         let declared = declared_in(namespace);
         let mut sub = ModuleChecker::new(

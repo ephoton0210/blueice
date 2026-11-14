@@ -722,17 +722,7 @@ pub(super) fn lower_commonjs(
         }
     }
     let members = class_member_names(module, &module.declarations);
-    let mut pending: Vec<TextEdit> = Vec::new();
-    scan(
-        module,
-        &tokens,
-        0,
-        &references,
-        &covered,
-        &members,
-        &mut pending,
-    );
-    edits.extend(pending);
+    scan(module, &tokens, 0, &references, &covered, &members, edits);
     Ok(references)
 }
 

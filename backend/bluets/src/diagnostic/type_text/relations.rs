@@ -37,6 +37,9 @@ pub(super) fn reason(
     if depth > 16 || actual == expected {
         return String::new();
     }
+    if let Some((source, target)) = signatures::generic_pair(actual, expected) {
+        return reason(&source, &target, project, depth);
+    }
     if let Some(Type::Union(mut values)) =
         crate::standard_library::presentation::alias_value(actual, project)
     {

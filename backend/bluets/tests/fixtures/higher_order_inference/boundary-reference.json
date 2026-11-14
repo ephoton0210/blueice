@@ -1,0 +1,92 @@
+{
+  "typescript": "5.9.3",
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "inputSha256": "0c89bc41ed2ecb3c640fa81b72fcae4607cdcf6970a2ed26a187b5a73f4011ad",
+  "controls": [
+    {
+      "id": "compose-array-box-work-0",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "compose-array-box-work-1",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "lift-generic-identity-work-0",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "lift-generic-identity-work-1",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "compose-constrained-first-work-0",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "compose-constrained-first-work-1",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "returned-generic-parser-0",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "returned-generic-parser-1",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "ambient-ExternalIdentity",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "runtime-ExternalIdentity",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2693,
+          "message": "'ExternalIdentity' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 1,
+            "length": 16
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "ambient-ExternalFactory",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "runtime-ExternalFactory",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2693,
+          "message": "'ExternalFactory' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 1,
+            "length": 15
+          },
+          "relatedInformation": []
+        }
+      ]
+    }
+  ],
+  "directAgreementCredit": 0
+}

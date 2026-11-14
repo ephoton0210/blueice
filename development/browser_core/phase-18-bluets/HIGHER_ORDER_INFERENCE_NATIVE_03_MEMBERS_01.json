@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_NATIVE_03.tar.gz",
+  "entries": [
+    {
+      "path": "accepted-native/suite-artifacts/142/observations/decorator-literal-accessors.json",
+      "bytes": 535191,
+      "sha256": "cdc06789e64aacda3f7900531a1f8fe2de21f60a914dde142e663d4642a3b506"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/142/reports/decorator-literal-accessors.json",
+      "bytes": 6263751,
+      "sha256": "c7a40fc88b01542dae95e9850757293c25bd14370b9e39c02f68bc0e8e1ec38c"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/143/observations/decorator-literal-fields.json",
+      "bytes": 588191,
+      "sha256": "4f31e3a0c139262a55ba7cce9dc07be3d873959da85b151009845ca780ecd085"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/143/reports/decorator-literal-fields.json",
+      "bytes": 6023239,
+      "sha256": "1005639bdbf6743dcb2471a9ca9814b597664b948d97c8d290d376d7d2bb4e77"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/144/observations/decorator-literal-auto-accessors.json",
+      "bytes": 408165,
+      "sha256": "12c8c4ab907c06a730a3b68ba837dede19d111ee677bd084573a4f6e22d7127b"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/144/reports/decorator-literal-auto-accessors.json",
+      "bytes": 4740914,
+      "sha256": "b67850ed1fcc0c6870ad9e02a27bbb3bbc300d4c7a802ef5f002f9860007cef3"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/145/reports/decorator-double-accessors.json",
+      "bytes": 5722603,
+      "sha256": "27df00723bc62f1a3f61391a075daef0658b20909c2ded0b658934db92c4e809"
+    },
+    {
+      "path": "accepted-native/suite-artifacts/146/observations/async-arrow-finally.json",
+      "bytes": 34243434,
+      "sha256": "7c915e8885f2c4303d6b374d2c5a6baddb3aa6c5aa5fb141473f03dcd6a50fda"
+    }
+  ]
+}

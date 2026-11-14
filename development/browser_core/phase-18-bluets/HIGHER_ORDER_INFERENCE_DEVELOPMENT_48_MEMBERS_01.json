@@ -1,0 +1,187 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_48.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/actual-failed-cli",
+      "bytes": 50470848,
+      "sha256": "08de57fdda21a4072c13a5e795bd748dd59743a2eaae04a7466a937589f24d1e"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/delivery/higher-order-inference-delivery-20261114-r5/continue.py",
+      "bytes": 5329,
+      "sha256": "2e88ca80aada81f8f38093d3fc629bdb7617f863c909403f4cafb7d19838e0e8"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/delivery/higher-order-inference-delivery-20261114-r5/state.json",
+      "bytes": 2959,
+      "sha256": "1182fdd4fcdd19b391907c37f2aa4c7ed6c19086abcd3aab71b388b0cdd72e35"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/delivery/higher-order-inference-delivery-20261114-r5-r2/continue.py",
+      "bytes": 6094,
+      "sha256": "bf4ec2bfb667a91b92a3c834882b7e9e01e92fc40ac9f68409da854493145d70"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/delivery/higher-order-inference-delivery-20261114-r5-r2/state.json",
+      "bytes": 768,
+      "sha256": "aac2c3c246ea222693a0b199985074a9fcd041fcfc742697c5c96dc608bb79b2"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/accepted-native/measurement.json",
+      "bytes": 460312,
+      "sha256": "663f1a1570968fd42707396efdf9e73e11c5fb9a27673a4fc710491db36f8708"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/audit_conditional_inference.py",
+      "bytes": 6800,
+      "sha256": "3928884180edd29fa18157a310a9838718d8151a17a8a2405cadb7114c7f502c"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/audit_higher_order_inference.py",
+      "bytes": 6247,
+      "sha256": "24baacf1e6569eee59d4ea1c4e08e306b2bd417679425970bfb5d3eaa64b36b9"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/audit_symbolic_keys.py",
+      "bytes": 6833,
+      "sha256": "56d0d34a62cb20ef3f9337fe941584271be790d93d254ed474173bd7ed7e38a4"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/complete_windows.py",
+      "bytes": 4111,
+      "sha256": "9f6e0e2bb1656fd9e68a354b67d656f47169dba615bd104f943d5c3c977b888e"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/finish_windows.py",
+      "bytes": 4404,
+      "sha256": "1d5a75e8962fb347ac914c236470dab10f5543807906bfa52a04dabce8862b89"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/freeze_source.py",
+      "bytes": 4708,
+      "sha256": "7276fe6a2639eb3d488d24c613aa07aed92861ad6c70519a19bf850ba7c7d4b4"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/launch-state.json",
+      "bytes": 2528,
+      "sha256": "a429398e0e6f7b4a8fb6cd14cd3efc2637becf4bf7963fe43014427ccac499fa"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/launch.py",
+      "bytes": 8732,
+      "sha256": "358035eb971b2fdf39d0dec105b7c36598d196cb6ff4c2f7863005a2fa534acc"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/mac-driver.json",
+      "bytes": 3261,
+      "sha256": "34e9bfd57b5b9d8a43c4c4154d584ab4a2d99ef473b9a014443a54196ea0ca07"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/mac-supervisor.log",
+      "bytes": 3462,
+      "sha256": "98030c4c8a78c8a2377cc4c21155ab695c59b61e92cfc59c3d6219fadfed3e67"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/measure_priority.cjs",
+      "bytes": 6052,
+      "sha256": "0f60e257610b5739763285059a52e18035b38b2b7292828b101fadbabe7b601d"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/native-declaration-map-report.json",
+      "bytes": 184,
+      "sha256": "bb4ed58276c250e79ee79e930738f41f639b9fee173b504c82e2831101ae6c7e"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/native-driver.log",
+      "bytes": 172,
+      "sha256": "abc8cf7728bb627645e7c6c8b219c2547e4565b162e2baee4bae6ffb6eca8b5c"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/native-map-binding.json",
+      "bytes": 1358,
+      "sha256": "aee40cf91bc3db491c7a6e99a1b66c9601d823e8bc3fb017ab796b2fe248b4cd"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/prepare_windows.py",
+      "bytes": 4125,
+      "sha256": "e7867668829f414a3b72186f761f34211f08e9bb3c90f8ee69268280e2969eb1"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/project-defu/bluets-cold.stderr",
+      "bytes": 676,
+      "sha256": "378ee5796cb5cdf01ffb7b88774ccf956aea13965e110ba30be2335fc7ff3639"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/project-defu/report.json",
+      "bytes": 57506,
+      "sha256": "922bce7e52693fa00255f3c31df85ac69f96636ffe3213515abb470e12776f61"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/project-defu.log",
+      "bytes": 71,
+      "sha256": "b9ed978591eb302a7fcdd4a8833533b02f241b2896db0005eac2018643e704ea"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/projects-driver.log",
+      "bytes": 945,
+      "sha256": "e4ae3d589ab03effd2fa84dad21759236d88d26f2e9805f07f2a58269f4c49b3"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/replay_original_discovery.cjs",
+      "bytes": 6613,
+      "sha256": "69549abead60ae7a9590fa6fb74b1844c4f75ca9f346339e686b1d9fed6fa4f7"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/run_local_gates.py",
+      "bytes": 9369,
+      "sha256": "3e3df1c5c317adfb92a2acb289c96ebc0102d21d74eb46c4ed99fd3768b645ba"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/run_mac.py",
+      "bytes": 4481,
+      "sha256": "4809046af5704fc0276dbe3745361229a47435e572071f6028b591bece88f616"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/run_native_gates.py",
+      "bytes": 5811,
+      "sha256": "d607cb6aaf05263d76fd360fae5ef0a51c30384f10ff03cf8fe3300ee58b7c6b"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/run_project_gates.py",
+      "bytes": 2235,
+      "sha256": "aef3e5442d5d456eb8fc16b4b9194811390f8b9ca41be1b0a6030c6b09aee054"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/upload_windows.py",
+      "bytes": 3552,
+      "sha256": "eea7534025d02bc7c5841e1d17cc2c323142dd7b954d1d3ed28df7e31f4627f8"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/verify_windows.py",
+      "bytes": 20809,
+      "sha256": "d2a49acc1317a73d0702c72e65ca172ba5c9d0d5badb17cfe73825b8508d5986"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/watch_maps.py",
+      "bytes": 3846,
+      "sha256": "177be14ec88c1817f086a9dd46859ef9e4d35ee91990087873581ab658bf0933"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/windows/verification-correction-1/receipt.json",
+      "bytes": 1242,
+      "sha256": "bdf1337408db2e83558bbb74c08d9811692d7064464466982af59ca0fb3254ad"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/failure/windows/windows-acceptance-verification-r2.json",
+      "bytes": 140259,
+      "sha256": "4c56498e668d3a01b9b07b4328db69c8215ce74598a93ede03089892a2db6fec"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/frozen-source-manifest.json",
+      "bytes": 2324552,
+      "sha256": "92f5f9c99e556387bf0e7a87fed107f5cc526d1a60402e457f6b2f5bb337cff3"
+    }
+  ]
+}

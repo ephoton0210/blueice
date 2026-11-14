@@ -1,0 +1,683 @@
+{
+  "schema": 1,
+  "scope": "Authored higher-order contract; Native calibration required before freezing or implementation.",
+  "originalDiscoveryInputSha256": "6bc66a481475f064673eabd2743c34e8147d55301eeb05cc37dd10b974e78b62",
+  "options": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "CommonJS",
+    "lib": [
+      "ES5"
+    ],
+    "types": [],
+    "declaration": true,
+    "noEmitOnError": true,
+    "skipLibCheck": true,
+    "outDir": "dist"
+  },
+  "profiles": [
+    {
+      "id": "es5-commonjs-functions-true",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "strictFunctionTypes": true
+      }
+    },
+    {
+      "id": "es5-commonjs-functions-false",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "strictFunctionTypes": false
+      }
+    },
+    {
+      "id": "es5-esnext-functions-true",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "ESNext",
+        "strictFunctionTypes": true
+      }
+    },
+    {
+      "id": "es5-esnext-functions-false",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "ESNext",
+        "strictFunctionTypes": false
+      }
+    },
+    {
+      "id": "es2022-commonjs-functions-true",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strictFunctionTypes": true
+      }
+    },
+    {
+      "id": "es2022-commonjs-functions-false",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strictFunctionTypes": false
+      }
+    },
+    {
+      "id": "es2022-esnext-functions-true",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strictFunctionTypes": true
+      }
+    },
+    {
+      "id": "es2022-esnext-functions-false",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strictFunctionTypes": false
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "compose-array-box",
+      "source": "declare function compose<A, B, C>(first: (value: A) => B, second: (value: B) => C): (value: A) => C;\nfunction list<T>(value: T): T[] { return [value]; }\nfunction box<T>(value: T): { value: T } { return { value }; }\nexport const result = compose(list, box);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: { value: string[] } = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: { value: number[] } = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "compose-array-box-call",
+      "source": "declare function compose<A, B, C>(first: (value: A) => B, second: (value: B) => C): (value: A) => C;\nfunction list<T>(value: T): T[] { return [value]; }\nfunction box<T>(value: T): { value: T } { return { value }; }\nexport const result = compose(list, box);\nexport const demanded: { value: string[] } = result(\"text\");\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: { value: string[] } = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: { value: number[] } = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "compose-array-box-reject",
+      "source": "declare function compose<A, B, C>(first: (value: A) => B, second: (value: B) => C): (value: A) => C;\nfunction list<T>(value: T): T[] { return [value]; }\nfunction box<T>(value: T): { value: T } { return { value }; }\nexport const result = compose(list, box);\nexport const demanded: { value: number[] } = result(\"text\");\n",
+      "files": {},
+      "nativeExpectedAccepts": false,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: { value: string[] } = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: { value: number[] } = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "compose-arrow-generics",
+      "source": "declare function compose<A, B, C>(first: (value: A) => B, second: (value: B) => C): (value: A) => C;\nconst first = <T>(value: T): T[] => [value];\nconst second = <U>(value: U): { value: U } => ({ value });\nexport const result = compose(first, second);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: { value: string[] } = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: { value: number[] } = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "compose-three-stages",
+      "source": "declare function compose3<A, B, C, D>(one: (value: A) => B, two: (value: B) => C, three: (value: C) => D): (value: A) => D;\nfunction list<T>(value: T): T[] { return [value]; }\nfunction box<T>(value: T): { value: T } { return { value }; }\nexport const result = compose3(list, box, list);\nexport const demanded: { value: string[] }[] = result(\"text\");\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: { value: string[] }[] = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: { value: number[] }[] = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "compose-constrained-first",
+      "source": "declare function compose<A, B, C>(first: (value: A) => B, second: (value: B) => C): (value: A) => C;\nfunction tagged<T extends { tag: string }>(value: T): T[] { return [value]; }\nfunction box<T>(value: T): { value: T } { return { value }; }\nexport const result = compose(tagged, box);\nexport const demanded: { value: { tag: string; extra: number }[] } = result({ tag: \"ok\", extra: 1 });\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: number = result({ tag: \"ok\", extra: 1 }).value[0].extra;\n",
+        "negative": "import { result } from \"./main\";\nresult({ extra: 1 });\n"
+      }
+    },
+    {
+      "id": "compose-concrete-first",
+      "source": "declare function compose<A, B, C>(first: (value: A) => B, second: (value: B) => C): (value: A) => C;\nfunction list<T>(value: T): T[] { return [value]; }\nfunction text(value: number): string { return value.toString(); }\nexport const result = compose(text, list);\nexport const demanded: string[] = result(1);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: string[] = result(1);\n",
+        "negative": "import { result } from \"./main\";\nconst refused: number[] = result(1);\n"
+      }
+    },
+    {
+      "id": "compose-concrete-second",
+      "source": "declare function compose<A, B, C>(first: (value: A) => B, second: (value: B) => C): (value: A) => C;\nfunction list<T>(value: T): T[] { return [value]; }\nfunction size(value: unknown[]): number { return value.length; }\nexport const result = compose(list, size);\nexport const demanded: number = result(\"text\");\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: number = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: string = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "lift-generic-identity",
+      "source": "declare function lift<A, B>(fn: (value: A) => B): (value: A) => B[];\nfunction identity<T>(value: T): T { return value; }\nexport const result = lift(identity);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: string[] = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: number[] = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "lift-generic-identity-call",
+      "source": "declare function lift<A, B>(fn: (value: A) => B): (value: A) => B[];\nfunction identity<T>(value: T): T { return value; }\nexport const result = lift(identity);\nexport const demanded: string[] = result(\"text\");\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: string[] = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: number[] = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "lift-generic-identity-reject",
+      "source": "declare function lift<A, B>(fn: (value: A) => B): (value: A) => B[];\nfunction identity<T>(value: T): T { return value; }\nexport const result = lift(identity);\nexport const demanded: number[] = result(\"text\");\n",
+      "files": {},
+      "nativeExpectedAccepts": false,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: string[] = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: number[] = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "lift-contextual-result",
+      "source": "declare function lift<A, B>(fn: (value: A) => B): (value: A) => B[];\nfunction identity<T>(value: T): T { return value; }\nexport const result: (value: number) => number[] = lift(identity);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: number[] = result(1);\n",
+        "negative": "import { result } from \"./main\";\nresult(\"wrong\");\n"
+      }
+    },
+    {
+      "id": "preserve-generic-function-control",
+      "source": "declare function preserve<F>(fn: F): F;\nfunction identity<T>(value: T): T { return value; }\nexport const result = preserve(identity);\nexport const demanded: number = result(1);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: string = result(\"text\");\nconst independent: number = result(1);\n",
+        "negative": "import { result } from \"./main\";\nconst refused: number = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "outer-parameter-shadowing",
+      "source": "declare function compose<A, B, C>(first: (value: A) => B, second: (value: B) => C): (value: A) => C;\nfunction list<T>(value: T): T[] { return [value]; }\nfunction box<T>(value: T): { value: T } { return { value }; }\nexport function outer<T>(value: T) { return compose(list, box); }\nexport const demanded: { value: number[] } = outer(\"outer\")(1);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { outer } from \"./main\";\nconst demanded: { value: number[] } = outer(\"outside\")(1);\nconst independent: { value: string[] } = outer(1)(\"inside\");\n",
+        "negative": "import { outer } from \"./main\";\nconst refused: { value: string[] } = outer(\"outside\")(1);\n"
+      }
+    },
+    {
+      "id": "imported-first",
+      "source": "declare function compose<A, B, C>(first: (value: A) => B, second: (value: B) => C): (value: A) => C;\nfunction box<T>(value: T): { value: T } { return { value }; }\nimport { list } from \"./first\";\nexport const result = compose(list, box);\nexport const demanded: { value: string[] } = result(\"text\");\n",
+      "files": {
+        "first.ts": "export function list<T>(value: T): T[] { return [value]; }\n"
+      },
+      "nativeExpectedAccepts": true,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: { value: string[] } = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: { value: number[] } = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "imported-second",
+      "source": "declare function compose<A, B, C>(first: (value: A) => B, second: (value: B) => C): (value: A) => C;\nfunction list<T>(value: T): T[] { return [value]; }\nimport { box } from \"./second\";\nexport const result = compose(list, box);\nexport const demanded: { value: string[] } = result(\"text\");\n",
+      "files": {
+        "second.ts": "export function box<T>(value: T): { value: T } { return { value }; }\n"
+      },
+      "nativeExpectedAccepts": true,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: { value: string[] } = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: { value: number[] } = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "imported-all",
+      "source": "import { compose } from \"./higher\";\nimport { list, box } from \"./factories\";\nexport const result = compose(list, box);\nexport const demanded: { value: string[] } = result(\"text\");\n",
+      "files": {
+        "higher.ts": "export declare function compose<A, B, C>(first: (value: A) => B, second: (value: B) => C): (value: A) => C;\n",
+        "factories.ts": "export function list<T>(value: T): T[] { return [value]; }\nexport function box<T>(value: T): { value: T } { return { value }; }\n"
+      },
+      "nativeExpectedAccepts": true,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: { value: string[] } = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: { value: number[] } = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "reexported-generics",
+      "source": "declare function compose<A, B, C>(first: (value: A) => B, second: (value: B) => C): (value: A) => C;\nimport { list, box } from \"./bridge\";\nexport const result = compose(list, box);\nexport const demanded: { value: string[] } = result(\"text\");\n",
+      "files": {
+        "factories.ts": "export function list<T>(value: T): T[] { return [value]; }\nexport function box<T>(value: T): { value: T } { return { value }; }\n",
+        "bridge.ts": "export { list, box } from \"./factories\";\n"
+      },
+      "nativeExpectedAccepts": true,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: { value: string[] } = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: { value: number[] } = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "annotated-generic-callable",
+      "source": "declare function compose<A, B, C>(first: (value: A) => B, second: (value: B) => C): (value: A) => C;\nfunction box<T>(value: T): { value: T } { return { value }; }\nconst list: <Element>(value: Element) => Element[] = value => [value];\nexport const result = compose(list, box);\nexport const demanded: { value: string[] } = result(\"text\");\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: { value: string[] } = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: { value: number[] } = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "object-result-no-propagation-control",
+      "source": "declare function container<A, B>(fn: (value: A) => B): { run: (value: A) => B };\nfunction identity<T>(value: T): T { return value; }\nexport const result = container(identity);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: unknown = result.run(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: string = result.run(\"text\");\n"
+      }
+    },
+    {
+      "id": "object-result-rejection-control",
+      "source": "declare function container<A, B>(fn: (value: A) => B): { run: (value: A) => B };\nfunction identity<T>(value: T): T { return value; }\nexport const result = container(identity);\nexport const demanded: string = result.run(\"text\");\n",
+      "files": {},
+      "nativeExpectedAccepts": false,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: unknown = result.run(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: string = result.run(\"text\");\n"
+      }
+    },
+    {
+      "id": "overloaded-result-control",
+      "source": "declare function overloaded<A, B>(fn: (value: A) => B): { (value: A): B; (): B | undefined };\nfunction identity<T>(value: T): T { return value; }\nexport const result = overloaded(identity);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: unknown = result();\n",
+        "negative": "import { result } from \"./main\";\nconst refused: string = result();\n"
+      }
+    },
+    {
+      "id": "generic-constructor-factory",
+      "source": "declare function factory<A, R>(ctor: new (value: A) => R): (value: A) => R;\nclass Box<T> { value: T; constructor(value: T) { this.value = value; } }\nexport const result = factory(Box);\nexport const demanded: Box<string> = result(\"text\");\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: string = result(\"text\").value;\n",
+        "negative": "import { result } from \"./main\";\nconst refused: number = result(\"text\").value;\n"
+      }
+    },
+    {
+      "id": "propagated-default-parameter",
+      "source": "declare function compose<A, B, C>(first: (value: A) => B, second: (value: B) => C): (value: A) => C;\nfunction identity<T = string>(value: T): T { return value; }\nfunction list<T>(value: T): T[] { return [value]; }\nexport const result = compose(identity, list);\nexport const demanded: number[] = result(1);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "unchanged-discovery-24",
+      "question": "Retain the complete original higher-order inference observation.",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: string[] = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: number[] = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "rest-parameter-propagation",
+      "source": "declare function restLift<A, B>(fn: (...values: A[]) => B): (...values: A[]) => B[];\nfunction first<T>(...values: T[]): T { return values[0]; }\nexport const result = restLift(first);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-authored-form",
+      "question": "rest parameter propagation",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: string[] = result(\"a\", \"b\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: number[] = result(\"a\", \"b\");\n"
+      }
+    },
+    {
+      "id": "optional-parameter-propagation",
+      "source": "declare function optionalLift<A, B>(fn: (value?: A) => B): (value?: A) => B[];\nfunction optional<T>(value?: T): T | undefined { return value; }\nexport const result = optionalLift(optional);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-authored-form",
+      "question": "optional parameter propagation",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: (string | undefined)[] = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: number[] = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "two-independent-parameters",
+      "source": "declare function lift2<A, B, R>(fn: (left: A, right: B) => R): (left: A, right: B) => R[];\nfunction pair<T, U>(left: T, right: U): [T, U] { return [left, right]; }\nexport const result = lift2(pair);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-authored-form",
+      "question": "two independent parameters",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: [string, number][] = result(\"text\", 1);\n",
+        "negative": "import { result } from \"./main\";\nconst refused: [number, string][] = result(\"text\", 1);\n"
+      }
+    },
+    {
+      "id": "dependent-parameter-constraint",
+      "source": "declare function lift2<A, B, R>(fn: (left: A, right: B) => R): (left: A, right: B) => R[];\nfunction pair<T, U extends T>(left: T, right: U): [T, U] { return [left, right]; }\nexport const result = lift2(pair);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-authored-form",
+      "question": "dependent parameter constraint",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: [string, string][] = result(\"left\", \"right\");\n",
+        "negative": "import { result } from \"./main\";\nresult(\"text\", 1);\n"
+      }
+    },
+    {
+      "id": "dependent-parameter-default",
+      "source": "declare function lift2<A, B, R>(fn: (left: A, right: B) => R): (left: A, right: B) => R[];\nfunction pair<T = string, U = T[]>(left: T, right: U): [T, U] { return [left, right]; }\nexport const result = lift2(pair);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-authored-form",
+      "question": "dependent parameter default",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: [number, number[]][] = result<number>(1, [2]);\n",
+        "negative": "import { result } from \"./main\";\nconst refused: [number, string[]][] = result<number>(1, [2]);\n"
+      }
+    },
+    {
+      "id": "nested-returned-binder",
+      "source": "declare function lift<A, B>(fn: (value: A) => B): (value: A) => B[];\nfunction nested<T>(value: T): <U>(other: U) => [T, U] { return other => [value, other]; }\nexport const result = lift(nested);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-authored-form",
+      "question": "nested returned binder",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: [string, number] = result(\"text\")[0](1);\n",
+        "negative": "import { result } from \"./main\";\nconst refused: [number, string] = result(\"text\")[0](1);\n"
+      }
+    },
+    {
+      "id": "generic-function-property",
+      "source": "declare function lift<A, B>(fn: (value: A) => B): (value: A) => B[];\nconst provider: { map: <T>(value: T) => T[] } = { map: <T>(value: T): T[] => [value] };\nexport const result = lift(provider.map);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-authored-form",
+      "question": "generic function property",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: string[][] = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: number[][] = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "generic-method-value",
+      "source": "declare function lift<A, B>(fn: (value: A) => B): (value: A) => B[];\nconst provider = { map<T>(value: T): T[] { return [value]; } };\nexport const result = lift(provider.map);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-authored-form",
+      "question": "generic method value",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: string[][] = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: number[][] = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "generic-callable-interface",
+      "source": "declare function lift<A, B>(fn: (value: A) => B): (value: A) => B[];\ninterface Mapper { <T>(value: T): T; }\ndeclare const mapper: Mapper;\nexport const result = lift(mapper);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-authored-form",
+      "question": "generic callable interface",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: string[] = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: number[] = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "imported-generic-callable-alias",
+      "source": "declare function lift<A, B>(fn: (value: A) => B): (value: A) => B[];\nimport { mapper } from \"./shapes\";\nexport const result = lift(mapper);\n",
+      "files": {
+        "shapes.ts": "export type Mapper = <T>(value: T) => T;\nexport declare const mapper: Mapper;\n"
+      },
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-authored-form",
+      "question": "imported generic callable alias",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: string[] = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: number[] = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "runtime-concrete-leading-argument",
+      "source": "function apply<A, B>(value: A, fn: (value: A) => B): B { return fn(value); }\nfunction list<T>(value: T): T[] { return [value]; }\nexport const result = apply(\"text\", list);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-authored-form",
+      "question": "runtime concrete leading argument",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: string[] = result;\n",
+        "negative": "import { result } from \"./main\";\nconst refused: number[] = result;\n"
+      },
+      "runtime": "if (check.length !== 1 || check[0] !== \"text\") throw new Error(\"leading argument\");\n"
+    },
+    {
+      "id": "runtime-concrete-trailing-argument",
+      "source": "function apply<A, B>(fn: (value: A) => B, value: A): B { return fn(value); }\nfunction list<T>(value: T): T[] { return [value]; }\nexport const result = apply(list, \"text\");\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-authored-form",
+      "question": "runtime concrete trailing argument",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: string[] = result;\n",
+        "negative": "import { result } from \"./main\";\nconst refused: number[] = result;\n"
+      },
+      "runtime": "if (check.length !== 1 || check[0] !== \"text\") throw new Error(\"trailing argument\");\n"
+    },
+    {
+      "id": "noinfer-returned-parameter",
+      "source": "declare function guarded<A, B>(fn: (value: A) => B): (value: NoInfer<A>) => B;\nfunction identity<T>(value: T): T { return value; }\nexport const result = guarded(identity);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-authored-form",
+      "question": "noinfer returned parameter",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: string = result<string>(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nresult<string>(1);\n"
+      }
+    },
+    {
+      "id": "explicit-outer-specialization",
+      "source": "declare function compose<A, B, C>(first: (value: A) => B, second: (value: B) => C): (value: A) => C;\nfunction list<T>(value: T): T[] { return [value]; }\nfunction box<T>(value: T): { value: T } { return { value }; }\nexport const result = compose<string, string[], { value: string[] }>(list, box);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-authored-form",
+      "question": "explicit outer specialization",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: { value: string[] } = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: { value: number[] } = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "returned-context-specialization",
+      "source": "declare function compose<A, B, C>(first: (value: A) => B, second: (value: B) => C): (value: A) => C;\nfunction list<T>(value: T): T[] { return [value]; }\nfunction box<T>(value: T): { value: T } { return { value }; }\nexport const result: (value: boolean) => { value: boolean[] } = compose(list, box);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-authored-form",
+      "question": "returned context specialization",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: { value: boolean[] } = result(true);\n",
+        "negative": "import { result } from \"./main\";\nconst refused: { value: string[] } = result(true);\n"
+      }
+    },
+    {
+      "id": "overloaded-argument-concrete-last",
+      "source": "declare function lift<A, B>(fn: (value: A) => B): (value: A) => B[];\ndeclare function convert<T>(value: T): T[];\ndeclare function convert(value: number): number[];\nexport const result = lift(convert);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-authored-form",
+      "question": "overloaded argument concrete last",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: number[][] = result(1);\n",
+        "negative": "import { result } from \"./main\";\nconst refused: string[][] = result(1);\n"
+      }
+    },
+    {
+      "id": "overloaded-argument-generic-last",
+      "source": "declare function lift<A, B>(fn: (value: A) => B): (value: A) => B[];\ndeclare function convert(value: number): number[];\ndeclare function convert<T>(value: T): T[];\nexport const result = lift(convert);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-authored-form",
+      "question": "overloaded argument generic last",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: unknown[] = result(1);\n",
+        "negative": "import { result } from \"./main\";\nconst refused: string[] = result(1);\n"
+      }
+    },
+    {
+      "id": "overload-candidate-isolation",
+      "source": "declare function choose<A, B>(fn: (value: A) => B, mode: \"wrap\"): (value: A) => B[];\ndeclare function choose<A, B>(fn: (value: A) => B, mode: \"keep\"): (value: A) => B;\nfunction identity<T>(value: T): T { return value; }\nexport const result = choose(identity, \"wrap\");\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-authored-form",
+      "question": "overload candidate isolation",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: string[] = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: number[] = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "overload-no-match-rejection",
+      "source": "declare function choose<A, B>(fn: (value: A) => B, mode: \"wrap\"): (value: A) => B[];\ndeclare function choose<A, B>(fn: (value: A) => B, mode: \"keep\"): (value: A) => B;\nfunction identity<T>(value: T): T { return value; }\nexport const result = choose(identity, \"invalid\");\n",
+      "files": {},
+      "nativeExpectedAccepts": false,
+      "origin": "expanded-authored-form",
+      "question": "overload no match rejection",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: string[] = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: number[] = result(\"text\");\n"
+      }
+    },
+    {
+      "id": "returned-generic-constructor",
+      "source": "declare function adapt<A, R>(ctor: new (value: A) => R): new (value: A) => R;\nclass Box<T> { value: T; constructor(value: T) { this.value = value; } }\nexport const result = adapt(Box);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-authored-form",
+      "question": "returned generic constructor",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: string = new result(\"text\").value;\n",
+        "negative": "import { result } from \"./main\";\nconst refused: number = new result(\"text\").value;\n"
+      }
+    },
+    {
+      "id": "runtime-compose",
+      "source": "function compose<A, B, C>(first: (value: A) => B, second: (value: B) => C): (value: A) => C { return value => second(first(value)); }\nfunction list<T>(value: T): T[] { return [value]; }\nfunction box<T>(value: T): { value: T } { return { value }; }\nexport const result = compose(list, box);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-authored-form",
+      "question": "runtime compose",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: { value: string[] } = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: { value: number[] } = result(\"text\");\n"
+      },
+      "runtime": "if (check(\"text\").value[0] !== \"text\" || check(2).value[0] !== 2) throw new Error(\"composition\");\n"
+    },
+    {
+      "id": "runtime-lift",
+      "source": "function lift<A, B>(fn: (value: A) => B): (value: A) => B[] { return value => [fn(value)]; }\nfunction identity<T>(value: T): T { return value; }\nexport const result = lift(identity);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-authored-form",
+      "question": "runtime lift",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: string[] = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: number[] = result(\"text\");\n"
+      },
+      "runtime": "if (check(\"text\")[0] !== \"text\" || check(2)[0] !== 2) throw new Error(\"lifting\");\n"
+    },
+    {
+      "id": "runtime-imported-compose",
+      "source": "import { compose } from \"./higher.js\";\nimport { list, box } from \"./factories.js\";\nexport const result = compose(list, box);\n",
+      "files": {
+        "higher.ts": "export function compose<A, B, C>(first: (value: A) => B, second: (value: B) => C): (value: A) => C { return value => second(first(value)); }\n",
+        "factories.ts": "export function list<T>(value: T): T[] { return [value]; }\nexport function box<T>(value: T): { value: T } { return { value }; }\n"
+      },
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-authored-form",
+      "question": "runtime imported compose",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: { value: string[] } = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: { value: number[] } = result(\"text\");\n"
+      },
+      "runtime": "if (check(\"text\").value[0] !== \"text\" || check(2).value[0] !== 2) throw new Error(\"imported composition\");\n"
+    },
+    {
+      "id": "runtime-three-stage-compose",
+      "source": "function compose3<A, B, C, D>(one: (value: A) => B, two: (value: B) => C, three: (value: C) => D): (value: A) => D { return value => three(two(one(value))); }\nfunction list<T>(value: T): T[] { return [value]; }\nfunction box<T>(value: T): { value: T } { return { value }; }\nexport const result = compose3(list, box, list);\n",
+      "files": {},
+      "nativeExpectedAccepts": true,
+      "origin": "expanded-authored-form",
+      "question": "runtime three stage compose",
+      "consumerSources": {
+        "positive": "import { result } from \"./main\";\nconst demanded: { value: string[] }[] = result(\"text\");\n",
+        "negative": "import { result } from \"./main\";\nconst refused: { value: number[] }[] = result(\"text\");\n"
+      },
+      "runtime": "if (check(\"text\")[0].value[0] !== \"text\" || check(2)[0].value[0] !== 2) throw new Error(\"three stages\");\n"
+    }
+  ]
+}

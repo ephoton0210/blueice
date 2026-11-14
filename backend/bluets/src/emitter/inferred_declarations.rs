@@ -9,6 +9,7 @@ use crate::checker::CheckedModule;
 use crate::parser::{ImportDeclaration, VariableDeclaration, VariableKind};
 use std::collections::BTreeSet;
 
+mod callable_identities;
 mod diagnostics;
 mod origins;
 mod render;
@@ -20,6 +21,7 @@ use origins::{
 };
 
 pub(super) struct Context<'a> {
+    checked: &'a CheckedModule,
     module: &'a Module,
     project: &'a Project,
     used_imports: BTreeSet<String>,
@@ -49,6 +51,7 @@ impl<'a> Context<'a> {
     ) -> Result<Self, Diagnostic> {
         let module = &checked.module;
         let mut context = Self {
+            checked,
             output_options: options.clone(),
             module,
             project,
@@ -128,6 +131,9 @@ impl<'a> Context<'a> {
             {
                 "unique symbol".to_string()
             } else if let Some(name) = context.function_initializer(variable) {
+                context.retain(&name);
+                format!("typeof {name}")
+            } else if let Some(name) = context.copied_function_name(value) {
                 context.retain(&name);
                 format!("typeof {name}")
             } else {

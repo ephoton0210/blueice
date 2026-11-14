@@ -1,0 +1,402 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_87.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/failed-r2-members.json",
+      "bytes": 16964297,
+      "sha256": "098e0e6fa5df253f4c7eb83b4277cd226a1df8768a4e3b5fb7e9056a7aad7fcc"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/000-backend_bluets_tests_higher_order_inference_rs.log",
+      "bytes": 432,
+      "sha256": "ea94f6396358f625e3428f0770ca5c4efeff7dda981a5e13f52d774e983f48f0"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/001-backend_bluets_tests_gt3_operators_rs.log",
+      "bytes": 555,
+      "sha256": "79f79b13fd96d77d6731f90d698ef02a7eddccbce4705e8efa4c867adea63140"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/002-backend_bluets_tests_conditional_inference_rs.log",
+      "bytes": 522,
+      "sha256": "7b89cfbd3dbaa35f12a1e0085b22a4f3b271b86f718b2d7d4d991b9ba55ae4bf"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/003-backend_bluets_tests_nonnullable_awaited_rs.log",
+      "bytes": 647,
+      "sha256": "a303c57ec824ea01a1176e0dac5f676773c6d9c5cd1013bd57aa051e9138d158"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/004-backend_bluets_tests_callable_utilities_rs.log",
+      "bytes": 370,
+      "sha256": "55121dfbf78f4214f0a8c466d8b7d09b795c83c49ed8479d24d31bec78465f2e"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/005-backend_bluets_tests_receiver_utilities_rs.log",
+      "bytes": 370,
+      "sha256": "150b858b0f0cb819d7c1251b51e7a35af0ece4e5eee89ccb4debc3c33184bfd6"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/006-backend_bluets_tests_noinfer_rs.log",
+      "bytes": 526,
+      "sha256": "d8da34c1c89f02a93523bba50f0600e84432c86c3121626c625fa75bf9043454"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/007-backend_bluets_tests_symbolic_keys_rs.log",
+      "bytes": 511,
+      "sha256": "61f0246dcb90f5c72564e72a8af51e47914556941489b9fb1ad3f6272b5a878d"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/008-backend_bluets_tests_mapped_inference_rs.log",
+      "bytes": 645,
+      "sha256": "e0f006d90a3162026ac2e14d8fe8f5dd62152b4d23cb31d9e55a5ccd72809267"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/009-backend_bluets_tests_gc1_object_generic_methods_rs.log",
+      "bytes": 482,
+      "sha256": "27c6750b92bd74d4b0802db91550765abf2292bbdc894068526ca69092b5767c"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/010-backend_bluets_tests_gt5_compositions_rs.log",
+      "bytes": 571,
+      "sha256": "dcb8a122a21c1f0c273ddc44ade904a906a10a94f690013b009596790b5e3258"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/011-backend_bluets_tests_gt2_inference_rs.log",
+      "bytes": 475,
+      "sha256": "1a35f38e06cf942ac23757025340ed60e56528cd47fd01ab31c9d31f0e661af3"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/012-backend_bluets_tests_string_intrinsics_rs.log",
+      "bytes": 530,
+      "sha256": "8fc3261ea5468677319fea15b744faf617664e734db378c9d55f905717d9db38"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/013-backend_bluets_tests_diagnostics_matrix_rs.log",
+      "bytes": 1807,
+      "sha256": "4b553ec59f04ed12b4709c02fcfe1dd943d4abc9b6cd0dbf8128e2fd16a426aa"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/014-backend_bluets_tests_gt10_import_types_rs.log",
+      "bytes": 848,
+      "sha256": "9a84a3ebe5fcac12ba1b3f0002f2df4f921bd68360af9dc6473834cb440c7d43"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/015-backend_bluets_tests_gm1_resolver_compositions_rs.log",
+      "bytes": 1063,
+      "sha256": "bb6a746932df22a502db76971e49435089422df2ca457e25a0f7fcfb61a65a37"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/016-backend_bluets_tests_gm2_build_interop_rs.log",
+      "bytes": 1362,
+      "sha256": "8ac91ddd93407908f9b859bb5bc577f5c4a6a056b694ad2f2219f5d837481059"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/017-backend_bluets_tests_gm2_incremental_options_rs.log",
+      "bytes": 673,
+      "sha256": "c7368ca8b77adc8ca0c7d7da51bf6815b1dbbea212a57dae4b199c37616ad8de"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/018-backend_bluets_tests_gt1_declaration_order_rs.log",
+      "bytes": 401,
+      "sha256": "0776749b6769a1fcd6a2814af7bdacdb98df195fcdc60372aa73a24152a0b844"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/019-backend_bluets_tests_gt1_flow_rs.log",
+      "bytes": 632,
+      "sha256": "3788d0728486c68e16034e39e9a90d70a94d23e8fcaa7b177872daddef7d2653"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/020-backend_bluets_tests_gt4_overload_chains_rs.log",
+      "bytes": 535,
+      "sha256": "4297b0ebc01eb3d497e0294775c57a6d88219a94759bcca5d8bfb5ee663d05bb"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/021-backend_bluets_tests_gt6_structural_rs.log",
+      "bytes": 485,
+      "sha256": "3d2ecd6308d48ac32e49328833aef00538ee1bb55e9c7064548f8d4e316d2fff"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/022-backend_bluets_tests_gt7_library_manifest_rs.log",
+      "bytes": 652,
+      "sha256": "e3ea66e8519e8fdc39072a3a23c22ea1c3eb084bfbbf9abaf59e54102b5fdb9b"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/023-backend_bluets_tests_gt8_return_context_rs.log",
+      "bytes": 532,
+      "sha256": "3947c65a8fb88820560a792733abb665756456f664bc7083fcccea19b4789de9"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/024-backend_bluets_tests_gt9_classes_rs.log",
+      "bytes": 987,
+      "sha256": "bf15cca941616f9be0379d6a8e60b4d1cf382f9f36687586af3788ef79ebe9e6"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/025-backend_bluets_tests_guards_checker_matrix_rs.log",
+      "bytes": 336,
+      "sha256": "829ffb3d34e7ddcd6cfefa91e25e8389585725d38f4cd7fa836fe9b44e723e0c"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/026-backend_bluets_tests_immutable_checker_matrix_rs.log",
+      "bytes": 323,
+      "sha256": "097a151d65584679f84370481ffa3890f950884c9909453edea8253817cfbd57"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/027-backend_bluets_tests_imported_value_checker_matrix_rs.log",
+      "bytes": 380,
+      "sha256": "1e79e9db9f0b631e8bb183aeb98bacfc8ed1cc867fc66a489dca21aba071c128"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/028-backend_bluets_tests_indexed_call_context_rs.log",
+      "bytes": 223,
+      "sha256": "59f7835be608b2b2ee44ea2023f8c07d1c0afc6853a490b8357b2bd548c07f37"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/029-backend_bluets_tests_inference_checker_matrix_rs.log",
+      "bytes": 415,
+      "sha256": "48b6a1e7be95f1f6ee68c6fb4758fe6b6903d2a0cfce588fe3475921382f2ed2"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/030-backend_bluets_tests_inferred_return_checker_matrix_rs.log",
+      "bytes": 449,
+      "sha256": "9d845cd7eae3c7ecd387dff3f6bb650bee4ad25dab74fc0445387fad6ba3de72"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/031-backend_bluets_tests_json_default_binding_rs.log",
+      "bytes": 276,
+      "sha256": "67f4884f10208471790e1ad4e2ab624bc8634775a7349ae85707999d65c63dda"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/032-backend_bluets_tests_jsx_checker_matrix_rs.log",
+      "bytes": 464,
+      "sha256": "bdc258450f26a2f1d1dd6fe6bcb8fbb1f62883520567a3392b9a63e65b6c6ca6"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/033-backend_bluets_tests_jsx_oracle_rs.log",
+      "bytes": 184,
+      "sha256": "3f7821bc680010e90f88564dafd214e61e60fd95459645185ea2a4ac2068880c"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/034-backend_bluets_tests_jsx_runtime_namespace_rs.log",
+      "bytes": 439,
+      "sha256": "035a6de89017510ec1a52b09abaa11d73336771553be6436dea54f2b222a84fc"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/035-backend_bluets_tests_jsx_typing_extras_rs.log",
+      "bytes": 499,
+      "sha256": "f52bd112dabf1fe8ba3b7baaf15b3927efdbc8eae754065c3e2b5684fdc5968e"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/036-backend_bluets_tests_legacy_decorators_checker_matrix_rs.log",
+      "bytes": 477,
+      "sha256": "61a8a1fe5f85a9ffcbb9be2948e7f801a529a7cc2f927d97a2c56abc7960ad65"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/037-backend_bluets_tests_legacy_decorators_oracle_rs.log",
+      "bytes": 178,
+      "sha256": "765cbef88e5b610b001afa15de26f49a7c40887402e26ab991abf64d46a26ba9"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/038-backend_bluets_tests_module_exports_checker_matrix_rs.log",
+      "bytes": 514,
+      "sha256": "2a4e968c308d99af6f082bdcbfeaa8b2114448836dfe79dccd299f6f1a5d442e"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/039-backend_bluets_tests_module_script_helpers_rs.log",
+      "bytes": 244,
+      "sha256": "8e1880ffa85ee156a0903b4ad37697ecf746efa673734365bd6cd7f43614fee0"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/040-backend_bluets_tests_module_systems_rs.log",
+      "bytes": 545,
+      "sha256": "e5397e44046218a677e82e0d4f587770074b99e622585465e8bd75303d692be3"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/041-backend_bluets_tests_module_type_resolution_rs.log",
+      "bytes": 206,
+      "sha256": "323609b9b2bf2e60143142ff6c3f7955ffe8e36fcaab662fcc7d555af4560689"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/042-backend_bluets_tests_module_types_checker_matrix_rs.log",
+      "bytes": 357,
+      "sha256": "cb867939c0ad7463db5d855bf589d83bdf29d494b1b6727abc6772875cf5cf8e"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/043-backend_bluets_tests_more_types_checker_matrix_rs.log",
+      "bytes": 352,
+      "sha256": "a2125a93d0c9e1d7d500667cc1d8e11dc541b352885e7bc65564449866db3090"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/044-backend_bluets_tests_namespace_checker_matrix_rs.log",
+      "bytes": 470,
+      "sha256": "9c7033f2dbbe5d31d4cec380cf03da6da42712f8cd281ae07ccce107a2474be0"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/045-backend_bluets_tests_namespace_declaration_oracle_rs.log",
+      "bytes": 212,
+      "sha256": "b1118a28522dfe173d53a4a5992af48528b3b50b57d1f4479be7bef840c1ab9d"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/046-backend_bluets_tests_namespace_oracle_rs.log",
+      "bytes": 194,
+      "sha256": "8e977fc959cf099eea8a68a4ac4f7e1a554787be2424ee38335d2baf5dbc7538"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/047-backend_bluets_tests_narrowing_checker_matrix_rs.log",
+      "bytes": 353,
+      "sha256": "c86f2554c19911547ac09781d154cf2f821ee95015d4d680115340b17691ac86"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/048-backend_bluets_tests_object_method_context_rs.log",
+      "bytes": 255,
+      "sha256": "3883955f9440446bff31e6d3730a4e2cbaad4a07c2677b1c22b501abaade2246"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/049-backend_bluets_tests_operators_checker_matrix_rs.log",
+      "bytes": 492,
+      "sha256": "20b54c8872a81fcbf70fa3fa9f3cdf79ca00d03c522342df268ef72c0bca5721"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/050-backend_bluets_tests_option_combinations_oracle_rs.log",
+      "bytes": 160,
+      "sha256": "8315ddb37c2092f653a55f182b527c3914b464e0df6cddd0cb0ac1455e82dd1d"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/051-backend_bluets_tests_output_options_rs.log",
+      "bytes": 455,
+      "sha256": "7715ecfa75f8531628ca0ad69b5013514c9232be2bf24ac3fa294c58db70dd1a"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/052-backend_bluets_tests_output_validation_rs.log",
+      "bytes": 379,
+      "sha256": "d145e714e56a3e08521b08aba1d3b8573a1630597db1642f0e872641a7a31837"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/053-backend_bluets_tests_overloads_checker_matrix_rs.log",
+      "bytes": 348,
+      "sha256": "6a1ba00c676bbff3a7a926666a2b8d8b8266f7169d9993672a164413bd4fd5c3"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/054-backend_bluets_tests_package_extras_rs.log",
+      "bytes": 431,
+      "sha256": "13d1d5df4ab1d7820bf728584e78f1fbe04ae9a85f3ca8e131d6bcb9855a266c"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/055-backend_bluets_tests_path_extras_rs.log",
+      "bytes": 422,
+      "sha256": "9016e5868a2785b56c36bb0a943414300305e55517c43470a181e235cc021c60"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/056-backend_bluets_tests_project_build_corrupt_state_rs.log",
+      "bytes": 808,
+      "sha256": "ccdd9897bc1cf065f7cf4220ce37704343a79fa84876d15cf7372f77f2ef1adb"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/057-backend_bluets_tests_project_build_equivalence_rs.log",
+      "bytes": 574,
+      "sha256": "a25bb58411d96422fa01d2e4672f93d0a12a1bc735d8dfd063f7ecddf1221fbd"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/058-backend_bluets_tests_project_build_errors_rs.log",
+      "bytes": 469,
+      "sha256": "38edb0213b63897dec5a452357543ee0e92917556a35d7d037a526942a96f4e0"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/059-backend_bluets_tests_project_build_freshness_rs.log",
+      "bytes": 712,
+      "sha256": "4eaf247e9dd1c514fe0c1cb10743f8e68c7171e6ff07e4bbeb12153a08617781"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/060-backend_bluets_tests_project_build_invalidation_rs.log",
+      "bytes": 764,
+      "sha256": "1561fa1e91fe62840ee440ad22cf82a67b1207e4af41c4d0557d01b568f022ce"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/061-backend_bluets_tests_project_build_order_rs.log",
+      "bytes": 367,
+      "sha256": "0760a9f243c20d62849059e9cc5321381ec8c0346b3cb7249ae94ab8b254c06a"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/062-backend_bluets_tests_project_build_watch_rs.log",
+      "bytes": 768,
+      "sha256": "9f6a1a7e9e55488edcfd70d3837b874941edb04e59fd85557cb87f585db6e918"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/063-backend_bluets_tests_project_cache_key_rs.log",
+      "bytes": 571,
+      "sha256": "666c692fd1b0513b1d7ac6672fbdc0f3d22835959544c5c83be205a2ba9cc999"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/064-backend_bluets_tests_project_config_rs.log",
+      "bytes": 872,
+      "sha256": "7e674bbf1906b2525b7c9f4c7b7463120b4caf4900ff527e30fbe7d3efdf00bb"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/065-backend_bluets_tests_project_reference_owner_gate_rs.log",
+      "bytes": 566,
+      "sha256": "65043fb1550fc681bbb1397fd4850d7ebabaff621ba2f4c05c044deb331a1e96"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/066-backend_bluets_tests_project_referenced_declarations_rs.log",
+      "bytes": 1110,
+      "sha256": "0d0c93e11f5294b2a1ada3eee325206e7d81da30b2fc0eb1af615dc6a255fc77"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/067-backend_bluets_tests_project_references_rs.log",
+      "bytes": 559,
+      "sha256": "dd7232ca02b7d0610ad4f9eec8172f24a75d1810265235ea5f845f13330e1729"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/068-backend_bluets_tests_receiver_parameter_boundaries_rs.log",
+      "bytes": 244,
+      "sha256": "72d52766ba5f05bee5a79dc7272d0816fd0a55566012b0ee832dcbe713a612a5"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/069-backend_bluets_tests_rest_array_context_rs.log",
+      "bytes": 230,
+      "sha256": "e4941e62fcf146236fad1df34ad6643f56c299fdc5d5eab0d59c91db2687e44a"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/070-backend_bluets_tests_source_extras_rs.log",
+      "bytes": 421,
+      "sha256": "76d240f359c62668aae10b5a4532d0384031ded428a6ee34b92c2d7a8d1ec61c"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/071-backend_bluets_tests_source_map_publication_rs.log",
+      "bytes": 313,
+      "sha256": "760e7c4b53791e99b6666d31d2ce6707c299dfe235a687e67bc50af8417279e3"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/072-backend_bluets_tests_source_map_tokens_oracle_rs.log",
+      "bytes": 2299,
+      "sha256": "8f6db1a7596b437fe50a88510febb73b46244e4dd199c74c55397935d4de7ca9"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/073-backend_bluets_tests_standard_library_checker_matrix_rs.log",
+      "bytes": 1278,
+      "sha256": "15312b4c925e3b054e56a7a2fff5dbfc0bb8a4f34c98b1dcc9b4b315b7f84bd8"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/074-backend_bluets_tests_strictness_controls_rs.log",
+      "bytes": 676,
+      "sha256": "03f42d0713a68497866674b7034eab1097d7aafc9f9879c913563aefa7132adf"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/cargo-artifacts.jsonl",
+      "bytes": 375265,
+      "sha256": "b66d729b2114dceeb14c085c9bfc2ea2426c1ba713e9c9d8b5db8c2c72755ec6"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/current.json",
+      "bytes": 223,
+      "sha256": "4998c6efdd8bba22b3ff88777bfb0faa4b8c03e2e0aa66246161ea6df8240ae0"
+    },
+    {
+      "path": "development-history/failed-r3/accepted-native/measurement.json",
+      "bytes": 223426,
+      "sha256": "8e01bb979a89ced47d1daba0200613626c5bd970f7063bf8be6ba4d7bd744df3"
+    }
+  ]
+}

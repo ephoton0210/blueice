@@ -631,7 +631,15 @@ pub(super) fn scan(
         if matches!(before, Some("{" | ",")) && in_object_literal(tokens, index) {
             match after {
                 Some(":" | "(") => continue,
-                Some("," | "}") => replacement = format!("{}: {replacement}", token.text),
+                Some("," | "}") => {
+                    // ES5 preparation may already preserve this source key.
+                    // This replacement owns both the key and rewritten value.
+                    let prefix = format!("{}: ", token.text);
+                    edits.retain(|edit| {
+                        !(edit.start == start && edit.end == start && edit.replacement == prefix)
+                    });
+                    replacement = format!("{prefix}{replacement}");
+                }
                 _ => {}
             }
         } else if before == Some("{") && after == Some(":") {
@@ -861,6 +869,7 @@ fn render_members(
                 import_types: Vec::new(),
                 expression_variable_types: BTreeMap::new(),
                 type_assertions: BTreeMap::new(),
+                object_shorthands: BTreeMap::new(),
             };
             let text = super::emit_declaration(&synthetic, facts.0, facts.1, options)?;
             let hidden_names: BTreeSet<&str> = chunk

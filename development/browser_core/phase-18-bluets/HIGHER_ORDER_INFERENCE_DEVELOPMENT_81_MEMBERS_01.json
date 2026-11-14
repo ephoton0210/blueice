@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_81.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/failed-r1/accepted-native-cli",
+      "bytes": 50464768,
+      "sha256": "fa9943ddcd9c9ef7e26f17cd962da97bc7b8cee3e1eed78ec0b874e981f479ed"
+    },
+    {
+      "path": "development-history/failed-r1/audit_conditional_inference.py",
+      "bytes": 6800,
+      "sha256": "3928884180edd29fa18157a310a9838718d8151a17a8a2405cadb7114c7f502c"
+    },
+    {
+      "path": "development-history/failed-r1/audit_higher_order_inference.py",
+      "bytes": 6247,
+      "sha256": "24baacf1e6569eee59d4ea1c4e08e306b2bd417679425970bfb5d3eaa64b36b9"
+    },
+    {
+      "path": "development-history/failed-r1/audit_symbolic_keys.py",
+      "bytes": 6833,
+      "sha256": "56d0d34a62cb20ef3f9337fe941584271be790d93d254ed474173bd7ed7e38a4"
+    }
+  ]
+}

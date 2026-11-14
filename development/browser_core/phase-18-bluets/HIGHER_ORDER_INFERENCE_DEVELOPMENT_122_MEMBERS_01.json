@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_122.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/failed-r9/accepted-native/suite-artifacts/138/reports/standard-decorator.json",
+      "bytes": 18228242,
+      "sha256": "e81eab39727d8d1fca0ddd0f33330c9e48d6e0623e12a19f8cb6c061e94e9a92"
+    },
+    {
+      "path": "development-history/failed-r9/accepted-native/suite-artifacts/139/observations/static-super-complete.json",
+      "bytes": 3493134,
+      "sha256": "bae0910f725a034a5224b64c8f0f1e94d69909b437becb0a98ddc58aea310da2"
+    },
+    {
+      "path": "development-history/failed-r9/accepted-native/suite-artifacts/139/reports/static-super-complete.json",
+      "bytes": 13933304,
+      "sha256": "c7504adbee36352b482a30281973a744e927e8e047a2082641679b5ba9a388c9"
+    },
+    {
+      "path": "development-history/failed-r9/accepted-native/suite-artifacts/139/reports/static-super-complete.raw.log",
+      "bytes": 7809980,
+      "sha256": "10fd5619b4ef41f3e073d108e75b3c03e1a707eae5bfc1a1d08b39dd824ea2d6"
+    }
+  ]
+}

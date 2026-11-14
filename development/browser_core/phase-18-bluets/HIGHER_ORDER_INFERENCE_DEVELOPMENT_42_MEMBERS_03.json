@@ -1,0 +1,2417 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_42.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_class_retained.rs",
+      "bytes": 863,
+      "sha256": "53510c57caec57a41b6f512726b4c1ab05eb14a8404a76a9ae77d62e9f57da9f"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_class_value_publication.rs",
+      "bytes": 1430,
+      "sha256": "0175b323e808b0075f830f9ce21587d922dcbb1944d8c4b533e52132a40ef5a1"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_concise_arrow_parameter_gap.rs",
+      "bytes": 3142,
+      "sha256": "0eab2d1a2f57750f764ae64adff0b97d7df5565be629e75386a67c9ece1238ed"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_concise_origin_phases.rs",
+      "bytes": 5106,
+      "sha256": "59501f7c365d0a6dbd595566480b4925af14b5df8b87b30d355bbbd9c9414c29"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_constructor_field_entry.rs",
+      "bytes": 6603,
+      "sha256": "7f605c8e0a28ffc665f26519036bdb87cdbfd33ab514939f1a976218fabfa5e0"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_decorated_static_block_origins.rs",
+      "bytes": 3243,
+      "sha256": "ed9bcacc9bc20e233a8df6e77e58b06950ceffd2ce6a0763a780643d6c6b5148"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_decorator_adjacent_observations.rs",
+      "bytes": 4024,
+      "sha256": "261d5b75e0a7f23aa1dd5465ec5099da18fe691b53b0ad504fb4da110a35e2a2"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_decorator_expression_relocations.rs",
+      "bytes": 3231,
+      "sha256": "97e5fce72af6c07d036beb42fc7fa327603d3d3038c38ca6308fea5a01cddf12"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_decorator_field_ends.rs",
+      "bytes": 4369,
+      "sha256": "088e9c317a79a5f7f97320ed37e574d79de0708e08d447f488a04e7b0287118f"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_decorator_maps.rs",
+      "bytes": 8279,
+      "sha256": "e7f4a988f32c2af8db5ac5ac4fa20420df533f09e9e900acef6ec78c4759c198"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_default_class_header.rs",
+      "bytes": 5235,
+      "sha256": "34d125fb9a2e4e2505e899c88883ed853a66318e8a61211d93906387182a1e88"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_default_class_publication.rs",
+      "bytes": 4131,
+      "sha256": "b0d665eaa89c1107a3883191a9e7b022e907578c43e00878f68b27ff2078735e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_double_accessor_family.rs",
+      "bytes": 1258,
+      "sha256": "d9b5803480784cf94cdcd6a595dbbf6afdc85e4f9522edd1811a8defb8648291"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_enum_export_boundaries.rs",
+      "bytes": 5310,
+      "sha256": "82ffe830948c99e014059265e492adca1cc8fc4bebc9a8a58655ce9637a04875"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_es5_method_definitions.rs",
+      "bytes": 2576,
+      "sha256": "6ef0b939c3cba40aea0729db6103c1dbd43f1e2b5c41798c3de997a3d7606dfb"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_expression_boundaries.rs",
+      "bytes": 6656,
+      "sha256": "034a8b320da38b1b97d53f5a058a00e25d8cc2a25cdaa1be99a27fa26a10fdf1"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_field_class_header_gaps.rs",
+      "bytes": 4897,
+      "sha256": "fe245c891b85cc8e5c92070dc193b0ea2e5065bd5820cccc6e25d702d60884f9"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_field_decorator_call_roles.rs",
+      "bytes": 4676,
+      "sha256": "915b694dda04683cb297852c6526abc7e0b28a0b6de4f53e4d195db5f7a1ff77"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_field_extra_initializer_roles.rs",
+      "bytes": 3409,
+      "sha256": "d3214648b08089767021904d709b39138891e3140c579225abf7948c35e83cd7"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_field_initializer_endpoints.rs",
+      "bytes": 3281,
+      "sha256": "34f3eb3f5001df61626117b249db9a3837dc98eae380cee63da5a8163c90b38b"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_generator_switch_endpoints.rs",
+      "bytes": 1857,
+      "sha256": "e71fbe3ba36e370d02d3215dee3e3ddc1d529d5f332d9345a32367bd7bcea896"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_generator_switch_family.rs",
+      "bytes": 1259,
+      "sha256": "c3ae981f9c5c70f728b3d94b151e7d1b5ad448e4d68b5767d9a5e5597fae9edf"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_helper_collision_family.rs",
+      "bytes": 1252,
+      "sha256": "f58dcd2fea933b9f78a8dff1a049ffe3c17d5f2454042b4bab77a5cf10cf2f14"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_helper_collision_maps.rs",
+      "bytes": 1208,
+      "sha256": "1068d2fbba3bd966caf29c7a9335eb8f6ae179097d6784b92d9e4c960dc37b5a"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_helper_provider_globals.rs",
+      "bytes": 943,
+      "sha256": "1b33dd23055358615aafb8f3e3f664f9758520b2181ab7cab948224f052e0269"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_import_alias_maps.rs",
+      "bytes": 4229,
+      "sha256": "42ffc596204b2f1aca7b9c3adbc5edc2d7d9250d2fc4ff47fa3f150a067d1b7c"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_interop_amd_imports.rs",
+      "bytes": 4649,
+      "sha256": "864e908fb529ab95aefc3f6333559c867d7a8155371f2e4d6b1c602ee6f0f19b"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_interop_expression_maps.rs",
+      "bytes": 1847,
+      "sha256": "b0a8f36d00f8c2f5cfb215e77b3e8e123a38b5adbd97b6c65709138a18b6951f"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_interop_import_comments.rs",
+      "bytes": 3594,
+      "sha256": "a72de0d4d9ab40696d41b1dfea3815714d17529e1b121dec82c8826c297b473a"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_interop_module_maps.rs",
+      "bytes": 1717,
+      "sha256": "af8b4239f1d97c513215b9e45324999ec618f6c4844e9123307e12d5dfd5176f"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_interop_namespace.rs",
+      "bytes": 2151,
+      "sha256": "b04cf5f6a18e441bb85d9084837126999e94664a07990dc207a4236631aaa992"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_interop_system_star.rs",
+      "bytes": 4677,
+      "sha256": "43b7e9cceaefc09a895102db66d9385315e449f9740731024feeffc6495ccb7a"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_iteration_boundary.rs",
+      "bytes": 4550,
+      "sha256": "910ac35db0116c96a15d5427c0586dc0c06f5e61b5b292bed1a1d47a3727730c"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_iteration_maps.rs",
+      "bytes": 730,
+      "sha256": "9c6bf190025aa8769d9e4485ed6e2f946f8179e66361bd65529cb87f039d1b45"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_legacy_class_phase.rs",
+      "bytes": 8491,
+      "sha256": "7de1b49b30c98b6847b7cd1dd8efb4d90d904f30188e520a7838c9c3b4bf4b45"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_legacy_decorator_module_maps.rs",
+      "bytes": 4568,
+      "sha256": "2126def10a4039618b20bf496b61ff149f49f219b18d3487d1c1257a4f4a5955"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_legacy_invocation_metadata.rs",
+      "bytes": 3892,
+      "sha256": "9aceaf93d936ed7a9e9af9cc8605d6628ee211b976e5c02134be3f7ef8816f03"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_legacy_numeric_decorator_keys.rs",
+      "bytes": 2595,
+      "sha256": "18b2aca50bedd38e6d76d55f647d186f8fb1478bcbe1944976d2df598a41807e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_legacy_publication_gaps.rs",
+      "bytes": 2758,
+      "sha256": "a1494379b1d1085bbf3d675c4960344ff53fe861c9f081b6e1f783e3ddce4b7e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_lexical_arrow_driver.rs",
+      "bytes": 1131,
+      "sha256": "2be2d093d20d428aa724c05e58aa47163f92fac8bd991d26b12e5c3255196aa9"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_lexical_arrow_family.rs",
+      "bytes": 1254,
+      "sha256": "bec3062f382649ba05efbffda73bb840a8a33f41671dd871450062143955d8a0"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_literal_accessor_module_maps.rs",
+      "bytes": 4571,
+      "sha256": "a5f27e9d437514d4897ba81e037e350ab3cbb43c99d56c6e0fb8088903761de8"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_literal_auto_accessor_module_maps.rs",
+      "bytes": 4588,
+      "sha256": "09c7897c866190cbaab0bcd10bd290e3c74b10ad6b18430dfd73a2e5e53562d3"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_literal_auto_accessors.rs",
+      "bytes": 19149,
+      "sha256": "7000eb832ef4539ef5bd03a6012d60a9162f21abb9eea9e334e03119eef8b606"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_literal_class_frames.rs",
+      "bytes": 18424,
+      "sha256": "ec529b15db7793df39676c016e2bbece2ddb428a7b33b6dbb2690d2be57c89a3"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_literal_decorator_module_maps.rs",
+      "bytes": 4560,
+      "sha256": "5c9ed997ca2d855940e21e778dd311e92eec08ceef02f413466f96bc5a2cbe0a"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_literal_field_keys.rs",
+      "bytes": 3462,
+      "sha256": "483ad1855b6fe7b386da0b4253bc0201f9a556182622d3d9d552acc84f8f4411"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_literal_member_origins.rs",
+      "bytes": 5323,
+      "sha256": "e1849177adc408bd56bb22a954890287ffd55f820bddee91b34ab952585f4e76"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_literal_method_family.rs",
+      "bytes": 1259,
+      "sha256": "8902237288c15cd208d8eb12b0f605138dfee25d8a9142120a679c45b2c23656"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_literal_replacement_module_maps.rs",
+      "bytes": 12484,
+      "sha256": "890aeb6f197a849ec8befb5a5f004d707c6c2f13dea02ace642f93d9421c9712"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_local_string_exports.rs",
+      "bytes": 7017,
+      "sha256": "2d4d91d055ce60267572940f760af7eb158fcde14a6247a8e6de6de367930352"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_metadata_callable.rs",
+      "bytes": 1167,
+      "sha256": "5e211a74ccf5f29e9c11ebe693d403ae0673d49866d1c2a32610f79f2ac8af9a"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_metadata_class_alias.rs",
+      "bytes": 1180,
+      "sha256": "a33274579182de135be025f60140e0bd7aafe0b06c7a9c3833d6c0a67186bb2f"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_metadata_class_boundaries.rs",
+      "bytes": 5091,
+      "sha256": "dc22e93683b6376170a132d0321ba708bfea8b111bdf8069086a145c96a5dc11"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_metadata_class_chain.rs",
+      "bytes": 5952,
+      "sha256": "4b0e8b793aa94d673a4d81bd43b461e764736a782aab35de8c8d28c336df3971"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_metadata_class_completions.rs",
+      "bytes": 5142,
+      "sha256": "4acf75196cfe45c42845fb0f435a8b35b6568f750898657aecc5dddff1466683"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_metadata_classes.rs",
+      "bytes": 890,
+      "sha256": "da4f2ccfd36586fa76b361d81a7d157e24c814ec19d0930d5aa3810d65886a11"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_metadata_import_type.rs",
+      "bytes": 1175,
+      "sha256": "04ff2f83684fc89bed3eef4821c18210ee586bce70be5765c483e66459151114"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_metadata_inline_type.rs",
+      "bytes": 1202,
+      "sha256": "a039c55f570fabf3835ec7cc2c0ef166c97cf7a94f013c37fdc77a74ebdaa440"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_metadata_interface.rs",
+      "bytes": 1152,
+      "sha256": "6d6441a0121a09753165627eb91fbd4d840d9bfc982fe2b53556ebbf9dcb80d4"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_metadata_local_alias.rs",
+      "bytes": 1174,
+      "sha256": "773bbbb316c68274b3987550c99f9b1ac9d70b25297c686b68cbcd06d3b4b5bf"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_metadata_namespace_reexport.rs",
+      "bytes": 1213,
+      "sha256": "7603157f35868b70fb6b44e9f1025c3818b34f5853c7abe3c9e31eebb4d5ac28"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_metadata_nullable.rs",
+      "bytes": 1167,
+      "sha256": "2a933ea0273859d517ca707b30530e0accd536d8456aecabd881b0bcd1bb3ace"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_metadata_numeric_enum.rs",
+      "bytes": 1161,
+      "sha256": "82dda3cc89bdd42377224703b37d03ad7b07f5a70aaef4aff159dd9e59d24265"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_metadata_primitive.rs",
+      "bytes": 1173,
+      "sha256": "7fd3491ca0ae5b3d85933250469330033ca5319135ae2af4d0c195902d4b1358"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_metadata_reexport.rs",
+      "bytes": 1162,
+      "sha256": "1b457f5ce454a453b0f62567dffe2a50496607d19f145f391c74ba239cdd891a"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_metadata_string_enum.rs",
+      "bytes": 1155,
+      "sha256": "5aea259f041cf103e8ceb50cc6ebca4484039d24eec89e73a67825ae81139150"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_new_spread_boundary.rs",
+      "bytes": 5195,
+      "sha256": "e4a31a902229006d04fd43215c9d6e88b3434d87a92ca18d8ca43bac322cc1a3"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_object_maps.rs",
+      "bytes": 721,
+      "sha256": "ded1fec983a6462450ee7cb36d16bbd040b01ea6dfe92aa5f7696dd78348932b"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_private_accessor_family.rs",
+      "bytes": 1438,
+      "sha256": "ae9085a0785ca84cb26df31ebb4007cd1fe35a4b114e55a5eca9673c6854c027"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_private_accessor_maps.rs",
+      "bytes": 7871,
+      "sha256": "7675753da0aa4cc78138ed44f4de567273c6d2eacd26615750316d80bf845d3e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_reexport_boundaries.rs",
+      "bytes": 4922,
+      "sha256": "af80f6e8cae435e6d04f103fe43cd058f71817aee932131791700135e99887b8"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_retained_callable_ends.rs",
+      "bytes": 8965,
+      "sha256": "b7b685d1af8fd7d5adb68509ddff49244092a4e3b650e2a03482db3989c25ce2"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_retained_decorator_maps.rs",
+      "bytes": 9542,
+      "sha256": "533f3fa33a3061a5b7f04f4c4aeca07d2403bc434c78167b278a6418bc040eb6"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_safe_home_object.rs",
+      "bytes": 2970,
+      "sha256": "590eb64f2b324871b748ed87aff7537f30ba03d53395c70a1ea0b8b461343232"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_source_maps.rs",
+      "bytes": 6290,
+      "sha256": "982551de33b9bbf5e0901ec5fad6af01ccd7f4f21f1fa69c391848749ce39d9d"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_standard_decorator_family.rs",
+      "bytes": 1450,
+      "sha256": "61d8fc2c4f00d1f34fc9f34d4baeec1cc6c64f038d9971796840b6e946d65f53"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_standard_decorator_relocations.rs",
+      "bytes": 4965,
+      "sha256": "a33ec579a8d6b3c6fbaeba2394aa8eb3a582a6affbf87d70d57c186880372fdf"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_standard_field_helper_maps.rs",
+      "bytes": 4233,
+      "sha256": "4ad18d7ce0e04df1c982dd870f21c4a4649f2077cbeec1f2a0482f8945e97789"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_static_field_origins.rs",
+      "bytes": 6633,
+      "sha256": "758371965e94d5c43b8bdb3db2080c1b91db386fb62388954e8b1878cd4395b9"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_static_super_complete_family.rs",
+      "bytes": 1301,
+      "sha256": "fdbd16cecbd4b94f1bfe15cf118dd1bc08149b630fb2d072e76089a343c3f62b"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_static_super_family.rs",
+      "bytes": 40428,
+      "sha256": "8c6ed2e94b683053905b35d3712200770a3c3fa7e21fc2369ef6b91b732aaf34"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_system_legacy_endpoints.rs",
+      "bytes": 2420,
+      "sha256": "a3481ef7da508dd10a4ccd85faa8515f55056259004457f69fa130f17ab998d3"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/ge5_system_legacy_phases.rs",
+      "bytes": 5951,
+      "sha256": "87a914cdec502e6a22c6889ce9eb4416874be49ee582e6807f6cf3daccb0413b"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/gm1_resolver_compositions.rs",
+      "bytes": 13332,
+      "sha256": "0c0830ae7aee55940b3205449add9fbed0f72d48f4273dae3dcece04e9c9b6e1"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/gm2_build_interop.rs",
+      "bytes": 3488,
+      "sha256": "3c5fce5f1c60e48d71945bd75b1ad83e78eea0a4208979b4e1217711ceb3c78e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/gm2_incremental_options.rs",
+      "bytes": 21131,
+      "sha256": "e1a8dd1747cd923fb73d9012cb8fdd3a88ef89b48c632f6ebca13f92fa1a98d6"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/gt10_import_types.rs",
+      "bytes": 12332,
+      "sha256": "cea43b8efea8941e5601e7fbb52ae27ece9ed10b129b14c129b1dfda78e81df8"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/gt1_declaration_order.rs",
+      "bytes": 5855,
+      "sha256": "522e1b0fdd034d0002d38358eb65a376fd85276de8e7b6ce40b52f39b8427158"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/gt1_flow.rs",
+      "bytes": 9306,
+      "sha256": "b84624627776d38136e16241e083aa7a3604d28ae55111bd84548c726974a927"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/gt2_inference.rs",
+      "bytes": 7991,
+      "sha256": "f9a997661d56c93c8b0a1094cf1ef0593a07dcd6c0cb084fcd707b353ff662ab"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/gt3_operators.rs",
+      "bytes": 9703,
+      "sha256": "1c0185f6503cc70a3c185cbba9ebaa6a5465957ebdeb49e8e5c6c2749641e56a"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/gt4_overload_chains.rs",
+      "bytes": 9906,
+      "sha256": "f7c535ec179cc07dfde5372ad21a4d9ef9e5b9ee519b795211c8db12a7da7224"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/gt5_compositions.rs",
+      "bytes": 9566,
+      "sha256": "ac2efc7feaed00a60e4830b9e7303447a0d20ab0a26dcd3b4d4eb5a2c0d8a9e5"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/gt6_structural.rs",
+      "bytes": 8257,
+      "sha256": "98040db3c9e4cc7d5c8ea0659cf31516fe2c84146865ad0f2cc6c452cd7af181"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/gt7_library_manifest.rs",
+      "bytes": 16412,
+      "sha256": "96b861429878cdbb7a68c9771c5dfcfb5fca381ce6ec5d6629d17561107a0a4a"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/gt8_return_context.rs",
+      "bytes": 14308,
+      "sha256": "14e5c77d074a23f364f959d436aaeb659b9ce72d3b5146498d742b1d181052f2"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/gt9_classes.rs",
+      "bytes": 13490,
+      "sha256": "91c942d163df55eac3d43130d7e4cc1b55819c03569d24c4a8b1a799c5832f1b"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/guards_checker_matrix.rs",
+      "bytes": 9717,
+      "sha256": "17006b3020e136650cbf1523b6d1a17bcb85218aefe202f221ebd6c19a0d1c8b"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/higher_order_inference.rs",
+      "bytes": 19750,
+      "sha256": "8d6f23564e9d90435e590edf30d9ea62a60c76796af4fa8103754712b48e71e8"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/immutable_checker_matrix.rs",
+      "bytes": 6652,
+      "sha256": "94856df2395251122cc1008c611208dbfc48dae57bd27f0ead201d52a1c77b63"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/immutables.rs",
+      "bytes": 8270,
+      "sha256": "bfa8d1221d0414d08aafd5e1b1ae090170d0dca5ef46f886c87e4081fb2e91c7"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/imported_value_checker_matrix.rs",
+      "bytes": 10198,
+      "sha256": "93f54a4799915a1ba30ec26e03b8c942f1aa749671b518353bad1e59b7e18067"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/imported_values.rs",
+      "bytes": 4494,
+      "sha256": "111b72b699311e0fab7e134dffa0414c525a6e0d48822db030272daece7b0bea"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/indexed_call_context.rs",
+      "bytes": 3730,
+      "sha256": "ea4ea185b46b176f4fde885ca2b66b0bf5e015caa1f055b2c9c3f0a35d2482b4"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/inference_checker_matrix.rs",
+      "bytes": 10804,
+      "sha256": "ff1d530abc72a0e6a559122e9731b0670b013ed3d9db9a8e7ba74641a1586b79"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/inferred_return_checker_matrix.rs",
+      "bytes": 11183,
+      "sha256": "70883bff71b63b9997712797e1da90984fe05937b61205f36b87d2fb517bfc45"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/inferred_returns.rs",
+      "bytes": 3464,
+      "sha256": "28569775675bca9ce0cf6faebed74b3d499f4a09b762f837f32260355ceb8c18"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/json_assets.rs",
+      "bytes": 4536,
+      "sha256": "804221ee55211965dbd9d25366e0038ad00951efc1cbd1a501d2de4775434606"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/json_default_binding.rs",
+      "bytes": 5834,
+      "sha256": "c46cc3b7d804aa500247af9ef587e4185594e3ebb13a09eb23dfcfbd9812329d"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/json_limits.rs",
+      "bytes": 2014,
+      "sha256": "f775f33426d95db02ec428d1c9af66d235b93c0eb481deb2009f3bd8f81a8bc6"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/jsx.rs",
+      "bytes": 7608,
+      "sha256": "930c1a9bcaeccc93b4cd740b844ae1d98c62bbd974d91c3436a2946dbf2c228e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/jsx_checker_matrix.rs",
+      "bytes": 10279,
+      "sha256": "56f8da18cde6212031a713c7349de2297e660b038a0cbdea0129afc332c48ff0"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/jsx_emit.rs",
+      "bytes": 15389,
+      "sha256": "0672df891bd2b836dc8655a217bc3b035b08aa62482600bca1d793016c1a1cfe"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/jsx_oracle.rs",
+      "bytes": 13818,
+      "sha256": "6cdbca184aed83ca6b6e1a80a0fe682432facc41f002ce7b219daac5e460cd06"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/jsx_runtime_boundaries.rs",
+      "bytes": 10125,
+      "sha256": "0d0c9c565f4f5339688b87575df43076fe811ad5bf0d2a95f01f28c088cca1e1"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/jsx_runtime_namespace.rs",
+      "bytes": 13365,
+      "sha256": "29f415e22adacc164362cdace2e2dc8f93a7c4fda4eba9ec7f001d2badc1b31e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/jsx_typing_extras.rs",
+      "bytes": 14874,
+      "sha256": "5a129757582950c8f5366155d32900bfd226d50adef00229e5893ff99fde80ba"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/legacy_decorators.rs",
+      "bytes": 13381,
+      "sha256": "6ff6a9b98b7dc5e1095da1a37439daae84529dd6367034a3fa1e2dd59a463e60"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/legacy_decorators_checker_matrix.rs",
+      "bytes": 9926,
+      "sha256": "c93ad730df347facaa000e291a45172e4726dbd0ba1c46b89079bd342f97a4eb"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/legacy_decorators_oracle.rs",
+      "bytes": 11161,
+      "sha256": "f76ba2e2bb5fbdbeb9d294d27aa094796436cf2d26e9822e76ec98c61b11fc94"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/mapped_inference.rs",
+      "bytes": 20617,
+      "sha256": "d979f1b7192015a3fdecee381f9e073bc18c1de39dda36f1c4a55cd16fa0649a"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/module_artifact_policy.rs",
+      "bytes": 10369,
+      "sha256": "4f72104eb33b77047780d1e3e5b5cef9c424a7452728cb26ac532c8b95908e5f"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/module_exports_checker_matrix.rs",
+      "bytes": 15938,
+      "sha256": "3513d21fd6a36f8168e26b870d5c44c2e9ffa6945027f014a41415d4c79a37c2"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/module_script_helpers.rs",
+      "bytes": 2970,
+      "sha256": "aea444310418e86b2c11847660801b195d3cacdff77201b4765c84532713fb8e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/module_systems.rs",
+      "bytes": 14199,
+      "sha256": "3d6d2a3506a9744f9dcbdd02c91efca1d708c9cc9a68cf2c496350e0fa06184c"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/module_type_resolution.rs",
+      "bytes": 5289,
+      "sha256": "3923f9cc9d790964b3cd474eeeaf30f894f95454dbba7116f147364aaa36410f"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/module_types_checker_matrix.rs",
+      "bytes": 11322,
+      "sha256": "81b70ba33ade3d9615773427d8fd86a0545ce0e75fe2c3214cd3c2f9937e1f44"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/more_types_checker_matrix.rs",
+      "bytes": 9974,
+      "sha256": "44858a0156a1837f3997ef27b0e39e860bf8a4d5b2fac282e55872a6db4cd43d"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/names.rs",
+      "bytes": 5560,
+      "sha256": "f8f7b214d14ec3b10a24bc15c79580d575d119b67fcefbb52b0e7755d3435473"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/namespace_checker_matrix.rs",
+      "bytes": 9367,
+      "sha256": "8faa63ba17d521a7a5ad5be3ee313bbc9c216a033207f977572b1427363feaf3"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/namespace_declaration_oracle.rs",
+      "bytes": 5104,
+      "sha256": "76269db24420a22798cfba1370ffbd730c47c9b865b1d37de24ccd06c2b0fd39"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/namespace_oracle.rs",
+      "bytes": 7082,
+      "sha256": "06db9bb7ecac1820442d6663dfe117ae3cfe4ed8f7c1206c258ca08d68b0315d"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/namespaces.rs",
+      "bytes": 31097,
+      "sha256": "6b641db89ba8f7d1b10ddf64f36fe5184c96f8297ae1a2e93b6e6a40fed1d4e9"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/narrowing_checker_matrix.rs",
+      "bytes": 8329,
+      "sha256": "7db9cd882e76ef175116c38dbbef1d28e3d4d1df7f362625dc562516880e2f7e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/node_module_formats.rs",
+      "bytes": 2059,
+      "sha256": "682ab145d3a727655b3a80afb790515ced85718ea77ca99adbb68797cd5fa963"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/noinfer.rs",
+      "bytes": 13118,
+      "sha256": "fd4fb0853987babc191991d3dc5f77192c5a5972d7eb68dba3eef712afdad759"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/nonnullable_awaited.rs",
+      "bytes": 18150,
+      "sha256": "1dd7122868fbde6f66de38c9beee655fe056b01399954cc7ef9a6964d32e27ab"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/object_method_context.rs",
+      "bytes": 3633,
+      "sha256": "db729b159ca44c90bcc9c2b4fc4580220b2f20ced033f1ffe9fe8d6f9806d147"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/operators_checker_matrix.rs",
+      "bytes": 11686,
+      "sha256": "5531e18804d8143434f24d3eefadaa04ee84abd6176da9986a938770cf2f0ac5"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/option_combinations_oracle.rs",
+      "bytes": 14966,
+      "sha256": "776d24159b084f13d74d9cfaaa05cfc9b5b651677338e9afb69a3f7f68a23904"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/diagnostic_import_paths.rs",
+      "bytes": 849,
+      "sha256": "353c7a004ab005647a34ae61ebfb0a6d505d59bbc9111620157f8a3a3412735d"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/gc3_cases.rs",
+      "bytes": 4183,
+      "sha256": "35e6cfb6a8a46bdd11bdd85288d760fd29f7ef1ec73d4a943a7a31ef61695e4a"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/gc3_compare.rs",
+      "bytes": 5187,
+      "sha256": "a67d83c4a3ba91db7cfc4d2af8a8d1c3766f7262ea31276f866384ef3c542a2f"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/gd1_boundaries.rs",
+      "bytes": 7890,
+      "sha256": "0f56a9b68673082cc9c566f51f46b8d010e50c16f5565e2db7156b3eea893342"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/gd2_boundaries.rs",
+      "bytes": 10458,
+      "sha256": "a309230ed1ca458d6f24bc3e472e5c6914e688fb87fcec5c4b8a61dbe90b1244"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/gd2_maps.rs",
+      "bytes": 2324,
+      "sha256": "8daa3bec9208ebb664f90fd14ade06ad75f008f3709d2f5055ddcd19cd4a7b82"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge1_boundaries.rs",
+      "bytes": 9774,
+      "sha256": "69a2158f39b3c033d4975ae8cbfd8f9d57639854665574f119fefa9eabfea963"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge1_support.rs",
+      "bytes": 8568,
+      "sha256": "3c0abcd8bbb8200894130048cd02fb739f853d89be7dce44d17c01863c594ff5"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge2_boundaries.rs",
+      "bytes": 9021,
+      "sha256": "fd118a13fa41c54c609443d19b5485408a1da09abe3b0370b43a8ac3ee342a1b"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge2_support.rs",
+      "bytes": 10821,
+      "sha256": "b0dff81ad95d939033923a869ec3ad85d8c50b0e0d631957cba011726cdbf00c"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge3_boundaries.rs",
+      "bytes": 12842,
+      "sha256": "c0e36c3de08f940de6be9c906d428558a8518389391f9527bb3eda3f2d4850fe"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge3_support.rs",
+      "bytes": 9888,
+      "sha256": "d6223242a0726c96a06aebf742f67ea34ff03700100fd9374f1eb772d7370e8b"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge4_boundaries.rs",
+      "bytes": 10667,
+      "sha256": "5a97924f1015d75f5d1c019b156a855fc1ef7dc7f5da113266820f782b2b7409"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge4_support.rs",
+      "bytes": 9882,
+      "sha256": "6a5412ecc64ca39b22255b722c0f91a0aabf3985d1a29741702696aab2ca1003"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge5_async_roles.rs",
+      "bytes": 4880,
+      "sha256": "e77c9a1ae2cccc21f31d859f6baae2c8c6f66a050498a4d3920a8e5074edce40"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge5_binding_roles.rs",
+      "bytes": 7250,
+      "sha256": "6f76ab66e233f1f1ffc486c123a91de32ba7ed14c6747ffd453a18455b6bb065"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge5_class_cli.rs",
+      "bytes": 3674,
+      "sha256": "aa5d64fdac179a1e8e0b469141df40d8a4723320cc5e9b45ab561e60abb8eed3"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge5_class_expressions.rs",
+      "bytes": 9736,
+      "sha256": "acb0f963c1794ec5a27714b20d9a993aba8c65b37e06af56a2b63196a06dc4e8"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge5_class_fields.rs",
+      "bytes": 6454,
+      "sha256": "5ca1f8675a39be572e5a92fc8fff7c0318103b557ababe0fa45ad466315adbe0"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge5_class_retained.rs",
+      "bytes": 635,
+      "sha256": "51a1d5953ccdec39883f2dfcc6f0a91f0643e52e120c4921324d45a97d0ac289"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge5_class_roles.rs",
+      "bytes": 8875,
+      "sha256": "2caba1c21170814c0c64be6b113568da710abc507208264a443ff0883b71596e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge5_cli.rs",
+      "bytes": 6583,
+      "sha256": "c8859223097952245598cd92a0da682c67f40ebc29b1f6159eeba8d627c54ec1"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge5_continuation_roles.rs",
+      "bytes": 7354,
+      "sha256": "8740aa2ea8ce32702f4f5f70d1efd1d6df3f954c9e774d604e6cc3d1503d8587"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge5_declarations.rs",
+      "bytes": 7367,
+      "sha256": "50b7d667f546908e65c6278fda13ed7f977032a68eded0349e87f8fd5f340fbe"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge5_inputs.rs",
+      "bytes": 5070,
+      "sha256": "cf1d9e2d27d3cb57e04eccb7a51dffc050711b6e0082da0b515e57631b7a009c"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge5_iteration_roles.rs",
+      "bytes": 3866,
+      "sha256": "8da11277b7b4604f440c66c5544d6242a3c1c411df27ab2f6ebb1e538fa48676"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge5_javascript_boundaries.rs",
+      "bytes": 54625,
+      "sha256": "4b5d2a30dbf7c03d0e27d59350edeb9df0a257cb55b20dec06e97c6ed80d23ab"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge5_javascript_maps.rs",
+      "bytes": 7848,
+      "sha256": "7eb8cacc72255eba9c0094c8e67bc0c8aa0c2b94e1295d9868497d56b9d28517"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge5_javascript_roles.rs",
+      "bytes": 10287,
+      "sha256": "cac2368bbd008d62e8b4d2aca47e6485adbc5d6bc2d5db405d60c15596106112"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge5_metadata_classes.rs",
+      "bytes": 1859,
+      "sha256": "0670f48f96ac3cd9bf4b7d5e7e518db3bcfb8a85129878ea4d07d3d5e2446777"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge5_module_roles.rs",
+      "bytes": 6413,
+      "sha256": "a43248b38d4ae74ffb962df576ece337fe2d7b108b0c97981726ce87e219dd07"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge5_native_defects.rs",
+      "bytes": 10235,
+      "sha256": "9fa277941e4c9ebb5e8b696f25b7b83da367c0aff247817c6d6c65bd7fbfc1ea"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge5_node_roles.rs",
+      "bytes": 14298,
+      "sha256": "c0327b4836f69f2a957a5dce4782bfa2297dc27c2303eab24bfb78fbd025309e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge5_object_roles.rs",
+      "bytes": 7423,
+      "sha256": "ab4a7e175344146352d2e61ef0454f4127a53063ce3d4c1027a16deb9b05b829"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/ge5_preserved_decorator_roles.rs",
+      "bytes": 3668,
+      "sha256": "62c20687cc1887856bfba86108216f4033ec1747cab3f19c2a520d022ea47c5d"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/gm1_boundaries.rs",
+      "bytes": 10703,
+      "sha256": "8424cb00a3b87765472c8fd175f664a82ce5dd8ed4549af2bdee32f35f1afa88"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/gm2_boundaries.rs",
+      "bytes": 9566,
+      "sha256": "5a9103430ae7982d6bd986fcf38d7d7f846470689c404b00c7203cd4dc38a5a5"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/gm2_support.rs",
+      "bytes": 10246,
+      "sha256": "59275addf6980166bff1946fed073e3652fb905ed30ed8c4e0d1f734ea7908ee"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/gm2_watch.rs",
+      "bytes": 7066,
+      "sha256": "5573786ce89bb6162673b3390e2c8e3166dd862b6a51eea8bbb0501d23504c8b"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/gm2_workflows.rs",
+      "bytes": 9772,
+      "sha256": "4546a261c35fc44efd92a57b837e23cb687d567214bd880c8ce14c847e37630b"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/gt10_boundaries.rs",
+      "bytes": 8283,
+      "sha256": "c26cdbeb9604a3dfe227a913011db283eb71007ad23cb0c47f60ddc5da3eb58d"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/gt7_library.rs",
+      "bytes": 8159,
+      "sha256": "220ef2e37fbfa73dbdd00ec30bac18013f8b464aa1af233387a0742b69a758c7"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/gt9_boundaries.rs",
+      "bytes": 6919,
+      "sha256": "c64701f9276852483f40c246fa00df82643f8aabbdafa16da035a82aa07a6259"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/project_paths.rs",
+      "bytes": 3070,
+      "sha256": "e4762046c2c07c8a013a6e61dbd81243784c56f7b31660016850184810e552b3"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/symlink_support.rs",
+      "bytes": 1329,
+      "sha256": "a6b7303516a29ff9318939469d3529ef45534d9f97b7d2cab0a984dbb072a898"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/union_order.rs",
+      "bytes": 3644,
+      "sha256": "6fa62a36ccda96f23642cbda917d7fab0d9a6510fc3d1a5aef47d5db0d2960e0"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/oracle_support/windows_paths.rs",
+      "bytes": 4463,
+      "sha256": "818144d9b4d5bce51a68c39bd0e89aafc76ea620d069ac26c912ec4591f0e371"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/output_options.rs",
+      "bytes": 11643,
+      "sha256": "71d362e7f857c1d433620655dca8e0eecfecfedba4ae61a6451b5b3771522a0a"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/output_validation.rs",
+      "bytes": 6990,
+      "sha256": "edfaa41c19858befa7c1a6319e15d16a56a2ae7e3a66df1e89f00293ca826b87"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/overloads_checker_matrix.rs",
+      "bytes": 9757,
+      "sha256": "aeb575d3ddd6dd40c2a78d7599b5aeeb29af355c6e96125c925d1cf157ba68d7"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/package_extras.rs",
+      "bytes": 11517,
+      "sha256": "dfb2331471576ec866a6018623c08966a521e8358740d9861ab44f97fb75d719"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/package_feature_boundaries.rs",
+      "bytes": 5983,
+      "sha256": "8792b94eceecf349cce5b15c3adb5e669e28a02ee98785f963b8b215f3d3f459"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/package_resolution_disk.rs",
+      "bytes": 10084,
+      "sha256": "62ffd007218c8f4e0b3340eed3237af201113f4762bbd0441cf19b960f4efb25"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/packages.rs",
+      "bytes": 15609,
+      "sha256": "5aba502ccc087718d78d7fba065def523b26fb68847ad451c03d2cc53685a369"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/path_extras.rs",
+      "bytes": 11625,
+      "sha256": "51fccf50922421ae0aa8c8d3ba464b8253706f80aaa717ebd96515306307d303"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/path_mapping_boundaries.rs",
+      "bytes": 9831,
+      "sha256": "1b1c4720b675127c34e158701e278a538e7d163912a4aec81fb0b28aff1f3942"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/private_relocated_rhs.rs",
+      "bytes": 8535,
+      "sha256": "0a75d2918e716a0b7ce53fe2d97bf4b53efa65865b7d57113e090a973942d5cf"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/project_build_corrupt_state.rs",
+      "bytes": 11256,
+      "sha256": "a7ffeb66217390518b7cbf97fa64b7491a8e1e337e20b8bcb5b8028e59685d08"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/project_build_equivalence.rs",
+      "bytes": 8147,
+      "sha256": "42066b89dc7722abcd95cb6648e1473ebe0229eb645df5a15c2757f79df814b1"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/project_build_errors.rs",
+      "bytes": 7938,
+      "sha256": "744768e1d78b287e6a4932e6f8cea6166e3ce1ba1c5a691359ff379ec53b43d9"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/project_build_freshness.rs",
+      "bytes": 12876,
+      "sha256": "b00c76b80e7e149c1fdf493a323319fa395ad2e0a03c428c85291df8f38b68ea"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/project_build_invalidation.rs",
+      "bytes": 13114,
+      "sha256": "f16f82d0bb3353c1cd55dbb453245f679ed6bdff129acda7284102ad4f760741"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/project_build_order.rs",
+      "bytes": 9648,
+      "sha256": "b4eecbf0274043a488f096179e09878995670824115cc10bcfc86dc1f6099a2c"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/project_build_watch.rs",
+      "bytes": 14346,
+      "sha256": "0c34421024c5795c9ac7e0783633d6bbb861ba6cff8316933f58707bf78de5d6"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/project_cache_key.rs",
+      "bytes": 6384,
+      "sha256": "93a1715a346efe453db2fec7d7ed6ce0601ea58a80f664ee4b7524c298f537f1"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/project_config.rs",
+      "bytes": 15860,
+      "sha256": "390c537832ad7c6e791251f776241842582bb7f201e3a3958c86f837bec89f41"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/project_reference_owner_gate.rs",
+      "bytes": 7612,
+      "sha256": "8d6db56a68243f773b21b4260d0d69ce1dbc72fe85cdef66f51bcffa66d2d2aa"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/project_referenced_declarations.rs",
+      "bytes": 15958,
+      "sha256": "130f7e911af396165d4e63b218115fb3914f9ece87073f55ee99bda45c3c3bbb"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/project_references.rs",
+      "bytes": 11183,
+      "sha256": "88559a8f0757e75d7e6710dab8e52fb107bef9f76774b89f4cdabf70acc8e1af"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/receiver_parameter_boundaries.rs",
+      "bytes": 4181,
+      "sha256": "9be7b470126db167de506194da5aee14dfe537c357c58f6d820040335809dc6f"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/receiver_utilities.rs",
+      "bytes": 8113,
+      "sha256": "0ea64e325c93191687a698bd2050f91f1342ec7b6afe9fe65dbb39376398ec5c"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/remote_declarations.rs",
+      "bytes": 12237,
+      "sha256": "f286b7d3118cda0666cde74d323f1978c2730728dc662d0f58a7de0b39b9af95"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/resolution_observations.rs",
+      "bytes": 2552,
+      "sha256": "4127ab454831789e721d74955dfdbd16301c38901c81f7d74ab6e5184a22b8eb"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/rest_array_context.rs",
+      "bytes": 3618,
+      "sha256": "34604108c32b4a93ca2d65f4f91f191aef6684f208477777ddeb9abc45fc8868"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/source_extras.rs",
+      "bytes": 12234,
+      "sha256": "0cbda9a499c62d899856f6271829ab0d10404ae53fbb379cc8880daca723a4df"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/source_map_lookup.rs",
+      "bytes": 10212,
+      "sha256": "f5fee38934ca43fdf988d270b505fe159a835dc837eeebdd7ca68cbae64617d4"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/source_map_publication.rs",
+      "bytes": 12101,
+      "sha256": "376fdfd8159fd4b5e594ffd441b46339a35944659457dcd23d03641eba666a4d"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/source_map_tokens_oracle/alignment.rs",
+      "bytes": 14992,
+      "sha256": "98801c2158c9f6223ecd469de41683f693be38e6aadc0f2fc17ccd83ec61c4bd"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/source_map_tokens_oracle/decoder_tests.rs",
+      "bytes": 15280,
+      "sha256": "4c8fd9cc0c5961330d9628de32b33c1d377d3119064b23e9abf1abe8c554b8ec"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/source_map_tokens_oracle/decoding.rs",
+      "bytes": 9342,
+      "sha256": "f2bc8b47fce29813abae21d563b861ecd0f103dfa9be1137b4fe9049ed7a5bb8"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/source_map_tokens_oracle/generated_gap_roles.rs",
+      "bytes": 8147,
+      "sha256": "3f3ebad8f11ee12e63f1ecae4c84f1836c751135ffa7c932a3ccd0e140115e95"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/source_map_tokens_oracle/legacy_metadata.rs",
+      "bytes": 6411,
+      "sha256": "7bda4adb2e52d52065e0e9aaa79423b8f017d0970ea51428add3824073ae9a57"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/source_map_tokens_oracle/matrix.rs",
+      "bytes": 3643,
+      "sha256": "603f58e683b37ece97e8b6d34a3e24b5cfbbc317ba258a074d770d6730db7c23"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/source_map_tokens_oracle/non_decorator.rs",
+      "bytes": 8064,
+      "sha256": "de934ab246aecdd5bc84950f33c54ffbf4eae3a2bc894aa782e3ca11320b0ac1"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/source_map_tokens_oracle/system_wrapper.rs",
+      "bytes": 13850,
+      "sha256": "0a290779548ac3c763f30ada1d9cd80cb3d023c65a740a183adbdd0b7b388abb"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/source_map_tokens_oracle/whole_module_bridge.rs",
+      "bytes": 5886,
+      "sha256": "419625620004fc7de27f42d96175e20937c7579a9a147ebf7668351e2dba9ab6"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/source_map_tokens_oracle.rs",
+      "bytes": 52593,
+      "sha256": "0839bc1b3ede4f451719e834ceda46026935c720bf31ca95e4b06ca11c0480f5"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/source_option_boundaries.rs",
+      "bytes": 6395,
+      "sha256": "c89cd9453f23e9f94faed7c7fee0855a27719521f6f5a920e3daf6b8de52ce09"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/standard_library.rs",
+      "bytes": 7134,
+      "sha256": "18d1bcff7493dc7554213d8dff54401b87f0d69046b60308df3d2741633218b4"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/standard_library_checker_matrix.rs",
+      "bytes": 9747,
+      "sha256": "0eb897b2d30b843519463b7e8d12b75e3647081a1374512e543cc28e4bdb363b"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/statement_structure.rs",
+      "bytes": 1679,
+      "sha256": "047f168cb5b4ccb455b384e3d475a45ed599fdbc54fd1afc40f0abe40b2386ec"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/strictness_controls.rs",
+      "bytes": 11730,
+      "sha256": "95b54733496c6015c070c64ecb63a2f3d969faffdbe1d0838e01930509024be9"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/strictness_flags.rs",
+      "bytes": 8187,
+      "sha256": "1fc20bbae16ae3595915ad0e6856aacb779abb22a6eb37bf28cf959c7770f1d0"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/string_intrinsics.rs",
+      "bytes": 15683,
+      "sha256": "6dc65d30d1f06db410f0635f5cbf380730ca52f48a595f92b37d043d192fe271"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/symbolic_keys.rs",
+      "bytes": 15673,
+      "sha256": "dceaf2607a4049b65550b308ca08cef19698597a030a0f296837d5cf0b863100"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/system_source_maps.rs",
+      "bytes": 3932,
+      "sha256": "b0712795db18dbe3f20b1d933cdc294dabb0ce23794d3031bf2cacf944126c9a"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/target_configuration.rs",
+      "bytes": 5562,
+      "sha256": "55fb486e3cb8f725a248b78f1d3f5843006200e1f658345ca7e0be97a760c3bd"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/target_library_options.rs",
+      "bytes": 5640,
+      "sha256": "385634c8bfb1a5f47dd1f78705861028c1cfca61c4d07b09b94a20ca637f36e4"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/target_protocols.rs",
+      "bytes": 6813,
+      "sha256": "297db2f11dbde1530c8f01383a34bc11f2d5bed220a8b108a9af023717c14171"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/targets_checker_matrix.rs",
+      "bytes": 23050,
+      "sha256": "c2ef344681d1c7c6ca9cefeba22426e2e5331e37917798429dd4d635a3c85ef4"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/template_constant_context.rs",
+      "bytes": 3650,
+      "sha256": "ce98b8b27e8d744a3efb72ff191ae70b22a5562c2e24d6f77aebffade5bdbe7a"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/test_interface.rs",
+      "bytes": 3965,
+      "sha256": "00e10af4b60d71fb5c7b227babe42111f5d5c17a04601072941658db89b551ed"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/typescript_oracle.rs",
+      "bytes": 183988,
+      "sha256": "e4ff8ce60f88d134c5e92ba73d1f369accc45cb8aab115e4c7c8dc50ed75906d"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/unknown_name_checker_matrix.rs",
+      "bytes": 6285,
+      "sha256": "131488e503cf80220034c9ce385a62eaf5cfcb0ca192a9690d7d067b62ab4a35"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets/tests/variable_pattern_context.rs",
+      "bytes": 5343,
+      "sha256": "5d2f32f3d7ab500e477a18e6eeed1fd093c2da8f10ebbf7d5e398fbae2a32fe9"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/Cargo.toml",
+      "bytes": 248,
+      "sha256": "c796b24a2587f3a8668335744e64b0430c60bc84dabeb3ac9390ac86a2b4f93d"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/attachment.rs",
+      "bytes": 22179,
+      "sha256": "841b4a0ad776245ef4da20d0efa28fcb721a00e79b774865156ff1d64c931b07"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/debug_attachment.rs",
+      "bytes": 15765,
+      "sha256": "32cbcdef51a7401c06e36175b4cc96debcab9fb93d8eb16b1b6ae08188fc3bab"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/expression/calls.rs",
+      "bytes": 9329,
+      "sha256": "6d227d0dae94722b25b0715807119d206c21d8cb0c5b18cd34b49f290070886e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/expression/writes.rs",
+      "bytes": 5117,
+      "sha256": "1831251d3d10e3aa14d83b5d2da678e82e925da7565341daa034fc00f42470c7"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/expression.rs",
+      "bytes": 33349,
+      "sha256": "b8e3b38ba9211432e8b64bd855adfee6ea8a8a7d30670aa834f468cf4b49d634"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/jsx_direct.rs",
+      "bytes": 11475,
+      "sha256": "f3ae8da2aab8dca2c741977099e1f781cc2ca599fe0a5f09e15fec4cfaadb4af"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/lib.rs",
+      "bytes": 37344,
+      "sha256": "be11d4877e46984c18c5ebd2375adddffa91d3036f1d10fb906a38bdd5c438e0"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/lowering/classes.rs",
+      "bytes": 14266,
+      "sha256": "b60d6c8f626c7788ad07a28ac59a7020d23af931aca4aff20fc6e4d93bf13890"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/lowering/computed_fields.rs",
+      "bytes": 6675,
+      "sha256": "4c8ef3ffb0120fc024162218f1cd41df3fa5a6885532c3b0c24d00fa3cedc262"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/lowering/module_exports.rs",
+      "bytes": 2123,
+      "sha256": "e2b35c440e7b625b635855696735c794dbd9274c325876d94aa28cdf34a92fd4"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/lowering/namespaces.rs",
+      "bytes": 15163,
+      "sha256": "920b13ee64a8a783480dafc267e306b59ef9fa3202b39bdff4e79a9699845cb2"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/lowering/patterns.rs",
+      "bytes": 2444,
+      "sha256": "eeb1fc2a6226c54496f31dc29bea85282a0e68ff287c8ff9726ac97e6f664d91"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/lowering.rs",
+      "bytes": 31551,
+      "sha256": "ba10b984da40f97630021e9fa47b570e4cb1a078312c9d15e14f91a6b3b90857"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/page_host_typings.rs",
+      "bytes": 34610,
+      "sha256": "18aa65adb63a5f88a3338bcb2acb816698427d839718f4bee1a07e7f2ab5f82e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/page_runtime.rs",
+      "bytes": 15652,
+      "sha256": "9da29ea9827efde0556cc8360da640f41936b81e98660d3feac2a3a47f502d2b"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/tests/debug_attachment.rs",
+      "bytes": 15818,
+      "sha256": "aca3e51fdc55e477c9e753dc80438178250836955fabae2643ee5c6bcaac1f7f"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/tests/direct.rs",
+      "bytes": 51553,
+      "sha256": "31ff93f00bc21e964f6c94e7fd70a3d09f171e22889711717a156cd30e355b69"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/tests/expressions.rs",
+      "bytes": 37160,
+      "sha256": "a7c7b5bc54c75c0a2aeebc41445f157c1181384865e85958e6178f5d6c3ad153"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/tests/mod.rs",
+      "bytes": 1939,
+      "sha256": "48336b58496c71e6e96f694bf022d1f01e30093d08d16051c3e728c567497aab"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/tests/page_runtime/classes.rs",
+      "bytes": 15144,
+      "sha256": "2862589467fed880027f2f8b3a65820728adc8776d99696406e5a2fc5a819e10"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/tests/page_runtime/control_flow.rs",
+      "bytes": 13031,
+      "sha256": "1dd95e9586b342ce3fb9a0b8c4554d1d08aecf0cb472a0553548794309c8fb69"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/tests/page_runtime/debugger.rs",
+      "bytes": 15844,
+      "sha256": "4ccaa5e210f5fcdd46b0813dc6667568ad78033b0029599617d04f1760369ced"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/tests/page_runtime/declarations.rs",
+      "bytes": 7460,
+      "sha256": "e660ee52b7ce656295f47c12d60e28fc73223671fddfeb0e95749f13bd8a5888"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/tests/page_runtime/lifecycle.rs",
+      "bytes": 6061,
+      "sha256": "4114812ace91b87db9e8adaa989d34b3f786420e05dda5c93a5f52411a60e6b8"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/tests/page_runtime/module_graph.rs",
+      "bytes": 8425,
+      "sha256": "64f21ba5aac6613dd8a3073cb2500825f78c2d0f00c8e8684b304bbd4d8386a3"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/src/tests/page_runtime.rs",
+      "bytes": 2910,
+      "sha256": "6e190e61f7e9e3bc90139f4eaf9f08331a455d43b97a22d8249fb0483693ff88"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/async_generator_targets.rs",
+      "bytes": 5709,
+      "sha256": "f61115b4e9843ebaf30083c9bd5d24095935edf7e9c653e6a85b7733d525ca44"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/async_targets.rs",
+      "bytes": 4223,
+      "sha256": "8d6570542a606882eca5ab96ce6f6f7ddc2e9c45a41a40c3c525662bde336206"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/class_dynamic_direct.rs",
+      "bytes": 8187,
+      "sha256": "3316f3b7ed13eee9ad67470dd60e00af8cac0095468cb2725ac2661551a8aefc"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/class_modifiers_direct.rs",
+      "bytes": 2546,
+      "sha256": "8d1b449d7d1bc8d03fc920039a3b96eabebdc891905771cc88294d78915201f7"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/class_retirement_direct.rs",
+      "bytes": 3466,
+      "sha256": "44ab71e71eeabb77933dd01983199448bcd60a0c5c3c703f3c2178b08dd188e4"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/decorators_direct.rs",
+      "bytes": 7127,
+      "sha256": "92434be1808c3b7d606b42a4c43e9b69b5b2eca464d6a0c82a502bf14dcc089b"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/emitted_target_editions.rs",
+      "bytes": 15190,
+      "sha256": "416f5f5c0f26c5919e4a2103acca2f68c5f989f7c9f5540c6985c644f102c10c"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/es5_scope_targets.rs",
+      "bytes": 4140,
+      "sha256": "c3e1a484f4b9cbf5130bcd8395ee856c395a6fb4a8f8fea220a90f45d77bdd1e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/explicit_this_parameters.rs",
+      "bytes": 4629,
+      "sha256": "6c92d673647ec2b67a894c8c37d2a9dc9514f1d0f6c849a6154f83f349219d46"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/exponentiation_targets.rs",
+      "bytes": 5134,
+      "sha256": "a346a2820c5d3622be683e2f6b966892cc9b97315ca74eb73c298a1168475b1a"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/fixtures/async_generator_targets/main.ts",
+      "bytes": 621,
+      "sha256": "de4dfb8c90d26cf887e0bc7b270cfd01485c1520b9aa0a271517db2b6d9a2d4f"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/fixtures/async_targets/main.ts",
+      "bytes": 827,
+      "sha256": "af5716960cc81c015d2c6d59a2402d1ac341cb1c86166269867e3e8f82b44bd1"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/fixtures/es5_scope_targets/main.ts",
+      "bytes": 764,
+      "sha256": "fc738f2362e302570f80ac5cb1b8681bc91e9eeda549c37a0cd43ef48f14dfef"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/fixtures/explicit_this_parameters/main.ts",
+      "bytes": 735,
+      "sha256": "b620503e4b2062e0008e0fb37fa24ca9e888acdd4efb346373cff94eeaa06082"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/fixtures/exponentiation_targets/main.ts",
+      "bytes": 935,
+      "sha256": "bc368e34e02df54e27541996d48f9183556b503badde15361ad839905731c246"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/fixtures/jsx_context.rs",
+      "bytes": 3755,
+      "sha256": "720262fd058ae5a9f81b77fbe313533d54807ed8908a41e75c61e7a5b0cffeee"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/fixtures/logical_assignment_targets/main.ts",
+      "bytes": 1003,
+      "sha256": "897d7da6573200ea039510ef7e1d9a3009f1e5f9b9e49f2eb952339ff3f52252"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/fixtures/optional_targets/main.ts",
+      "bytes": 714,
+      "sha256": "ba3b32be5e534e316b10f3bc98bcb51a0d639431da074ab5ab72fddae7c3a971"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/fixtures/rest_array_parameters/main.ts",
+      "bytes": 645,
+      "sha256": "c3e0fd48e204af9e9772db4e0278820e7106fd8d2f3db1994ff13873ce9c648c"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/fixtures/variable_patterns/main.ts",
+      "bytes": 570,
+      "sha256": "0e1272f36bfad770a9aa2b35651f18adf253e9fdd8b27d43f337b51326443ae9"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/jsx_direct.rs",
+      "bytes": 13170,
+      "sha256": "22a88a71d150893f1822f90831c2153cb8837c0a391d935f10ebe8974b950b88"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/logical_assignment_targets.rs",
+      "bytes": 5226,
+      "sha256": "b84545856ab2ca2b7a3301f862ac62f81b50841ae5a3c93a7a32890a6ad54f2c"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/module_exports_direct.rs",
+      "bytes": 4742,
+      "sha256": "c761b208d77ce1ab7d2467a399c28669cf3055e5c52c62d7fc6612ca7f24a51f"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/module_types_direct.rs",
+      "bytes": 4375,
+      "sha256": "37298c386dda48ad20a186b9d7bcd41ec0b417667c251586ca3a40bdfb580f09"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/namespace_parity.rs",
+      "bytes": 8856,
+      "sha256": "fa0a4a096ab85a453dc9d6692081d040a4bb3da78c0566262bf57f90c8cab38d"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/optional_targets.rs",
+      "bytes": 4119,
+      "sha256": "99d28a64f1a3695801e0ba396c99fb5f04dc5ea1b5cd938f362ad5e4546b74e2"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/rest_array_parameters.rs",
+      "bytes": 4603,
+      "sha256": "94fef9bd11c0a182204707888957a49f1e9beef82bd89f811234720496a5046c"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/system_page_runtime.rs",
+      "bytes": 5283,
+      "sha256": "71d92c69da41a9e1b073c9e1ebcb34b374344ead095c4b602d04dccd56c31137"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/target_syntax_profiles.rs",
+      "bytes": 8390,
+      "sha256": "8fcbf75375446f5dbd320cf5b33e949d975b4fc4dc2796ecefa02eda439040f8"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/template_suspension_order.rs",
+      "bytes": 5503,
+      "sha256": "70621b74fa3d5841a64c414ffa8bd3bf7733bf8aecfe559c33eeca284b2f035b"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/bluets-bluejs/tests/variable_patterns.rs",
+      "bytes": 4565,
+      "sha256": "038b090a75bc2b8722fda54192eddc9b5052fdc378ba99901e3a1a96496b2881"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/css/Cargo.toml",
+      "bytes": 250,
+      "sha256": "ed308303ff963da0eec2f78cc765e4f261f55e9a2eb7ae00e109ad64cda0dc0e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/css/src/cascade.rs",
+      "bytes": 30070,
+      "sha256": "bff481607805f495be36de8f12d549fe405dba5bd759e9c0f884fa5364f5ce33"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/css/src/lib.rs",
+      "bytes": 2037,
+      "sha256": "1e78b3ba93996cca9586d147bf0c01dbb0a9214a5112539fa180c5ba292d9d0a"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/css/src/parser.rs",
+      "bytes": 22783,
+      "sha256": "6fd0ea04339c9d5592eb77133337b99f80c405904ef2316665c664ac97ceee47"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/css/src/selector.rs",
+      "bytes": 18850,
+      "sha256": "08daf4301c02242af5cfcd45abd530953fba2a7e116475c5bb623d69d212d205"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/css/src/tokenizer.rs",
+      "bytes": 16616,
+      "sha256": "b2515d1c90b6a5a6b0fbcab170c2fed1771b9597c0e8958284e406c615d42d91"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/css/src/value.rs",
+      "bytes": 7286,
+      "sha256": "cb71fc5405ca49c33972ee3a22c2f0ad488b813656e04f5039ad648e9293daf1"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/css/tests/fixtures.rs",
+      "bytes": 5193,
+      "sha256": "ea4fdbabd910ea3c59294f439aca2243f988b630ef9f21b03006c449d19511ed"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/dom/Cargo.toml",
+      "bytes": 99,
+      "sha256": "8746aa6ad9245d6f3a4fac9a32f997ef15d1b99c78d6fcb3720bffa83bdd71ea"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/dom/src/lib.rs",
+      "bytes": 22383,
+      "sha256": "e4775080c092ec12de866869ec5ae8e6253b1a2fd6322eae82c09eed33790def"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/Cargo.toml",
+      "bytes": 811,
+      "sha256": "3f44a8d2ea64addf38e63a40a20b83066c36258684e57aa3cf9d20c9047b88a4"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/examples/render_credits.rs",
+      "bytes": 975,
+      "sha256": "93cf9022ed40d960f7fe27f493773bfa348c07bd504b94f6449bd04a59e2851e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/ai_snapshot.rs",
+      "bytes": 20477,
+      "sha256": "7f5fe4ec3bade03a8c434919657d955fb0f1a5272de2d29c3467f8ce59dc053c"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/bin/blueice-core/args.rs",
+      "bytes": 30923,
+      "sha256": "c773ca7ddfe75c530340c269145916b07a33d2fcf42a0c97ac75a34ee5239318"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/bin/blueice-core/compiler_output.rs",
+      "bytes": 2417,
+      "sha256": "d25bd91d45c6184523d9f97b24eb9aef92d29518ac55c54d87f0427ad13b02bc"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/bin/blueice-core/tests.rs",
+      "bytes": 42936,
+      "sha256": "a0444c96abf0e73d95140ef85cc3443747556fe1739b26e86915756a11a524f2"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/bin/blueice-core.rs",
+      "bytes": 55406,
+      "sha256": "0a092c9b62c598644d95fab03f9b49e3472b868c77b4d3b954f416820c831d7f"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/compiler_ipc/adapter.rs",
+      "bytes": 43589,
+      "sha256": "20493c7dd66916760a92258fc8fd3934b5d623ef63274ee2722bc8bad97d2b05"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/compiler_ipc/inventory_tests.rs",
+      "bytes": 19393,
+      "sha256": "7d063312f13c920ce44411cdab4f28a853e69e66f837e12a704d69b55f8dc70f"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/compiler_ipc/output_artifacts.rs",
+      "bytes": 6259,
+      "sha256": "4f8cf0dea25c83842af579ee96cd1fc80cbb1d96f9fffcba069dd4889a41220e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/compiler_ipc/output_staging.rs",
+      "bytes": 2443,
+      "sha256": "69ddab07a5013330b46bac9df28e98c49c76639511fea4913f464ab9baa8360e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/compiler_ipc/output_write_tests.rs",
+      "bytes": 21818,
+      "sha256": "9afe47f24476d24b7937ff41483d78fb34173b788edc16b7e78067ffef29f51f"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/compiler_ipc/tests.rs",
+      "bytes": 42756,
+      "sha256": "fe6e0b4283d28a1bd5749dd698b6f8f35debca5a6a35f12f507c03ebd916bc0e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/compiler_ipc.rs",
+      "bytes": 59298,
+      "sha256": "e62c15a9dc7f5c6984abddb60982271266e301f8154873109bdfe566c3282f58"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/compiler_service/tests.rs",
+      "bytes": 22160,
+      "sha256": "6395c86c1ffb94e804d67d9dc4f2cda3d37caff7413d1dee8ba347d0d4b52a55"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/compiler_service/validation.rs",
+      "bytes": 9898,
+      "sha256": "137563a497a6a70e049df8648d34b2d7e4caa7030aeb5b64089eeda3ced65370"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/compiler_service.rs",
+      "bytes": 45905,
+      "sha256": "28c1ab18f2336774a61e7ebbabf988becab5fb86bcbcec5f481086557f3553e7"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/credits.rs",
+      "bytes": 7452,
+      "sha256": "b84b7c2044e8f3a65c78afaf6b7d4499d92153da037b4f1a7520027cc8340b8e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/debugger/child_control.rs",
+      "bytes": 24220,
+      "sha256": "5b67c8720e88b39fca6dec1466669dc5a987622d52bd738fa82f51d781131394"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/debugger/child_generated.rs",
+      "bytes": 29017,
+      "sha256": "822a25c7928bd38cc2a89847eb70963613b6d33c117bb25feb906b515130c142"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/debugger/child_inspection.rs",
+      "bytes": 45298,
+      "sha256": "09fb9da33dd1752ada36c0a7bfc2b69e807bb05f2a82d139d8f0f76f3301c1a3"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/debugger/child_metadata_catalog.rs",
+      "bytes": 45012,
+      "sha256": "b708f256ebfff72e863c3f8c31d6f86921b723ef0b2a88c8c86b01ef087d568e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/debugger/child_metadata_details.rs",
+      "bytes": 41460,
+      "sha256": "80f6508b7f2aedeb9bd76575a2284bf6cf77537c9b1db17b09d882df457983bc"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/debugger/generic_routes.rs",
+      "bytes": 55044,
+      "sha256": "b4dce42f4162273bfe6ef9aed3837967c787f8387db99d50706a22bb3a17c89a"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/debugger/tests/admission_hold.rs",
+      "bytes": 14533,
+      "sha256": "684a0cffd261d75444620ae5acf90d965287b9dc13252f206df65a3ab9279d16"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/debugger/tests/canned_replies.rs",
+      "bytes": 3317,
+      "sha256": "4e82416ce1ce319c7c2d6fee8503fa74e5b413be99c49e0c11ace2ceecd32215"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/debugger/tests/generated.rs",
+      "bytes": 39660,
+      "sha256": "45b2ca60167c6fce5bcdca655d743c36f989d75a592d7458347c301a2798e528"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/debugger/tests/linked_coordinates.rs",
+      "bytes": 15409,
+      "sha256": "9bbf6d7702fbad2ea8c8768b8bc9e99c2060cd181ecb53855618084a6a8ab369"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/debugger/tests/linked_scope_values.rs",
+      "bytes": 32676,
+      "sha256": "b0b1fd7d4de098e1d3ff44ad182716042ddf4d5cba507a583c0f190662680b5c"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/debugger/tests/metadata_grants.rs",
+      "bytes": 27664,
+      "sha256": "ebf1332e42ee7b840eda112abf5948d6bc1a443bc0ee83ff2de7655ddc903aa6"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/debugger/tests/metadata_locations.rs",
+      "bytes": 22689,
+      "sha256": "a73d9db4372e1efb6b3506fa314decb80df3b518851eea638143f1173e8e9f88"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/debugger/tests/metadata_relations.rs",
+      "bytes": 36010,
+      "sha256": "6834f01d589875fb5dfc7bb08aa5eaf3c03642b2d1943f196cb9d4a89b6c7313"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/debugger/tests/native_execution.rs",
+      "bytes": 27643,
+      "sha256": "21476d306ddf99eaf88bf7ce7abb1f82ec5b353a190a49e0da3eddbcf1c61258"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/debugger/tests/request_channel.rs",
+      "bytes": 3478,
+      "sha256": "842318b62e22d3a2dc0b0dbf4e748dbaee5e9ccb1598841a4638dc54c40d02ea"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/debugger/tests/source_span_step.rs",
+      "bytes": 14341,
+      "sha256": "188873a034be5a8b39b240fe03a1e4a09eefbe973ff15330e06e765ce2a4950c"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/debugger/tests/type_display.rs",
+      "bytes": 12331,
+      "sha256": "e04555b88607c8d49bb73bd7105658b02478bb6c114f174800b6d0529ead5c02"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/debugger/tests/value_scopes.rs",
+      "bytes": 13585,
+      "sha256": "49ee7b66320878a12483747437f3a873c439160225fed69d6c3e6d5b667bfc0d"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/debugger/tests.rs",
+      "bytes": 37110,
+      "sha256": "f4ab30916f832d8ec54d3cbb365b9354bd3edfd5741e8fb3c6e1154aa34e7fea"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/debugger.rs",
+      "bytes": 55184,
+      "sha256": "5fdc23dbdda62d37a555db7ab933d3d40e039c0074f6ba753344a3836bc51e4c"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/gatekeeper_client.rs",
+      "bytes": 13203,
+      "sha256": "3691a82de69d0ed71ef3c9ed8a19a0f0ceb59c16cb08fa341bf7c29b68210f43"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/lib.rs",
+      "bytes": 3557,
+      "sha256": "3f19c3b25f4dda46130acbb78e464e469287414e238108ebc719e18909705a7d"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/page.rs",
+      "bytes": 41862,
+      "sha256": "f030cd13b0cbfbdeb1c61e8431fb304225cddd91cdc0127572d5a7751a70a6b4"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/contracts.rs",
+      "bytes": 18251,
+      "sha256": "048e488fe67150667077d7d0829fab775896a76648ebdc635a2c79a4b422dd36"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/declarations.rs",
+      "bytes": 15276,
+      "sha256": "a78a33ad668b7999670f741f4ce38f5e2517010f772315efae39eca44fb7ab47"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/direct_page/tests.rs",
+      "bytes": 49225,
+      "sha256": "c92e9ea7178df5d130952aafe16602503947070764c326488640a7766eb6bb58"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/direct_page.rs",
+      "bytes": 30851,
+      "sha256": "b47c95771a1b6a75447c597d08f410d9a412461008701e672c4f2cca3d06e344"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/host_typings.rs",
+      "bytes": 40566,
+      "sha256": "66f88ec1297f24ce7ae341f81299bd6702417c26166a94bffba908a562d824ed"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/http_resource_authorizer/tests.rs",
+      "bytes": 16967,
+      "sha256": "9d2755ec89eaf656081c14e75a903f250e68f442ce90dbca1e8e3e5a40dbd7db"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/http_resource_authorizer/verified_cache.rs",
+      "bytes": 3824,
+      "sha256": "5981ded25cc44c438cf30c85c26907904537ef1b9e8332247d58679b809dc444"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/http_resource_authorizer.rs",
+      "bytes": 49362,
+      "sha256": "1837f33509c9f3c898144c50d1305483defec55af76e3c65fca06865e80a2e0d"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/inline_runner/tests.rs",
+      "bytes": 26632,
+      "sha256": "246836fde490f20eda203023f61e2343fa5b81456d3b1208cb6b53c5395db945"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/inline_runner.rs",
+      "bytes": 25083,
+      "sha256": "e0ab0c6cb37e5f0d82555215fe7534bfff55d71d9c537480ab6596312bc2fd7b"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript/debugger_locations.rs",
+      "bytes": 53864,
+      "sha256": "8542849a74aca594d99f97f3b76bd50d8a8cee252fc05e2782f08bef65ac43a1"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript/debugger_support/execution_control.rs",
+      "bytes": 12131,
+      "sha256": "125e4ffcb1d8e9edcf61306a5dd9da2f5165a9ca1e1c4f02e1fca3ee81468015"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript/debugger_support/execution_driver.rs",
+      "bytes": 19240,
+      "sha256": "7a211c3a4a7c65b46a92ff8bb3f1ac1bccb044eb320f308b001e80032e8bf1bd"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript/debugger_support/tests.rs",
+      "bytes": 16030,
+      "sha256": "802275ce52704d2de0a6c57a58c422bfd782d380346f45e9acd2939d135424f6"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript/debugger_support.rs",
+      "bytes": 38920,
+      "sha256": "3e0b48de9d527ff0ea6b11de2ceb85e4b4de3d46a9bb2bed12dfe9bea66fb879"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript/execution_support.rs",
+      "bytes": 10326,
+      "sha256": "18272628e25580c3c90dfd3f5da67dfc29314e99860f1eb733aecc881bd13d19"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript/tests.rs",
+      "bytes": 15890,
+      "sha256": "d088a2a2f41e1aaff29c79a196a186f306db87b3bcf770948086ca93336d936a"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript.rs",
+      "bytes": 41230,
+      "sha256": "20520c41efb3fd69f541efd983032ec48f280d10c488c92306dc593aba2eb399"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/child_reply_validation.rs",
+      "bytes": 8055,
+      "sha256": "a7d93cdf3d52cc228782e422366604e20dbb3fe9a05c8d165858b195fa59f66d"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/client.rs",
+      "bytes": 49965,
+      "sha256": "881ea86a8489d61f7870f89a5c23782b9e310b2ad07deb9922e11a860886a3c1"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/connection.rs",
+      "bytes": 31214,
+      "sha256": "85bd40e201cc0c200573b4ab4df5cca3e4aeefd9dc69f7e52bed805ff6b31a2e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/debugger/emitted_map.rs",
+      "bytes": 16002,
+      "sha256": "3601eefc768404ff2e2bd0a98827b2d85cac2bffc5af837f3b7ee50432a80f67"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/debugger/linked_frames.rs",
+      "bytes": 12840,
+      "sha256": "5d7cce223ae9bf2143021a5bb5cd75b1013742bfcd97ed23ed09367705044f11"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/debugger/metadata_bindings.rs",
+      "bytes": 18774,
+      "sha256": "eb1a773a0fe65c8ab4d05af92c0b75452d68035a5743a123ba4e6b10f4fedfa4"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/debugger/metadata_catalog.rs",
+      "bytes": 27697,
+      "sha256": "e07349002134f31ff4530f6aba7eb52770b4b2d38234adacdc165f89694d826e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/debugger/nested_scopes.rs",
+      "bytes": 31506,
+      "sha256": "790d7bdadde74f421c548274841c43277fdcf6a1c3eb4165f4fbbf932aa49b24"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/debugger.rs",
+      "bytes": 49039,
+      "sha256": "81dbf4113c0901bd256b4ed171298728b2664e74ce74d621993ad7d88fbd873b"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/debugger_state.rs",
+      "bytes": 8346,
+      "sha256": "5833758274eb1f499e89e4b00fc0f595b8ebb46d41ecb2a085045f73692517c1"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/document_admission.rs",
+      "bytes": 20517,
+      "sha256": "27f77cef44f1ae1deabe1c8a09fea609664206e9b7f206f02bde3e82e19e7280"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/private_debugger_adapter.rs",
+      "bytes": 11281,
+      "sha256": "0d6bd6deaaa525dc01c85a9c382b3128119703a679bf771a945aae2f7ce279c0"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/report_mapping.rs",
+      "bytes": 16312,
+      "sha256": "142ec1db7b3b980d5588e5efefea70c07cac54ac85c339c1e91e224a2466f5d3"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/retained_payload.rs",
+      "bytes": 6184,
+      "sha256": "4c59dd5731f2a107e56b4ee0743e9e293b3ae1d13f81085bc17eb1d2ee325f66"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/tests/authorization.rs",
+      "bytes": 26333,
+      "sha256": "48ac1c359f9a99afaa3a1c2fda8627bc006697402af33158efc3c3d52909f711"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/tests/emitted_map.rs",
+      "bytes": 11919,
+      "sha256": "b23e3c91e274a76f6d022de993de6445b9db75ef3712a450111e6bdb4fd324ad"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/tests/lifecycle.rs",
+      "bytes": 20257,
+      "sha256": "5d44258f9cbe2d10b5879a4e78003d458fc1db1e2fda115dd1378ae04979de51"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/tests/linked_execution.rs",
+      "bytes": 20293,
+      "sha256": "3e07f705aed2190fb473bbbcd780ba5ed65c00ba532cca1b94ed5689c6d2258d"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/tests/linked_pause.rs",
+      "bytes": 27200,
+      "sha256": "bdac3e6e043d2e3d61438eed36931d02a0680382bcb8a998e00b25907b023a84"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/tests/metadata.rs",
+      "bytes": 92795,
+      "sha256": "66d97e683be1e359577f2d5b846b2aa337fb894f62895c41295ec77aa033eec6"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/tests/nested_pause.rs",
+      "bytes": 22954,
+      "sha256": "9f5402c871a43349eb36123011847d09d8ea459518ec031e6d7c36a51e51a36d"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/tests/private_scope.rs",
+      "bytes": 16361,
+      "sha256": "b37b975e6e0ba9ea7348c7329e9eb8d4703977358379233a652c92b9df591ccc"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/tests/resource_accounting.rs",
+      "bytes": 28199,
+      "sha256": "84f29ff1f692ac07a3346171dfd8050a251e234cbef2606941cfa7e95496b2a7"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/tests/scope_values.rs",
+      "bytes": 31427,
+      "sha256": "cb92449f8507cfd4ef06510dd3ee9a1a6c9353f0d752c0b5096da7feaaf0f7e9"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/tests/span_contracts.rs",
+      "bytes": 29463,
+      "sha256": "c4bc164b356db76b9916af0007575673819f79c3859e4f53809ef83b404607a7"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/tests/stack_scopes.rs",
+      "bytes": 29194,
+      "sha256": "bda18d33ac62631ad9b2053f4d8b2074ec6c51794359f66e741707d4ef0d12c5"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/tests/system_loader.rs",
+      "bytes": 21130,
+      "sha256": "5a9b45b164ab126a3bdc10405b933ab3a8dcd74be6e0314ab2494e75f0b6f098"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/tests/transport.rs",
+      "bytes": 39595,
+      "sha256": "369bb8f4e9a7b831bc36dec238af1c87583cd0f20e931d0e63f9019261741e88"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child/tests.rs",
+      "bytes": 14419,
+      "sha256": "2339d50ae03b4f7464853460440ef3878a6521b9898a7f977be1d038997426d6"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/javascript_child.rs",
+      "bytes": 59875,
+      "sha256": "b0411148d0f37856458f37cca55749ba97640564aac6b8f485280a4e610d9737"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/page_source_authorizer/tests.rs",
+      "bytes": 2606,
+      "sha256": "dee832684b6996c76dc1bc08bc595691c815d355facbe44448c6433dd1e82e02"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script/page_source_authorizer.rs",
+      "bytes": 8436,
+      "sha256": "a0f3a35c168c41afdebe337d23236309e9b97024d9e68acfcc2e7f3e43c6f283"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/script.rs",
+      "bytes": 31046,
+      "sha256": "208877773a3e1f3461a07f173410a52404329a52e929ed5eb478dbfcf1768ec5"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/session/script_runtime.rs",
+      "bytes": 11024,
+      "sha256": "2715a8361371e396da7d94e0649bffda8b33f12aff15eb0d2415722216c6e82a"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/session/tests/dispatch_gaps.rs",
+      "bytes": 20254,
+      "sha256": "eddc7f2765b0b46f5f97623e7492e380a717b9e946fd57dfe25fae8fd644d66a"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/session/tests/navigation.rs",
+      "bytes": 23112,
+      "sha256": "147384c69bbfd8a5d3b65d5cf46a302599c848326d8818e01bdefcc11a6aeac7"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/session/tests/session_actions.rs",
+      "bytes": 37020,
+      "sha256": "7271425079004d57048c5ade57e338a5bb87ab96b7a8c25e4657e9e24038cf52"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/session/tests/session_wrappers.rs",
+      "bytes": 5476,
+      "sha256": "f722becffc55babfaf7eb435987083f3e6a75276af7b799a8405289e88a1c90a"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/session/tests.rs",
+      "bytes": 46847,
+      "sha256": "e48e1e2b4043c85e23fc7b2bcbd631b553c533ef38d48234d9e3a8dc00c7600a"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/session.rs",
+      "bytes": 54572,
+      "sha256": "a1972416ca7431f666624c070ce74927176bd0dd46ecde0fbe8c2cf7d26232d5"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/stylesheet.rs",
+      "bytes": 3721,
+      "sha256": "461d38b87eec17a4c5d02847314f644cc1185b389966171e07f1daaa33d6e93c"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/src/tabs.rs",
+      "bytes": 8841,
+      "sha256": "2da74c80059828e1e7edbedfe0e00e91d83be555b24d4648cec452f5c6de0570"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/tests/core_binary/compiler_debugger.rs",
+      "bytes": 34219,
+      "sha256": "2d956e5b7561c75d90bf5fe02f9cdb5017624dffd7cb5d6eba3505c20777bb2d"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/tests/core_binary/compiler_output.rs",
+      "bytes": 7888,
+      "sha256": "5cad984bd03f1ed47efb8d20f013e658f97a96dbb4f3edcef8a0d264b507e3d6"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/tests/core_binary/core_session.rs",
+      "bytes": 31126,
+      "sha256": "54c28ba0dcfd0a1b2d24c7de3498a25630b6f80acd0d0f25a23ba85700b39bb5"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/tests/core_binary/generated_fault.rs",
+      "bytes": 8765,
+      "sha256": "42dec15dcba4817254da732dbf6509fe5f67a06f7e8bf21e09bdf2e6cc4b4cd3"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/tests/core_binary/multi_tab.rs",
+      "bytes": 7567,
+      "sha256": "c011aee66dc3a5c7b138f0f8c7ecafcc8cd8b05845956d3512268f5c45bfaf58"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/tests/core_binary/page_execution.rs",
+      "bytes": 44623,
+      "sha256": "2256a1860c163d06c474d50120abf788eb607ded13f87157d2e1d71f6d084f05"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/tests/core_binary/root_control.rs",
+      "bytes": 35436,
+      "sha256": "374914f030e8feaec861aeb8f9a7cbd9286bd8a5d4fef7e5fa18f9ec4e217dd6"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/tests/core_binary.rs",
+      "bytes": 13144,
+      "sha256": "fcf72e8451dc2989d07d95fb662facce22a32b43d97331a111697e827fdf96d0"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/tests/fixtures/host_typings/core-script-document-context/lib.blueice.d.ts",
+      "bytes": 162,
+      "sha256": "7c1cf3ef1e5c7a7af4e98e935b0162ba4f257ec2cec678ca96b483ef3a014982"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/tests/fixtures/host_typings/core-script-document-context/lib.blueice.manifest.json",
+      "bytes": 378,
+      "sha256": "ccbf1113ea346227bf876de595d08d1bd5ead33ffb357ca2b4794ec39990db7e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/tests/fixtures/host_typings/core-script-document-text/lib.blueice.d.ts",
+      "bytes": 111,
+      "sha256": "62038c794bf6a70b1d44462dffa4db7b88a6dd8134987da3debfa93e4b83a1c3"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/tests/fixtures/host_typings/core-script-document-text/lib.blueice.manifest.json",
+      "bytes": 352,
+      "sha256": "213ad6e00f429ed7d62c69ccc5a351db11e98f0c7826042642257004cab41498"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/tests/fixtures/host_typings/core-script-empty/lib.blueice.d.ts",
+      "bytes": 62,
+      "sha256": "b4854c1e525e2b646dadc102414f3fa0fa2d0a72593fa3d394f3ea8e15d54578"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/tests/fixtures/host_typings/core-script-empty/lib.blueice.manifest.json",
+      "bytes": 325,
+      "sha256": "ef66c135ed5055fdfd37ed7c04e41f5c29df0984f2148ebb007d5013b48557e2"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/engine/tests/fixtures.rs",
+      "bytes": 2233,
+      "sha256": "c253bf881b1cb1e7b51ddbf9286d58b34f9750286b55619f4ca1f618df836d46"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/font/Cargo.toml",
+      "bytes": 132,
+      "sha256": "57808dc0ceb2c1a3332f0361f2731052b2c531ce056ad431a6a151d9c1ddee3c"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/font/assets/DejaVuSans-Bold.ttf",
+      "bytes": 708920,
+      "sha256": "5c1247acef7f2b8522a31742c76d6adcb5569bacc0be7ceaa4dc39dd252ce895"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/font/assets/DejaVuSans-BoldOblique.ttf",
+      "bytes": 641720,
+      "sha256": "6edf0283160186af451cbee71e7b845f2e4cabf264bb992ce668c83c25465e6f"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/font/assets/DejaVuSans-LICENSE.txt",
+      "bytes": 3859,
+      "sha256": "63d3ba759d12804c5b31a9d5940d855c1820d1f5999e6b0872eb1c7ff045fbc9"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/font/assets/DejaVuSans-Oblique.ttf",
+      "bytes": 633840,
+      "sha256": "ccdf74b350f11fd3dd5774de50e5e6346a1a5da1f5b7d5fb83590665e97a5213"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/font/assets/DejaVuSans.ttf",
+      "bytes": 759720,
+      "sha256": "ae7b7855e115a5966d8b1b3f80f254ccc117ec86f9965e202ee2940453837280"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/font/assets/NotoSansTC-LICENSE.txt",
+      "bytes": 4301,
+      "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/font/assets/NotoSansTC-Regular.otf",
+      "bytes": 16435884,
+      "sha256": "dce08bd4fd91aa8aa76ed8fea4b694c2dfb8550f67871e326843212ddbeb88b4"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/font/src/lib.rs",
+      "bytes": 10843,
+      "sha256": "fface8dfb1f25de9297b363b43f101f2f83dd1dc9a9392970ebbf652bbdfc3b9"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/font/tests/cold_start/mod.rs",
+      "bytes": 2405,
+      "sha256": "55c50d1ecf71763381dfad3f7e5c54c4cb42b49aca232e96d545690bb286734c"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/html/Cargo.toml",
+      "bytes": 215,
+      "sha256": "9a589d698a4d435aac8aa844b270fe0143f5b09c9183f9e3925ebb6a6ab58be1"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/html/src/lib.rs",
+      "bytes": 1271,
+      "sha256": "e8ccd32973bf8cb2c40f86b73ac2e4a59e76a06c40179a2420631ed13c6b37ab"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/html/src/tokenizer.rs",
+      "bytes": 62718,
+      "sha256": "7971dbc858843cf3b63bcdfd069e1ce9d27fcc026c05e7bbe7b5fe988cbd8191"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/html/src/tree_builder/tests.rs",
+      "bytes": 57638,
+      "sha256": "8cc61686dc0f0299f5e0963d8394ba56a131072663ddb91b5d765a7520202b3f"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/html/src/tree_builder.rs",
+      "bytes": 89790,
+      "sha256": "f7a7b5326c0c2d41a5701dd22216d9155e5d3c902cd894b7eeb32c74d89637c4"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/html/tests/fixtures.rs",
+      "bytes": 1968,
+      "sha256": "6c6078428f709b0636f09387d1468ae631e905a088937f6a63632621c0f198bd"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/html/tests/parsing.rs",
+      "bytes": 5283,
+      "sha256": "a3869d653bc2966df90425f30b547bdecba2245f3b5384ec2fd90ad4efa5647f"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/html/tests/wpt_corpus.rs",
+      "bytes": 17083,
+      "sha256": "c89ec6bfd34ce2f9237486aba71b8fb65dbfe2ff7c581d7c32ae000df8b54187"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/layout/Cargo.toml",
+      "bytes": 323,
+      "sha256": "4e14edbc33939e122b585ffaeacf178b1cbadceb63bb85cc07f6d2e65d2b5dd6"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/layout/src/block.rs",
+      "bytes": 20519,
+      "sha256": "c21bf0c7db48ffc83035f47674a299442b3b21bc673dfe52acb0e20ad4d9d3cf"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/layout/src/fragment.rs",
+      "bytes": 2849,
+      "sha256": "333674df74ebf7282814d64780cbe0ca537cef9fcbc7df16babd6f7464b21f5a"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/layout/src/lib.rs",
+      "bytes": 3823,
+      "sha256": "ec045571454f20a5a3ef120859c672d867074cf4e30d5e3153fa2b9354475cb6"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/layout/src/text.rs",
+      "bytes": 13699,
+      "sha256": "21c755ea0436688c001048a6b9d01db74d8d71553405f877412310c2ab29f92d"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/layout/tests/fixtures.rs",
+      "bytes": 4648,
+      "sha256": "b35470be2f084922b57c555859b382bd7390cd0daea85dfa1fedb845e6b17dac"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/paint/Cargo.toml",
+      "bytes": 326,
+      "sha256": "3df668332870ee82e3270926290ee4f85ea97b67d29ad66a9edbe10f9699f511"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/paint/src/lib.rs",
+      "bytes": 25893,
+      "sha256": "cfe929e474c65b6224eb66096d0c5f8d12b962d709a7a0512be9858ffc4bd797"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/paint/tests/fixtures.rs",
+      "bytes": 2646,
+      "sha256": "a2c11ed3983fb1f6e1e632d45eba8b84b6b79978fbb445afab17601d5906d6a9"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/raster/Cargo.toml",
+      "bytes": 351,
+      "sha256": "e06afd3dd47704bf0ff5e793e639538301d70fb2fdb3752a9c992babfd7b9bf0"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/raster/examples/render_demo.rs",
+      "bytes": 1434,
+      "sha256": "48c1671e9bc9ab3b44cc43725862b7ae5a4ddda6cf587cd46f4fed1aaaec7164"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/core/raster/src/lib.rs",
+      "bytes": 14901,
+      "sha256": "0a9d7c662e8c0eb78a87f9c49e0bba1e189c8bce0392181251a1c90eed9a8307"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/ecma402/Cargo.toml",
+      "bytes": 2160,
+      "sha256": "dc18c1c68a4a6c909e6296eb2363a6da5527372d77df22b908c4239a13841b27"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/ecma402/src/collator.rs",
+      "bytes": 9766,
+      "sha256": "f9fa03370f945ef30ec04bc806231ea9390e1e9614796f852436d2ca3c7a1f22"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/ecma402/src/date_time_format/append_datetime_parts_tests.rs",
+      "bytes": 1665,
+      "sha256": "db43e7ec91ced979503a89b7de9938cd696ec4d7a0c37897a16a02eee355e725"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/ecma402/src/date_time_format/details.rs",
+      "bytes": 13199,
+      "sha256": "40f03d6a6cfb9505b7c21512199d3a9e4727d894618dffd3534213aa6bb301e8"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/ecma402/src/date_time_format/zero_offset.rs",
+      "bytes": 5257,
+      "sha256": "64f72226826ffe7ed1e7b977b8a372c3e12a220475b48babe72c6d5bb4314d4f"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/ecma402/src/date_time_format.rs",
+      "bytes": 83104,
+      "sha256": "059782d8877e22098e90d5f46e8b99726164bdf92ff37933cd8c75eb4820d74e"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/ecma402/src/display_names.rs",
+      "bytes": 11664,
+      "sha256": "aafe3ad00200c8437aafa8f232713047c75218c13cb618738302bc6614ed4ef0"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/ecma402/src/duration.rs",
+      "bytes": 48711,
+      "sha256": "9320e6a8eaf3ee0883cf6ea93651580569fea3d1c12b7ac063236f83421df6d0"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/ecma402/src/lib.rs",
+      "bytes": 39479,
+      "sha256": "5cca48713872131aee7ade535dec508f87d9b339feaf56aa07f1259501dd74b8"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/ecma402/src/list_format.rs",
+      "bytes": 16616,
+      "sha256": "c979d3cf1b139ba7da953f1755c1aca65099e862470cbc9e915776643b428aa3"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/ecma402/src/locale_data/compact_patterns.rs",
+      "bytes": 16972,
+      "sha256": "0299c7d63bc2b0c3b59708d95bda32a8e6ba9188c9e6726197edc629f019f7ed"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/ecma402/src/locale_data/compact_patterns_data.b64",
+      "bytes": 192638,
+      "sha256": "68475191f2baa5053a61b6de8945f79b99d15cc88e96eb68aa0ab9047c7d99a1"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/ecma402/src/locale_data/currency_patterns.rs",
+      "bytes": 18613,
+      "sha256": "7658bc791663cefdc6c6b2fa1c98a32c0837402fa2557f04d1d60a0b0631040f"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/ecma402/src/locale_data/currency_patterns_data.b64",
+      "bytes": 842482,
+      "sha256": "0e9121d990fa1e1cd29746b98826c36e9680892504cad7f367b70bc47a6c0d44"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/ecma402/src/locale_data/date_time_append_items_data.b64",
+      "bytes": 72320,
+      "sha256": "ae9095175a99f6bae736aa12c3eb81e94d27e35d5e0e2655159cb6dc0fd7f924"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/ecma402/src/locale_data/date_time_formats.rs",
+      "bytes": 18891,
+      "sha256": "fa41851ae831134e3636e5d6976c12e5ac1484e5a35d6c24253e6cf17e28ed5d"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/ecma402/src/locale_data/date_time_formats_data.b64",
+      "bytes": 193915,
+      "sha256": "eb2ac091d605a68776c031b10e4be0edad7dcab2a7544c1a6a52774941687746"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/ecma402/src/locale_data/date_time_formats_data.manifest.json",
+      "bytes": 534,
+      "sha256": "d162981f842c0855ae42bb98294d2330ed9a4ab45bb8be12bbbdf85ec4150111"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/ecma402/src/locale_data/decimal_symbols.rs",
+      "bytes": 11344,
+      "sha256": "19fde7b495c2701a3b3d24f93b231410ef4e4913c64ff9166f1cac04d0903bd1"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/ecma402/src/locale_data/decimal_symbols_data.b64",
+      "bytes": 5479,
+      "sha256": "f5d0483fb0ef0ab701ab1d52e9fd532c9e9f030021501672a7505fa267dddd48"
+    },
+    {
+      "path": "development-history/contract/promise-worktree-quality-1/source/backend/ecma402/src/locale_data/display_names.rs",
+      "bytes": 15032,
+      "sha256": "076463dcb3912b73218635b949ce93be74b10ad44f54adf158a2ada0237b8812"
+    }
+  ]
+}

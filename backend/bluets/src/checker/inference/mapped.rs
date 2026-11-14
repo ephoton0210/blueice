@@ -116,6 +116,7 @@ impl Reverser<'_> {
         ]);
         let template = substitute_type(&self.mapped.value, &substitutions);
         let mut collector = collect::Collector {
+            identities: &BTreeMap::new(),
             parameters: &locals,
             candidates: BTreeMap::new(),
             aliases: self.aliases,

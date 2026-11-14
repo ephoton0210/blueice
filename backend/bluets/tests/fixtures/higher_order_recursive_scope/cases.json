@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "scope": "Supplementary regression controls; zero inventory credit. Frozen higher-order 384-case contract is unchanged.",
+  "options": {
+    "strict": true,
+    "lib": [
+      "ES2022"
+    ],
+    "module": "CommonJS",
+    "declaration": true,
+    "noEmitOnError": true
+  },
+  "profiles": [
+    {
+      "id": "es5",
+      "compilerOptions": {
+        "target": "ES5"
+      }
+    },
+    {
+      "id": "es2022",
+      "compilerOptions": {
+        "target": "ES2022"
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "closed-dependent-callback",
+      "source": "type Merger = <T extends object, K extends keyof T>(object: T, key: keyof T, value: T[K]) => any;\nexport function recur<T>(base: T, defaults: any, merger?: Merger): T {\n const result = Object.assign({}, defaults);\n for (const key in base) { const value: unknown = base[key]; result[key] = recur(value, result[key], merger); }\n return result;\n}\n"
+    },
+    {
+      "id": "renamed-closed-callback",
+      "source": "type Merger = <Item extends object, K extends keyof Item>(object: Item, key: keyof Item, value: Item[K]) => any;\nexport function recur<T>(base: T, defaults: any, merger?: Merger): T {\n const result = Object.assign({}, defaults);\n for (const key in base) { const value: unknown = base[key]; result[key] = recur(value, result[key], merger); }\n return result;\n}\n"
+    },
+    {
+      "id": "closed-dependent-default",
+      "source": "type Merger = <T extends object, K extends keyof T = keyof T>(object: T, key: keyof T, value: T[K]) => any;\nexport function recur<T>(base: T, defaults: any, merger?: Merger): T {\n const result = Object.assign({}, defaults);\n for (const key in base) { const value: unknown = base[key]; result[key] = recur(value, result[key], merger); }\n return result;\n}\n"
+    },
+    {
+      "id": "closed-value-default",
+      "source": "type Merger = <T extends object = {}, K extends keyof T = keyof T>(object: T, key: keyof T, value: T[K]) => any;\nexport function recur<T>(base: T, defaults: any, merger?: Merger): T {\n const result = Object.assign({}, defaults);\n for (const key in base) { const value: unknown = base[key]; result[key] = recur(value, result[key], merger); }\n return result;\n}\n"
+    },
+    {
+      "id": "closed-callback-in-property",
+      "source": "type Merger = <T extends object, K extends keyof T>(object: T, key: keyof T, value: T[K]) => any;\nexport function recur<T>(base: T, defaults: any, merger?: { apply: Merger }): T {\n const result = Object.assign({}, defaults);\n for (const key in base) { const value: unknown = base[key]; result[key] = recur(value, result[key], merger); }\n return result;\n}\n"
+    },
+    {
+      "id": "closed-callback-import",
+      "source": "import type { Merger } from \"./callback\";\nexport function recur<T>(base: T, defaults: any, merger?: Merger): T {\n const result = Object.assign({}, defaults);\n for (const key in base) { const value: unknown = base[key]; result[key] = recur(value, result[key], merger); }\n return result;\n}\n",
+      "files": {
+        "callback.ts": "export type Merger = <T extends object, K extends keyof T>(object: T, key: keyof T, value: T[K]) => any;\n"
+      }
+    },
+    {
+      "id": "captured-result-remains-inferable",
+      "source": "declare function consume<T>(callback: <U>(value: U) => T): T;\ndeclare function value<U>(input: U): string;\nexport const result = consume(value);\n"
+    },
+    {
+      "id": "captured-result-mismatch-is-rejected",
+      "source": "declare function consume<T>(value: T, callback: <U>(input: U) => T): T;\ndeclare function numeric<U>(input: U): number;\nexport const result = consume(\"s\", numeric);\n"
+    }
+  ]
+}

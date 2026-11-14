@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_58.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/actual-workspace-cli",
+      "bytes": 50590496,
+      "sha256": "75a003f1e5447f9fea3272e55c19bbc9b8b6ce73428af69d9722b1eaf0d716d0"
+    }
+  ]
+}

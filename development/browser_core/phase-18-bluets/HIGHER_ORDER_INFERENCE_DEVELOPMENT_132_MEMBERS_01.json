@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_132.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/failed-r9/accepted-native/suite-artifacts/180/reports/metadata-class-type-alias-controls.json",
+      "bytes": 3003854,
+      "sha256": "648964d86316823d1ea5df063c2b6acb2d13e27f51c7b81b68efa0200a90b0b0"
+    },
+    {
+      "path": "development-history/failed-r9/accepted-native/suite-artifacts/180/reports/metadata-class-type-alias.json",
+      "bytes": 114656,
+      "sha256": "f9d9e00c316f82e6412519ee0dfcc52cf2bf1dfefe27a2ac742f961d619fde5a"
+    },
+    {
+      "path": "development-history/failed-r9/accepted-native/suite-artifacts/181/observations/metadata-callable-alias.json",
+      "bytes": 386909,
+      "sha256": "01e84ec1643c2fa2abb6a58d35c26b95b3e6a76ed804420c6e46a75af18df155"
+    },
+    {
+      "path": "development-history/failed-r9/accepted-native/suite-artifacts/181/reports/metadata-callable-alias-controls-progress.jsonl",
+      "bytes": 5869,
+      "sha256": "e787f0dd552010cb53f0de9ecc5a2170ebcf18d7c2ccf123645635231d67978e"
+    },
+    {
+      "path": "development-history/failed-r9/accepted-native/suite-artifacts/181/reports/metadata-callable-alias-controls.json",
+      "bytes": 3009256,
+      "sha256": "abe9ce2d0445dab1fe5aeb4fd5c7d6efb3dae1712ea61c089a3fdfc8bcec1fc8"
+    },
+    {
+      "path": "development-history/failed-r9/accepted-native/suite-artifacts/181/reports/metadata-callable-alias.json",
+      "bytes": 114952,
+      "sha256": "03dd83b6b37e87441d093dbb5f5b603e412fb20090e3495d6d5664a2df276998"
+    },
+    {
+      "path": "development-history/failed-r9/accepted-native/suite-artifacts/182/observations/async-generator-exception-template.json",
+      "bytes": 324986,
+      "sha256": "cea193d4db0a9a9b05d37c89a74a441a35622e83226c83361d00ab1ba2e67cb5"
+    },
+    {
+      "path": "development-history/failed-r9/accepted-native/suite-artifacts/182/reports/async-generator-exception-template.json",
+      "bytes": 280777,
+      "sha256": "bdff965cdbecda4d6df93e1c9905c431f9e74107a142de4ad02385de2ba07dcb"
+    },
+    {
+      "path": "development-history/failed-r9/accepted-native/suite-artifacts/183/observations/async-arrow-lexical-this.json",
+      "bytes": 280000,
+      "sha256": "6520239c149e5b88075f63f233189cc6c52f210351a39d914677a1e6ed536718"
+    },
+    {
+      "path": "development-history/failed-r9/accepted-native/suite-artifacts/183/reports/async-arrow-lexical-this.json",
+      "bytes": 375270,
+      "sha256": "5cdae519292152c2a0874eda780c6e1fd8248a57de24e1320f8ef362ad19fa21"
+    },
+    {
+      "path": "development-history/failed-r9/accepted-native/suite-artifacts/185/observations/async-object-method.json",
+      "bytes": 139380,
+      "sha256": "7e1e70024aa6fb8477a2df835eeda12cef0fb42c850f3da106c9846575ae4acb"
+    },
+    {
+      "path": "development-history/failed-r9/accepted-native/suite-artifacts/185/reports/async-object-method.json",
+      "bytes": 381009,
+      "sha256": "0fb0e6ac43369dab2f32784cfd92a3d7cc058a39df83d7d9db0a5fe0df03a0bd"
+    },
+    {
+      "path": "development-history/failed-r9/accepted-native/suite-artifacts/186/observations/async-arrow-default-block.json",
+      "bytes": 138684,
+      "sha256": "1e48595f65e4d7b54ddec91aa38eaa8b13b871832bf1c7a1f0231b5d0b82bd38"
+    },
+    {
+      "path": "development-history/failed-r9/accepted-native/suite-artifacts/186/reports/async-arrow-default-block.json",
+      "bytes": 157697,
+      "sha256": "349d1989635736910d68d3b4c4d35a6fe16ba872d89d4d7ca164773a94609cfc"
+    },
+    {
+      "path": "development-history/failed-r9/accepted-native/suite-artifacts/189/observations/class-super-write.json",
+      "bytes": 119936,
+      "sha256": "dfa10e72f2dcd455b0c29eba38c6c2439353ae38b2a1650506a78f472b763d09"
+    },
+    {
+      "path": "development-history/failed-r9/accepted-native/suite-artifacts/189/reports/class-super-write.json",
+      "bytes": 200534,
+      "sha256": "01a05589cab09f538dd83c0d75074e549d32ad468a0597ef3b4978278755d288"
+    },
+    {
+      "path": "development-history/failed-r9/accepted-native-cli",
+      "bytes": 50587200,
+      "sha256": "d3fe1bd6c64aa294be6b809df56fc5a9b11ed84129d55a93874ac02884ed54d9"
+    },
+    {
+      "path": "development-history/failed-r9/accepted-parent-source-manifest.json",
+      "bytes": 4355386,
+      "sha256": "4687e00a0d14cddb3830ad7473b40166da549edad15991317bce93fafe9eb964"
+    }
+  ]
+}

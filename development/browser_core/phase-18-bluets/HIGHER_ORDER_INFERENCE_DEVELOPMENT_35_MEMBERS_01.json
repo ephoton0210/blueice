@@ -1,0 +1,122 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_35.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/contract/gt7-host-main-integration-1/COMPATIBILITY_CASES.json",
+      "bytes": 33131755,
+      "sha256": "fe8c66a193b13378f0b6fe576b90201e08260727d51f2ee90bba17b7fde4b973"
+    },
+    {
+      "path": "development-history/contract/gt7-host-main-integration-1/COMPATIBILITY_INVENTORY.md",
+      "bytes": 126739,
+      "sha256": "230902b9d1c8363939e835dac0a9d62fff6f7380e8e4c7b504595517ce7b0672"
+    },
+    {
+      "path": "development-history/contract/gt7-host-main-integration-1/COMPATIBILITY_MEASUREMENT.json",
+      "bytes": 456650,
+      "sha256": "d54611b9695ae76dd8df28df779f14c221d0a6fce79ba84843ab1e57b7358242"
+    },
+    {
+      "path": "development-history/contract/gt7-host-main-integration-1/COMPATIBILITY_SUITES.json",
+      "bytes": 231547,
+      "sha256": "28fbf23afe82232c244951aa9cf57af38f5de64b05b1d55f7131a951893c529e"
+    },
+    {
+      "path": "development-history/contract/gt7-host-main-integration-1/PLAN.md",
+      "bytes": 1327413,
+      "sha256": "2cb51a6c15de4f3c1fb21d5f520fdb202d9cba790491b96f3b1085a7021496d9"
+    },
+    {
+      "path": "development-history/contract/gt7-host-main-integration-1/TODO.md",
+      "bytes": 105227,
+      "sha256": "2f1aacca138006ac3a8cf10034a58c6a30efa49a9cdcf188276e3ddcd07f2273"
+    },
+    {
+      "path": "development-history/contract/gt7-host-main-integration-1/account_inventory_rows.py.log",
+      "bytes": 108,
+      "sha256": "bcd006b45dc8e7c9313ca81c15da8668d8f84bbaad883aec934bd84c6e46e45b"
+    },
+    {
+      "path": "development-history/contract/gt7-host-main-integration-1/check_compatibility_status.py.log",
+      "bytes": 91,
+      "sha256": "15369a59ba9bc0f7c61fd1397430cd9f87b259b5c75842a14789c69200c43ef0"
+    },
+    {
+      "path": "development-history/contract/gt7-host-main-integration-1/original-recorder.cjs",
+      "bytes": 8728,
+      "sha256": "fb2e03f0dcf5ba149c61c3043beed2558691b60dd4c78a3f9d597cdacd179b1c"
+    },
+    {
+      "path": "development-history/contract/gt7-host-main-integration-1/receipt.json",
+      "bytes": 583,
+      "sha256": "a7e31842707f82c26b88670c29a8e71e35dccf2cfaaa01511288dda8fbff9c9e"
+    },
+    {
+      "path": "development-history/contract/gt7-host-main-integration-1/stage.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/gt7-host-windows-preflight-1/catalog.txt",
+      "bytes": 519,
+      "sha256": "3138e14ecdf1114aabe7a4c2df5f9d64ef61aba2ed99245d2378f28aced11152"
+    },
+    {
+      "path": "development-history/contract/gt7-host-windows-preflight-1/guest-probe.py",
+      "bytes": 15256,
+      "sha256": "ce82315835a5c192c70341b99ec6bd77575ad16b9049c8b83ff8a84f59a3fa6b"
+    },
+    {
+      "path": "development-history/contract/gt7-host-windows-preflight-1/guest-terminal.json",
+      "bytes": 1390,
+      "sha256": "6bd9cbcb387a03be63dded0148cce31d4b71eabaa90c337e40ff188dc56528c6"
+    },
+    {
+      "path": "development-history/contract/gt7-host-windows-preflight-1/measurement.json",
+      "bytes": 1362,
+      "sha256": "61349f371884ac1b474dfffda63dc12ea8d3ef2339e2fe2e261df158a52fad89"
+    },
+    {
+      "path": "development-history/contract/gt7-host-windows-preflight-1/original-recorder.cjs",
+      "bytes": 8728,
+      "sha256": "fb2e03f0dcf5ba149c61c3043beed2558691b60dd4c78a3f9d597cdacd179b1c"
+    },
+    {
+      "path": "development-history/contract/gt7-host-windows-preflight-1/repaired-recorder.cjs",
+      "bytes": 8434,
+      "sha256": "2daf27b2d491346dbb2a1e0294ecbb067f3d3bee67efa6a4f90855abc6cecbaa"
+    },
+    {
+      "path": "development-history/contract/gt7-host-windows-preflight-1/state.json",
+      "bytes": 483,
+      "sha256": "0e9cc26ec0be769b3f7af2af7f406c81d7da4c60311bce952e155aaf08873976"
+    },
+    {
+      "path": "development-history/contract/gt7-host-windows-preflight-1/tests.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "development-history/contract/gt7-host-windows-preflight-1/tests.stdout",
+      "bytes": 970,
+      "sha256": "538d28e0a5958f3f7339436e4b155bbb1089ab305acae103cccd02d209b6502b"
+    },
+    {
+      "path": "development-history/contract/gt7-host-worktree-preflight-1/native-replay-result.json",
+      "bytes": 333,
+      "sha256": "2b5ee5df60bf4d6def57f375520b3536dbf893984404624fe7dc23916856a20f"
+    },
+    {
+      "path": "development-history/contract/gt7-host-worktree-preflight-1/native-replay.log",
+      "bytes": 91,
+      "sha256": "3d229abf16c17498c8e769dec8e43ad76a2249c13ff841cd3a48fad4eeaed3f9"
+    },
+    {
+      "path": "development-history/contract/gt7-host-worktree-preflight-1/source-change.json",
+      "bytes": 336,
+      "sha256": "602a82ea16bcaaca7111d0eb85dafe0a2b30f713ce13b686151bf83351ffce53"
+    }
+  ]
+}

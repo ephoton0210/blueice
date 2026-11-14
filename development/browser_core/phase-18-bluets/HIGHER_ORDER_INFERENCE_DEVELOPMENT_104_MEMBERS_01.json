@@ -1,0 +1,372 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_104.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/160/observations/class-super.json",
+      "bytes": 2254779,
+      "sha256": "9638f6efd3f88d2ad77041089a7732af7829fb478dbd2bacfe83bdbcbb855bd8"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/160/reports/class-super.json",
+      "bytes": 2859636,
+      "sha256": "dbe3b107bd786df0b0a1def3d99845a00dbcb9c5f2e7014430a8e5493f51eed1"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/161/observations/metadata-inline-import-type-class.json",
+      "bytes": 402153,
+      "sha256": "b5a2dae243da9abe5770a7f197b194fdeb7f985b3d992fe6acc03540c395c005"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/161/reports/metadata-inline-import-type-class-controls-progress.jsonl",
+      "bytes": 6155,
+      "sha256": "01bc5540bbafa101197dc8c74c60715e800d3be7163b2f0fc1fb0681da790997"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/161/reports/metadata-inline-import-type-class-controls.json",
+      "bytes": 3137210,
+      "sha256": "0a4bc7833ece16fc4605c6e7632640f845d0e5628e3773f2218603f3e1ecd0c9"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/161/reports/metadata-inline-import-type-class.json",
+      "bytes": 120546,
+      "sha256": "da0e0e307578abfb2fb7c62ce94da697427e5b88ca9931833c677fcecc9fff43"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/163/observations/object-object-rest-spread.json",
+      "bytes": 939335,
+      "sha256": "61ba0269bb9450b36fc5ba2ef13687255a81bc77d8d265cb55039bb95fccb715"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/163/reports/object-object-rest-spread.json",
+      "bytes": 2134842,
+      "sha256": "efdf2cd9af70e2b38877ca28577fc70601a7db18461077b4002f07d229bc25a8"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/164/observations/metadata-imported-interface.json",
+      "bytes": 385188,
+      "sha256": "b8b95bcbac808fb6faf850a7113b992b4b18854856504e0261a367b345f3d2ef"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/164/reports/metadata-imported-interface-controls-progress.jsonl",
+      "bytes": 5869,
+      "sha256": "36cfd8f7b79b0f0eda844ca6e6f8eb4a8568a04f8c31856f0c0ce48d30818582"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/164/reports/metadata-imported-interface-controls.json",
+      "bytes": 3003854,
+      "sha256": "bd4a20ac3cb0504840f376e1cf116202f540c40689eb9c0e81a93676074b32e3"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/164/reports/metadata-imported-interface.json",
+      "bytes": 114656,
+      "sha256": "290b6500f62a0c2e82a64d27c79bdbe68e43781d13f4c87af95c75fe1092c118"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/165/observations/interop-module-boundary.json",
+      "bytes": 29295,
+      "sha256": "318f3ce74c96a51040286ea2e6c6b4a4b3e5cc18aac7a84718dcc98be3e9515d"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/165/observations/interop-module-maps.json",
+      "bytes": 2657727,
+      "sha256": "73318e46ff49ddaac0a63b5c20bcdb95e90b2bd130678b583a9af463bc0fb86b"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/165/reports/interop-complete-module-acceptance-partial.json",
+      "bytes": 68286,
+      "sha256": "78c2fd80c2d90da2735afded69cb0cbf3f65e426e8f5d7f9dcb9708627b35e49"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/165/reports/interop-complete-module-acceptance.json",
+      "bytes": 8108363,
+      "sha256": "d31084986211167958b446b4564bf1e104e157389c1b9fcaf6045ef334c925aa"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/165/reports/interop-module-acceptance-partial-progress.jsonl",
+      "bytes": 840,
+      "sha256": "8aed25ebf7a0446a7dc958448ac33928f87f87c8a2fb3842422b9ebc47791d17"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/165/reports/interop-module-acceptance-progress.jsonl",
+      "bytes": 101652,
+      "sha256": "3b248c361d24c5a9ddbf59ff3c27d11fe925c8fe95aeb37b7c90ac83636e6190"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/166/observations/interop-default-function-boundary.json",
+      "bytes": 5071,
+      "sha256": "a8f880a0ab970b1c12dd6f73e9dbe864db99c6e5440f81789f3525fb5318e7b8"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/166/observations/interop-expression-boundary.json",
+      "bytes": 7704,
+      "sha256": "d631ffea711042719a58f7872350b5cc231c095f0816efc26992ee8cf9cb90b3"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/166/observations/interop-expression-maps.json",
+      "bytes": 2657727,
+      "sha256": "73318e46ff49ddaac0a63b5c20bcdb95e90b2bd130678b583a9af463bc0fb86b"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/166/reports/interop-expression-maps.json",
+      "bytes": 328,
+      "sha256": "3f70f0b8c11396d3123d36dcfebebaf9e1eead2fb8afc7c74f13e41883638df9"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/167/observations/metadata-string-enum.json",
+      "bytes": 403398,
+      "sha256": "a2ca8aed0bae7e739836973a4dfb40bc3b5075d45a6645ec8473c48cde7db9b0"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/167/reports/metadata-string-enum-controls-progress.jsonl",
+      "bytes": 6155,
+      "sha256": "43fe3b876f081c4d4a13cd134003451130b5e8331d2cb0e095efc87a8fef93b0"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/167/reports/metadata-string-enum-controls.json",
+      "bytes": 3249513,
+      "sha256": "f8a00561a8b1fb3babdd890c595af49a8d71ce4d56acce9a9f8659d87367c0ce"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/167/reports/metadata-string-enum.json",
+      "bytes": 145410,
+      "sha256": "45b754b0f8f9297d4cefa6889d63d93937dd503a699638892a2b2227e56cd349"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/168/observations/metadata-import-type-class.json",
+      "bytes": 401852,
+      "sha256": "107a03680313d51fed376482c93b3333c372c813a3bb3fe80274825e21ee7ed0"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/168/reports/metadata-import-type-class-controls-progress.jsonl",
+      "bytes": 6155,
+      "sha256": "e4ab5b4c12e0aa5a7eb60bd8a6e8e493ce26433fdea9d497d9884b36626a2759"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/168/reports/metadata-import-type-class-controls.json",
+      "bytes": 3137210,
+      "sha256": "c9552a05876feabb8cdf194e34cd155ff6d0ef0bf48bc9ade726fc43b5de4f9d"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/168/reports/metadata-import-type-class.json",
+      "bytes": 120546,
+      "sha256": "60df96988c192ef777fea244c88c43919a635278db794d7eb04d4d9f11fe968c"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/169/observations/decorator-literal-replacement-order.json",
+      "bytes": 598403,
+      "sha256": "008aac4b79a8253c2de07cf4c90621a7de1f1021cec373fed25a5faab550ff2c"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/169/reports/decorator-literal-replacement-order.json",
+      "bytes": 359839,
+      "sha256": "89f4ee253b851243a5c67f7e065fec1fcb6cbbcfd724f71be4a656aba5dc4a23"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/170/observations/metadata-primitive-alias.json",
+      "bytes": 387142,
+      "sha256": "a7cb4464ad62337ceefce3bd1aa6229ae650f5e08b09ed41e1044beb25ac6f84"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/170/reports/metadata-primitive-alias-controls-progress.jsonl",
+      "bytes": 5869,
+      "sha256": "17be7f69784d0a8477c9c208dfcdbe248da14a6e5e86c7e8d558e1c283b19458"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/170/reports/metadata-primitive-alias-controls.json",
+      "bytes": 3003854,
+      "sha256": "35ec1179cb36bae9c371690c8d0432ace0c15762bea1428024d0cd1f9fdab68e"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/170/reports/metadata-primitive-alias.json",
+      "bytes": 114656,
+      "sha256": "3e73414fc910199882d98c8a1ddcad6ddf3c9527d5203551f6c8e35817cd4290"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/171/observations/async-super-method.json",
+      "bytes": 301852,
+      "sha256": "cc3be9035add880a51541b01eacc3f5eac34e398b819e893ac2cb4335a851137"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/171/reports/async-super-method.json",
+      "bytes": 1009598,
+      "sha256": "156b0abc75de5f52a55d2151bdc8d4480b1d7ff29902e1772b48ceb661d8a64e"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/172/reports/decorator-class-phase.json",
+      "bytes": 342666,
+      "sha256": "e1de380e548eac752aaa5fb9f931b1ae49d4149c7ebe73c38852f49bf19b9558"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/173/observations/metadata-nullable-alias.json",
+      "bytes": 386613,
+      "sha256": "8b87f867fc8cd72d5a98e86941166467badaf5cbdf49d675d0794bdece4db1e9"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/173/reports/metadata-nullable-alias-controls-progress.jsonl",
+      "bytes": 5869,
+      "sha256": "4ed488655e6dc90339ea1f64fb1d3d2af794609d1878911c35dae2bed5a1cd57"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/173/reports/metadata-nullable-alias-controls.json",
+      "bytes": 3003854,
+      "sha256": "fb05f5f52131a0569cdd76ddcf80104c4cf98e7798d0b6d4435618a25314a091"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/173/reports/metadata-nullable-alias.json",
+      "bytes": 114656,
+      "sha256": "3add01057adddb152d690a3206646697c0d6b956b009094cceb3bb8b09b69b85"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/174/observations/metadata-local-class-type-alias.json",
+      "bytes": 404669,
+      "sha256": "3cf6dc3e347a11e867725c5ed2716e5218071a0df5f32537ec64df04e9c0ed57"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/174/reports/metadata-local-class-type-alias-controls-progress.jsonl",
+      "bytes": 6155,
+      "sha256": "f4097ad0a9d88d5bb704027e694b6d3a8deb0227235f5bf7c852ce1bc9742161"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/174/reports/metadata-local-class-type-alias-controls.json",
+      "bytes": 3131516,
+      "sha256": "8081d1e92e3479e5899678b0ed8b8f63ab921b4ee5f2dc5e3b83544fe7440bcc"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/174/reports/metadata-local-class-type-alias.json",
+      "bytes": 120234,
+      "sha256": "ff2128b26bcbe873d8abfb477779d9193f7d16df04399fc8984803ff6d8e45e7"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/175/observations/metadata-reexported-class.json",
+      "bytes": 442517,
+      "sha256": "94335e61a489f8066f25424d3b1617ad780fc59f547fa6e3a61b04a1cbafd798"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/175/reports/metadata-reexported-class-controls-progress.jsonl",
+      "bytes": 9264,
+      "sha256": "690ad2d53f9c88649f0016cc45b20e7db7c8cfffa6f59a5efc3d888d62b74f0e"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/175/reports/metadata-reexported-class-controls.json",
+      "bytes": 3725079,
+      "sha256": "fd4414b4b434a3691503566b6b8874277a0dc936fd0d775444d683d75a93001d"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/175/reports/metadata-reexported-class.json",
+      "bytes": 212507,
+      "sha256": "da7c55f8ed1fcb902a19a27353535a4bdb75863fe5340057dc6222a26e658e7c"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/176/observations/metadata-namespace-reexported-class.json",
+      "bytes": 446448,
+      "sha256": "4f32e2a63de5b38a59195f1cd5bb47bd064db6990519f83fce806e4697597584"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/176/reports/metadata-namespace-reexported-class-controls-progress.jsonl",
+      "bytes": 9264,
+      "sha256": "999b109bc37c86e638f5c949a97bceffd5a8f365961658dd5d53e95ae44759c6"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/176/reports/metadata-namespace-reexported-class-controls.json",
+      "bytes": 3726535,
+      "sha256": "945ada484cb554017a7a9b950b30c2fd2afbf508286a68acd1f5d5e9e0a959ab"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/176/reports/metadata-namespace-reexported-class.json",
+      "bytes": 212507,
+      "sha256": "6219f55423174622e2a686559c43e6f45a5a008304a616701e34c1104006c2e7"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/177/observations/async-class-method.json",
+      "bytes": 273851,
+      "sha256": "0c652a9fb6ef136a9a684c37d5090b7ade12345c5efc2c9d9aae9c33dc29d16f"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/177/reports/async-class-method.json",
+      "bytes": 828208,
+      "sha256": "c623c739717ee3bb8b95e811888cfc6c50aa2f947ee7381d147ce36f18e91b86"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/178/observations/metadata-numeric-enum.json",
+      "bytes": 404775,
+      "sha256": "6aff043b091217436a7ba26ca33a9aac77bda5eec321b517c02c2d2beef7f08e"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/178/reports/metadata-numeric-enum-controls-progress.jsonl",
+      "bytes": 6155,
+      "sha256": "728fe5dbefe2305b06bd9c3d46e78c456c9b1f15c49141fb36abe8f08832f8d0"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/178/reports/metadata-numeric-enum-controls.json",
+      "bytes": 3249588,
+      "sha256": "a1f2eeb4b7b05735f3fb1b4da4d3a958b77baf0eb41c1b5f2b9faeff342c442a"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/178/reports/metadata-numeric-enum.json",
+      "bytes": 145539,
+      "sha256": "994916e4e1f808c976b65ccecd596ac200180512f0c374f06c143e435739fb9c"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/179/observations/binding-array-nested-binding.json",
+      "bytes": 82551,
+      "sha256": "33cd748b95a1e405b9afa7114960f5b742c2f37b8c86b97edce540132d436290"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/179/observations/binding-binding-iterator-finally.json",
+      "bytes": 133056,
+      "sha256": "f4d1020a69b7b103c351cd4fd54d3bb6fd7e638f885b5c6c78565fca968f06b0"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/179/observations/binding-mixed-nested-default.json",
+      "bytes": 58871,
+      "sha256": "5d18437a1120c05fee7cbc4317f81c24835e06c979bf82bc4b5a113e2963248f"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/179/observations/binding-nested-parameter.json",
+      "bytes": 48674,
+      "sha256": "aef0ee8b743eddea195dcab42e77d0b07b7c4df69546457b68f8cd538e78c6b8"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/179/observations/binding-object-nested-binding.json",
+      "bytes": 38401,
+      "sha256": "b90188bef936985de8380ec1e75bc568db1d2fe3eafe2561bbcae0318569b9b2"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/179/reports/binding-array-nested-binding.json",
+      "bytes": 383119,
+      "sha256": "7c3c7037a12a9747d1d9330bbb3eab6f597285e9c33264273a672710437ae49c"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/179/reports/binding-binding-iterator-finally.json",
+      "bytes": 428599,
+      "sha256": "a80e3a7e0bf1e368ab0a5c54767409a4ac98502249c100ce021ec72f8fa5d2b2"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/179/reports/binding-mixed-nested-default.json",
+      "bytes": 265655,
+      "sha256": "0a52036d219cea16f838304d7d8808d926ad575668a63c51bb158a61af22d450"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/179/reports/binding-nested-parameter.json",
+      "bytes": 247904,
+      "sha256": "1b35a985836c7e3fca73a4890addb52d032db9b8d320c61f298d37b0d1a0c22c"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/179/reports/binding-object-nested-binding.json",
+      "bytes": 186625,
+      "sha256": "b8b519e2c47d203676e6fbd4eb83bbe2ad9e742ea2b17b14bec23be40ee9c9ea"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/180/observations/metadata-class-type-alias.json",
+      "bytes": 385475,
+      "sha256": "12aae6006eb06cd47e434dc8d34dec0aeb1f3e5a8d3e11f41e90495ea09a0b6a"
+    },
+    {
+      "path": "development-history/failed-r5/accepted-native/suite-artifacts/180/reports/metadata-class-type-alias-controls-progress.jsonl",
+      "bytes": 5869,
+      "sha256": "d697f6e8d211ca5184c0c4aa76422c5665e39a1b092911f5622ea5dbc0a4047c"
+    }
+  ]
+}

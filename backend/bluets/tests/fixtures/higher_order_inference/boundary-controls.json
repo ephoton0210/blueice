@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "scope": "Separate policy controls; zero direct Native agreement credit.",
+  "controls": [
+    {
+      "id": "compose-array-box-work-0",
+      "kind": "resource-limit",
+      "source": "declare function compose<A, B, C>(first: (value: A) => B, second: (value: B) => C): (value: A) => C;\nfunction list<T>(value: T): T[] { return [value]; }\nfunction box<T>(value: T): { value: T } { return { value }; }\nexport const result = compose(list, box);\n",
+      "limited": {
+        "max_type_expansions": 0
+      }
+    },
+    {
+      "id": "compose-array-box-work-1",
+      "kind": "resource-limit",
+      "source": "declare function compose<A, B, C>(first: (value: A) => B, second: (value: B) => C): (value: A) => C;\nfunction list<T>(value: T): T[] { return [value]; }\nfunction box<T>(value: T): { value: T } { return { value }; }\nexport const result = compose(list, box);\n",
+      "limited": {
+        "max_type_expansions": 1
+      }
+    },
+    {
+      "id": "lift-generic-identity-work-0",
+      "kind": "resource-limit",
+      "source": "declare function lift<A, B>(fn: (value: A) => B): (value: A) => B[];\nfunction identity<T>(value: T): T { return value; }\nexport const result = lift(identity);\n",
+      "limited": {
+        "max_type_expansions": 0
+      }
+    },
+    {
+      "id": "lift-generic-identity-work-1",
+      "kind": "resource-limit",
+      "source": "declare function lift<A, B>(fn: (value: A) => B): (value: A) => B[];\nfunction identity<T>(value: T): T { return value; }\nexport const result = lift(identity);\n",
+      "limited": {
+        "max_type_expansions": 1
+      }
+    },
+    {
+      "id": "compose-constrained-first-work-0",
+      "kind": "resource-limit",
+      "source": "declare function compose<A, B, C>(first: (value: A) => B, second: (value: B) => C): (value: A) => C;\nfunction tagged<T extends { tag: string }>(value: T): T[] { return [value]; }\nfunction box<T>(value: T): { value: T } { return { value }; }\nexport const result = compose(tagged, box);\nexport const demanded: { value: { tag: string; extra: number }[] } = result({ tag: \"ok\", extra: 1 });\n",
+      "limited": {
+        "max_type_expansions": 0
+      }
+    },
+    {
+      "id": "compose-constrained-first-work-1",
+      "kind": "resource-limit",
+      "source": "declare function compose<A, B, C>(first: (value: A) => B, second: (value: B) => C): (value: A) => C;\nfunction tagged<T extends { tag: string }>(value: T): T[] { return [value]; }\nfunction box<T>(value: T): { value: T } { return { value }; }\nexport const result = compose(tagged, box);\nexport const demanded: { value: { tag: string; extra: number }[] } = result({ tag: \"ok\", extra: 1 });\n",
+      "limited": {
+        "max_type_expansions": 1
+      }
+    },
+    {
+      "id": "returned-generic-parser-0",
+      "kind": "resource-limit",
+      "source": "type Handler = <T>(value: T) => <U>(other: U) => [T, U];\ndeclare const value: Handler;\nexport const result = value;\n",
+      "limited": {
+        "parser.max_type_depth": 0
+      }
+    },
+    {
+      "id": "returned-generic-parser-1",
+      "kind": "resource-limit",
+      "source": "type Handler = <T>(value: T) => <U>(other: U) => [T, U];\ndeclare const value: Handler;\nexport const result = value;\n",
+      "limited": {
+        "parser.max_type_depth": 1
+      }
+    },
+    {
+      "id": "ambient-ExternalIdentity",
+      "kind": "ambient-owner",
+      "declaration": "type ExternalIdentity = <T>(value: T) => T;",
+      "source": "export const result: ExternalIdentity = <T>(value: T): T => value;\n"
+    },
+    {
+      "id": "runtime-ExternalIdentity",
+      "kind": "runtime-authority",
+      "declaration": "type ExternalIdentity = <T>(value: T) => T;",
+      "source": "ExternalIdentity(\"wrong\");\n"
+    },
+    {
+      "id": "ambient-ExternalFactory",
+      "kind": "ambient-owner",
+      "declaration": "type ExternalFactory = new <T>(value: T) => { value: T };",
+      "source": "declare const factory: ExternalFactory;\nexport const result = factory;\n"
+    },
+    {
+      "id": "runtime-ExternalFactory",
+      "kind": "runtime-authority",
+      "declaration": "type ExternalFactory = new <T>(value: T) => { value: T };",
+      "source": "ExternalFactory(\"wrong\");\n"
+    }
+  ]
+}

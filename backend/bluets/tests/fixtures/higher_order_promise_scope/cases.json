@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "scope": "Supplementary generic owner/capture controls; zero inventory credit. Original higher-order384 and recursive-scope16 are unchanged.",
+  "options": {
+    "strict": true,
+    "lib": [
+      "ES2022"
+    ],
+    "target": "ES2022",
+    "module": "ESNext",
+    "declaration": true,
+    "noEmitOnError": true
+  },
+  "profiles": [
+    {
+      "id": "strict-es2022",
+      "compilerOptions": {}
+    }
+  ],
+  "cases": [
+    {
+      "id": "promise-then-adopt-accept",
+      "source": "// UTF-16 control: 😀\ndeclare const promise: Promise<number>;\nexport const result = promise.then(value => Promise.resolve(value.toString())); const witness: Promise<string> = result;\n"
+    },
+    {
+      "id": "promise-then-adopt-reject",
+      "source": "// UTF-16 control: 😀\ndeclare const promise: Promise<number>;\nexport const result = promise.then(value => Promise.resolve(value.toString())); const witness: Promise<number> = result;\n"
+    },
+    {
+      "id": "direct-TResult1-accept",
+      "source": "declare function adopt<TResult1>(value: TResult1 | PromiseLike<TResult1>): TResult1;\nexport const result = adopt(Promise.resolve(\"value\"));\nconst witness: string = result;\n"
+    },
+    {
+      "id": "direct-TResult1-reject",
+      "source": "declare function adopt<TResult1>(value: TResult1 | PromiseLike<TResult1>): TResult1;\nexport const result = adopt(Promise.resolve(\"value\"));\nconst witness: number = result;\n"
+    },
+    {
+      "id": "direct-TResult2-accept",
+      "source": "declare function adopt<TResult2>(value: TResult2 | PromiseLike<TResult2>): TResult2;\nexport const result = adopt(Promise.resolve(\"value\"));\nconst witness: string = result;\n"
+    },
+    {
+      "id": "direct-TResult2-reject",
+      "source": "declare function adopt<TResult2>(value: TResult2 | PromiseLike<TResult2>): TResult2;\nexport const result = adopt(Promise.resolve(\"value\"));\nconst witness: number = result;\n"
+    },
+    {
+      "id": "direct-T-accept",
+      "source": "declare function adopt<T>(value: T | PromiseLike<T>): T;\nexport const result = adopt(Promise.resolve(\"value\"));\nconst witness: string = result;\n"
+    },
+    {
+      "id": "direct-T-reject",
+      "source": "declare function adopt<T>(value: T | PromiseLike<T>): T;\nexport const result = adopt(Promise.resolve(\"value\"));\nconst witness: number = result;\n"
+    },
+    {
+      "id": "direct-U-accept",
+      "source": "declare function adopt<U>(value: U | PromiseLike<U>): U;\nexport const result = adopt(Promise.resolve(\"value\"));\nconst witness: string = result;\n"
+    },
+    {
+      "id": "direct-U-reject",
+      "source": "declare function adopt<U>(value: U | PromiseLike<U>): U;\nexport const result = adopt(Promise.resolve(\"value\"));\nconst witness: number = result;\n"
+    },
+    {
+      "id": "direct-Item-accept",
+      "source": "declare function adopt<Item>(value: Item | PromiseLike<Item>): Item;\nexport const result = adopt(Promise.resolve(\"value\"));\nconst witness: string = result;\n"
+    },
+    {
+      "id": "direct-Item-reject",
+      "source": "declare function adopt<Item>(value: Item | PromiseLike<Item>): Item;\nexport const result = adopt(Promise.resolve(\"value\"));\nconst witness: number = result;\n"
+    }
+  ]
+}

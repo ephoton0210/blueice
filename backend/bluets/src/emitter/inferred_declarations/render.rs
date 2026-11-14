@@ -441,6 +441,7 @@ impl Context<'_> {
                         Type::Union(_)
                             | Type::Intersection(_)
                             | Type::Function { .. }
+                            | Type::GenericFunction { .. }
                             | Type::Infer(_)
                     ) {
                         format!("({text})")

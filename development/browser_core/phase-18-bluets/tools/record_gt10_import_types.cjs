@@ -8,6 +8,7 @@ const path = require('node:path');
 const os = require('node:os');
 const {pathToFileURL} = require('node:url');
 const {spawnSync} = require('node:child_process');
+const virtualCompilerHost = require('./virtual_compiler_host.cjs');
 const root = path.resolve(__dirname, '../../../..');
 const support = path.join(root, 'backend/bluets/tests/fixtures/oracle_support');
 const ts = require(path.join(support, 'load_typescript.cjs'))(process.env.BLUEICE_BLUETSC_ORACLE || 'tsc');
@@ -20,15 +21,11 @@ function compile(files, options, entry = 'entry.ts') {
     if (converted.errors.length) throw Error('Invalid native options');
     const native = converted.options, sources = new Map(Object.entries(files).map(([n,t])=>[path.join(base,n),t]));
     const host = ts.createCompilerHost(native), read = host.getSourceFile;
-    const exists = host.fileExists, readFile = host.readFile, dirs = host.directoryExists;
-    host.fileExists = file => sources.has(file) || exists(file);
-    host.readFile = file => sources.get(file) ?? readFile(file);
-    host.directoryExists = file => file === base || dirs(file);
     host.getSourceFile = (file, version, ...args) => {
-        if (sources.has(file)) return ts.createSourceFile(file, sources.get(file), version, true);
         if (!libraries.has(file)) libraries.set(file, read(file, version, ...args));
         return libraries.get(file);
     };
+    virtualCompilerHost(ts, host, sources);
     const declarations = {}, javascript = {};
     host.writeFile = (file,text) => {
         const name = path.relative(base,file).replaceAll(path.sep,'/');
@@ -38,7 +35,8 @@ function compile(files, options, entry = 'entry.ts') {
     const program = ts.createProgram([path.join(base,entry)],native,host);
     // Only this recorder's virtual project prefix is portable path metadata.
     // Keep the native message, module identity and complete UTF-16 span intact.
-    const describe = d => ({code:d.code,message:ts.flattenDiagnosticMessageText(d.messageText,'\n').replaceAll(base+path.sep,''),
+    const describe = d => ({code:d.code,message:ts.flattenDiagnosticMessageText(d.messageText,'\n')
+        .replaceAll(ts.normalizePath(base)+'/', '').replaceAll(base+path.sep,''),
         module:d.file?path.relative(base,d.file.fileName).replaceAll(path.sep,'/'):null,
         start:d.start??null,length:d.length??null,related:(d.relatedInformation||[]).map(describe)});
     const diagnostics = ts.sortAndDeduplicateDiagnostics(ts.getPreEmitDiagnostics(program)).map(describe);

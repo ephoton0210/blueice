@@ -465,6 +465,16 @@ pub(crate) fn in_object_literal(tokens: &[Token], index: usize) -> bool {
                 let before = cursor
                     .checked_sub(1)
                     .map(|before| tokens[before].text.as_str());
+                if before == Some(":") {
+                    if conditional_colon(tokens, cursor - 1) {
+                        return true;
+                    }
+                    // A property-value brace inherits its enclosing object.
+                    // A label/switch brace instead inherits a statement body.
+                    // Walk outward iteratively, without adding parser depth.
+                    cursor = cursor.saturating_sub(1);
+                    continue;
+                }
                 // A `{` that begins the tokens of an expression is an object.
                 return before.is_none()
                     || matches!(
@@ -497,6 +507,23 @@ pub(crate) fn in_object_literal(tokens: &[Token], index: usize) -> bool {
                         )
                     );
             }
+            _ => {}
+        }
+    }
+    false
+}
+
+fn conditional_colon(tokens: &[Token], colon: usize) -> bool {
+    let mut depth = 0usize;
+    let mut pairs = 0usize;
+    for token in tokens[..colon].iter().rev() {
+        match token.text.as_str() {
+            ")" | "]" | "}" => depth += 1,
+            "(" | "[" | "{" if depth > 0 => depth -= 1,
+            "(" | "[" | "{" | ";" if depth == 0 => return false,
+            ":" if depth == 0 => pairs += 1,
+            "?" if depth == 0 && pairs == 0 => return true,
+            "?" if depth == 0 => pairs -= 1,
             _ => {}
         }
     }

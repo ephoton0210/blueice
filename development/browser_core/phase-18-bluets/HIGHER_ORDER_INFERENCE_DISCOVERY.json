@@ -1,0 +1,825 @@
+{
+  "schema": 1,
+  "parentCommit": "87d53ef80beb76c77dd804b9c14f3ed2dbb8a4c5",
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "compilerSha256": "b826dc358758c6625cfc3789a947de92646cb17818422d075d4e3077c74f57e1",
+  "typescript": "5.9.3",
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "libraries": {
+    "lib.es5.d.ts": "c430d44666289dae81f30fa7b2edebf186ecc91a2d4c71266ea6ae76388792e1",
+    "lib.decorators.d.ts": "8e7f8264d0fb4c5339605a15daadb037bf238c10b654bb3eee14208f860a32ea",
+    "lib.decorators.legacy.d.ts": "782dec38049b92d4e85c1585fbea5474a219c6984a35b004963b00beb1aab538"
+  },
+  "inputSha256": "6bc66a481475f064673eabd2743c34e8147d55301eeb05cc37dd10b974e78b62",
+  "rawMeasurementSha256": "471a2c7dace1d01205b581846613d23497b4f6fc35e064d281c1d8c1b9cdb0de",
+  "auditScriptSha256": "c2f0426fea96286f11e53516ffc155947b8a4d2e9b8abef6e2297f1518274239",
+  "originalRecorderIssue": "The raw declarations property included build manifest/JavaScript outputs; those are retained and excluded only from the declaration-language comparison.",
+  "comparisonScope": "Complete verdict, primary/related diagnostics and UTF-16 positions, and physical declaration inventory/bytes; build-only products retained separately. No declaration normalization.",
+  "sourceStringsUnchanged": true,
+  "rawObservationsUnchanged": true,
+  "inventoryCredit": 0,
+  "comparisons": 24,
+  "completeAgreements": 4,
+  "completeDifferences": 20,
+  "classifications": {
+    "exact-declaration-difference": 5,
+    "incorrect-rejection": 13,
+    "complete-diagnostic-difference": 2,
+    "complete-agreement": 4
+  },
+  "verdictCalibrationQuestions": [],
+  "cases": [
+    {
+      "id": "compose-array-box",
+      "expectedNativeAccepts": true,
+      "native": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: <T>(value: T) => {\n    value: T[];\n};\n"
+        }
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: (value: unknown) => unknown;\n"
+        }
+      },
+      "blueBuildOnlyProducts": [
+        "bluetsc.manifest.json",
+        "main.js"
+      ],
+      "agrees": false,
+      "authoredVerdictAgrees": true,
+      "classification": "exact-declaration-difference"
+    },
+    {
+      "id": "compose-array-box-call",
+      "expectedNativeAccepts": true,
+      "native": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: <T>(value: T) => {\n    value: T[];\n};\nexport declare const demanded: {\n    value: string[];\n};\n"
+        }
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'unknown' is not assignable to type '{ value: string[]; }'.",
+            "file": "main.ts",
+            "position": {
+              "column": 14,
+              "length": 8,
+              "line": 5
+            },
+            "relatedInformation": []
+          }
+        ],
+        "declarations": {}
+      },
+      "blueBuildOnlyProducts": [],
+      "agrees": false,
+      "authoredVerdictAgrees": true,
+      "classification": "incorrect-rejection"
+    },
+    {
+      "id": "compose-array-box-reject",
+      "expectedNativeAccepts": false,
+      "native": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type '{ value: string[]; }' is not assignable to type '{ value: number[]; }'.\n  Types of property 'value' are incompatible.\n    Type 'string[]' is not assignable to type 'number[]'.\n      Type 'string' is not assignable to type 'number'.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 14,
+              "length": 8
+            },
+            "relatedInformation": []
+          }
+        ],
+        "declarations": {}
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'unknown' is not assignable to type '{ value: number[]; }'.",
+            "file": "main.ts",
+            "position": {
+              "column": 14,
+              "length": 8,
+              "line": 5
+            },
+            "relatedInformation": []
+          }
+        ],
+        "declarations": {}
+      },
+      "blueBuildOnlyProducts": [],
+      "agrees": false,
+      "authoredVerdictAgrees": true,
+      "classification": "complete-diagnostic-difference"
+    },
+    {
+      "id": "compose-arrow-generics",
+      "expectedNativeAccepts": true,
+      "native": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: <T>(value: T) => {\n    value: T[];\n};\n"
+        }
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: (value: unknown) => unknown;\n"
+        }
+      },
+      "blueBuildOnlyProducts": [
+        "bluetsc.manifest.json",
+        "main.js"
+      ],
+      "agrees": false,
+      "authoredVerdictAgrees": true,
+      "classification": "exact-declaration-difference"
+    },
+    {
+      "id": "compose-three-stages",
+      "expectedNativeAccepts": true,
+      "native": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: <T>(value: T) => {\n    value: T[];\n}[];\nexport declare const demanded: {\n    value: string[];\n}[];\n"
+        }
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'unknown' is not assignable to type '{ value: string[]; }[]'.",
+            "file": "main.ts",
+            "position": {
+              "column": 14,
+              "length": 8,
+              "line": 5
+            },
+            "relatedInformation": []
+          }
+        ],
+        "declarations": {}
+      },
+      "blueBuildOnlyProducts": [],
+      "agrees": false,
+      "authoredVerdictAgrees": true,
+      "classification": "incorrect-rejection"
+    },
+    {
+      "id": "compose-constrained-first",
+      "expectedNativeAccepts": true,
+      "native": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: <T extends {\n    tag: string;\n}>(value: T) => {\n    value: T[];\n};\nexport declare const demanded: {\n    value: {\n        tag: string;\n        extra: number;\n    }[];\n};\n"
+        }
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2345,
+            "message": "Argument of type '<T extends { tag: string; }>(value: T) => T[]' is not assignable to parameter of type '(value: unknown) => unknown'.\n  Types of parameters 'value' and 'value' are incompatible.\n    Type 'unknown' is not assignable to type '{ tag: string; }'.",
+            "file": "main.ts",
+            "position": {
+              "column": 31,
+              "length": 6,
+              "line": 4
+            },
+            "relatedInformation": []
+          }
+        ],
+        "declarations": {}
+      },
+      "blueBuildOnlyProducts": [],
+      "agrees": false,
+      "authoredVerdictAgrees": true,
+      "classification": "incorrect-rejection"
+    },
+    {
+      "id": "compose-concrete-first",
+      "expectedNativeAccepts": true,
+      "native": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: (value: number) => string[];\nexport declare const demanded: string[];\n"
+        }
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'unknown' is not assignable to type 'string[]'.",
+            "file": "main.ts",
+            "position": {
+              "column": 14,
+              "length": 8,
+              "line": 5
+            },
+            "relatedInformation": []
+          }
+        ],
+        "declarations": {}
+      },
+      "blueBuildOnlyProducts": [],
+      "agrees": false,
+      "authoredVerdictAgrees": true,
+      "classification": "incorrect-rejection"
+    },
+    {
+      "id": "compose-concrete-second",
+      "expectedNativeAccepts": true,
+      "native": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: (value: unknown) => number;\nexport declare const demanded: number;\n"
+        }
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: (value: unknown) => number;\nexport declare const demanded: number;\n"
+        }
+      },
+      "blueBuildOnlyProducts": [
+        "bluetsc.manifest.json",
+        "main.js"
+      ],
+      "agrees": true,
+      "authoredVerdictAgrees": true,
+      "classification": "complete-agreement"
+    },
+    {
+      "id": "lift-generic-identity",
+      "expectedNativeAccepts": true,
+      "native": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: <T>(value: T) => T[];\n"
+        }
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: (value: unknown) => unknown[];\n"
+        }
+      },
+      "blueBuildOnlyProducts": [
+        "bluetsc.manifest.json",
+        "main.js"
+      ],
+      "agrees": false,
+      "authoredVerdictAgrees": true,
+      "classification": "exact-declaration-difference"
+    },
+    {
+      "id": "lift-generic-identity-call",
+      "expectedNativeAccepts": true,
+      "native": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: <T>(value: T) => T[];\nexport declare const demanded: string[];\n"
+        }
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'unknown[]' is not assignable to type 'string[]'.\n  Type 'unknown' is not assignable to type 'string'.",
+            "file": "main.ts",
+            "position": {
+              "column": 14,
+              "length": 8,
+              "line": 4
+            },
+            "relatedInformation": []
+          }
+        ],
+        "declarations": {}
+      },
+      "blueBuildOnlyProducts": [],
+      "agrees": false,
+      "authoredVerdictAgrees": true,
+      "classification": "incorrect-rejection"
+    },
+    {
+      "id": "lift-generic-identity-reject",
+      "expectedNativeAccepts": false,
+      "native": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string[]' is not assignable to type 'number[]'.\n  Type 'string' is not assignable to type 'number'.",
+            "file": "main.ts",
+            "position": {
+              "line": 4,
+              "column": 14,
+              "length": 8
+            },
+            "relatedInformation": []
+          }
+        ],
+        "declarations": {}
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'unknown[]' is not assignable to type 'number[]'.\n  Type 'unknown' is not assignable to type 'number'.",
+            "file": "main.ts",
+            "position": {
+              "column": 14,
+              "length": 8,
+              "line": 4
+            },
+            "relatedInformation": []
+          }
+        ],
+        "declarations": {}
+      },
+      "blueBuildOnlyProducts": [],
+      "agrees": false,
+      "authoredVerdictAgrees": true,
+      "classification": "complete-diagnostic-difference"
+    },
+    {
+      "id": "lift-contextual-result",
+      "expectedNativeAccepts": true,
+      "native": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: (value: number) => number[];\n"
+        }
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: (value: number) => number[];\n"
+        }
+      },
+      "blueBuildOnlyProducts": [
+        "bluetsc.manifest.json",
+        "main.js"
+      ],
+      "agrees": true,
+      "authoredVerdictAgrees": true,
+      "classification": "complete-agreement"
+    },
+    {
+      "id": "preserve-generic-function-control",
+      "expectedNativeAccepts": true,
+      "native": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "declare function identity<T>(value: T): T;\nexport declare const result: typeof identity;\nexport declare const demanded: number;\nexport {};\n"
+        }
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: <T>(value: T) => T;\nexport declare const demanded: number;\n"
+        }
+      },
+      "blueBuildOnlyProducts": [
+        "bluetsc.manifest.json",
+        "main.js"
+      ],
+      "agrees": false,
+      "authoredVerdictAgrees": true,
+      "classification": "exact-declaration-difference"
+    },
+    {
+      "id": "outer-parameter-shadowing",
+      "expectedNativeAccepts": true,
+      "native": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare function outer<T>(value: T): <T_1>(value: T_1) => {\n    value: T_1[];\n};\nexport declare const demanded: {\n    value: number[];\n};\n"
+        }
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type '(value: unknown) => unknown' is not assignable to type '{ value: number[]; }'.",
+            "file": "main.ts",
+            "position": {
+              "column": 14,
+              "length": 8,
+              "line": 5
+            },
+            "relatedInformation": []
+          }
+        ],
+        "declarations": {}
+      },
+      "blueBuildOnlyProducts": [],
+      "agrees": false,
+      "authoredVerdictAgrees": true,
+      "classification": "incorrect-rejection"
+    },
+    {
+      "id": "imported-first",
+      "expectedNativeAccepts": true,
+      "native": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "first.d.ts": "export declare function list<T>(value: T): T[];\n",
+          "main.d.ts": "export declare const result: <T>(value: T) => {\n    value: T[];\n};\nexport declare const demanded: {\n    value: string[];\n};\n"
+        }
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'unknown' is not assignable to type '{ value: string[]; }'.",
+            "file": "main.ts",
+            "position": {
+              "column": 14,
+              "length": 8,
+              "line": 5
+            },
+            "relatedInformation": []
+          }
+        ],
+        "declarations": {}
+      },
+      "blueBuildOnlyProducts": [],
+      "agrees": false,
+      "authoredVerdictAgrees": true,
+      "classification": "incorrect-rejection"
+    },
+    {
+      "id": "imported-second",
+      "expectedNativeAccepts": true,
+      "native": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: <T>(value: T) => {\n    value: T[];\n};\nexport declare const demanded: {\n    value: string[];\n};\n",
+          "second.d.ts": "export declare function box<T>(value: T): {\n    value: T;\n};\n"
+        }
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'unknown' is not assignable to type '{ value: string[]; }'.",
+            "file": "main.ts",
+            "position": {
+              "column": 14,
+              "length": 8,
+              "line": 5
+            },
+            "relatedInformation": []
+          }
+        ],
+        "declarations": {}
+      },
+      "blueBuildOnlyProducts": [],
+      "agrees": false,
+      "authoredVerdictAgrees": true,
+      "classification": "incorrect-rejection"
+    },
+    {
+      "id": "imported-all",
+      "expectedNativeAccepts": true,
+      "native": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "factories.d.ts": "export declare function list<T>(value: T): T[];\nexport declare function box<T>(value: T): {\n    value: T;\n};\n",
+          "higher.d.ts": "export declare function compose<A, B, C>(first: (value: A) => B, second: (value: B) => C): (value: A) => C;\n",
+          "main.d.ts": "export declare const result: <T>(value: T) => {\n    value: T[];\n};\nexport declare const demanded: {\n    value: string[];\n};\n"
+        }
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'unknown' is not assignable to type '{ value: string[]; }'.",
+            "file": "main.ts",
+            "position": {
+              "column": 14,
+              "length": 8,
+              "line": 4
+            },
+            "relatedInformation": []
+          }
+        ],
+        "declarations": {}
+      },
+      "blueBuildOnlyProducts": [],
+      "agrees": false,
+      "authoredVerdictAgrees": true,
+      "classification": "incorrect-rejection"
+    },
+    {
+      "id": "reexported-generics",
+      "expectedNativeAccepts": true,
+      "native": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "bridge.d.ts": "export { list, box } from \"./factories\";\n",
+          "factories.d.ts": "export declare function list<T>(value: T): T[];\nexport declare function box<T>(value: T): {\n    value: T;\n};\n",
+          "main.d.ts": "export declare const result: <T>(value: T) => {\n    value: T[];\n};\nexport declare const demanded: {\n    value: string[];\n};\n"
+        }
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'unknown' is not assignable to type '{ value: string[]; }'.",
+            "file": "main.ts",
+            "position": {
+              "column": 14,
+              "length": 8,
+              "line": 4
+            },
+            "relatedInformation": []
+          }
+        ],
+        "declarations": {}
+      },
+      "blueBuildOnlyProducts": [],
+      "agrees": false,
+      "authoredVerdictAgrees": true,
+      "classification": "incorrect-rejection"
+    },
+    {
+      "id": "annotated-generic-callable",
+      "expectedNativeAccepts": true,
+      "native": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: <Element>(value: Element) => {\n    value: Element[];\n};\nexport declare const demanded: {\n    value: string[];\n};\n"
+        }
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'unknown' is not assignable to type '{ value: string[]; }'.",
+            "file": "main.ts",
+            "position": {
+              "column": 14,
+              "length": 8,
+              "line": 5
+            },
+            "relatedInformation": []
+          }
+        ],
+        "declarations": {}
+      },
+      "blueBuildOnlyProducts": [],
+      "agrees": false,
+      "authoredVerdictAgrees": true,
+      "classification": "incorrect-rejection"
+    },
+    {
+      "id": "object-result-no-propagation-control",
+      "expectedNativeAccepts": true,
+      "native": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: {\n    run: (value: unknown) => unknown;\n};\n"
+        }
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: {\n    run: (value: unknown) => unknown;\n};\n"
+        }
+      },
+      "blueBuildOnlyProducts": [
+        "bluetsc.manifest.json",
+        "main.js"
+      ],
+      "agrees": true,
+      "authoredVerdictAgrees": true,
+      "classification": "complete-agreement"
+    },
+    {
+      "id": "object-result-rejection-control",
+      "expectedNativeAccepts": false,
+      "native": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'unknown' is not assignable to type 'string'.",
+            "file": "main.ts",
+            "position": {
+              "line": 4,
+              "column": 14,
+              "length": 8
+            },
+            "relatedInformation": []
+          }
+        ],
+        "declarations": {}
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'unknown' is not assignable to type 'string'.",
+            "file": "main.ts",
+            "position": {
+              "column": 14,
+              "length": 8,
+              "line": 4
+            },
+            "relatedInformation": []
+          }
+        ],
+        "declarations": {}
+      },
+      "blueBuildOnlyProducts": [],
+      "agrees": true,
+      "authoredVerdictAgrees": true,
+      "classification": "complete-agreement"
+    },
+    {
+      "id": "overloaded-result-control",
+      "expectedNativeAccepts": true,
+      "native": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: {\n    (value: unknown): unknown;\n    (): unknown;\n};\n"
+        }
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: {\n    (value: unknown): unknown;\n    (): unknown | undefined;\n};\n"
+        }
+      },
+      "blueBuildOnlyProducts": [
+        "bluetsc.manifest.json",
+        "main.js"
+      ],
+      "agrees": false,
+      "authoredVerdictAgrees": true,
+      "classification": "exact-declaration-difference"
+    },
+    {
+      "id": "generic-constructor-factory",
+      "expectedNativeAccepts": true,
+      "native": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "declare class Box<T> {\n    value: T;\n    constructor(value: T);\n}\nexport declare const result: <T>(value: T) => Box<T>;\nexport declare const demanded: Box<string>;\nexport {};\n"
+        }
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2345,
+            "message": "Argument of type '\"text\"' is not assignable to parameter of type 'T'.",
+            "file": "main.ts",
+            "position": {
+              "column": 45,
+              "length": 6,
+              "line": 4
+            },
+            "relatedInformation": []
+          }
+        ],
+        "declarations": {}
+      },
+      "blueBuildOnlyProducts": [],
+      "agrees": false,
+      "authoredVerdictAgrees": true,
+      "classification": "incorrect-rejection"
+    },
+    {
+      "id": "propagated-default-parameter",
+      "expectedNativeAccepts": true,
+      "native": {
+        "accepts": true,
+        "diagnostics": [],
+        "declarations": {
+          "main.d.ts": "export declare const result: <T = string>(value: T) => T[];\nexport declare const demanded: number[];\n"
+        }
+      },
+      "nativeBuildOnlyProducts": [],
+      "blue": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'unknown' is not assignable to type 'number[]'.",
+            "file": "main.ts",
+            "position": {
+              "column": 14,
+              "length": 8,
+              "line": 5
+            },
+            "relatedInformation": []
+          }
+        ],
+        "declarations": {}
+      },
+      "blueBuildOnlyProducts": [],
+      "agrees": false,
+      "authoredVerdictAgrees": true,
+      "classification": "incorrect-rejection"
+    }
+  ],
+  "conclusion": "independently-audited-discovery",
+  "recordedAt": "2026-11-14T02:51:47.288Z",
+  "evidence": {
+    "path": "HIGHER_ORDER_INFERENCE_DISCOVERY_EVIDENCE.tar.gz",
+    "bytes": 10376928,
+    "sha256": "3276f1b8b1b183cc30c3112f181e9739f468998b828490131d81d22c0c15fde2",
+    "members": 262
+  },
+  "memberManifest": {
+    "path": "HIGHER_ORDER_INFERENCE_DISCOVERY_MEMBERS.json",
+    "sha256": "38ba96590a99a8b4931c8e0e0fc8d874d21788a9276792dd2a34fd8362b3f087"
+  },
+  "acceptedBaselineEvidence": {
+    "measurement": "CONDITIONAL_INFERENCE_MEASUREMENT.json",
+    "measurementSha256": "a416204ca30660dc8923899c8506b58c0edfa59585369522fb6e1a140b3c0c18",
+    "artifactIndex": "CONDITIONAL_INFERENCE_ARTIFACTS.json",
+    "artifactIndexSha256": "3bce80c7e9690e87c2a941483c36306cb1757ef36c595a15fc803a078a289a66",
+    "scope": "Accepted P0-F source and complete pinned oracle packages with their original licenses."
+  },
+  "publicationRecordedAt": "2026-11-14T02:54:37.230633+00:00"
+}

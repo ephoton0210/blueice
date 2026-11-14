@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_53.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/contract/r6-preflight-authority-restoration-1/COMPATIBILITY_CASES.json",
+      "bytes": 33131755,
+      "sha256": "fe8c66a193b13378f0b6fe576b90201e08260727d51f2ee90bba17b7fde4b973"
+    },
+    {
+      "path": "development-history/contract/r6-preflight-authority-restoration-1/COMPATIBILITY_INVENTORY.md",
+      "bytes": 126739,
+      "sha256": "62b82d6af3fc6ed11dd126f99ccfd73a275afc662a95df5d51309b63e52505c7"
+    },
+    {
+      "path": "development-history/contract/r6-preflight-authority-restoration-1/COMPATIBILITY_MEASUREMENT.json",
+      "bytes": 456650,
+      "sha256": "d54611b9695ae76dd8df28df779f14c221d0a6fce79ba84843ab1e57b7358242"
+    },
+    {
+      "path": "development-history/contract/r6-preflight-authority-restoration-1/COMPATIBILITY_SUITES.json",
+      "bytes": 231043,
+      "sha256": "e0d2aabf656f63be6b227ff9ecfc69e51a0b09d3f29368b8c86df7c5ba2bef4a"
+    },
+    {
+      "path": "development-history/contract/r6-preflight-authority-restoration-1/PLAN.md",
+      "bytes": 1327413,
+      "sha256": "2cb51a6c15de4f3c1fb21d5f520fdb202d9cba790491b96f3b1085a7021496d9"
+    },
+    {
+      "path": "development-history/contract/r6-preflight-authority-restoration-1/TODO.md",
+      "bytes": 103483,
+      "sha256": "3052fca17159fc470c601c5e0d3d8d8d95d269f8fd223e6d972e4219877169e9"
+    },
+    {
+      "path": "development-history/contract/r6-preflight-authority-restoration-1/account_inventory_rows.py.log",
+      "bytes": 108,
+      "sha256": "bcd006b45dc8e7c9313ca81c15da8668d8f84bbaad883aec934bd84c6e46e45b"
+    },
+    {
+      "path": "development-history/contract/r6-preflight-authority-restoration-1/check_compatibility_status.py.log",
+      "bytes": 91,
+      "sha256": "15369a59ba9bc0f7c61fd1397430cd9f87b259b5c75842a14789c69200c43ef0"
+    },
+    {
+      "path": "development-history/contract/r6-preflight-authority-restoration-1/receipt.json",
+      "bytes": 2052,
+      "sha256": "465d3e35ebe37ffee9d95195c800c1b341f01359480dcec44dd00445ba3c549e"
+    }
+  ]
+}

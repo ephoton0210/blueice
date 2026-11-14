@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_49.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/frozen-source.tar.gz",
+      "bytes": 34382106,
+      "sha256": "e800343edbd77612e0fba49172757263298ce43895ffcb8f8dcf7ac404a6f52b"
+    },
+    {
+      "path": "development-history/contract/r5-project-failure-preservation-1/receipt.json",
+      "bytes": 3525,
+      "sha256": "051f47bb21102fd01359b72b1c7a34575e95f3a064e2265ef3a521c5df1d56fe"
+    }
+  ]
+}

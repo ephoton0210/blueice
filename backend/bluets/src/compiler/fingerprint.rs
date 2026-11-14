@@ -26,6 +26,7 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     add(crate::symbol_keys::VERSION);
     add(crate::type_operator_profiles::VERSION);
     add(crate::emitter::STRING_LITERAL_LOWERING_VERSION);
+    add(crate::emitter::ES5_OBJECT_LOWERING_VERSION);
     add(crate::checker::CLASS_SURFACE_VERSION);
     add(crate::checker::MODULE_EXPORTS_VERSION);
     add(crate::checker::STRUCTURAL_BOUNDARIES_VERSION);
@@ -66,7 +67,7 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     });
     add(options.module_kind.as_str());
     add("bluets-output-options/2");
-    add("bluets-declaration-options/4");
+    add("bluets-declaration-options/5");
     if options.declaration {
         add(crate::emitter::LITERAL_ORDER_VERSION);
     }

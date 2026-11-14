@@ -192,12 +192,21 @@ pub(crate) fn substitute_type(value: &Type, substitutions: &BTreeMap<String, Typ
             parameters: substitute_parameters(parameters, substitutions),
             result: Box::new(substitute_type(result, substitutions)),
         },
-        Type::Union(values) => Type::Union(
-            values
+        Type::Union(values) => {
+            let substituted = values
                 .iter()
                 .map(|value| substitute_type(value, substitutions))
-                .collect(),
-        ),
+                .collect::<Vec<_>>();
+            if substituted != *values {
+                if substituted.contains(&Type::Any) {
+                    return Type::Any;
+                }
+                if substituted.contains(&Type::StrictUnknown) {
+                    return Type::StrictUnknown;
+                }
+            }
+            Type::Union(substituted)
+        }
         Type::Intersection(values) => Type::Intersection(
             values
                 .iter()

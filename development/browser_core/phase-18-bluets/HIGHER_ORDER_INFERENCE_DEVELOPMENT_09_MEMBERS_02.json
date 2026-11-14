@@ -1,0 +1,2152 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_09.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/module/expressions/readonly.rs",
+      "bytes": 11869,
+      "sha256": "ec04f8e3ab716676a3b54b6b0e8362f8a533381827ae7ea105b7c5f35e82e80d"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/module/expressions/receivers.rs",
+      "bytes": 3087,
+      "sha256": "5793748f79d253875a52b698c591782c85dd9d893ddec4790be986dc1fd73b70"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/module/expressions/signatures.rs",
+      "bytes": 3449,
+      "sha256": "fdd3a117a58745d06f29bc5795ce7228f26696b923d18561f20465eaa447d649"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/module/expressions/symbol_diagnostics.rs",
+      "bytes": 4110,
+      "sha256": "95c5e56631720bd7043fb2dd699ca7d1841a5b78196753fb2acbe45d157b9268"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/module/expressions/variadic.rs",
+      "bytes": 5009,
+      "sha256": "fe0714eebf8cefc297a59209d36b4925bff4a4241e90459c7b4dde753892826d"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/module/expressions.rs",
+      "bytes": 44168,
+      "sha256": "092ee6b7fc4a64ef5e8afe72fa2dbd0f93388c14fedd0e61907c74cacf3765af"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/module/instantiation.rs",
+      "bytes": 5171,
+      "sha256": "5434d15a08c53c13b03a68b00f787937fca1d0ddad8a37a34c7452ca2f9fcc83"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/module/jsx/managed.rs",
+      "bytes": 7634,
+      "sha256": "b72eac94003f7d0c26def3edc7b20b70182ca57707b1a96a26e57380c27c3ac8"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/module/jsx/namespace.rs",
+      "bytes": 1019,
+      "sha256": "d74dce0d46c9fbb3f74d72a9120d6d8fa843eb9318fb7c59bde1d47e1f0f6c72"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/module/jsx/overloads.rs",
+      "bytes": 5084,
+      "sha256": "200fe91e38d490e55d3a65f238fb7fbbeda0a96a8f29a986484300700377f273"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/module/jsx/presentation.rs",
+      "bytes": 12416,
+      "sha256": "fc9a70233e6f2cb95478ceb63ddf03735a57c6df93cedf55cd5f9407f9e2d2ea"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/module/jsx/tags.rs",
+      "bytes": 8829,
+      "sha256": "dc6e011cece61b60c4a6f92a98fd614d4f9ab2cd2bcdc37ba66b670550a4305a"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/module/jsx/unions.rs",
+      "bytes": 3637,
+      "sha256": "f8e9cf735c79787d9ebc26449c00bc4683b1c1a36c67ca9b7c3d62215c176aa8"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/module/jsx.rs",
+      "bytes": 28121,
+      "sha256": "28798453f92a9f49e3c6f028896794779b037edffed34a221f66540bfd1582cd"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/module/mod.rs",
+      "bytes": 6839,
+      "sha256": "f30b3cbc460f361fe9f985a140ec00fa79952afaee7a0d0d16be13683d1d9280"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/module/return_inference/completion.rs",
+      "bytes": 6078,
+      "sha256": "be106e22b54d5c21ec8c8b96401be8915e45475875927f0ea1be683155ac19cb"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/module/return_inference/context.rs",
+      "bytes": 1357,
+      "sha256": "093ab1cb6faaa5da7b2fbcc75e225fccb2f771147d3a70acd4b328742e9f1601"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/module/return_inference/freshness.rs",
+      "bytes": 6570,
+      "sha256": "ad6f6ebb2d14740ced38f74bb5d7849a74d2ba7319c7e947afa1250a1dc70895"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/module/return_inference/predicates.rs",
+      "bytes": 1017,
+      "sha256": "15d632db2a28467dc3709b0c30362361d3f09ee9fda581d14d2055ff164c6239"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/module/return_inference.rs",
+      "bytes": 34324,
+      "sha256": "877ac170b3c9fc67d77a490fe7bd590367bd09d54ba556e6e55c9e802b00bc69"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/project.rs",
+      "bytes": 35051,
+      "sha256": "9407135888ee5486ad27eaa8a8bfd426d6a3dbd4c0d75552454d8d9430bdd921"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/properties.rs",
+      "bytes": 21589,
+      "sha256": "e8a0e045bd2af29dd49cf3d2050e1c07cb5718db31c6db1c77c2388eb5a9dc99"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/recovery.rs",
+      "bytes": 1128,
+      "sha256": "e2ff75785979151139670deba0c97816bb65b1d689ffbdd0b897f0947ee2c928"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/reexports.rs",
+      "bytes": 9256,
+      "sha256": "95eb5573122c482d64e356cdb9210ff6b1587d3fa7612847fc594319c66e2a1b"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/scopes/checking_flags.rs",
+      "bytes": 9461,
+      "sha256": "df21ba6cae37d7ccced7c1bc57471281a6765ac1d6ae262f3b6f4e9b2b8f6b80"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/scopes/diagnostics.rs",
+      "bytes": 7939,
+      "sha256": "00cc7c2a925746978d09c83ddc6cada446c3eec206e48c3926b9ee47c8e5ad2f"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/scopes/emission/jsx.rs",
+      "bytes": 2762,
+      "sha256": "efea697287cc6fa65be8a3fb7a6cde3182017e44c7da73367bc1b860a101195e"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/scopes/emission.rs",
+      "bytes": 8770,
+      "sha256": "86e1cdb0b8e592f80b4a04fbe2ade0b52841827f4ab420d306bf2fd28dd17a56"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/scopes/expressions.rs",
+      "bytes": 24200,
+      "sha256": "e0afdf58c667b3e8f78d9bbc6f372320fc2912f7c2d214f69b7b648b8820bdf2"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/scopes/flow/assignments.rs",
+      "bytes": 4133,
+      "sha256": "381885f536fd76bbedffde01e6aaadd81095539630a59f70cd40b40b529e38c7"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/scopes/flow/calls.rs",
+      "bytes": 12597,
+      "sha256": "58bd05d2aa572b15097bbe8811dddfc724b0563c1947990f0a3e721ee97233a1"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/scopes/flow/evaluate.rs",
+      "bytes": 20341,
+      "sha256": "6ec8534e0e0b0184114c12e307cb2aaa6b63f29f1ee11b3298d332f7ee867810"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/scopes/flow/graph.rs",
+      "bytes": 18176,
+      "sha256": "fea1b3c3706fadef286b09fe1469a01e9ae282b83186fec14ed500c7fd809fd0"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/scopes/flow/inferred_predicates.rs",
+      "bytes": 3336,
+      "sha256": "4a140815cc5b2d6699093606aa08467b8db5c10f25f500dd0065536b04a145e4"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/scopes/flow/mod.rs",
+      "bytes": 10716,
+      "sha256": "2c398f2ff18e50e6e23f5c25d6a44c443e62939992fc6d707021cf1c3991dd95"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/scopes/flow/predicates.rs",
+      "bytes": 16971,
+      "sha256": "3703d409d659de01d2ff05373ccf2974121da4c24703039e796157708926d27c"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/scopes/flow/properties.rs",
+      "bytes": 3721,
+      "sha256": "0703f790a210b994b03efddaf2126f62a19c3f98bae8ffcabfc15d83d63c563d"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/scopes/flow_bindings.rs",
+      "bytes": 8943,
+      "sha256": "fd6d21628dc3f27aea8e99bae9932f2450683fafbc88704eb897649b0e045604"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/scopes/function_queries.rs",
+      "bytes": 1553,
+      "sha256": "5a30fefe9aa2f0ae715fdbb008d143d49389a02c65ecde2ed9741c06cd99c3ca"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/scopes/generic_parameters.rs",
+      "bytes": 3788,
+      "sha256": "3d2cf4ce08a6872e42d9e6f495e82634be250e0b404bd503c5fb298b3d239f5c"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/scopes/mod.rs",
+      "bytes": 22041,
+      "sha256": "b8ca3f67256793a123e01751e81299633a172beb0858eb2a61ec39070e9b9cad"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/scopes/mutations.rs",
+      "bytes": 20866,
+      "sha256": "0ca4d433272d1b034ab1b892fc48369688ccdad259587d03b15dd9f5bc860ca6"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/scopes/private.rs",
+      "bytes": 5172,
+      "sha256": "498002b9d0dc0812d4a760b731f4990e19b8aa95312ad6bbda2ec0bbaa9d8691"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/scopes/switches.rs",
+      "bytes": 3867,
+      "sha256": "cb9c092245f26678ce914e4b8c84453e0796209ed6aeb0c8dd19ad20c54aeaa5"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/scopes/targets.rs",
+      "bytes": 9029,
+      "sha256": "5445f5abd5829bc56a12430722d3d1938ccd9c75eb2290ffca86ae268c8c430a"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/scopes/walk.rs",
+      "bytes": 39492,
+      "sha256": "40ccefb6b159d4bfbd14e92117c1db0d22eee357c5c5199abc3d7d633e6abff3"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/tests/member_calls.rs",
+      "bytes": 10569,
+      "sha256": "83a33219636611c64e820a0f8ceac368a5b1d6c003eeb9bc27b6bb3233591cc0"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/tests/project_contracts.rs",
+      "bytes": 23791,
+      "sha256": "a3caa10ca224ca6408801637c326bd693bcf51b60d7f02ca3b2e0c33e96c06e9"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/tests/readonly.rs",
+      "bytes": 20367,
+      "sha256": "fec08711b65d023e7920cfc0b5b8265c2b382f1bb140b9ef70dfb224b66229b6"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/tests/readonly_assertions.rs",
+      "bytes": 2194,
+      "sha256": "5cfec2c6e93295368c3f69504644223ec749d46bdfd7103fb57c2edc9c699114"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/tests/readonly_assignment_results.rs",
+      "bytes": 2254,
+      "sha256": "c8550dde4023474136d2d2a0f7d22cac030636e12c3b541a5f7e9ba255281bab"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/tests/readonly_logical_assignment_results.rs",
+      "bytes": 3255,
+      "sha256": "dea844b34327e246df876ccadcf7ef1d9d5871cfc5d4d2248658ba210dc51f89"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/tests/readonly_logical_results.rs",
+      "bytes": 3168,
+      "sha256": "c1b557c1d8e69c0b82805754d88fc00e3d40830ac23e43c9b68271aad70de3f9"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/tests/readonly_opaque_receivers.rs",
+      "bytes": 2016,
+      "sha256": "94dab3ee7ebe9a56d39cde040b86ff3e5668718621134f7f04f0592aadf2ab8e"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/tests/readonly_record_spread.rs",
+      "bytes": 2537,
+      "sha256": "d38662ac8c75b5342d665d55b56f8bea747433af34fb1fb468d7cca4b90f63d4"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/tests/readonly_record_spread_union.rs",
+      "bytes": 4785,
+      "sha256": "4aecccb8e9b9eea2af1db118660c74f7ac1644f75a4eaa42ff13e178700f76af"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/tests/readonly_record_spread_unknown.rs",
+      "bytes": 2624,
+      "sha256": "b15329aae42b8c373b96054938a24371a8036eb9b87344a46ed374e531e5039f"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/tests/readonly_sequence.rs",
+      "bytes": 2299,
+      "sha256": "0ed01c68c8378732f6e473deabafae561806e32a4ecf23bb5efbc0f115b01475"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/tests/readonly_spread_results.rs",
+      "bytes": 1884,
+      "sha256": "015c008b3c8419982a5d5b2e9c007a82fddefb7b811f599b81f4c9a24c8c60f6"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/tests.rs",
+      "bytes": 24763,
+      "sha256": "ef63875f901c9443fa9269cf22183bdea974bf6166d53e7b3ecf52b08ea5ab0c"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/tuple_compositions.rs",
+      "bytes": 1282,
+      "sha256": "61814092f4e9553b344f3eac90ccbdbeb747070cd78052215d4889b482a9fc4d"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_operators/arguments.rs",
+      "bytes": 7117,
+      "sha256": "30e91fb6cafa1ae6e33225c78064ad0b9a73a88771aefe3d14a06eb285ae07af"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_operators/conditional/alias_variance.rs",
+      "bytes": 6462,
+      "sha256": "28139b49a1e620c29177eaa3d28324c8d4717afb82be58d118f0d3b266828589"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_operators/conditional/barriers.rs",
+      "bytes": 884,
+      "sha256": "7047446d569e3810aae83caefc20d523da6cd68b643df584b5060c4a3e4292b3"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_operators/conditional/callables.rs",
+      "bytes": 6859,
+      "sha256": "a39e46ad1dd9ea7247f126a1ea9b009b99bff922b6b9a342b51914cc3a3ceab2"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_operators/conditional/candidates.rs",
+      "bytes": 6435,
+      "sha256": "1e33d13894e32d18b14e8fbdca28e1669b5ec73eabd8314df6174941f5d83f86"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_operators/conditional/containers.rs",
+      "bytes": 3252,
+      "sha256": "27291fe836cce0f107233f7401f8acf6e1ed43cf4a0f26a965f0d3d5e973c3b7"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_operators/conditional/functions.rs",
+      "bytes": 5784,
+      "sha256": "9d58baa079f15b64eb31f9f7fa36ddd13d2ca8a3a68c68d047b6d3758f5207df"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_operators/conditional.rs",
+      "bytes": 11241,
+      "sha256": "d7155a5a2d9666ec6d3cedb5c250e8d719feb59f1aeddbda34872e5530f611d4"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_operators/keys/operand.rs",
+      "bytes": 2235,
+      "sha256": "7e64199ca265804db0af9fad7769a8e902adca39163d350fa6727091fd304a40"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_operators/keys/sets.rs",
+      "bytes": 4532,
+      "sha256": "98f316a2c6cb22a65b402c8d76c1dcf1c8c6068e535cafee0df74f14164ba221"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_operators/keys.rs",
+      "bytes": 12635,
+      "sha256": "b25420f3fa6d48cf42b77abe66ed530fbd5c29c00122e9e26419163eec0ec376"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_operators/literal_order.rs",
+      "bytes": 4050,
+      "sha256": "f3456cd8309a9fbe251ab3b2c9bb96b74680e1969fd2155996f698090fdd9df1"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_operators/mapped/materialize.rs",
+      "bytes": 1325,
+      "sha256": "b7bf1307e584a25a9f1609c6dece86202f6a0e87264f6e9c05288950f306195b"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_operators/mapped.rs",
+      "bytes": 8638,
+      "sha256": "dfa8faf8f28f515523b0f4f72d48cf0ee55720ffe28f56a36ad1e23ffffdfa48"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_operators/numeric-literal-order.json",
+      "bytes": 7104,
+      "sha256": "262d358fc4ed9b60f90fe6c50e40ce12a821478b394e89b991684675bb849f5c"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_operators/scalars.rs",
+      "bytes": 2268,
+      "sha256": "2dac42a2a206f4e0aa59b1d856cf40620dc599a1eba82d0f2fab9ae5e788352a"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_operators/string_mapping/tests.rs",
+      "bytes": 2971,
+      "sha256": "477ae375e64c7edb1246c6047bd164fbc44d00f47616546ecc63a4da6d9c9a71"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_operators/string_mapping.rs",
+      "bytes": 5043,
+      "sha256": "53c4c4b8136db3b81eb34049890fa11afc21be71d7805936cc23e9d45583baca"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_operators/templates/numeric.rs",
+      "bytes": 2082,
+      "sha256": "8419390b1a581d25eaf9b059910f8629032c001d482ead9de8c0e8958d776c5b"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_operators/templates/tests.rs",
+      "bytes": 3642,
+      "sha256": "71afda97d0e788a8c321484259cb85bc226aaaf0b7697be3fd22d2e27f0f57de"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_operators/templates.rs",
+      "bytes": 6871,
+      "sha256": "d6caf813e463b865b8913240f5ab58063047f80ea08a98d0a2de4705c8af312b"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_operators.rs",
+      "bytes": 9562,
+      "sha256": "fec58d3daf31ff89b8878f4b1425f3b0ce0aae40202face732fcdd66269a0095"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_relations/compatibility.rs",
+      "bytes": 8629,
+      "sha256": "7b79fec34b9978b59694d1535cf5f61884dc7b9e59cfe62ae883f2e49f2f7b07"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_relations/identity_shapes.rs",
+      "bytes": 4508,
+      "sha256": "ce957c83ffd10554db26ad57f9797414d75205308f24a7d71bb7669a275e3f93"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_relations/intersections/primitives.rs",
+      "bytes": 3619,
+      "sha256": "6db41a6f028b86199c3abb78e931510d7eb13252e83901f5cdb44c9dbb2f1fb0"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_relations/intersections.rs",
+      "bytes": 5306,
+      "sha256": "f970729034bd00e7fa54a22b40f0221f95d2656b60400d6e309d591075a1b7f2"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_relations/more_types.rs",
+      "bytes": 10464,
+      "sha256": "312c5ba8ee02735bace54555350533cb51a16c220e18e1159799acfdea5047f4"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_relations/parameters.rs",
+      "bytes": 12727,
+      "sha256": "96368808c279b8e13eede103e985b7355379819e969adadb56a1e5bcde2831df"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_relations/string_mapping.rs",
+      "bytes": 4057,
+      "sha256": "c69a80bc5d8fd89235c70ec2a3f05e5dcb0eed88554d339b2d97bee90d9bfbeb"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_relations/substitution.rs",
+      "bytes": 16538,
+      "sha256": "71377b5a3d7fbf9552246f5c590ac7074e9bdcae690b8fef69e5672f6f20bb55"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_relations/surfaces.rs",
+      "bytes": 1891,
+      "sha256": "24a85bfed32cf4e7c0629711416d63a5b7b7d3aa59f931b25efbdfa9e650d9bf"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_relations/symbolic_keys.rs",
+      "bytes": 6557,
+      "sha256": "e591457a1fbd3c05c78ae485d2e4fa3094297d0e0f1129db19f3ac884ac50dc0"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_relations/variance.rs",
+      "bytes": 7113,
+      "sha256": "f9ce4c27fd3fd9a31a61934067120b90086d8a11fdc84d20880cb190e1a01c49"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker/type_relations.rs",
+      "bytes": 40396,
+      "sha256": "78dfb287278915ff106afc86f5749ff7d97f3800a51f408ba61f8ef5b9d84eb3"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checker.rs",
+      "bytes": 38279,
+      "sha256": "2661ae8769ed70f0f75dc14fbceee277a182b806104365cdc95b4689bea502f8"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/checking_options.rs",
+      "bytes": 1924,
+      "sha256": "62e095c673242ab7bbb74b2dd97a8f581d239014586531d2ccac99de86fc30f0"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/compiler/fingerprint.rs",
+      "bytes": 7743,
+      "sha256": "7dc3c62cffcf37ada748adfdd66d39f1a027028d5fb501fb875f45f78ca3bf8c"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/compiler/isolated_declarations/literals.rs",
+      "bytes": 6264,
+      "sha256": "c9c82e9c48212360702c5bdce3a46f15fbe2cca45539d6e0be5bd3a40dcefbc4"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/compiler/isolated_declarations/members.rs",
+      "bytes": 5659,
+      "sha256": "429df3202fc30617f6df561d058fe71b483d4d85ef39d23ca7d64ac02c0dfb54"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/compiler/isolated_declarations/signatures.rs",
+      "bytes": 2631,
+      "sha256": "8d4ac03893535a9e95287157ec8f0191cc44f9e714963042946b7d24b5ee5482"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/compiler/isolated_declarations.rs",
+      "bytes": 9337,
+      "sha256": "e0e2f9141b408102c4c282c9e04c9170be837842eb97aa57c249cc55d56777ad"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/compiler/json.rs",
+      "bytes": 3089,
+      "sha256": "8009cf5b33ba6c829a3eff2d76aa512680b53fb5537751c1552fa859a36d17ea"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/compiler/native_emit.rs",
+      "bytes": 2671,
+      "sha256": "903f624713fbd1270c145403f8e48de168cafc32c3d2dbafbc8ed9d3cf4d9760"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/compiler/node_modules/reserved_names.rs",
+      "bytes": 1970,
+      "sha256": "7571ea3872b75940e65f15431e0468a060aa18214971c9de6ad83b0d1ccafb0b"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/compiler/node_modules.rs",
+      "bytes": 5581,
+      "sha256": "cac910933635e9f161b1721ea515f594fd50f9f126deeec62821b1d4efd0e869"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/compiler/project_builder/augmentations.rs",
+      "bytes": 2066,
+      "sha256": "793badb00cdbfc831b357aa45040663bf6aa6eefb6199b3433adb99c4097494d"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/compiler/project_builder/helper_providers.rs",
+      "bytes": 2312,
+      "sha256": "1d72547d84926a6846c80fd060bad1eefe5e8c5b3842431b34aaa25cffe0b928"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/compiler/project_builder/jsx_namespaces.rs",
+      "bytes": 7322,
+      "sha256": "2aed02e1c8c91ba891976d8789fbf5ce6ad99f1a73ae7267c354b49cce537602"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/compiler/project_builder/references/library_names.rs",
+      "bytes": 2440,
+      "sha256": "671f7679192ade5ede108065fbc9de752dddcd69d4511c1c8fcf4d6ec9b93ab4"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/compiler/project_builder/references.rs",
+      "bytes": 6046,
+      "sha256": "f8f6ad3d0cd3c64404f831d9982c6fac5ac93e0b81ddad02526cd4076af3a6e4"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/compiler/project_builder.rs",
+      "bytes": 20066,
+      "sha256": "89e9552fd74abb5ae003dcc3cd0b4d3e2e78ab201b27ca5513c0923de35e80ff"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/compiler/resolutions.rs",
+      "bytes": 6560,
+      "sha256": "e045fffd0632bc6f0081a329491a19fd1dbd90764fdd3e073138346e5202a7c0"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/compiler/targets.rs",
+      "bytes": 1852,
+      "sha256": "75c3e8eb57c77b70c4a00906468e419f6c1a04e5d8523db6066cb324d74eac00"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/compiler/tests.rs",
+      "bytes": 21147,
+      "sha256": "58c27921ecf65bc0b29e8c27ddfeb581e61fa59f5f99c7d2c65180ae2f041d04"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/compiler/type_imports.rs",
+      "bytes": 6082,
+      "sha256": "2ff0a7c631f9f3e1713ea041666bea000c36d8e27763c8cddca443d1bea468e5"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/compiler.rs",
+      "bytes": 41619,
+      "sha256": "c65cc2444a3815f3bf1a657c0dffb826c5e984a8f1a988a62a110a3084497cce"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/contracts.rs",
+      "bytes": 34346,
+      "sha256": "461e8c720d5cc46c294fcfd9b994ea14bcea5c6a91b36dea67a628d6ab1ea14b"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/debug_info.rs",
+      "bytes": 26764,
+      "sha256": "9d74024726b8a1a64363fadd3dc65570f87b6da4a95a53fd7fe09a098c939e13"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/blue_only_rules.rs",
+      "bytes": 2755,
+      "sha256": "c81963a4144c327b947809b0f9e502a99c68cb1ebe77c8269907c4803790e773"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/mapping.rs",
+      "bytes": 5208,
+      "sha256": "10ba18dc09a865c31f65ba2833e6be2ebbefa58f17612612ef4f3796689bd10f"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/positions/cycles.rs",
+      "bytes": 3294,
+      "sha256": "42cf233ee0252152406a3ef6255498f6e03f9d8fab0ea8abe4e14f64eb12859c"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/positions/jsx.rs",
+      "bytes": 4359,
+      "sha256": "7fe9e82dc1704b85c0f354be192daf2527c68ca34887a39dcf122e24c58bfc0b"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/positions/refine.rs",
+      "bytes": 19496,
+      "sha256": "a1afc85dca3606e7b2047c48180f4223ec5148355e1729eaaa6c347ef1716d43"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/positions.rs",
+      "bytes": 3117,
+      "sha256": "62d12e803d10bc208d3f7ab8a3b8f7a2c888c622dbb330e1403f74579335ecf3"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/related/declarations.rs",
+      "bytes": 25304,
+      "sha256": "9d8420d1702742e3d95377b66b7dbbd1e866f3db0aaf7d6dfade076808585d91"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/related/jsx.rs",
+      "bytes": 2359,
+      "sha256": "ba9f0fffdefa372811ef9265f3e9352ab33b99cbd77c3eaf76b827d4480cb53d"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/related.rs",
+      "bytes": 13825,
+      "sha256": "f1c43faf8a906ec8091962a618bcbc482c9b183705b8f8952ec9ccd8c4494f7d"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/rendered/classes.rs",
+      "bytes": 12342,
+      "sha256": "cc3727d759669e0b77749834deeca8d22212b7a6b4789b9bf90c9b5482a438f9"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/rendered/context.rs",
+      "bytes": 10314,
+      "sha256": "3a09bcd3916f4eb9f2a91414053e1aab8c31f159f6ef2ec99384a604d0f772e6"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/rendered/decorators/replacements.rs",
+      "bytes": 8836,
+      "sha256": "1b63d42865e99044fc9c6af834aa060e9cb8d9c30165a5beabc0b92499694c04"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/rendered/decorators.rs",
+      "bytes": 7575,
+      "sha256": "e17c4ea34f09111ab4e06e78079960ca0a9bcbb0e0deea8e5c3ff99556deb33f"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/rendered.rs",
+      "bytes": 6193,
+      "sha256": "1f4380e00629962ae257acff1e60b78e90345c258ae85bdb15c53ea39c52cf7a"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/rules.rs",
+      "bytes": 13346,
+      "sha256": "982bc6e712e3331b7d7923c008a1c94af30b024c86dd1d4642250c71a622a83a"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/source_rules.rs",
+      "bytes": 8507,
+      "sha256": "6320dd96b2f117eb6f1d4d53d033c745b4c30e22afe8fe7000945f29af37194b"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/spelling.rs",
+      "bytes": 2865,
+      "sha256": "9f0ed5629a30835627e5fd3976dc15ff4e56c39fca31a14ec905c0759d5f5275"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/templates.rs",
+      "bytes": 13149,
+      "sha256": "721ab48506e5430dfc078d3af26f3e5d067a5a5b73be5d4824d70344bf9e130f"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/type_text/imports.rs",
+      "bytes": 2999,
+      "sha256": "c3f17b36f0d31e5d06288ff6868a070452ed4898d8919f5256acb13ecd8abccd"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/type_text/names.rs",
+      "bytes": 4104,
+      "sha256": "3b58ef232e910c94ca8dcbb632b6d82ae369d3a0b72ee3a3cac13f8f97c3f738"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/type_text/parameters.rs",
+      "bytes": 6959,
+      "sha256": "a787001bb80f23fc44749ce98aaaa056015b735a23544f4d98004bc01edde19e"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/type_text/relations.rs",
+      "bytes": 14928,
+      "sha256": "6b8fd71f75c8b6426752e66692da6d0ee96fc6246562fba366c9bc9edf4d0df7"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/type_text/signatures.rs",
+      "bytes": 10737,
+      "sha256": "692da3f03d327e638602ecfe004b6f70998a1678287ae6a094ee75e7a853ce45"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/type_text/tuples.rs",
+      "bytes": 7325,
+      "sha256": "808b2b3e525a9d00e99c85869ff89c2339364ae14b73e21e2418f08049f8950e"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/type_text.rs",
+      "bytes": 19645,
+      "sha256": "d2e45ce5d9c65d90a2d6df6a2b7c1fb84b1bfafcd2b9371bcd37f501fd0ab2c7"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic/typescript-5.9.3.json",
+      "bytes": 384507,
+      "sha256": "8210314dc1085f8aec2a72741ef95ec058ca0a5c7f99c229f6b598bcb0289362"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/diagnostic.rs",
+      "bytes": 7861,
+      "sha256": "83d35293f47ef724768053d248ff6d069c77cd233d8dc00953bfe40e09eec5ee"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/authored_type.rs",
+      "bytes": 3624,
+      "sha256": "c1ad28657ad419d46d79b657f2976c233507fe2974aed07accefc8f663159b6a"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/binding_patterns.rs",
+      "bytes": 3492,
+      "sha256": "3dd6539ea815defb9ca3917a1dafe7d027ede75e0d4db50e8f583f2a923b4944"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/callable_objects.rs",
+      "bytes": 7966,
+      "sha256": "887897d0c07b5446d050e878dd1acf9bf333e574b69865b0da35198e34deade8"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/class_expressions/binders.rs",
+      "bytes": 4733,
+      "sha256": "7e0552bd420295de22e896d838156699031adb1092301529cd707ca49feff805"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/class_expressions.rs",
+      "bytes": 6535,
+      "sha256": "00dbb47267de73d1a31c2491880f2b10f5ea562c6f38a902f2bb65d4aec41229"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/class_lowering/callable_ends.rs",
+      "bytes": 5871,
+      "sha256": "15ac9f7b0edb61ca1aedaa51c8c61df11f317599e6d030f9f08630f344fc7719"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/class_lowering/expressions/names/reservations.rs",
+      "bytes": 2540,
+      "sha256": "cd4e38a7bc9f41b6f38b9e06ca03fdc266fbe503165b24b388a18fa139c114e3"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/class_lowering/expressions/names.rs",
+      "bytes": 8176,
+      "sha256": "282413eb2d2e2fd4026f09fb9ec8c4796fe6b4a620cfca4e4b9d7f11abe02915"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/class_lowering/expressions/suspension.rs",
+      "bytes": 2676,
+      "sha256": "5f79dcdf67fa195a6ef59761b883fb164e5818711d6ba40cdcfa8e0c9dca6856"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/class_lowering/expressions.rs",
+      "bytes": 13428,
+      "sha256": "1a15a244cea546a312ac1fcd60757ada482d726cd5c2f1f857743e56c4eb3068"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/class_lowering/heritage.rs",
+      "bytes": 6529,
+      "sha256": "fc6cb5e7458da7e2b3208d5be8271d52b988c255789141e8fac8eab21238ccbb"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/class_lowering/origins/auto_accessors/completion.rs",
+      "bytes": 9633,
+      "sha256": "730ae8eeb56ae1b3ae8d69d4a7608a34033b532828faa99fcb6292f291ce95d0"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/class_lowering/origins/auto_accessors/publication.rs",
+      "bytes": 3321,
+      "sha256": "000b3d904af27ec17c2ed85a94f414f66ae2b6f49a5e1a26859328a1fbdff921"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/class_lowering/origins/auto_accessors.rs",
+      "bytes": 9357,
+      "sha256": "6f4a704be25c8771a9b099a98a120595a09f125c7f1d43ab810b6ac13d566c2e"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/class_lowering/origins/contexts.rs",
+      "bytes": 7016,
+      "sha256": "3b9f784a0110b9155a871a802a35c4961fe5a77372bc6d284455cc87f06a979f"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/class_lowering/origins.rs",
+      "bytes": 6293,
+      "sha256": "922852f1a1db6f14ac3914c3dc637bef83084da3a737e8cb8e6cf9a4c477d53a"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/class_lowering/replacements.rs",
+      "bytes": 9840,
+      "sha256": "a94d469042d6d917db7e5d34e99b1d8ee819bb5b38e7a0964617605bfd4adec5"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/class_lowering.rs",
+      "bytes": 40190,
+      "sha256": "dfca33268409c90a78b96a38ba068401bee72eb81a13aff2237218898b79feb8"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/classes.rs",
+      "bytes": 22650,
+      "sha256": "8116756400aa9a92c38d3844b7d9fd9b125100962fb15f96a7e6b0f7459b2bbc"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/commonjs/class_values.rs",
+      "bytes": 3041,
+      "sha256": "6e7883c53e08443d077e4cbb33cecd1cd4358e543197cf4819e14941f1e551d6"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/commonjs/export_properties.rs",
+      "bytes": 2202,
+      "sha256": "b2b83f17b604f59e0eb532fb63f2fa916c9fdc4a761910f4773f05a7bf191d93"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/commonjs/import_star.v1.js",
+      "bytes": 1810,
+      "sha256": "049af73f5bca017cacc1e15ba61b0e14672284fcd1708c5a845781c6d2f53b12"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/commonjs.rs",
+      "bytes": 33155,
+      "sha256": "1fbb4733b8b45e9580be44760c9c42bb8143f5218b727a5085e78395e56a9f2b"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/computed_fields.rs",
+      "bytes": 4560,
+      "sha256": "c8458c5ce9ba42a5e4adb5895e58ceadd5f41bc4522de9aa0674dee6a5ca3e84"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/declaration_maps/declarations.rs",
+      "bytes": 10516,
+      "sha256": "63249d048c6124960f6daf00a8356bbbbfff7b2311dcf29f311850ed905ca0b1"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/declaration_maps/enums.rs",
+      "bytes": 1143,
+      "sha256": "f9a8c419f2ac1326c49a5f16b5fd603410e70e6c982022a94a33a9add330241d"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/declaration_maps/inferred.rs",
+      "bytes": 6614,
+      "sha256": "64bb7ff02f66928fe9cdcdc84be93adaf2b04c57cbed76ae4f90e47c2f59d33f"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/declaration_maps/members.rs",
+      "bytes": 5499,
+      "sha256": "d8c4466bd5454092de8867ce43fca0cf148dde8036ee7e71507f9543cfbd6d40"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/declaration_maps/modules.rs",
+      "bytes": 4338,
+      "sha256": "f2b4bc33a4db538a2d434cd332a24301cebc8496b98a13fc9912b5e4098dac28"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/declaration_maps/types.rs",
+      "bytes": 4855,
+      "sha256": "fbac972e5a02a0927ab01956d65fc828022e6ebed0a2f97b167f8c7e77dd2bc7"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/declaration_maps.rs",
+      "bytes": 7519,
+      "sha256": "611e10676063c762219cc7b2128636c47150baffe64c8ae24f9163478e9bbfcf"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/declarations.rs",
+      "bytes": 25999,
+      "sha256": "ecd0128912cb20a77ebac628dc7949073cf9b2ef5a812e7fd44f14c466969950"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/decorators/auto_accessors.rs",
+      "bytes": 3224,
+      "sha256": "5f1f601d79e2ac6fb666bb44780e1aa87f2058cc770a126d8f67a39291e432c0"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/decorators/class.rs",
+      "bytes": 32480,
+      "sha256": "ff396dcc182a0a6cb7213216294267565aff26724f75724071d94d2027a7ed0a"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/decorators/expressions.rs",
+      "bytes": 1670,
+      "sha256": "3ccf64c8bd0e93d44943a02befca4a4449d19e7a382bbbd6ea43604caa852781"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/decorators/member_origins.rs",
+      "bytes": 2553,
+      "sha256": "7ddb4531f64ddbca74fc8acd06e7664daacfc36625838633770be2c47b0afa95"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/decorators/members.rs",
+      "bytes": 7522,
+      "sha256": "f479f86a78ca2b9d0c93f35dc5e849bfe1513412323227fedb81f63ee9764ea9"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/decorators/private_members.rs",
+      "bytes": 9678,
+      "sha256": "360f95987e1b5c4e8f1769e63906740c1ee0be2d96bd934b18fcf8fada946845"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/decorators/scopes.rs",
+      "bytes": 1887,
+      "sha256": "97d0442d694a1209f7510bf1137f59f1c115287feeb6d6c110fb8f5fdaadeaea"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/decorators/super_members/origins.rs",
+      "bytes": 11004,
+      "sha256": "7e5bedeb4f88d24d27f3d79920103c165b4b726894d5100dbb2f3b84213aa187"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/decorators/super_members.rs",
+      "bytes": 20171,
+      "sha256": "56fe94207fcfcdfaa42a224a5bbdd976539ae42f3b77f5b205faf69464b98dd6"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/decorators/targets.rs",
+      "bytes": 2692,
+      "sha256": "1fdd6edbea330d6ce2bf20461d8206beb5db72394a90940e6edbcfae5963cd3b"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/decorators.rs",
+      "bytes": 28089,
+      "sha256": "a754eb0b2cf55a2bc50f63f999f098e0e5e562ac339e39d7b249cdf93211a21d"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/enums.rs",
+      "bytes": 20725,
+      "sha256": "1c41feef09b5ceeefb31b0f80a2eed038290d497682aae71acc91a9496eb7001"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/global_declarations.rs",
+      "bytes": 2331,
+      "sha256": "a62fadd43046cb8910ef698644b218249c49742b4b7696c1dc181a4fbac7bf2f"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/helper_selection/fixed.rs",
+      "bytes": 3836,
+      "sha256": "7137bd039bbd05609e7cc49361c7d9492e8b5d0c0fd75d749c3fbe908e9428bc"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/helper_selection.rs",
+      "bytes": 9479,
+      "sha256": "8cd3697ae8626af763924d899ee8a32981bf1f38e22826a3a9181b86b98cb910"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/inference_literals.rs",
+      "bytes": 2507,
+      "sha256": "f10e3bdfc484d112ec8548d1c77f1ccc12a578484318b0db242dec841aaae70b"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/inferred_declarations/callable_identities.rs",
+      "bytes": 2771,
+      "sha256": "cbf6d44b4fe9c782d9805447f049c07537df1026a65d5b917adb4a0271098eb9"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/inferred_declarations/diagnostics.rs",
+      "bytes": 2055,
+      "sha256": "6f8db815c1552616d44fca6fddc8fe113ba1586b47afca06411c806a98ff86e1"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/inferred_declarations/origins.rs",
+      "bytes": 7489,
+      "sha256": "226968aa9c477564e6586e478ee848fd4c9188a6c1b35ed3ae8ad22e77c80a8d"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/inferred_declarations/render.rs",
+      "bytes": 24626,
+      "sha256": "a142330eab838c2d0ab5cc7ed7d6eb56ff550e0933c8686a77109377af945c3b"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/inferred_declarations/string_mapping.rs",
+      "bytes": 4688,
+      "sha256": "86496660629817f6eb0b4a1889682471aa309f5e3fe5c156dbce4a1312b1b8f8"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/inferred_declarations/unions.rs",
+      "bytes": 2850,
+      "sha256": "bf3c1c0c2830fdd4326a1a82912e59255ea401b87741516b65d5031842184ba4"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/inferred_declarations.rs",
+      "bytes": 29863,
+      "sha256": "680ddd57d1c7bddb53cd6c413ec76b44f510d8d04e2888b97efaa07297f3c85d"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/inferred_returns.rs",
+      "bytes": 6142,
+      "sha256": "6862fffc2e54aa876826beec6a1462f7414541fdeb4ff86171c1cdc1cb9c0dba"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/javascript_maps/class_headers.rs",
+      "bytes": 5767,
+      "sha256": "0bf34c7a36ee47caa17dfa9010042fb80696f4c7d851613eea23da1095a1a92b"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/javascript_maps/exports.rs",
+      "bytes": 2077,
+      "sha256": "f072191888a436dcc434b267a25800051f20dd6618a5ba8c7c351f42aaa5ebd3"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/javascript_maps/generator_operands.rs",
+      "bytes": 6704,
+      "sha256": "4d628d45eada7f8de76e96442c4a67c651e7434b813a66b296682d2bdf3dd346"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/javascript_maps/imports.rs",
+      "bytes": 3757,
+      "sha256": "ccf26d5a71e5f087fdea14245bfcfaee2aa5d4bbfaeddcc57dccf443be0bc4ab"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/javascript_maps/private_names.rs",
+      "bytes": 2487,
+      "sha256": "84b8df58e48dc2c2f5f9cd731abaae8001b0be5084086f28e5c5845fcf0a64a9"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/javascript_maps/retained.rs",
+      "bytes": 21289,
+      "sha256": "19e1ebd4bd1d39f2f648a49c2a3b9778151c2ba5228f29a40e1790b251704893"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/javascript_maps/spreads.rs",
+      "bytes": 1685,
+      "sha256": "873e40f646f00bda5374ad656b57495118d8dccdfbfd3f75d015db0a6a5b0143"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/javascript_maps/templates.rs",
+      "bytes": 1912,
+      "sha256": "ec0e7252e769510670895aabcaa8396d2008a6dac93d9fdf395f6bd5f2cf1fc3"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/javascript_maps.rs",
+      "bytes": 17134,
+      "sha256": "11968f005bcce25cd81386cc5a094616b1433c5c229b3fc6f8b0bdf78b24a60c"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/jsx.rs",
+      "bytes": 26606,
+      "sha256": "0f88a26dfdf53bbbde7d6880f38f7d2221775ef6ccb43bb26fb39c139fb9ec60"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/legacy_decorators/auto_accessors.rs",
+      "bytes": 3504,
+      "sha256": "2034947838e8038ae467c8ce842e0ecc715b02721280701934cc68fc2279f347"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/legacy_decorators/metadata.rs",
+      "bytes": 16274,
+      "sha256": "aac234dd7df3a4b50c7890b124993f0be0947712acfef23cf906391dc6053811"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/legacy_decorators/origins.rs",
+      "bytes": 3292,
+      "sha256": "4385f2efd32ae983c1559b7067d390da2538fb66af1e0d88a590371cb7710b73"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/legacy_decorators.rs",
+      "bytes": 31045,
+      "sha256": "06ac692ebd191fabcfeada57a20682c18d6fd26610f3bade92b5ef55cfae6976"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/literal_order/allocations.rs",
+      "bytes": 2385,
+      "sha256": "1a326ee65d5139f55b565237f635c7ce2f9e16cc4132c525238cb3d1700d8770"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/literal_order/native-5.9.3.json",
+      "bytes": 461014,
+      "sha256": "bf6507b0cd12b96723fa058cf2a29c5e2bd1fce5299bc02c6b3369bc8edea2db"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/literal_order.rs",
+      "bytes": 14107,
+      "sha256": "813e5acc4d65fb77bda535a812be5b5b3cfee22e23822a08c700130e78662fe1"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/module_lowering.rs",
+      "bytes": 2598,
+      "sha256": "e20c9416938accc1bc6894b3644ae792e23cbcc889444cc16affc02d839596c5"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/module_wrappers.rs",
+      "bytes": 2707,
+      "sha256": "b4e7e70a0aefca85421a4f55b0cad19a6707c345114c210dde4ff5c7ced5d9a1"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/namespaces.rs",
+      "bytes": 35123,
+      "sha256": "fabaa6ecb9bd8e9b6a7981450eb97c9f82c4b46f45ee2f569e51dd1e55a0c742"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/node_imports.rs",
+      "bytes": 2595,
+      "sha256": "ae8b076af19a164e15da5101e016fc9158d1ef79f941e0239d595704d604e123"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/node_imports.v1.js",
+      "bytes": 420,
+      "sha256": "a0232f9b1c143b4fec4a51e2647b6785c88f2f299d67c5dbf474454adb31c442"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/output_options.rs",
+      "bytes": 16130,
+      "sha256": "51ded2a1e97729e112311392343ec3dec3dc02bf70415d4f1b66e7ec1269c083"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/private_lowering/origins.rs",
+      "bytes": 3882,
+      "sha256": "c5387da7b5f16e9b8d90ba737cfb19e272fa4db67c8834796d65bfe6e092ddea"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/private_lowering.rs",
+      "bytes": 29564,
+      "sha256": "f839e6276306250280b8a3a1dc5c06a96f546529587ea7eed52884eced5cf8f2"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/reexports/origins.rs",
+      "bytes": 1093,
+      "sha256": "7006b27bac2b85b6d3b05f890bdffa6463f8c7a1e24558d5d4fd04c5efff2d92"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/reexports.rs",
+      "bytes": 3625,
+      "sha256": "793c91cf5a43d7ba1809c9a52fd64fa366a53a47a2e5c6cadeba620313f33aa1"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/relocations.rs",
+      "bytes": 8158,
+      "sha256": "e0d4f4b52f12b70ae9ab29a8e3cedec6e054fe2c63f9a5fe107b551ecff258c7"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/source_map_lookup.rs",
+      "bytes": 10220,
+      "sha256": "4efd89a3df34ae631300139c0148eb1a4d2e9da78033d309059a600b9eb4c889"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/system/bindings.rs",
+      "bytes": 2563,
+      "sha256": "a3a01fe0789a127cf76963f069548ea376c807f575e8bfbf0ee0391daa90070f"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/system/mapping.rs",
+      "bytes": 5510,
+      "sha256": "163149b59beeb42241a2a3e7a98780dafb1da13ae43c90f2e8278dc9b90e7a5a"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/system/mutations.rs",
+      "bytes": 3750,
+      "sha256": "ebc339a2a3bb4573b80425334879cac706eb7131d61f68032300a8d032542734"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/system.rs",
+      "bytes": 15814,
+      "sha256": "0592fcbce26e10514928e568bde2a3ab518570615fd30e25a87babed29e2922a"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/system_helpers.v1.js",
+      "bytes": 1544,
+      "sha256": "66eb1e1f4a73e8e24532ea33ca5c36ac3a2097f6955edebeae2fe774f111c47e"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/async_forms/capture.rs",
+      "bytes": 4214,
+      "sha256": "610c365c366f840460b97148d9f98ddf55f45f275408aef0530999af523c36d4"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/async_forms/methods/origins.rs",
+      "bytes": 1956,
+      "sha256": "6bc5913edad1e7e78ffd7efec54ee9879c8d37ee36a01dd66547c9e268755a9a"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/async_forms/methods.rs",
+      "bytes": 9326,
+      "sha256": "c23e21d63b046ac29a4740c09814459cbbd8c860f5aa933ee8dc62c4982aaf61"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/async_forms.rs",
+      "bytes": 6593,
+      "sha256": "f612f2fd8afc47e66a82d96022c15980bfd81cfee7a055e482503cc3d4af971b"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/async_functions.rs",
+      "bytes": 18355,
+      "sha256": "1ca262c39db4b60216851814f801557ad57c66da98c35f70956f92385e059141"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/async_generator_helpers.v1.js",
+      "bytes": 2345,
+      "sha256": "3267605b214b847ffa5aa6cb1b80f969b8c0212df733c60beb182b5c0c0420fe"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/async_generators.rs",
+      "bytes": 10754,
+      "sha256": "e8c8afa6759c0aefca34ffcddde3309839bd1745f92e42635c72cede959e9150"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/async_helpers.v1.js",
+      "bytes": 1117,
+      "sha256": "be8396af95564c5ac41232f56909c01b2b9faad45711efa76196dbbc429540fd"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/async_iteration.rs",
+      "bytes": 5816,
+      "sha256": "49249fc98dfa55ec135c804bea57666a51eace771310217235a43922acf77301"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/async_iteration_helpers.v1.js",
+      "bytes": 1859,
+      "sha256": "ffbc17a70ab65c8fbadc0e3df0a001ec47b4abb0070c45a3e22f6396730f525f"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/binding_helpers.v1.js",
+      "bytes": 1030,
+      "sha256": "9c047cc02d2d342ec3a7ceebe0cf4b51caad3282c62d3bac606d75de78369485"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/class_helpers.v1.js",
+      "bytes": 1373,
+      "sha256": "4118f3860b668fe716d2f9c45daed9e30479a73de1d8529903ba1e4c0f9493fd"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/computed_property_helpers.v1.js",
+      "bytes": 1697,
+      "sha256": "11db191d56b8f1079f2ec793babacb92b6e4cb47009946bc528952778b93f14c"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/arrow_origins.rs",
+      "bytes": 4378,
+      "sha256": "8412e3bd11a4cf7722df3133aa9a47bc93e16613e7f25281208c89d7ae4e9caa"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/classes/accessors.rs",
+      "bytes": 6512,
+      "sha256": "751def1eb714f8ec3920a37d99a0cf30681b6592515d9e5ecc8a107cbe60733d"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/classes/async_methods.rs",
+      "bytes": 2362,
+      "sha256": "607d75e97ced47e77b5b0633bd9dc3b6829ed04d5810c0af8ebefbb5aef91514"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/classes/legacy.rs",
+      "bytes": 19899,
+      "sha256": "e04d4d050a8ef3fdcf2389dd1614995f0fa721a9faa8b6aabb8f63873954b4dc"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/classes/origins.rs",
+      "bytes": 29267,
+      "sha256": "35da20dd98851769e29307d59cc088e044982a50e900f3285822e258c2a59037"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/classes/super_members.rs",
+      "bytes": 3987,
+      "sha256": "abb819046cf406fd811021dbb002fee40e37e9a76da5c00100c0b97946d8473e"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/classes.rs",
+      "bytes": 29096,
+      "sha256": "df8c31116d56d518de8edb71d430bfff8ebdeaf6e0be0cbeae56c1ff611cd8fe"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/iteration.rs",
+      "bytes": 6737,
+      "sha256": "ab23a1a550fb4bfffe65274e120f931f441be7367c8d98cb24b38917fc78e54d"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/loops.rs",
+      "bytes": 2991,
+      "sha256": "1ed2f4e14bd0f21293be28ffb758e827ba70fa85428ee5ee9e90adad7cc65d98"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/objects.rs",
+      "bytes": 5237,
+      "sha256": "708cd2d3cabfce59cf3af3565bfe1fd57dd224a3652c6dbc2b9a867b0ea3de8b"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/parameters/raw.rs",
+      "bytes": 7250,
+      "sha256": "51689b07ab225255cbd4837d67a978ae0507016905ec6c1fea898245367f25f9"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/parameters/rest.rs",
+      "bytes": 970,
+      "sha256": "269d8e02d3112f050070beedf157f132cdf0f2255cd179f081285957bf194c0d"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/parameters.rs",
+      "bytes": 6836,
+      "sha256": "7071359940fa221585ccf85674b0b7f3307122c10cf5e3a4e17dabb6720d3dd0"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/patterns/origins.rs",
+      "bytes": 6379,
+      "sha256": "8754e0cb561c3393665e16cd4ebd9e7b87623c5f435985172b8da73cff0e3ed5"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/patterns.rs",
+      "bytes": 25337,
+      "sha256": "6c4e2e59eee3e244417b9c55b0af7541952680265ab629f7cc69305772d39df7"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/spreads/origins.rs",
+      "bytes": 1266,
+      "sha256": "323eb8113480956954107f302a2db683d4b42e3778d4a31c04ad55003c82ffcf"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/spreads.rs",
+      "bytes": 10153,
+      "sha256": "da363acc449daf5a69b0b17e2683bc8b0c8c87807a81e08090563253f38b0c58"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/suspension/graph/control.rs",
+      "bytes": 11367,
+      "sha256": "ff17b3dc0411dd3a9745b6135bca2bd815ec73c57edad35997a4c1c145fb2aa0"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/suspension/graph/expressions.rs",
+      "bytes": 17740,
+      "sha256": "5a1b9bb274f7e5b8b8b0beb01756576955de80fed044e18617cfcd1962cc7d62"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/suspension/graph/origins.rs",
+      "bytes": 7101,
+      "sha256": "d5a412f39315dca17ea7846c391b18a4eee28e61aba3d60827250299c02879af"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/suspension/graph/switch.rs",
+      "bytes": 5976,
+      "sha256": "e4f5c79e032fdf9ded27a02689b781768b8a8cab3bfd1635c0254647c0028c2c"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/suspension/graph.rs",
+      "bytes": 18737,
+      "sha256": "aa2ebd8717753335543823510db9ebda8f42b0dbf952fd69360b08af2fac5c0c"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/suspension/native_abi.rs",
+      "bytes": 3411,
+      "sha256": "5c04f8dc88c75ba9ec521878a8946fd4287ebe655f106ed7e25c44c72e924f4e"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/suspension/native_abi.v1.js",
+      "bytes": 1943,
+      "sha256": "be8efdd7ba46878dd35973d6c28869e5888071c9700e49ecc1990541f4fd04a4"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/suspension.rs",
+      "bytes": 11665,
+      "sha256": "f8eb7e0eaf439ffdeff9efc3b7b2f9fd62b40d89c106191bd27ecf6ccc05a579"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/templates/tagged/origins.rs",
+      "bytes": 1739,
+      "sha256": "3b2518172f9be4b67dc3598e3d1197dd08c857d0d62f0f584beb5e33692b0941"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/templates/tagged.rs",
+      "bytes": 8237,
+      "sha256": "9f9287f281376ec66c8b99558360224e213fde5653f6a446c790a4b3c7cf63dd"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/templates/tagged.v1.js",
+      "bytes": 470,
+      "sha256": "15dc9aa9c1c08fb406803e34682c0ab247c800959383e631e71ceec17c669830"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5/templates.rs",
+      "bytes": 5123,
+      "sha256": "c61ab9b9cd9ee2396fcffbc890b666933e2326a27b2a3fc012732a47f458cf6b"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5.rs",
+      "bytes": 15287,
+      "sha256": "328c727483d642555229e94558c99cebdc432f688254b1c42d406b7ecdca948e"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/es5_helpers.v1.js",
+      "bytes": 377,
+      "sha256": "2832f0d0e6b4606c161706561e3827e9dca62df1f7420c1901fd6eb8ba433597"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/exponentiation.rs",
+      "bytes": 6565,
+      "sha256": "766ff7c608e3def95a66cc6d68c128f2c423ccdd5d72ef35ad7902660c4bbae7"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/generator_delegation_helpers.v1.js",
+      "bytes": 1170,
+      "sha256": "de9eb111f0dc97ee93c5509f2002d90e2e3d52524c96b20cd6415ccf4655b734"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/generator_helpers.v1.js",
+      "bytes": 6547,
+      "sha256": "06531f50c54e2f22ed9c4ca2f3b75b26f68476d92a6627ca124f089a89563801"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/helpers.v1.js",
+      "bytes": 377,
+      "sha256": "5ee1ab9c076c0f2820c5bdaee670721c5f7d02c0bcd0027cd3cf38ba1715998b"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/iteration_helpers.v1.js",
+      "bytes": 1204,
+      "sha256": "7c0f01dc19511d4737577c33e4dcdb2728e5158cb32817ebc3dc32ef3b2ad407"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/mapped_fragments.rs",
+      "bytes": 4810,
+      "sha256": "4519746ac3a092df4ff6a2463775a0c27fd6df94f074f7e144b1766e9deae47a"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/object_rest.rs",
+      "bytes": 7042,
+      "sha256": "a61bd057497f21095496b85227d9cb597c22538b274d6004c38110d767d12098"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/object_spread.rs",
+      "bytes": 7205,
+      "sha256": "b93daecb938c0f3b3e7c451262787bb000204343f7cddbaec493289516ad3055"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/object_spread_helpers.v1.js",
+      "bytes": 1265,
+      "sha256": "a73c32975c384dbffbf3c15ef8d29aeb45881a9377f3bce43d890cff34e59510"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/optional/origins.rs",
+      "bytes": 1595,
+      "sha256": "66dfe8ff5c09ce20acd23387c26eede86fd0b328ea29a4721d4a03f76c95302c"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/optional.rs",
+      "bytes": 7903,
+      "sha256": "661128c501cbb650ae91a8d3eef719f7ef5adf1472b738e82c2348e60f0b979f"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/optional_helpers.v1.js",
+      "bytes": 413,
+      "sha256": "c156fabfd554dd8f105480c6e609fa09be13c848ef3236e2c0d54500578ac1c2"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/spread_helpers.v1.js",
+      "bytes": 1146,
+      "sha256": "08f80156467d96e753b8f326dd8adb6117bb37dd0f30bae91b6ecb544e2cc03d"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets/string_literals.rs",
+      "bytes": 5806,
+      "sha256": "cea6ff95ed8deae79b6c0c7cf641aa14d7d580dd642392b5301bca1e89f8d132"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/targets.rs",
+      "bytes": 9317,
+      "sha256": "f527c25649a1dbbdf64d9252e2eee360e51d6b62ea5b982977ebfe4163701011"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/tests.rs",
+      "bytes": 28351,
+      "sha256": "8534599f7dd14f90c14db1293aefe477a8cfa4c746788596f6b57a517f9eed94"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/token_maps.rs",
+      "bytes": 12677,
+      "sha256": "7d2e1b1fb7a3de67c4e114d47b5dd0f09522911cec428d0fb2efb2fabde9f232"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter/type_elision.rs",
+      "bytes": 10196,
+      "sha256": "b6e6be2853f20c31164ca82b8951be394773c2f9d8a964a353675d222d66a22f"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/emitter.rs",
+      "bytes": 47231,
+      "sha256": "3ad9fe3d7ae798936a7cb83087dea757e5c3eb4c7396f6bd2d7b0c4305141a13"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/enum_eval.rs",
+      "bytes": 23799,
+      "sha256": "673d08e980f1aadfbed9b36d77381356b0360df7c1d6a1b7fe2ad1bf521ea24a"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/jsx/entities.rs",
+      "bytes": 5518,
+      "sha256": "700aff9af68f477b23f28a0cc065642e85245694ecc5ccb65c0b7cf55264c79d"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/jsx/tests.rs",
+      "bytes": 5934,
+      "sha256": "0032f4da3d2d9ab3dfab3a8c780bec9779a55aa3e97751b80e894bb66c604dc8"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/jsx.rs",
+      "bytes": 25760,
+      "sha256": "575b30bc92e52b3b1f1b5f26f77a743b3374c6f36e9ab7f6253f51863afa25c0"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/lib.rs",
+      "bytes": 5424,
+      "sha256": "dcd94b493c53f034208cfaa2bd6319c31aa584f88fc74b77f55f8a7e97eb6be5"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/namespace_analysis.rs",
+      "bytes": 32904,
+      "sha256": "7e08f48d7c62bac26ead5032620ac88789c86a863f5dbdeaaa115e2c1b083ead"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/package_resolution/features.rs",
+      "bytes": 6170,
+      "sha256": "bc4efee7663ed0d602ae66c6f84c3418be010e357f00f9200fba4c6abfdbcc9f"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/package_resolution/javascript.rs",
+      "bytes": 4012,
+      "sha256": "13f80441a48c8fb0474c2dfddd884af8bf0c4efc4dddbe4210166c91062cea72"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/package_resolution/loading.rs",
+      "bytes": 3539,
+      "sha256": "490adce82cf8ea5b4261f2d6f271ddc0686ac1cac303583f10e06deb1b0d33b1"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/package_resolution/module_scope.rs",
+      "bytes": 2272,
+      "sha256": "daf37440942a4849143bb2b065766952c8584526955061fc81ffb24e0457075f"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/package_resolution/tests.rs",
+      "bytes": 32745,
+      "sha256": "a8ac14924e3c8a6d182ca2cbda674751c1f84f759538082ad0f8082f6820528a"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/package_resolution/version_ranges.rs",
+      "bytes": 3408,
+      "sha256": "a1ffd2ef2f5dc9a41f8deec39b7e2050ac490d69dfd35d2fffede52f2fc767c9"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/package_resolution.rs",
+      "bytes": 39973,
+      "sha256": "308f96127b3bf63a352f05f0ad641fef941e74f439e42a4f95574d500d1d13c7"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/assertions.rs",
+      "bytes": 818,
+      "sha256": "c1e954110f7bfe3ec752d8389268ec2bbd5af5b1e8828e0dc7a8eeec3feee941"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/class_expressions/captures.rs",
+      "bytes": 4376,
+      "sha256": "8a69e58c59e6d04126f9ed987ddd73c56c1d5878a97b8208ca25c9412598f85f"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/class_expressions.rs",
+      "bytes": 3424,
+      "sha256": "bc0366b08cc18e39d0f165e4d5cb0730bcbb8b73386394b1e2d4fe8c7fed9cbd"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/class_methods.rs",
+      "bytes": 1074,
+      "sha256": "7f2ff40cdb7552bb655f571838ac5e997010a5e0c71ad0b30adac79739d37d9e"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/declarations/ambient.rs",
+      "bytes": 3489,
+      "sha256": "5eb80affd6c6a446c733aa93f6b9fc96ebc87d77ec49735c13ae7b9d97c9add4"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/declarations/binding_recovery.rs",
+      "bytes": 2695,
+      "sha256": "5667020fcc39ab5bdeb59c168933914cbf82b124d5f974a0428942188328fe44"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/declarations/class/heritage.rs",
+      "bytes": 3234,
+      "sha256": "796cf95ffae68edfe444a3b5efa658c8f2b151914258938b2ff0c1baae2ab636"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/declarations/class/indices.rs",
+      "bytes": 2900,
+      "sha256": "06e434c8ea4ed3bc8863befc66567704066e4f5f26a8e8bd975ee8ba19dcdc7c"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/declarations/class/keys.rs",
+      "bytes": 2605,
+      "sha256": "207fad1d6e39bae58fa9bccdc50dfab323f04a7c4ca2e3a798a2ddd7b47752b2"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/declarations/class/methods.rs",
+      "bytes": 1025,
+      "sha256": "e469fea08fff04d6fb98ac81f7ff4de300be9af0d7ffd1738c30c6fdd974f295"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/declarations/class/modifiers.rs",
+      "bytes": 8338,
+      "sha256": "ebf75b9237c3822be33916ddd9e15b77268c26d01d467e0e6a403d41db5dbcca"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/declarations/class.rs",
+      "bytes": 39883,
+      "sha256": "2e258efbb8df809eba61032eaad1d7fade7bd1a62b511a8f907bd7f87724d982"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/declarations/class_expressions.rs",
+      "bytes": 4558,
+      "sha256": "5f89fae0911acbe2a00f586692c097d2288bd8b2389044c30d63b96de66d6ac8"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/declarations/default_exports.rs",
+      "bytes": 4859,
+      "sha256": "53524b3cd95b966383a69bdf29a6fbb08a3ce4217ee465462606339a0c9b9675"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/declarations/enums.rs",
+      "bytes": 5223,
+      "sha256": "01c8521b7f380f10a539023a68590fe7c70e55c2fa397b6fb43f19c66c3111fc"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/declarations/erasure_audit.rs",
+      "bytes": 10251,
+      "sha256": "3097ec613a2c6a261cb4b8ba4dbc543d30a5a8a154e6f523a48d63f0e034d357"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/declarations/function_body.rs",
+      "bytes": 16652,
+      "sha256": "8f141e58d10ca57e8d824d31abb086f549c5b9cc22d0c0737e2045b7d44ac869"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/declarations/imports_exports.rs",
+      "bytes": 19215,
+      "sha256": "ccaa6269542c8934db225a56d94a05b01575143c63d970c981ec8544595c8093"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/declarations/namespaces.rs",
+      "bytes": 4339,
+      "sha256": "4daaafd65e8df27df5346548198568e7e6606d6d676805531388cfb9200819bf"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/declarations/nested_functions.rs",
+      "bytes": 28902,
+      "sha256": "04aeb6481b47f4bf02dd7cf142d273132622408eeb031a5554731c889c5a24a0"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/declarations/patterns.rs",
+      "bytes": 7161,
+      "sha256": "d99ceceeeebd5b7e37de2feaf1a58f5af0789a11108d3971ffc5154b834f9432"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/declarations/raw_boundaries.rs",
+      "bytes": 3493,
+      "sha256": "eb7fac1d50382e874a954bf424c71977476601bfd5b20896cc2be417a7b997c9"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/declarations/source_edits.rs",
+      "bytes": 19711,
+      "sha256": "9262798c23d9467893dd2579f41d99cb2fcd0878b76cd5e3bd7d23224b02743c"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/declarations/statement_diagnostics.rs",
+      "bytes": 4003,
+      "sha256": "ac1e81abd855bdc922468b4ccfdd9452c94c09b0302e738e1eb7acc21b7461d1"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/declarations/typed_declarations.rs",
+      "bytes": 22235,
+      "sha256": "0e33fe2ac24dde8c7b7bdc33c2aa2958191d8f64154c782d006f2245c87fe54a"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/declarations.rs",
+      "bytes": 19937,
+      "sha256": "f5ebf31a55b98b990603df6ada69c4ef03aa3981e58f26f8e10df84e69a9117a"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/entry.rs",
+      "bytes": 3791,
+      "sha256": "0b349aeed332fc72b6b0ba71b39eda12ab3c9711921c44468f969d9f95cae75b"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/field_literals.rs",
+      "bytes": 1673,
+      "sha256": "f09ce20371c264f67e9da266ca09d9f788b343f154ee6364497f88f7754371a7"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/implementation.rs",
+      "bytes": 5853,
+      "sha256": "e82437615267c102dcfe19a100005a150eb5bbfacb892835bc4a0544f81d9725"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/import_attributes.rs",
+      "bytes": 2436,
+      "sha256": "7c5108525b0e816cfd919fc40324662b93bebb0ef8281a59923a32126e4f337d"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/import_types.rs",
+      "bytes": 1054,
+      "sha256": "118bdcaddcc2781ad10c63afba1afc2fd98c7ce111e946f71affda2a26c0ee2c"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/jsdoc/tags.rs",
+      "bytes": 3879,
+      "sha256": "42334f5fcc8cc1ca5a8fd13beb07bd5700973896465f39f8bb7d2399bcfda814"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/jsdoc.rs",
+      "bytes": 10883,
+      "sha256": "cca06267617ae280b5049adca0f579116f6b2a52457979fdec5d72de46f597d5"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/module_declarations.rs",
+      "bytes": 5871,
+      "sha256": "9303638ceea742b6327f4cba24145651e4300821f53173a9d0b45da375b7a2cb"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/module_kind.rs",
+      "bytes": 473,
+      "sha256": "43f7c54cb8c9e98b5dca1f633a61bfee09aa21a0a78285396205cc6be6edbf99"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/namespace_names.rs",
+      "bytes": 12960,
+      "sha256": "d1c63e0aa222053affbbf8dc2fe448913e4953cb2c042062f57bf3d56616983f"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/runtime_syntax.rs",
+      "bytes": 14480,
+      "sha256": "595f1bf1569bb04bfdb4984e4e01eb2463997405c5f0026d8eba52f5a672d231"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/string_types.rs",
+      "bytes": 4460,
+      "sha256": "15ba0e084293889a717342312b8afa2ae7fd41c2d0bde10d3fb9fdbb9a8df297"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/tests.rs",
+      "bytes": 29871,
+      "sha256": "aafb5ad3072c468205819a52046a1d3476056b98f7e182c45efff53dd47cea3f"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/type_forms.rs",
+      "bytes": 14809,
+      "sha256": "7d48ad62efc21f1aa360903da0939a47012f6bfa74565b72aaffef8d9665d02c"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/type_mapping.rs",
+      "bytes": 5504,
+      "sha256": "6ec8ed23424abcc30646145941c003f7c981021bf121303caef9e7df54268c52"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/type_syntax/callable_objects.rs",
+      "bytes": 7267,
+      "sha256": "2ecca9b3190195e228ae06434e9e9d9ecc4850fa9fb1179f5cd013e8bd944d1e"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/type_syntax/imports.rs",
+      "bytes": 3016,
+      "sha256": "5b37564271537f4fd4815905304276fc9836ecd61b5a5d2ff3c2908c45025bec"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/type_syntax/operators.rs",
+      "bytes": 6987,
+      "sha256": "c1924b1ce60f1d3d7f3e6a7891e910dd925c2b6c55fccf77c9840c946be723ab"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser/type_syntax.rs",
+      "bytes": 29375,
+      "sha256": "8e6fa43f84ee1011ca583071791a245bea2e7adb8c055f55683d34f15c22fb98"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/parser.rs",
+      "bytes": 41574,
+      "sha256": "176a06f4fe9e9e22a1a7a03a16cc5bde51764f645fdbf2fd812dc73cc6b8c957"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/performance.rs",
+      "bytes": 4396,
+      "sha256": "65130e16175741bbd9f765e3a9fa776e3927e11ebe80be35a9e1dd3301d66f05"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/remote_declarations/tests.rs",
+      "bytes": 8144,
+      "sha256": "3339f6bfd72d1dc35b8ef6bdf6658ed6d2cea246c8eb93f18d829b67529b3284"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/remote_declarations.rs",
+      "bytes": 13094,
+      "sha256": "e36e126465ffb2d6dd92004db0b36910392b2ef83d54549353fb10f4d23316b4"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/runtime_helper_v1.mjs",
+      "bytes": 1558,
+      "sha256": "88e90613b81e0e45c03b56042c0fd784d1da61252b2087182568397efa357d9e"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/decorator-contexts.v1.d.ts",
+      "bytes": 3544,
+      "sha256": "e1ee8cb7e5418926e39548696145e97d776ad6d529dcc64298001cb2197d7723"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/decorator-contexts.v2.d.ts",
+      "bytes": 3560,
+      "sha256": "e7f9bd768dc33ca89001493707585f7ea64c4b6c61369e6cc26907d38e6e836e"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-additions.v2.d.ts",
+      "bytes": 1151,
+      "sha256": "6ce94f5afade5b62708404f7b2837a6d552e8f454c7dd39f163d1b49a0c9cead"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-async-iteration.v2.d.ts",
+      "bytes": 955,
+      "sha256": "8ae015316ca9bfd527aca0a23f3ba9083dad1befab8ed9dad49b3971c016b5b6"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-base.v1.d.ts",
+      "bytes": 9453,
+      "sha256": "d86439192adf9787cad3491e9146bea6a14f4504c0e703b9d318b9b9aa597d75"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-buffers.v3.d.ts",
+      "bytes": 27959,
+      "sha256": "8715c15b948d336037fffe191f73757e379e33b7d315f2bd3812bd0833f09fb8"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-core.v3.d.ts",
+      "bytes": 14581,
+      "sha256": "dca4e0d1bd48ebfd78e5c81d506c94a455babc1ab7c7f774696d821a6779e2a6"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-es2015.v2.d.ts",
+      "bytes": 3106,
+      "sha256": "ce283b752a145dbeb034c2f58e303df840652c993953576ae734cd13e09af090"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-es2016.v2.d.ts",
+      "bytes": 416,
+      "sha256": "56e2694d9f058122d2feae8cfa3fd21dd52fc124fef38093e05ba25427f41cec"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-es2017.v2.d.ts",
+      "bytes": 462,
+      "sha256": "1f71f574937cac44e6748090ded98e477daaa07f64374854568de4a9c95ee967"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-es2017.v3.d.ts",
+      "bytes": 3587,
+      "sha256": "0f90c97129a5fb13a6ba6e65973952770e3c2f0fdc58d0bf56af0c72a47e6088"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-es2018.v2.d.ts",
+      "bytes": 409,
+      "sha256": "d17232968f27e3bad42127bf598033b4405aeecc05441352435e0b5a4167c0cd"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-es2018.v3.d.ts",
+      "bytes": 2048,
+      "sha256": "482a1863674cdaffd0bda8c4efb5af3be545515fb1440cda4f4c16464c812ee8"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-es2019.v2.d.ts",
+      "bytes": 338,
+      "sha256": "c5c260c0da9b4874cfbbb825bb7a5d595b0c325875e0455e1bc4a8966ac2a920"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-es2019.v3.d.ts",
+      "bytes": 781,
+      "sha256": "301830952afce9fc14bdf1a306343e7ef24398aab6092db670a8103715785402"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-es2020.v2.d.ts",
+      "bytes": 516,
+      "sha256": "2dd17beed66cf6d64188e0aca723583cc1c149419f2e60446404439728c8783a"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-es2020.v3.d.ts",
+      "bytes": 10526,
+      "sha256": "c3f6dc0128dc716680ab673bc88e9a40261dc678c375663b62802e148411a8d2"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-es2021.v2.d.ts",
+      "bytes": 507,
+      "sha256": "ed22d1c3d5426c5d58e0423d8670bdac76cc602b524e020a1d3ec3204ecbe5fc"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-es2021.v3.d.ts",
+      "bytes": 1486,
+      "sha256": "670ed0ff0e992883bfe68cedc4b9bf95808a41920ba3779620f27c4b3ab3eef6"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-es2022.v1.d.ts",
+      "bytes": 785,
+      "sha256": "14e2c06cfc683cd83758687af18570a772b4271b3e34d7b150a48280df1a2e44"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-es2022.v2.d.ts",
+      "bytes": 545,
+      "sha256": "93239ebf4d9bd907f098ddf858022cc6173e22b04961dbd81a9921a90efdd697"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-es2022.v3.d.ts",
+      "bytes": 2287,
+      "sha256": "6dce530159d0c5f0304a350cd08f6544b36da5f0f833b61c9581bd53457dc0bb"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-es2023.v2.d.ts",
+      "bytes": 683,
+      "sha256": "3f64e8c3ea70868f8d869d0e46d7104df6efae6a5bc410273e3b964123cc0ae0"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-es5.v2.d.ts",
+      "bytes": 6834,
+      "sha256": "5cd10d9e1e9df7c1f80cc41cdb2ca49c0bf00c87ac6686a6f369525d81505e58"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-iterable.v3.d.ts",
+      "bytes": 10994,
+      "sha256": "d50773a81727c5b9eedd8172e07b380ef6f19a6a1d8d728179a2dd9261e9ec84"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-promise.v3.d.ts",
+      "bytes": 1048,
+      "sha256": "b7c8c0bc9b83ecaac44c1152a1219fb912e2310ea0891369134634a1439afa10"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/ecma-thenable.v3.d.ts",
+      "bytes": 1322,
+      "sha256": "215d668fa30af418af2c465d8fd9a54a746a7943d07c66be5cb7c335317d74cd"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/intrinsics.rs",
+      "bytes": 976,
+      "sha256": "a7da215d6f529fab128560682149984cd20367ebef8cb0f1197278e417568010"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/manifest.rs",
+      "bytes": 2112,
+      "sha256": "113107119834249270f95857d784371550bd9e7478f061e9a7d940361bb38784"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/presentation.rs",
+      "bytes": 4573,
+      "sha256": "bde464b003f2ce335f3043df099fffa18eead8bed7e1dd14d5d8aac7e19f2599"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/profiles.rs",
+      "bytes": 2145,
+      "sha256": "0ff4c396578df2a903510e9bd49838bde338170fc0fa8e859054eaa393f87441"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library/symbol-metadata.v1.d.ts",
+      "bytes": 340,
+      "sha256": "ba5ae0746bfb6321870007bed4c335c5f9337416a5b67e88b4258b88f0d660c9"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/standard_library.rs",
+      "bytes": 7485,
+      "sha256": "5df3bed6f7b1d2412470057407ac527ec9efb764f1797b08295916e919396009"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/strict_boundaries.rs",
+      "bytes": 29958,
+      "sha256": "0729028f49bd93b610b1e6e71ddf00819e2f26ec273b8012d8aa18fe06ea41f8"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/symbol_keys.rs",
+      "bytes": 885,
+      "sha256": "36503c7dd98749d1c245ddd4a61ba6b27d34da7cb3ab2c0f5f9cea4e3c20b7e7"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/syntax.rs",
+      "bytes": 24463,
+      "sha256": "85e3dd93407eaf094d38a3b0e901c76c187c5f6bb91984471d50c20b8b20671d"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/type_operator_profiles/native-5.9.3.json",
+      "bytes": 618772,
+      "sha256": "88f8d1e89e1275e1a940cbfffaa43fbed394cf1d85bbcd4aa43e9dc390663bc8"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/type_operator_profiles.rs",
+      "bytes": 5200,
+      "sha256": "564554bc3045f13d5b26dec2273d20d20135f5ba52019452330ab68133c7f584"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/utf16/case.rs",
+      "bytes": 1629,
+      "sha256": "e9a0eacdd45e16282c07978d3f5558f82ec08ccab6c1233b5c418918f4fded99"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/utf16/literal.rs",
+      "bytes": 3227,
+      "sha256": "a3d8b4fb8c87964fd09c26fe201024bb0250f2d2032d3dae0c6e8906c0ccc7dc"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/utf16/render.rs",
+      "bytes": 1709,
+      "sha256": "5710f89a9c2d90f4ecf4c3ba7fb22d248603f2feca8e3f67f8282cec65711e66"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/utf16/value.rs",
+      "bytes": 3721,
+      "sha256": "30f428f48182c1a099f74a28b7f5b66deac7da3c41909423c49efb793edf9c15"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/src/utf16.rs",
+      "bytes": 3900,
+      "sha256": "497d9b9016e41233f57e75b72b4618dd4abbfcc316aa9be4c11b070f21294ac6"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/tests/fixtures/higher_order_inference/FROZEN.json",
+      "bytes": 1572,
+      "sha256": "a97ce8c0ece181bdee9706325e01516e3aba298f6389d013e23ec1f963b8dd25"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/tests/fixtures/higher_order_inference/README.md",
+      "bytes": 2234,
+      "sha256": "7c213ed2f4e22378190ab547627464b1ce34d13803b99077e55fff3c38d0d188"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/tests/fixtures/higher_order_inference/boundary-controls.json",
+      "bytes": 4255,
+      "sha256": "0c89bc41ed2ecb3c640fa81b72fcae4607cdcf6970a2ed26a187b5a73f4011ad"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/tests/fixtures/higher_order_inference/boundary-reference.json",
+      "bytes": 2134,
+      "sha256": "8860fc27e30347849b153b42ac4b16d977bf0a3c66f47eb80a2e28ea4aa8ed62"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/tests/fixtures/higher_order_inference/cases.json",
+      "bytes": 39142,
+      "sha256": "b65c525603c0a1896543ce4ad5acff4bed850dcbad98af59a2e8604339be27bc"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/tests/fixtures/higher_order_inference/reference.json",
+      "bytes": 431218,
+      "sha256": "c6bec883760ecf1a6310ce67541eb9555c7c95b084d7673fe39ce5660fe6e0cc"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/tests/fixtures/higher_order_recursive_scope/cases.json",
+      "bytes": 3685,
+      "sha256": "8b399ec0bb21adfb6e7c53b580eb91e5164eb42e33e92982c6233d247e617e1a"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/tests/fixtures/higher_order_recursive_scope/reference.json",
+      "bytes": 6267,
+      "sha256": "7b0f8b5a6657b949781488ac44c8184378f0bcb812e35c147570ae033ab0fc95"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/tests/fixtures/nonnullable_awaited/boundary-controls.json",
+      "bytes": 6789,
+      "sha256": "99c569b66c1407f4258a2c9290580d0a4fa8d19e891b2767bb7ceace1289d258"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/tests/fixtures/nonnullable_awaited/cases.json",
+      "bytes": 37594,
+      "sha256": "d40499c6371615b3e4010cff3b3513766a531681219881980e1d3a1b13e9a256"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/tests/fixtures/nonnullable_awaited/demand-reference.json",
+      "bytes": 3567,
+      "sha256": "532cf77bcd7c841dc4f1c4a08bc1985a7221d015de4dc4cb639e1bb09b139105"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/tests/fixtures/nonnullable_awaited/demand-resource-controls.json",
+      "bytes": 1758,
+      "sha256": "b897d614ee6ac3ca1b260c86970127bffc346bcff99d58bcdc740dfa3d6f80b1"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/tests/fixtures/nonnullable_awaited/operator-cases.json",
+      "bytes": 5584,
+      "sha256": "3d167988d15229502f99c6e8c6a51e486c6c8d94c9f96f9630fc8ed7e3883b99"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/tests/fixtures/nonnullable_awaited/operator-reference.json",
+      "bytes": 34334,
+      "sha256": "e45a361c9fe6a67178c38732d2f45cdb12ec112885a6845ff5cf6b1ec628abda"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/tests/fixtures/nonnullable_awaited/reference.json",
+      "bytes": 308341,
+      "sha256": "e04f4ef6723b9d3d73cbd1eb8dc8651ce62d888178c16cdba51ca73f14b205c5"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/tests/higher_order_inference.rs",
+      "bytes": 19318,
+      "sha256": "d925f33d7eed2baa9c2078917717dc386bdbf593d988bd147e66a6f5d673eea9"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/backend/bluets/tests/nonnullable_awaited.rs",
+      "bytes": 18150,
+      "sha256": "1dd7122868fbde6f66de38c9beee655fe056b01399954cc7ef9a6964d32e27ab"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/development/browser_core/phase-18-bluets/tools/higher_order_inference/blue.cjs",
+      "bytes": 3799,
+      "sha256": "872edf714f1a43077f5fae337ca1c862255dc20511c41f8f9381a69cd78a487d"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/development/browser_core/phase-18-bluets/tools/higher_order_inference/common.cjs",
+      "bytes": 2700,
+      "sha256": "2c45b99cf8e83af37cdae8cd3a1b2cd63eba1fb78feb4a8e45676252b8117923"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/development/browser_core/phase-18-bluets/tools/higher_order_inference/emission_controls.cjs",
+      "bytes": 6115,
+      "sha256": "0b54705355454adc51434a9d89dd7bdcc4e9d31d5e81b619d19a5ad71575bc04"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/development/browser_core/phase-18-bluets/tools/higher_order_inference/native.cjs",
+      "bytes": 3390,
+      "sha256": "96776fdf4522215e62444bc056624278d76a30cbeec49f8c47e02bc1734c5044"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/development/browser_core/phase-18-bluets/tools/higher_order_runtime.test.cjs",
+      "bytes": 1587,
+      "sha256": "16c6aea1032e3ce4401ac2c404eb9ed78a0012c21f0c82911950d4e3dbd06b98"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/development/browser_core/phase-18-bluets/tools/record_higher_order_inference.cjs",
+      "bytes": 253,
+      "sha256": "711d90e621a309aa8fbf3353de461d74ebea796d741636afc6e200d29a7ef30f"
+    },
+    {
+      "path": "development-history/contract/candidate-12/source/development/browser_core/phase-18-bluets/tools/verify_higher_order_inference.cjs",
+      "bytes": 251,
+      "sha256": "01e41f70d6a461f609138a943cae8eba6a71ad9b6fb9ab8d7b1bd4ee8dfb3bc9"
+    }
+  ]
+}

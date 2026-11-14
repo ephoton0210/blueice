@@ -63,6 +63,9 @@ pub struct Module {
     pub(crate) expression_variable_types: BTreeMap<usize, Type>,
     /// Retained static `as` targets, keyed by the assertion keyword.
     pub(crate) type_assertions: BTreeMap<usize, Type>,
+    /// Shorthand property names retained while scanning owned runtime operands.
+    /// Their keys stay unchanged when an ES5 value binding is renamed.
+    pub(crate) object_shorthands: BTreeMap<usize, String>,
 }
 
 #[path = "parser/import_types.rs"]

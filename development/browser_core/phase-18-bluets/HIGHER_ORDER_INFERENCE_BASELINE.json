@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "parentCommit": "87d53ef80beb76c77dd804b9c14f3ed2dbb8a4c5",
+  "sourceRevision": "backend-tree:57ea386c3d0864ab228846f55cf39d3a3d3f5e66",
+  "compilerSha256": "b826dc358758c6625cfc3789a947de92646cb17818422d075d4e3077c74f57e1",
+  "frozenSha256": "a97ce8c0ece181bdee9706325e01516e3aba298f6389d013e23ec1f963b8dd25",
+  "comparisonScope": "Complete verdict, diagnostics/UTF-16 positions and actual declaration inventory/bytes. Baseline consumers, syntax and execution are not acceptance evidence.",
+  "inventoryCredit": 0,
+  "conclusion": "measured-baseline",
+  "startedAt": "2026-11-14T03:12:32.953Z",
+  "comparisons": 384,
+  "completeAgreements": 48,
+  "completeDifferences": 336,
+  "classifications": {
+    "exact-declaration-difference": 204,
+    "incorrect-rejection": 116,
+    "complete-diagnostic-difference": 16,
+    "complete-agreement": 48
+  },
+  "rejectedInputsPublishedArtifacts": 0,
+  "finishedAt": "2026-11-14T03:13:47.083Z",
+  "evidence": {
+    "path": "HIGHER_ORDER_INFERENCE_BASELINE_EVIDENCE.tar.gz",
+    "bytes": 31219987,
+    "sha256": "b995074a946d5b17893563e172b19cd15e011c5b8519aac0d5b1ef7aee9b7976",
+    "members": 13232
+  },
+  "memberManifest": {
+    "path": "HIGHER_ORDER_INFERENCE_BASELINE_MEMBERS.json",
+    "sha256": "0bb733420faddccd31f865e58a2f1540c38ebce52922b295fc3aa19981ebc386"
+  },
+  "nativeCalibrationCounts": {
+    "comparisons": 384,
+    "accepted": 352,
+    "rejected": 32,
+    "declarationFiles": 424,
+    "consumers": 704,
+    "syntax": 424,
+    "runtime": 48
+  },
+  "independentNativeReplay": {
+    "kind": "native",
+    "command": [
+      "node",
+      "/Users/ephoton/git/blueice-bluets/development/browser_core/phase-18-bluets/tools/record_higher_order_inference.cjs",
+      "--verify"
+    ],
+    "conclusion": "success",
+    "startedAt": "2026-11-14T03:08:40.510186+00:00",
+    "frozenSha256": "a97ce8c0ece181bdee9706325e01516e3aba298f6389d013e23ec1f963b8dd25",
+    "toolHashes": {
+      "development/browser_core/phase-18-bluets/tools/record_higher_order_inference.cjs": "711d90e621a309aa8fbf3353de461d74ebea796d741636afc6e200d29a7ef30f",
+      "development/browser_core/phase-18-bluets/tools/verify_higher_order_inference.cjs": "01e41f70d6a461f609138a943cae8eba6a71ad9b6fb9ab8d7b1bd4ee8dfb3bc9",
+      "development/browser_core/phase-18-bluets/tools/higher_order_runtime.test.cjs": "16c6aea1032e3ce4401ac2c404eb9ed78a0012c21f0c82911950d4e3dbd06b98",
+      "development/browser_core/phase-18-bluets/tools/higher_order_inference/blue.cjs": "d23547bf4847a0cd55c3ad435a32f6a204af00c2b86f43995c15845d74ebb92a",
+      "development/browser_core/phase-18-bluets/tools/higher_order_inference/common.cjs": "2c45b99cf8e83af37cdae8cd3a1b2cd63eba1fb78feb4a8e45676252b8117923",
+      "development/browser_core/phase-18-bluets/tools/higher_order_inference/native.cjs": "96776fdf4522215e62444bc056624278d76a30cbeec49f8c47e02bc1734c5044"
+    },
+    "exit": 0,
+    "logSha256": "42a5379660ac3d12ad4edeeec1c5960d8ab029db3ff0f21676ad3c8ef3894dd8",
+    "counts": {
+      "comparisons": 384,
+      "accepted": 352,
+      "rejected": 32,
+      "declarationFiles": 424,
+      "consumers": 704,
+      "syntax": 424,
+      "runtime": 48
+    },
+    "finishedAt": "2026-11-14T03:08:47.088515+00:00"
+  },
+  "runtimeNegativeChecks": {
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "measurementSha256": "a2e25d83ff6134b9c51c25adce0d1e5564e7a18aa3a4833eca4a7f57bd21ce30"
+  },
+  "preimplementationReceiptSha256": "efc2518b327c410e931579d77a18eaaa9bdabcf06f64efa5702bf724b568f284",
+  "acceptedBaselineSource": {
+    "measurement": "CONDITIONAL_INFERENCE_MEASUREMENT.json",
+    "measurementSha256": "a416204ca30660dc8923899c8506b58c0edfa59585369522fb6e1a140b3c0c18",
+    "scope": "Parent accepted artifacts preserve full production source and pinned oracle packages/licenses."
+  }
+}

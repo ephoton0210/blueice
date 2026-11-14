@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_56.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/actual-failed-diagnostics-test",
+      "bytes": 44130272,
+      "sha256": "013242a2fccb9c623c8a13aca064bcdf00212d7a01a51312939229ea209b747c"
+    }
+  ]
+}

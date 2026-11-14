@@ -131,10 +131,23 @@ pub(super) fn declarations(
         }
         if function.kind == NestedFunctionKind::Method {
             let first = tokens.partition_point(|token| token.start < function.span.start);
-            let parameter_open = if function.computed_key.is_empty() {
+            let head = if function.computed_key.is_empty() {
                 first + 1
             } else {
                 exponentiation::matching_close(tokens, first).map_or(first, |close| close + 1)
+            };
+            let parameter_open = if function.type_parameters.is_empty() {
+                head
+            } else {
+                // The parser owns the entire generic head, including constraints
+                // with callable types. Its erasure ends at the actual `(`.
+                module
+                    .edits
+                    .iter()
+                    .find(|edit| edit.start == tokens[head].start && edit.replacement.is_empty())
+                    .map_or(head, |edit| {
+                        tokens.partition_point(|token| token.start < edit.end)
+                    })
             };
             if tokens
                 .get(parameter_open)

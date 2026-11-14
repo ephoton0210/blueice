@@ -6,6 +6,86 @@
 use super::*;
 use crate::{Project, TupleTypeElement};
 
+/// Compare the bodies of equally quantified signatures under one declaration's
+/// identities. The outer diagnostic keeps the original generic spellings.
+pub(super) fn generic_pair(actual: &Type, expected: &Type) -> Option<(Type, Type)> {
+    use crate::checker::{substitute_type, type_identity};
+    use std::collections::BTreeMap;
+
+    let (
+        Type::GenericFunction {
+            type_parameters: source,
+            parameters: source_parameters,
+            result: source_result,
+            ..
+        },
+        Type::GenericFunction {
+            type_parameters: target,
+            parameters: target_parameters,
+            result: target_result,
+            ..
+        },
+    ) = (actual, expected)
+    else {
+        return None;
+    };
+    if source.len() != target.len() {
+        return None;
+    }
+    let bindings = |parameters: &[crate::TypeParameter]| {
+        parameters
+            .iter()
+            .zip(source)
+            .flat_map(|(parameter, owner)| {
+                let value = Type::Named {
+                    name: crate::parser::type_parameter_identity(owner),
+                    arguments: Vec::new(),
+                };
+                [
+                    (parameter.name.clone(), value.clone()),
+                    (crate::parser::type_parameter_identity(parameter), value),
+                ]
+            })
+            .collect::<BTreeMap<_, _>>()
+    };
+    let source_bindings = bindings(source);
+    let target_bindings = bindings(target);
+    for (source, target) in source.iter().zip(target) {
+        if source.is_const != target.is_const || source.variance != target.variance {
+            return None;
+        }
+        for (source, target) in [
+            (&source.constraint, &target.constraint),
+            (&source.default, &target.default),
+        ] {
+            let source = source
+                .as_ref()
+                .map(|value| type_identity(&substitute_type(value, &source_bindings)));
+            let target = target
+                .as_ref()
+                .map(|value| type_identity(&substitute_type(value, &target_bindings)));
+            if source != target {
+                return None;
+            }
+        }
+    }
+    let source = substitute_type(
+        &Type::Function {
+            parameters: source_parameters.clone(),
+            result: source_result.clone(),
+        },
+        &source_bindings,
+    );
+    let target = substitute_type(
+        &Type::Function {
+            parameters: target_parameters.clone(),
+            result: target_result.clone(),
+        },
+        &target_bindings,
+    );
+    Some((source, target))
+}
+
 pub(super) fn reason(
     actual: &[Parameter],
     expected: &[Parameter],

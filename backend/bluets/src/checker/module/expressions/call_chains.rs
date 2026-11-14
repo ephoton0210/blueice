@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Optional and asserted calls reuse the ordinary overload and receiver checker.
+//! Returned, optional and asserted calls share overload and receiver checking.
 use super::*;
 use crate::checker::type_operators::union;
 mod callee;
@@ -23,18 +23,15 @@ impl ModuleChecker<'_> {
         scope: &BTreeMap<String, Type>,
     ) -> Option<ResolvedCall<'a>> {
         let call = syntax::call(tokens)?;
-        if !call.optional
-            && !call.callee.iter().any(|t| t.is("?.") || t.is("!"))
-            && !call.callee.first().is_some_and(|t| t.is("("))
-            && call.callee.iter().any(|t| t.is("("))
-        {
-            return None;
-        }
         let mut callee = self.chain_callee(call.callee, scope, 0)?;
         let (non_nullable, nullable) = self.chain_non_nullable(&callee.value)?;
         let special = call.optional
             || call.callee.iter().any(|t| t.is("?.") || t.is("!"))
             || call.callee.first().is_some_and(|t| t.is("("))
+            // A returned callable is invoked directly as `factory()(value)`.
+            // Ordinary `factory().method(value)` calls retain their member
+            // checker, including library-specific diagnostics and coercions.
+            || call.callee.last().is_some_and(|token| token.is(")"))
             || nullable;
         if !special {
             return None;
@@ -84,7 +81,17 @@ impl ModuleChecker<'_> {
         scope: &BTreeMap<String, Type>,
         span: &SourceSpan,
     ) -> bool {
-        let tokens = strip_outer_parentheses(tokens);
+        let mut tokens = strip_outer_parentheses(tokens);
+        while tokens.first().is_some_and(|token| {
+            matches!(
+                token.text.as_str(),
+                "+" | "-" | "!" | "~" | "typeof" | "void" | "delete" | "await"
+            )
+        }) {
+            // Checking still visits the operand's arguments, even though the
+            // prefix operator determines the whole expression's result type.
+            tokens = strip_outer_parentheses(&tokens[1..]);
+        }
         let tokens = erased_assertion_operand(tokens)
             .map(strip_outer_parentheses)
             .unwrap_or(tokens);

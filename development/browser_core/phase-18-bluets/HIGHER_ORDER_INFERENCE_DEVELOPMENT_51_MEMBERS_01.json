@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_51.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/contract/r6-gt7-failure-preservation-1/actual-failed-gt7-test-executable",
+      "bytes": 48093264,
+      "sha256": "d78e4bbb913a2108c68962316290aab1ae3abf9288b897a2ae46b18430cb621e"
+    }
+  ]
+}

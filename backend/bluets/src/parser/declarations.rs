@@ -41,6 +41,7 @@ impl Parser {
             import_types: Vec::new(),
             expression_variable_types: BTreeMap::new(),
             type_assertions: BTreeMap::new(),
+            object_shorthands: BTreeMap::new(),
             diagnostics: Vec::new(),
             recovered_primitive_values: Vec::new(),
             max_type_depth,
@@ -93,6 +94,7 @@ impl Parser {
             import_types: self.import_types,
             expression_variable_types: self.expression_variable_types,
             type_assertions: self.type_assertions,
+            object_shorthands: self.object_shorthands,
         };
         if self.diagnostics.is_empty() {
             module.bind_class_expression_captures();

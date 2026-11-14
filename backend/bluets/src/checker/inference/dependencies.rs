@@ -84,25 +84,28 @@ pub(super) fn contains(
             result,
             ..
         } => {
-            if type_parameters.iter().any(|parameter| {
-                parameter
-                    .constraint
-                    .iter()
-                    .chain(&parameter.default)
-                    .any(&mut visit)
-            }) {
-                return true;
-            }
             let mut parameters = parameters.clone();
+            let mut aliases = aliases.clone();
             for parameter in type_parameters {
                 parameters.remove(&parameter.name);
-                parameters.remove(&crate::parser::type_parameter_identity(parameter));
+                let identity = crate::parser::type_parameter_identity(parameter);
+                parameters.remove(&identity);
+                // This signature owns its binders, including references in
+                // dependent constraints/defaults. A caller's lexical alias
+                // with the same spelling must not reopen an outer candidate.
+                aliases.remove(&parameter.name);
+                aliases.remove(&identity);
             }
-            arguments
+            type_parameters
                 .iter()
-                .filter_map(|parameter| parameter.annotation.as_ref())
+                .flat_map(|parameter| parameter.constraint.iter().chain(&parameter.default))
+                .chain(
+                    arguments
+                        .iter()
+                        .filter_map(|parameter| parameter.annotation.as_ref()),
+                )
                 .chain(std::iter::once(result.as_ref()))
-                .any(|value| contains(value, &parameters, aliases, active, budget))
+                .any(|value| contains(value, &parameters, &aliases, active, budget))
         }
         Type::Predicate(predicate) => predicate.target.as_deref().is_some_and(&mut visit),
         Type::Union(values) | Type::Intersection(values) => values.iter().any(&mut visit),

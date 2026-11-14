@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_60.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/terminal/generated-authorities/COMPATIBILITY_CASES.json",
+      "bytes": 33407342,
+      "sha256": "39e5db7a31ff67bf32d61181176a85ed62c5414915b96c31d27fd82209f14f3c"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/terminal/generated-authorities/COMPATIBILITY_INVENTORY.md",
+      "bytes": 127087,
+      "sha256": "8013b8a9b4b83fc0a78d77faa10f579f252ea024dd6d80c2fdd11229535abbae"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/terminal/generated-authorities/COMPATIBILITY_MEASUREMENT.json",
+      "bytes": 460469,
+      "sha256": "c9f3500954b51ca47e2b8c11f579617641a0519c3d5c5411b67702c755f227a0"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/terminal/generated-authorities/COMPATIBILITY_SUITES.json",
+      "bytes": 231547,
+      "sha256": "28fbf23afe82232c244951aa9cf57af38f5de64b05b1d55f7131a951893c529e"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/terminal/generated-authorities/TODO.md",
+      "bytes": 106292,
+      "sha256": "2aff3c927e0f52427d29d46677d245c6633d373c15e692adc6431f1609060c5f"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/terminal/launch-state.json",
+      "bytes": 1994,
+      "sha256": "08998507c56f1336f2c53f0026becec5073105040725c5b63cb50d877394fa10"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/terminal/local-gates.json",
+      "bytes": 6988,
+      "sha256": "37e6da3a6b119cdc0105180077e8dbe09d349b19daf7f275df80323c50d174b3"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/terminal/mac-driver.json",
+      "bytes": 3653,
+      "sha256": "6fbcbdecffdd31c94c09d96b1d0aee1473d51a279c327d76874a5b08f189bacd"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/terminal/manifest.json",
+      "bytes": 2661,
+      "sha256": "a1735752e1f3e38ef239b4ef61e47f9f784b0c5a3506a4cf34ea59cd056e430a"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/terminal/map-watch-state.json",
+      "bytes": 1520,
+      "sha256": "dc3dfca4f5dce6b096cb9135a41508806add4cef709edd4ef9f34079e4894fb5"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/terminal/native-gates.json",
+      "bytes": 2540,
+      "sha256": "cbf005ebec3243d267ad7d241570a70d462760539a3d6c7b6a3301c6bbffb0d7"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/terminal/owned-workspace-stop-1/receipt.json",
+      "bytes": 1658,
+      "sha256": "34c3e93eed7d12d89ec20bb63225703e42f2a15076409fb9be170f2bb150a3b2"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/terminal/project-gates.json",
+      "bytes": 3627,
+      "sha256": "5c6d2b3905f045aa72a57e442b1b42a224835194d50aee3061f348e5e9351283"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/terminal/windows/complete-state.json",
+      "bytes": 822,
+      "sha256": "57f58c47e3b588d1b11215deceed1cc2ab5d722851b256e0c37147d788dcc09b"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/terminal/windows/windows-acceptance-verification.json",
+      "bytes": 140098,
+      "sha256": "956080066f0a274c91b246445d6e27f9d6c16505ccc320e6eef6b7e2745f3cc7"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/terminal/workspace.log",
+      "bytes": 477619,
+      "sha256": "1302cc80c9ade96ac9c734aa0675323f4a6d3b8939668e9a643cdfc7df1c88e3"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-repair-1/diagnostics.log",
+      "bytes": 1109,
+      "sha256": "ad0e354f1d44e65213ab4668a54427994e3b49eefc9f898f7b0a52dea42513a8"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-repair-1/diagnostics.rs",
+      "bytes": 9003,
+      "sha256": "e3d46f450b3aa444f6f1f8eca284c2f0cc34e4e601353a95063bf553cf0adc68"
+    }
+  ]
+}

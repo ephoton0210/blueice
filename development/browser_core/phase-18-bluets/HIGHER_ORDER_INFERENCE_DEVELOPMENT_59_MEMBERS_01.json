@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_59.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/frozen-source.tar.gz",
+      "bytes": 34454189,
+      "sha256": "04f1a0a365482543fcbbc66146eca88c05311e675f6b8987c60fb2f224ade700"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/observed/launch-state.json",
+      "bytes": 1707,
+      "sha256": "1863cafd105130a8c2fa6f8a9677a527f65f6be92ff84d69da9ae26d0496d1f5"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/observed/local-gates.json",
+      "bytes": 6567,
+      "sha256": "2bc9b946395426092ec878dccda4e08e7f0bda69a986314a6c9dbf13ba1380f9"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/observed/mac-driver.json",
+      "bytes": 3165,
+      "sha256": "81a09844608d3a1f80a217c8a0eeb8357215fa3f6f1be3fe45b0ee3728c8c8a1"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/observed/map-watch-state.json",
+      "bytes": 1520,
+      "sha256": "e5d46c6a4b006f20ea72b514964db6ff81f77c031c0e2047f7b243da16752ccb"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/observed/native-gates.json",
+      "bytes": 2540,
+      "sha256": "cbf005ebec3243d267ad7d241570a70d462760539a3d6c7b6a3301c6bbffb0d7"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/observed/project-gates.json",
+      "bytes": 3627,
+      "sha256": "5c6d2b3905f045aa72a57e442b1b42a224835194d50aee3061f348e5e9351283"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/observed/windows/complete-state.json",
+      "bytes": 822,
+      "sha256": "57f58c47e3b588d1b11215deceed1cc2ab5d722851b256e0c37147d788dcc09b"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/observed/windows/windows-acceptance-verification.json",
+      "bytes": 140098,
+      "sha256": "956080066f0a274c91b246445d6e27f9d6c16505ccc320e6eef6b7e2745f3cc7"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/observed/workspace.log",
+      "bytes": 477619,
+      "sha256": "1302cc80c9ade96ac9c734aa0675323f4a6d3b8939668e9a643cdfc7df1c88e3"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/original-diagnostics-failure.log",
+      "bytes": 1578,
+      "sha256": "026329bc08a3b03016e1df2a0bc069c1145a251456bdfaf5479ad540809aac5f"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/preserve_r9_failure.py",
+      "bytes": 4324,
+      "sha256": "bb0b5c8f6c9219a493ccdc6272e2c47cb9edf9c5de5a38523a75d03f57092862"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/receipt.json",
+      "bytes": 2327753,
+      "sha256": "1fd8225689e94c02b99601d0ffffa319f13bf4703250d2c23019079a4baa1875"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/terminal/controller-state.json",
+      "bytes": 946,
+      "sha256": "aa18db3f7076b2ee8345f8f5b3455486126550057123d89290ad4be6d2e0ce05"
+    },
+    {
+      "path": "development-history/contract/r9-diagnostics-version-failure-preservation-1/terminal/delivery-state.json",
+      "bytes": 2203,
+      "sha256": "1893e6e5981d800694476e9bc7ec04e78d7f921883bd4c42d30718e31005db7f"
+    }
+  ]
+}

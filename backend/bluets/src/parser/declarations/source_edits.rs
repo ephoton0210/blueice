@@ -68,6 +68,7 @@ impl Parser {
                 index = next;
                 continue;
             }
+            self.retain_object_shorthand(start, index, statement_range);
             let generic_open = if self
                 .tokens
                 .get(index + 1)
@@ -162,6 +163,27 @@ impl Parser {
             index += 1;
         }
         self.diagnose_unsupported_opaque_syntax(start, end);
+    }
+
+    fn retain_object_shorthand(&mut self, start: usize, index: usize, statement_range: bool) {
+        // Structured function bodies visit each initializer/return separately.
+        // An opaque statement range can also contain labels, blocks and binding
+        // patterns, which are not property operands.
+        if statement_range || index == start {
+            return;
+        }
+        let token = &self.tokens[index];
+        if token.kind == TokenKind::Identifier
+            && matches!(self.tokens[index - 1].text.as_str(), "{" | ",")
+            && self
+                .tokens
+                .get(index + 1)
+                .is_some_and(|next| matches!(next.text.as_str(), "," | "}"))
+            && self.directly_in_braces(start, index, false)
+        {
+            self.object_shorthands
+                .insert(token.start, token.text.clone());
+        }
     }
 
     pub(in crate::parser::implementation) fn collect_following_variable_types(

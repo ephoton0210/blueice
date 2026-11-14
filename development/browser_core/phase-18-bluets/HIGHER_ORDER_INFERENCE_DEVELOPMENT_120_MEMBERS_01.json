@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_120.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/failed-r8/windows/failed-evidence-preservation-1/failed-evidence.tar.gz",
+      "bytes": 56068233,
+      "sha256": "fcaa24be775eaa30a3792c09af3ad6626923c826487d9996c81079999cf9db79"
+    },
+    {
+      "path": "development-history/failed-r8/windows/failed-evidence-preservation-1/guest-receipt.json",
+      "bytes": 872,
+      "sha256": "a91f3652335d2785ed654cdad2f4fe23ad388187b730f074c3dc9cd3e4a6d4f6"
+    },
+    {
+      "path": "development-history/failed-r8/windows/failed-evidence-preservation-1/guest-terminal.json",
+      "bytes": 931,
+      "sha256": "1831f607e8ba872c866cf847c05a1941fa989d63d32541c13e009d1ea0263179"
+    },
+    {
+      "path": "development-history/failed-r8/windows/failed-evidence-preservation-1/state.json",
+      "bytes": 592,
+      "sha256": "50ae31a58baf419b3424c5477834f3a6906e2ec18792afc79aad8d583605bd63"
+    },
+    {
+      "path": "development-history/failed-r8/windows/gt7-failure-observation-1/gt7_library_manifest.catalog.txt",
+      "bytes": 519,
+      "sha256": "3138e14ecdf1114aabe7a4c2df5f9d64ef61aba2ed99245d2378f28aced11152"
+    },
+    {
+      "path": "development-history/failed-r8/windows/gt7-failure-observation-1/gt7_library_manifest.stderr",
+      "bytes": 2832,
+      "sha256": "0826665c6a49ec7fcf1f5a1bc47ed12da9f46e57565f29f0e7bd76c7236bf2ad"
+    },
+    {
+      "path": "development-history/failed-r8/windows/gt7-failure-observation-1/gt7_library_manifest.stdout",
+      "bytes": 812,
+      "sha256": "cb52f40bd208a679cb88b8cd0fba3440ec1d8b8c16366f662c7cbaeaa2370b94"
+    },
+    {
+      "path": "development-history/failed-r8/windows/launch.json",
+      "bytes": 40,
+      "sha256": "a77cd813c8bdc95ab50890f61647a4d3bd9bdb5b2f59261108fd5fd668671394"
+    },
+    {
+      "path": "development-history/failed-r8/windows/live-observation-1.json",
+      "bytes": 2225,
+      "sha256": "ef43fa353fb4dcc004b6bca3552d2865e3924483fa874f0b44a504097fc5996d"
+    },
+    {
+      "path": "development-history/failed-r8/windows/live-observation-2.json",
+      "bytes": 3735,
+      "sha256": "6078c1090b05bdb6346b0310200b6c661c16377041126a19d9dc5cf3c0dbf460"
+    },
+    {
+      "path": "development-history/failed-r8/windows/package-evidence.py",
+      "bytes": 7821,
+      "sha256": "0e5026fae4aed966ba4e54bdc3aca06e4311eecefa2b9e6d6a03d8c268849c2d"
+    },
+    {
+      "path": "development-history/failed-r8/windows/source-delta.tar.gz",
+      "bytes": 79361,
+      "sha256": "302624ff3239bc88736df8029de95063d270d9cf2f7a8bfa2920b84a476b7643"
+    },
+    {
+      "path": "development-history/failed-r8/windows/upload-driver.log",
+      "bytes": 2031,
+      "sha256": "d13ce4247f4d63b04a917a3f4b85e6ed0f4889d4f5a8e6a86ec26eecdad05f48"
+    },
+    {
+      "path": "development-history/failed-r8/windows/upload-plan.json",
+      "bytes": 1779,
+      "sha256": "d4d027ac55fc76a0443329ca2b986decb0a11159ded230668779d123a21e4a1d"
+    },
+    {
+      "path": "development-history/failed-r8/windows/upload-state.json",
+      "bytes": 2077,
+      "sha256": "78055b65f1a0c7ac168272fcb67f444c5939b8f2ee8e349a84029502de371bdb"
+    },
+    {
+      "path": "development-history/failed-r8/windows/windows-runner.cjs",
+      "bytes": 10865,
+      "sha256": "fd6caae2b7e24a8f091307577f597bd5ab44af5ae44c79bc315ab9c1b705fce8"
+    },
+    {
+      "path": "development-history/failed-r8/windows/windows-source-manifest.json",
+      "bytes": 4675516,
+      "sha256": "1c7dd16a62ce694d2ce02714066a4a4307b5a5c8563fecd4e7e2aeb28bdce70c"
+    },
+    {
+      "path": "development-history/failed-r8/windows/windows-source-manifest.json.gz",
+      "bytes": 856214,
+      "sha256": "4eec485c7d10ae3798b661a0c63b144b206c6d313f59063454674cb191d91209"
+    },
+    {
+      "path": "development-history/failed-r8/windows-supervisor.log",
+      "bytes": 1101,
+      "sha256": "18d8e5e121f04a9eced741408c7eca5df27fd8a0333ac953f878b8067c16df89"
+    }
+  ]
+}

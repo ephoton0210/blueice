@@ -7,6 +7,7 @@ use super::*;
 
 pub(super) struct Collector<'a> {
     pub(super) parameters: &'a BTreeSet<String>,
+    pub(super) identities: &'a BTreeMap<String, String>,
     pub(super) candidates: BTreeMap<String, candidates::Candidates>,
     pub(super) aliases: &'a BTreeMap<String, TypeDefinition>,
     pub(super) budget: &'a mut TypeExpansionBudget,
@@ -65,7 +66,7 @@ impl Collector<'_> {
                     self.evidence += 1;
                 }
                 self.candidates
-                    .entry(name.clone())
+                    .entry(self.identities.get(name).unwrap_or(name).clone())
                     .or_default()
                     .add(actual, contra);
                 return;
@@ -175,7 +176,7 @@ impl Collector<'_> {
                     self.evidence += 1;
                 }
                 self.candidates
-                    .entry(name)
+                    .entry(self.identities.get(&name).cloned().unwrap_or(name))
                     .or_default()
                     .add(&inferred, contra);
                 return;
@@ -184,8 +185,28 @@ impl Collector<'_> {
         if self.collect_indices(template, actual, contra) {
             return;
         }
+        // Alias arguments belong to this inference owner before the alias's
+        // nested signatures introduce their own binders. Keep that identity
+        // through same-spelled method parameters, constraints and defaults.
+        let bindings = self
+            .identities
+            .iter()
+            .filter(|(identity, name)| {
+                self.parameters.contains(*identity) && self.parameters.contains(*name)
+            })
+            .map(|(identity, name)| {
+                (
+                    name.clone(),
+                    Type::Named {
+                        name: identity.clone(),
+                        arguments: Vec::new(),
+                    },
+                )
+            })
+            .collect();
+        let scoped_template = substitute_type(template, &bindings);
         if let Some(expanded) = instantiate_named(
-            template,
+            &scoped_template,
             self.aliases,
             &mut HashSet::new(),
             self.budget,
@@ -253,9 +274,11 @@ impl Collector<'_> {
                 let mut parameters = self.parameters.clone();
                 for parameter in template_locals.iter().chain(actual_locals) {
                     parameters.remove(&parameter.name);
+                    parameters.remove(&crate::parser::type_parameter_identity(parameter));
                 }
                 let mut nested = Collector {
                     parameters: &parameters,
+                    identities: self.identities,
                     candidates: std::mem::take(&mut self.candidates),
                     aliases: self.aliases,
                     budget: self.budget,

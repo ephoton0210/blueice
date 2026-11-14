@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_COMPILERS_01.tar.gz",
+  "entries": [
+    {
+      "path": "accepted-native-cli",
+      "bytes": 50587200,
+      "sha256": "d3fe1bd6c64aa294be6b809df56fc5a9b11ed84129d55a93874ac02884ed54d9"
+    }
+  ]
+}

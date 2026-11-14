@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "archive": "HIGHER_ORDER_INFERENCE_DEVELOPMENT_47.tar.gz",
+  "entries": [
+    {
+      "path": "development-history/contract/r10-public-diagnostics-workspace-1/actual-diagnostics-executable",
+      "bytes": 44130272,
+      "sha256": "049558213f7096cbbae6bafed3f159ef356dcdbe9a533bfa76eaf98c081d112a"
+    },
+    {
+      "path": "development-history/contract/r10-public-diagnostics-workspace-1/cohort.log",
+      "bytes": 955,
+      "sha256": "4f3e65d5a87f35d28d7858a33eb5e4b970c2dd70530855a90d0ff0c3cee0ddc0"
+    },
+    {
+      "path": "development-history/contract/r10-public-diagnostics-workspace-1/measurement.json",
+      "bytes": 641,
+      "sha256": "f035750d36097352f43dfb79eccad993bbe5b418c7d8a0f4aac7acf3c3d1fb51"
+    },
+    {
+      "path": "development-history/contract/r10-windows-packaging-recovery-1/fresh-namespace-terminal.json",
+      "bytes": 38,
+      "sha256": "0060caf691eaa681f33db0e98d1ceaad02ce93aa057f9ed604d0179cbd705efa"
+    },
+    {
+      "path": "development-history/contract/r10-windows-packaging-recovery-1/original/windows/bootstrap-terminal.json",
+      "bytes": 554,
+      "sha256": "50250aa13ba933fb1b8a1ce613f11515c9ac3fb9171758fda3fa9469182fa82d"
+    },
+    {
+      "path": "development-history/contract/r10-windows-packaging-recovery-1/original/windows/complete-state.json",
+      "bytes": 936,
+      "sha256": "c252bdebae16aaad4c8f8110c8c46fc1d18b3d16550cc5bd6a7a04f209151746"
+    },
+    {
+      "path": "development-history/contract/r10-windows-packaging-recovery-1/original/windows/finalize-state.json",
+      "bytes": 728,
+      "sha256": "69090e0e94bef0d4fe906babf83e3dab667d279d5c2089380eb69ccc0e780916"
+    },
+    {
+      "path": "development-history/contract/r10-windows-packaging-recovery-1/original/windows/finish-driver.log",
+      "bytes": 726,
+      "sha256": "1c1d7082aa885b06aada4e5279a2b9747a341ffcb9a162af6bc3b619e86bf638"
+    },
+    {
+      "path": "development-history/contract/r10-windows-packaging-recovery-1/original/windows/package-evidence.py",
+      "bytes": 7832,
+      "sha256": "c7d61ba58c5c6d9d4f60d4557a982ec3afac5cd7ed084b9ebe21aa2bbc770f26"
+    },
+    {
+      "path": "development-history/contract/r10-windows-packaging-recovery-1/original/windows/package-failure-observation-1.json",
+      "bytes": 308,
+      "sha256": "6d49faf010c03a507dc4150cbc25b1ea7bd331ce8b8ffed718721000d2bb1787"
+    },
+    {
+      "path": "development-history/contract/r10-windows-packaging-recovery-1/original/windows/package-terminal.json",
+      "bytes": 461,
+      "sha256": "40ec4502042e94577aceb3bc81944cd8a40710996312129db60cf63e84fabce2"
+    },
+    {
+      "path": "development-history/contract/r10-windows-packaging-recovery-1/original/windows/terminal-test-observation-1.json",
+      "bytes": 44136,
+      "sha256": "c76146b34b72c4b035dd7c5e394974f95099661d4950cc7476eefa0144827050"
+    },
+    {
+      "path": "development-history/contract/r10-windows-packaging-recovery-1/original/windows-supervisor.log",
+      "bytes": 364,
+      "sha256": "d2ddd4a7039d78e999fecf4d3410f9b75b797fe49de99e774a0b1bcbbd15e66a"
+    },
+    {
+      "path": "development-history/contract/r10-windows-packaging-recovery-1/original-manifest.json",
+      "bytes": 1284,
+      "sha256": "25c334ea75eec2aab9ee7fa1208e92bd89d26c4296264fd548541199049b420f"
+    },
+    {
+      "path": "development-history/contract/r10-windows-packaging-recovery-1/package-evidence.py",
+      "bytes": 7931,
+      "sha256": "519638445a925739d244d785fbe5ee6e8e9a04060b6b73be4b78f05912cbe890"
+    },
+    {
+      "path": "development-history/contract/r10-windows-packaging-recovery-1/package-process.json",
+      "bytes": 18,
+      "sha256": "2d164c272a36991724faf95371cb3d257c2c516348fb1fb3f6ec5e4ca0b5ea8c"
+    },
+    {
+      "path": "development-history/contract/r10-windows-packaging-recovery-1/package-terminal.json",
+      "bytes": 697,
+      "sha256": "fbfe633191d5f6fb1fcd0f4b56eab093db4e0ad86f30758699335e2642b8ac01"
+    },
+    {
+      "path": "development-history/contract/r10-windows-packaging-recovery-1/repair-proof.json",
+      "bytes": 1097,
+      "sha256": "b9f71b72c433f0ca80da86677f93f35dd68da18b9f51b7693278d70259a91ce0"
+    },
+    {
+      "path": "development-history/contract/r10-windows-packaging-recovery-1/state.json",
+      "bytes": 913,
+      "sha256": "d2cf493f0e5700c72131c589b3edd31b36930a8b89972de1966cc6b502c65408"
+    },
+    {
+      "path": "development-history/contract/r10-windows-packaging-recovery-1/verify-windows.log",
+      "bytes": 132668,
+      "sha256": "30c8c35525c6dfe1286dc0830c74289e5ab03d8738599580e023a38a4bba6920"
+    }
+  ]
+}

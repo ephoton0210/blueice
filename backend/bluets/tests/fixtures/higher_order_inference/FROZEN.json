@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "frozenAt": "2026-11-14T03:07:19.735200+00:00",
+  "parentCommit": "87d53ef80beb76c77dd804b9c14f3ed2dbb8a4c5",
+  "productionStarted": false,
+  "forms": 48,
+  "profiles": 8,
+  "primaryComparisons": 384,
+  "boundaryControls": 12,
+  "typescript": "5.9.3",
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "libraries": {
+    "lib.es5.d.ts": "c430d44666289dae81f30fa7b2edebf186ecc91a2d4c71266ea6ae76388792e1",
+    "lib.decorators.d.ts": "8e7f8264d0fb4c5339605a15daadb037bf238c10b654bb3eee14208f860a32ea",
+    "lib.decorators.legacy.d.ts": "782dec38049b92d4e85c1585fbea5474a219c6984a35b004963b00beb1aab538"
+  },
+  "sha256": {
+    "cases.json": "b65c525603c0a1896543ce4ad5acff4bed850dcbad98af59a2e8604339be27bc",
+    "reference.json": "c6bec883760ecf1a6310ce67541eb9555c7c95b084d7673fe39ce5660fe6e0cc",
+    "boundary-controls.json": "0c89bc41ed2ecb3c640fa81b72fcae4607cdcf6970a2ed26a187b5a73f4011ad",
+    "boundary-reference.json": "8860fc27e30347849b153b42ac4b16d977bf0a3c66f47eb80a2e28ea4aa8ed62"
+  },
+  "nativeCalibration": {
+    "path": "target/higher-order-inference-contract-20261114/native-calibration-1/measurement.json",
+    "sha256": "c1e6eef900b63a330f0bc61649732224df1439692c7e937f4ea94235567aa3c2"
+  },
+  "counts": {
+    "comparisons": 384,
+    "accepted": 352,
+    "rejected": 32,
+    "declarationFiles": 424,
+    "consumers": 704,
+    "syntax": 424,
+    "runtime": 48
+  },
+  "scope": "Frozen before production edits; independent Native replay and complete same-source acceptance remain required."
+}

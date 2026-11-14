@@ -1,0 +1,53 @@
+{
+  "conclusion": "expected-red",
+  "stage": "public-boundary-baseline-reproduced",
+  "startedAt": "2026-11-14T03:14:23.682587+00:00",
+  "parentCommit": "87d53ef80beb76c77dd804b9c14f3ed2dbb8a4c5",
+  "frozenSha256": "a97ce8c0ece181bdee9706325e01516e3aba298f6389d013e23ec1f963b8dd25",
+  "build": {
+    "command": [
+      "cargo",
+      "test",
+      "-p",
+      "blueice-bluets",
+      "--test",
+      "higher_order_inference",
+      "--no-run",
+      "--message-format=json",
+      "--locked",
+      "--offline"
+    ],
+    "exit": 0,
+    "stdoutSha256": "7e5662fb4d4eb841066483b7b3e51c51a5334cd9bdb181152333ed18fbb74e9a",
+    "stderrSha256": "b3c26c96679062b52e108cb62df8852eef712a1020a6c8ff73fb26b49b5b9624"
+  },
+  "actual-cliSha256": "fed688b54009ae9fd19baf60afed05d53e6079c41a27e4e2fd87b582bacba04b",
+  "actual-test-executableSha256": "23c81b3e45ef77352a065f53f0dc663666ba0e060cb308ab1fd2cc89630e9df2",
+  "rust": {
+    "passed": 1,
+    "failed": 2,
+    "ignored": 1,
+    "filtered": 0,
+    "exit": 101
+  },
+  "all384BaselineObservationsReproduced": true,
+  "comparisons": 384,
+  "completeAgreements": 48,
+  "completeDifferences": 336,
+  "rawLogSha256": "2ca16384cdf1915ae3b2fe580793d12864540db36d718d726fe83b974eae35e8",
+  "productionSourcesUnchanged": true,
+  "finishedAt": "2026-11-14T03:15:42.653591+00:00",
+  "evidence": {
+    "path": "HIGHER_ORDER_INFERENCE_BASELINE_EVIDENCE.tar.gz",
+    "bytes": 31219987,
+    "sha256": "b995074a946d5b17893563e172b19cd15e011c5b8519aac0d5b1ef7aee9b7976",
+    "members": 13232
+  },
+  "memberManifest": {
+    "path": "HIGHER_ORDER_INFERENCE_BASELINE_MEMBERS.json",
+    "sha256": "0bb733420faddccd31f865e58a2f1540c38ebce52922b295fc3aa19981ebc386"
+  },
+  "sourceManifest": "red-1/measurement.json",
+  "inventoryCredit": 0,
+  "baselineSha256": "b4d1b25a643bccf395a05a1f1ca39488c8da784638363c8c0b7f5b8c9be51a78"
+}

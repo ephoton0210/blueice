@@ -21,6 +21,7 @@ mod flow_checks;
 mod freshness;
 mod function_methods;
 mod generic_inference;
+mod higher_order;
 mod implementation_origin;
 mod indexed_calls;
 mod indexing;
@@ -57,53 +58,6 @@ impl<'a> ModuleChecker<'a> {
             .is_some_and(|(_, function)| {
                 function.span.end <= last.end && position < function.span.end
             })
-    }
-
-    pub(super) fn infer_function_call(
-        &self,
-        signatures: &[FunctionSignature],
-        tokens: &[Token],
-        scope: &BTreeMap<String, Type>,
-        explicit_type_arguments: Option<&[Type]>,
-    ) -> Type {
-        let Some(arguments) = split_call_arguments(tokens) else {
-            return Type::Unknown;
-        };
-        if let Some(alternatives) = self.optional_spread_scopes(&arguments, scope) {
-            let mut results = alternatives.iter().map(|alternative| {
-                self.infer_function_call(signatures, tokens, alternative, explicit_type_arguments)
-            });
-            let first = results.next().unwrap_or(Type::Unknown);
-            return if results.all(|result| result == first) {
-                first
-            } else {
-                Type::Unknown
-            };
-        }
-        let Ok(actuals) = self.explicit_call_argument_types(
-            &arguments,
-            scope,
-            signatures,
-            explicit_type_arguments,
-        ) else {
-            return Type::Unknown;
-        };
-        let Ok(Some(signature)) =
-            self.select_function_signature(signatures, &actuals, explicit_type_arguments)
-        else {
-            return Type::Unknown;
-        };
-        let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-        budget.checking = self.checking;
-        let substitutions = function_call_substitutions(
-            signature,
-            &actuals,
-            explicit_type_arguments,
-            &self.types,
-            &mut budget,
-        )
-        .expect("selected function signature has valid substitutions");
-        self.materialize_result(&signature.return_type, &substitutions, &mut budget)
     }
 
     pub(super) fn check_function_call(

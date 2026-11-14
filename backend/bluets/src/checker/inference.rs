@@ -9,14 +9,18 @@ mod barriers;
 mod candidates;
 pub(super) use barriers::{checking_type, diagnostic_type};
 mod collect;
+mod contextual_signatures;
+pub(super) use contextual_signatures::infer_signature_context;
 mod dependencies;
+mod higher_order;
+pub(super) use higher_order::{bind_result, parameter_scope};
 mod indexed;
 mod mapped;
 mod result_parameters;
 mod results;
 mod surfaces;
 
-pub(crate) const VERSION: &str = "bluets-generic-inference/13";
+pub(crate) const VERSION: &str = "bluets-generic-inference/16";
 
 pub(in crate::checker) fn depends_on_parameter(
     value: &Type,
@@ -126,6 +130,22 @@ pub(super) fn infer_contextual_substitutions(
 pub(super) struct InferenceResult {
     pub(super) substitutions: BTreeMap<String, Type>,
     pub(super) rejected_constraint: Option<(String, Type, Type)>,
+    pub(super) inferred_parameters: BTreeSet<String>,
+    pub(super) propagated_parameters: Vec<TypeParameter>,
+}
+
+fn candidate_parameters(
+    signature: &FunctionSignature,
+) -> (BTreeSet<String>, BTreeMap<String, String>) {
+    let mut parameters = BTreeSet::new();
+    let mut identities = BTreeMap::new();
+    for parameter in &signature.type_parameters {
+        let identity = crate::parser::type_parameter_identity(parameter);
+        parameters.insert(parameter.name.clone());
+        parameters.insert(identity.clone());
+        identities.insert(identity, parameter.name.clone());
+    }
+    (parameters, identities)
 }
 
 pub(super) fn infer_contextual_result(
@@ -135,21 +155,21 @@ pub(super) fn infer_contextual_result(
     budget: &mut TypeExpansionBudget,
     context: Option<&Type>,
 ) -> InferenceResult {
-    let mut substitutions = BTreeMap::new();
-    let mut rejected_constraint = None;
     if signature.type_parameters.is_empty() {
         return InferenceResult {
-            substitutions,
-            rejected_constraint,
+            substitutions: BTreeMap::new(),
+            rejected_constraint: None,
+            inferred_parameters: BTreeSet::new(),
+            propagated_parameters: Vec::new(),
         };
     }
-    let parameters = signature
-        .type_parameters
-        .iter()
-        .map(|p| p.name.clone())
-        .collect();
+    if let Some(inferred) = higher_order::infer(signature, actuals, aliases, budget, context) {
+        return inferred;
+    }
+    let (parameters, identities) = candidate_parameters(signature);
     let mut collector = collect::Collector {
         parameters: &parameters,
+        identities: &identities,
         candidates: BTreeMap::new(),
         aliases,
         budget,
@@ -191,24 +211,35 @@ pub(super) fn infer_contextual_result(
             collector.collect(annotation, actual, false);
         }
     }
+    let candidates = std::mem::take(&mut collector.candidates);
+    drop(collector);
+    finish_candidates(signature, candidates, aliases, budget, context)
+}
+
+fn finish_candidates(
+    signature: &FunctionSignature,
+    candidates: BTreeMap<String, candidates::Candidates>,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    budget: &mut TypeExpansionBudget,
+    context: Option<&Type>,
+) -> InferenceResult {
+    let mut substitutions = BTreeMap::new();
+    let mut rejected_constraint = None;
+    let mut inferred_parameters = BTreeSet::new();
     let naked = result_parameters::naked(
         &signature.return_type,
         &signature.type_parameters,
         aliases,
         &mut HashSet::new(),
-        collector.budget,
+        budget,
     );
     for parameter in &signature.type_parameters {
         let literal_constraint = parameter.constraint.as_ref().is_some_and(|constraint| {
             if matches!(constraint, Type::KeyOf(_) | Type::Literal(_)) {
                 return true;
             }
-            let constraint = super::type_operators::expanded(
-                constraint,
-                aliases,
-                &mut HashSet::new(),
-                collector.budget,
-            );
+            let constraint =
+                super::type_operators::expanded(constraint, aliases, &mut HashSet::new(), budget);
             let primitive = |value: &Type| {
                 matches!(
                     value,
@@ -228,18 +259,19 @@ pub(super) fn infer_contextual_result(
             || literal_constraint
             || (naked.as_deref() == Some(parameter.name.as_str())
                 && context.is_none_or(|value| matches!(value, Type::Literal(_))));
-        if let Some(value) = collector
-            .candidates
+        if let Some(value) = candidates
             .get(&parameter.name)
-            .and_then(|candidates| candidates.solve(preserve, aliases, collector.budget))
+            .and_then(|candidates| candidates.solve(preserve, aliases, budget))
         {
             substitutions.insert(parameter.name.clone(), value);
+            inferred_parameters.insert(parameter.name.clone());
         }
     }
-    drop(collector);
     if let Some(context) = context {
+        let (parameters, identities) = candidate_parameters(signature);
         let mut collector = collect::Collector {
             parameters: &parameters,
+            identities: &identities,
             candidates: BTreeMap::new(),
             aliases,
             budget,
@@ -249,8 +281,9 @@ pub(super) fn infer_contextual_result(
         };
         collector.collect(&signature.return_type, context, false);
         for (name, candidates) in &collector.candidates {
-            if let Some(value) = candidates.solve(true, aliases, collector.budget) {
+            if let Some(value) = candidates.solve(true, aliases, budget) {
                 substitutions.entry(name.clone()).or_insert(value);
+                inferred_parameters.insert(name.clone());
             }
         }
     }
@@ -305,6 +338,8 @@ pub(super) fn infer_contextual_result(
     InferenceResult {
         substitutions,
         rejected_constraint,
+        inferred_parameters,
+        propagated_parameters: Vec::new(),
     }
 }
 
