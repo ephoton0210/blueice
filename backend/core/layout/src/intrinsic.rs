@@ -125,7 +125,12 @@ pub(crate) fn drop_down_width(ctx: &Ctx<'_>, node: NodeId, style: &crate::ctx::S
         .iter()
         .map(|option| blueice_font::measure_text_width(&option.label, style.font_size(), bold, italic))
         .fold(0.0f64, f64::max);
-    Some(widest + 24.0)
+    // Room for the arrow, unless the page draws its own (`appearance: none`).
+    let appearance_none = style
+        .raw("appearance")
+        .or_else(|| style.raw("-webkit-appearance"))
+        .is_some_and(|v| matches!(v, blueice_css::Value::Keyword(k) if k == "none"));
+    Some(widest + if appearance_none { 0.0 } else { 24.0 })
 }
 
 /// `(min-content, max-content)` border-box widths of `node`, margins excluded.

@@ -1105,7 +1105,10 @@ Open, not fixed:
 - rust-lang.org: a `<select>` was always 20em wide, which pushed the header's language picker to a
   second line; a drop-down with no width is now as wide as its longest option plus the arrow
   (fixed, tested). The header is now one line like Safari's; the logo link box is 11px wider than
-  Safari's (91 vs 80) and the nav 16px taller; not yet analysed. A closed `<details>` showed
+  Safari's (91 vs 80) and the nav 16px taller. Analysed 2026-11-16: the UA gave `select` `height: 2em` and an
+  arrow gutter even with `appearance: none`; now one line tall with no gutter when the page draws its own
+  look (tested), so the nav matches Safari and the select/logo are 11px off, which is DejaVu's glyph
+  widths against Fira Sans/Helvetica (font availability). A closed `<details>` showed
   its content (no UA rule); `details:not([open]) > :not(summary) { display: none }` fixes it
   (tested), cutting lobste.rs's body overshoot from ~700px to 108px. `vertical-align: middle` was a fixed
   0.25em baseline shift; it now centres the box on baseline + half the x-height, so a 16px avatar

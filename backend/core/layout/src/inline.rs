@@ -2646,6 +2646,9 @@ mod tests {
         assert!(long > short + 100.0, "short {short}, long {long}");
         assert!(long < 400.0, "not the old fixed 20em: {long}");
         assert_eq!(width_of("<select><option>ab</option></select>", "select { width: 250px }"), 250.0);
+        // Drawn without the platform look, there is no arrow to leave room for.
+        let plain = width_of("<select><option>ab</option></select>", "select { appearance: none }");
+        assert!((short - plain - 24.0).abs() < 0.01, "short {short}, plain {plain}");
     }
 
     #[test]
@@ -2667,6 +2670,25 @@ mod tests {
         }
         let height = first_line(&f).expect("a line");
         assert!((height - 23.2).abs() < 0.01, "line height {height}");
+    }
+
+    #[test]
+    fn a_select_is_one_line_tall_not_two_ems() {
+        // rust-lang.org's language menu: 15px text, 2px/6px padding, a 1px border. Safari makes it
+        // 23.25px tall (a line plus padding and border), not 2em = 30px.
+        let f = body(
+            "<select><option>English</option></select>",
+            "select { font-size: 15px; padding: 2px 6px; border: 1px solid #000 }",
+            600.0,
+        );
+        fn control_height(f: &Fragment) -> Option<f64> {
+            if matches!(f.kind, FragmentKind::NativeControl { .. }) {
+                return Some(f.height);
+            }
+            f.children.iter().find_map(control_height)
+        }
+        let h = control_height(&f).expect("the select's box");
+        assert!((21.0..=26.0).contains(&h), "height {h}");
     }
 
     #[test]
