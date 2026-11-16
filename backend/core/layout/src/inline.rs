@@ -2599,6 +2599,18 @@ mod tests {
     }
 
     #[test]
+    fn a_right_float_container_shrinks_to_what_its_float_needs() {
+        // python.org's header: a `float: right` box holding a right float and inline content.
+        let f = body(
+            "<div class=o><div class=i style='float:right;width:120px;height:20px'></div></div>",
+            ".o { float: right }",
+            600.0,
+        );
+        let outer = &f.children[0];
+        assert!(outer.width < 200.0, "the container is {} wide, not the whole line", outer.width);
+    }
+
+    #[test]
     fn adjacent_marks_are_trimmed_across_an_inline_element_boundary() {
         let (close_full, _) = full_and_half("\u{300d}");
         let (_, open_half) = full_and_half("\u{300c}");

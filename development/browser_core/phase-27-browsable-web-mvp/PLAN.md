@@ -1090,10 +1090,10 @@ Open, not fixed:
 - Differences that come from running scripts (Safari ran the page's JavaScript before measuring):
   Wikipedia's TOC sub-items are collapsed by script; python.org hides its `#nojs` notice by script.
   Compare with `BI_SCRIPTS=1 BI_ASYNC=1` for those.
-- python.org: the header's `options-bar-container` (`float: right` inside `@media (min-width: 40em)`)
-  is laid out full width (1168px) below the logo instead of shrink-wrapped beside it (Safari: x=698,
-  w=518); the search form's Font Awesome magnifier icon (`.icon-search:before`) has width 0, and
-  the page is 150px taller than Safari's. Cause not found yet.
+- python.org: the header's `float: right` options bar was laid out full width because a right float
+  inside a content-width measure sat a million pixels out (fixed: it now asks for its own width, so
+  the bar sits at Safari's x/y). Still differing: the header is 256px shorter than Safari's (306 vs
+  562) and the search form's Font Awesome icon (`.icon-search:before`) has width 0; cause not found.
 - rust-lang.org: the header `.brand` box is 284px wide (Safari 148) and the nav is 100px taller;
   lobste.rs's body is 700px taller than Safari's (text widths, then wrapping). Not yet analysed.
 - Wikipedia: a heading's bottom rule runs under the floated infobox (Safari clips it with the float);

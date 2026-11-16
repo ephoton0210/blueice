@@ -350,7 +350,13 @@ pub(crate) fn layout_flow(
                 };
                 all_floats.push(rect);
                 flow.floats.push(rect);
-                flow.extent = flow.extent.max(fx + w);
+                // Measuring for content width gives unlimited room: a right float then sits a
+                // million pixels out, but what it asks for is its own width.
+                flow.extent = flow.extent.max(if content_width >= crate::intrinsic::UNBOUNDED / 2.0 {
+                    w
+                } else {
+                    fx + w
+                });
                 flow.pending_abs
                     .extend(shift_pending(placed.pending_abs, fragment.x, fragment.y));
                 apply_relative(ctx, &style, &mut fragment, &constraint);
