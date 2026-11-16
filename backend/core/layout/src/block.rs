@@ -728,7 +728,12 @@ fn layout_block_level_uncached(
             if auto_left || auto_right {
                 let fixed_left = if auto_left { 0.0 } else { style.side("margin-left", cbw) };
                 let fixed_right = if auto_right { 0.0 } else { style.side("margin-right", cbw) };
-                let free = (cbw - placed.fragment.width - fixed_left - fixed_right).max(0.0);
+                // While measuring for content width the room is a stand-in for unlimited.
+                let free = if cbw >= crate::intrinsic::UNBOUNDED / 2.0 {
+                    0.0
+                } else {
+                    (cbw - placed.fragment.width - fixed_left - fixed_right).max(0.0)
+                };
                 placed.margin_left = fixed_left;
                 placed.margin_right = fixed_right;
                 match (auto_left, auto_right) {

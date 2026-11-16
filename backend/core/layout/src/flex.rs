@@ -553,7 +553,13 @@ pub(crate) fn layout_flex(ctx: &Ctx<'_>, container: NodeId, input: &FlexInput) -
             .map(|&i| items[i].outer_main(row, items[i].hypothetical))
             .sum::<f64>()
             + gaps;
-        let target = available_main.unwrap_or(outer_hypothetical);
+        // Measuring for content width hands in `UNBOUNDED` room: it is not space to grow into.
+        let measuring = row && content_width >= UNBOUNDED / 2.0;
+        let target = if measuring {
+            outer_hypothetical
+        } else {
+            available_main.unwrap_or(outer_hypothetical)
+        };
         let growing = outer_hypothetical < target;
         let mut frozen = vec![false; line.len()];
         for (slot, &i) in line.iter().enumerate() {
@@ -1227,6 +1233,22 @@ mod tests {
             vec![20.0, 20.0, 0.0],
             "later lines come first"
         );
+    }
+
+    #[test]
+    fn a_growing_flex_container_is_measured_by_its_content_not_by_unlimited_room() {
+        // Wikipedia's header: a wrapping row with a fixed item and a `flex-grow` container whose own
+        // item also grows. The container's max-content is what its items need, so both stay on
+        // one line.
+        let f = flex(
+            "<div class=r><div class=a>start</div><div class=b><div class=c>search</div></div></div>",
+            ".r { display: flex; flex-wrap: wrap; column-gap: 16px } .b { display: flex; flex-grow: 1 } \
+             .c { flex-grow: 1 }",
+            600.0,
+        );
+        assert_eq!(f.children.len(), 2);
+        assert_eq!(f.children[0].y, f.children[1].y, "one line, not two");
+        assert!(f.height < 40.0, "{}", f.height);
     }
 
     #[test]

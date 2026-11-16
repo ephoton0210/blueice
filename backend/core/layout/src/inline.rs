@@ -2518,6 +2518,20 @@ mod tests {
     }
 
     #[test]
+    fn a_flex_item_holding_a_centred_picture_is_as_wide_as_the_picture() {
+        // Measuring for max-content must not hand the picture's auto margins the whole
+        // "unlimited" room (Wikipedia's logo made its header 1,000 px wide this way).
+        let f = body(
+            "<div class=r><span class=c><img width=44 height=20 alt=x></span><b>after</b></div>",
+            ".r { display: flex } img { display: block; margin: 0 auto } .c { float: left }",
+            400.0,
+        );
+        let row = &f.children[0];
+        let after = row.children.last().expect("the second item");
+        assert!(after.x < 100.0, "the item after the picture starts at {}", after.x);
+    }
+
+    #[test]
     fn adjacent_marks_are_trimmed_across_an_inline_element_boundary() {
         let (close_full, _) = full_and_half("\u{300d}");
         let (_, open_half) = full_and_half("\u{300c}");

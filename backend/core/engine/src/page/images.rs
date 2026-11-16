@@ -553,7 +553,11 @@ mod tests {
                         let mut keys: Vec<_> = s
                             .other
                             .iter()
-                            .filter(|(k, _)| k.starts_with("grid") || k.ends_with("gap"))
+                            .filter(|(k, _)| {
+                                k.starts_with("grid")
+                                    || k.ends_with("gap")
+                                    || std::env::var("BI_KEYS").is_ok_and(|w| w.split(',').any(|x| x == k.as_str()))
+                            })
                             .map(|(k, v)| format!("{k}={v:?}"))
                             .collect();
                         keys.sort();
