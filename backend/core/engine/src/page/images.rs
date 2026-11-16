@@ -534,6 +534,48 @@ mod tests {
         let laid_out = std::time::Instant::now();
         page.load_html_str(&fetched.body, Some(fetched.final_url.clone()));
         eprintln!("styled, scripted and laid out in {:?}", laid_out.elapsed());
+        if let Ok(range) = std::env::var("BI_DUMP") {
+            // Developer aid: print every box overlapping `y0,y1`, with its element.
+            let mut bounds = range.split(',').filter_map(|v| v.parse::<f64>().ok());
+            let (y0, y1) = (bounds.next().unwrap_or(0.0), bounds.next().unwrap_or(900.0));
+            fn walk(page: &Page, f: &blueice_layout::Fragment, depth: usize, y0: f64, y1: f64) {
+                if f.y + f.height >= y0 && f.y <= y1 && !matches!(f.kind, blueice_layout::FragmentKind::Text { .. }) {
+                    let name = f.node.map_or(String::new(), |n| match page.doc.data(n) {
+                        blueice_dom::NodeData::Element { tag_name, attributes } => {
+                            let get = |k: &str| {
+                                attributes.iter().find(|(a, _)| a == k).map(|(_, v)| v.as_str()).unwrap_or("")
+                            };
+                            format!("<{tag_name} id={} class={}>", get("id"), get("class"))
+                        }
+                        _ => String::new(),
+                    });
+                    let style = f.node.and_then(|n| page.styles.get(&n)).map_or(String::new(), |s| {
+                        let mut keys: Vec<_> = s
+                            .other
+                            .iter()
+                            .filter(|(k, _)| k.starts_with("grid") || k.ends_with("gap"))
+                            .map(|(k, v)| format!("{k}={v:?}"))
+                            .collect();
+                        keys.sort();
+                        format!(" [{} {}]", s.display, keys.join(" "))
+                    });
+                    eprintln!(
+                        "{}{}{} x={:.0} y={:.0} w={:.0} h={:.0}",
+                        "  ".repeat(depth),
+                        name,
+                        style,
+                        f.x,
+                        f.y,
+                        f.width,
+                        f.height
+                    );
+                }
+                for child in &f.children {
+                    walk(page, child, depth + 1, y0, y1);
+                }
+            }
+            walk(&page, &page.fragment, 0, y0, y1);
+        }
         if scripts {
             // Let the page's timers run for a while, as the session tick would.
             let until = std::time::Instant::now()

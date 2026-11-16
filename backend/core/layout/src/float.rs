@@ -306,6 +306,27 @@ mod tests {
     }
 
     #[test]
+    fn a_float_with_clear_starts_below_earlier_floats_on_that_side() {
+        // Wikipedia stacks its infobox and navigation sidebar this way.
+        let f = layout::body(
+            "<div class=f style='float:right;clear:right;width:80px'></div>\
+             <div class=f style='float:right;clear:right;width:80px'></div>",
+            "",
+            400.0,
+        );
+        assert_eq!(f.children[0].y, 0.0);
+        assert_eq!(f.children[1].y, 30.0, "the second float waits for the first");
+        assert_eq!(f.children[1].x, f.children[0].x, "and sits in the same column");
+        // Without `clear` they sit side by side.
+        let g = layout::body(
+            "<div class=f style='float:right;width:80px'></div><div class=f style='float:right;width:80px'></div>",
+            "",
+            400.0,
+        );
+        assert_eq!(g.children[1].y, 0.0);
+    }
+
+    #[test]
     fn a_floated_inline_element_becomes_a_block_with_shrink_to_fit_width() {
         let f = layout::body("<span style='float:left'>abc</span>", "", 400.0);
         let w = blueice_font::measure_text_width("abc", 16.0, false, false);

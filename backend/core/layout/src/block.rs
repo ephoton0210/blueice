@@ -334,7 +334,10 @@ pub(crate) fn layout_flow(
                 let mut fragment = placed.fragment;
                 let (w, h) = (ml + fragment.width + mr, mt + fragment.height + mb);
                 let earliest = all_floats.iter().map(|f| f.top).fold(0.0, f64::max);
-                let top = (cursor_y + pending.value()).max(earliest);
+                let mut top = (cursor_y + pending.value()).max(earliest);
+                if style.clear() != crate::ctx::Clear::None {
+                    top = top.max(float::clear_y(&all_floats, style.clear()));
+                }
                 let (fx, fy) = float::place(&all_floats, side, w, h, top, content_width);
                 fragment.x = fx + ml;
                 fragment.y = fy + mt;

@@ -342,14 +342,14 @@ fn parse_areas(value: Option<&Value>) -> Vec<Area> {
             if name.chars().all(|ch| ch == '.') {
                 continue;
             }
-            match areas.iter_mut().find(|(n, _)| n == name) {
+            match areas.iter_mut().find(|(n, _)| n.eq_ignore_ascii_case(name)) {
                 Some((_, b)) => {
                     b.0 = b.0.min(r);
                     b.1 = b.1.min(c);
                     b.2 = b.2.max(r + 1);
                     b.3 = b.3.max(c + 1);
                 }
-                None => areas.push((name.to_string(), (r, c, r + 1, c + 1))),
+                None => areas.push((name.to_ascii_lowercase(), (r, c, r + 1, c + 1))),
             }
         }
     }
@@ -449,7 +449,10 @@ fn placement_of(
         }
     }
     let named = |line: &Line| match line {
-        Line::Name(n) => areas.iter().find(|(a, _)| a == n).map(|(_, b)| *b),
+        Line::Name(n) => areas
+            .iter()
+            .find(|(a, _)| a.eq_ignore_ascii_case(n))
+            .map(|(_, b)| *b),
         _ => None,
     };
     let row_area = named(&rs).or_else(|| named(&re)).map(|b| (b.0, b.2));
@@ -1526,6 +1529,23 @@ mod tests {
             ".g { grid-template-columns: 100px 1fr; \
                grid-template-areas: 'head head' 'side main'; } \
              .h { grid-area: head; } .s { grid-area: side; } .m { grid-area: main; }",
+            300.0,
+        );
+        let b = boxes(&f);
+        assert_eq!(b[0], (0.0, 0.0, 300.0, 10.0));
+        assert_eq!(b[1], (0.0, 10.0, 100.0, 30.0));
+        assert_eq!(b[2], (100.0, 10.0, 200.0, 30.0));
+    }
+
+    #[test]
+    fn area_names_written_in_mixed_case_still_place_items() {
+        // The cascade keeps a lone keyword like `grid-area: pageContent` in lower case,
+        // while the area strings keep what was written; Wikipedia names its areas this way.
+        let f = grid(
+            "<i class=h style='height:10px'></i><i class=s style='height:30px'></i><i class=m style='height:30px'></i>",
+            ".g { grid-template-columns: 100px 1fr; \
+               grid-template-areas: 'siteNotice siteNotice' 'columnStart pageContent'; } \
+             .h { grid-area: siteNotice; } .s { grid-area: columnStart; } .m { grid-area: pageContent; }",
             300.0,
         );
         let b = boxes(&f);

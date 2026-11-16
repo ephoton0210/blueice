@@ -685,6 +685,78 @@ fn logical_longhands(property: &str) -> Option<&'static [&'static str]> {
     })
 }
 
+/// `grid-template: <rows> / <columns>`, where a row may be preceded by a quoted area-name string
+/// (`"a a" 40px "b c" / 1fr 2fr`). A row with a string and no size is `auto`. `none` resets all
+/// three longhands.
+fn expand_grid_template(value_tokens: &[Token]) -> Vec<(String, Value)> {
+    let tokens = trim_ws(value_tokens);
+    if matches!(tokens, [Token::Ident(word)] if word.eq_ignore_ascii_case("none")) {
+        return ["grid-template-rows", "grid-template-columns", "grid-template-areas"]
+            .iter()
+            .map(|p| (p.to_string(), Value::Keyword("none".to_string())))
+            .collect();
+    }
+    let mut depth = 0usize;
+    let mut slash = None;
+    for (i, t) in tokens.iter().enumerate() {
+        match t {
+            Token::LeftParen | Token::LeftBracket => depth += 1,
+            Token::RightParen | Token::RightBracket => depth = depth.saturating_sub(1),
+            Token::Delim('/') if depth == 0 => {
+                slash = Some(i);
+                break;
+            }
+            _ => {}
+        }
+    }
+    let (rows, columns) = match slash {
+        Some(i) => (trim_ws(&tokens[..i]), trim_ws(&tokens[i + 1..])),
+        None => (tokens, &tokens[..0]),
+    };
+    let mut areas: Vec<Token> = Vec::new();
+    let mut tracks: Vec<Token> = Vec::new();
+    let mut waiting_for_size = false;
+    for t in rows {
+        match t {
+            Token::QuotedString(_) => {
+                if waiting_for_size {
+                    tracks.push(Token::Ident("auto".to_string()));
+                    tracks.push(Token::Whitespace);
+                }
+                if !areas.is_empty() {
+                    areas.push(Token::Whitespace);
+                }
+                areas.push(t.clone());
+                waiting_for_size = true;
+            }
+            Token::Whitespace => {
+                if !tracks.is_empty() && !matches!(tracks.last(), Some(Token::Whitespace)) {
+                    tracks.push(Token::Whitespace);
+                }
+            }
+            other => {
+                waiting_for_size = false;
+                tracks.push(other.clone());
+            }
+        }
+    }
+    if waiting_for_size {
+        tracks.push(Token::Ident("auto".to_string()));
+    }
+    let mut out = Vec::new();
+    let tracks = trim_ws(&tracks);
+    if !tracks.is_empty() {
+        out.push(("grid-template-rows".to_string(), Value::Unparsed(tracks.to_vec())));
+    }
+    if !columns.is_empty() {
+        out.push(("grid-template-columns".to_string(), Value::Unparsed(columns.to_vec())));
+    }
+    if !areas.is_empty() {
+        out.push(("grid-template-areas".to_string(), Value::Unparsed(areas)));
+    }
+    out
+}
+
 pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(String, Value)> {
     // `-webkit-mask-*` is the same property as `mask-*`.
     let property = match property.strip_prefix("-webkit-") {
@@ -717,6 +789,9 @@ pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(St
             }
             _ => vec![],
         };
+    }
+    if property == "grid-template" {
+        return expand_grid_template(value_tokens);
     }
     // Grid track lists, lines and areas are interpreted by layout, which
     // needs their tokens (`repeat()`, `minmax()`, `1fr`, `span 2`).
@@ -1167,6 +1242,41 @@ mod tests {
         assert_eq!(names("-webkit-mask-image", "url(m.svg)"), ["mask-image"]);
         assert_eq!(names("-webkit-mask-size", "contain"), ["mask-size"]);
         assert_eq!(names("-webkit-mask", "url(m.svg)")[0], "mask-image");
+    }
+
+    #[test]
+    fn grid_template_shorthand_splits_rows_columns_and_areas() {
+        let get = |css: &str| -> Vec<(String, String)> {
+            expand_property("grid-template", &tokenize(css))
+                .into_iter()
+                .map(|(n, v)| {
+                    let text = match v {
+                        Value::Unparsed(t) => t
+                            .iter()
+                            .map(|t| match t {
+                                Token::QuotedString(s) => format!("'{s}'"),
+                                Token::Ident(s) => s.clone(),
+                                Token::Whitespace => " ".to_string(),
+                                other => format!("{other:?}"),
+                            })
+                            .collect::<String>(),
+                        other => format!("{other:?}"),
+                    };
+                    (n, text)
+                })
+                .collect()
+        };
+        let plain = get("min-content 1fr / 12px 1fr");
+        assert_eq!(plain[0].0, "grid-template-rows");
+        assert_eq!(plain[1].0, "grid-template-columns");
+        let areas = get("'a a' 20px 'b c' / 1fr 2fr");
+        let names: Vec<&str> = areas.iter().map(|(n, _)| n.as_str()).collect();
+        assert!(names.contains(&"grid-template-areas"), "{areas:?}");
+        let areas_text = &areas.iter().find(|(n, _)| n == "grid-template-areas").unwrap().1;
+        assert_eq!(areas_text, "'a a' 'b c'");
+        let rows = &areas.iter().find(|(n, _)| n == "grid-template-rows").unwrap().1;
+        assert!(rows.contains("20.0") && rows.contains("auto"), "{rows}");
+        assert!(get("none").iter().all(|(_, v)| v.contains("none") || v.contains("Keyword")), "none resets");
     }
 
     #[test]

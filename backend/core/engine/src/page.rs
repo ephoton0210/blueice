@@ -47,7 +47,7 @@ pub struct Page {
     pub(crate) post_expired: bool,
     pub(crate) last_navigation: Option<crate::navigation_request::BrowserNavigation>,
     doc: Document,
-    styles: HashMap<NodeId, ComputedStyle>,
+    pub(crate) styles: HashMap<NodeId, ComputedStyle>,
     /// The author rules and environment `styles` were last computed from in full.
     author_rules: Vec<Rule>,
     style_epoch: Option<restyle::StyleEpoch>,
