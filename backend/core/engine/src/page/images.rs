@@ -534,54 +534,6 @@ mod tests {
         let laid_out = std::time::Instant::now();
         page.load_html_str(&fetched.body, Some(fetched.final_url.clone()));
         eprintln!("styled, scripted and laid out in {:?}", laid_out.elapsed());
-        if let Ok(range) = std::env::var("BI_DUMP") {
-            // Developer aid: print every box overlapping `y0,y1`, with its element.
-            let mut bounds = range.split(',').filter_map(|v| v.parse::<f64>().ok());
-            let (y0, y1) = (bounds.next().unwrap_or(0.0), bounds.next().unwrap_or(900.0));
-            fn walk(page: &Page, f: &blueice_layout::Fragment, depth: usize, ox: f64, oy: f64, y0: f64, y1: f64) {
-                let (ax, ay) = (ox + f.x, oy + f.y);
-                if ay + f.height >= y0 && ay <= y1 && !matches!(f.kind, blueice_layout::FragmentKind::Text { .. }) {
-                    let name = f.node.map_or(String::new(), |n| match page.doc.data(n) {
-                        blueice_dom::NodeData::Element { tag_name, attributes } => {
-                            let get = |k: &str| {
-                                attributes.iter().find(|(a, _)| a == k).map(|(_, v)| v.as_str()).unwrap_or("")
-                            };
-                            format!("<{tag_name} id={} class={}>", get("id"), get("class"))
-                        }
-                        _ => String::new(),
-                    });
-                    let style = f.node.and_then(|n| page.styles.get(&n)).map_or(String::new(), |s| {
-                        let mut keys: Vec<_> = s
-                            .other
-                            .iter()
-                            .filter(|(k, _)| {
-                                k.starts_with("grid")
-                                    || k.ends_with("gap")
-                                    || std::env::var("BI_KEYS").is_ok_and(|w| w.split(',').any(|x| x == k.as_str()))
-                            })
-                            .map(|(k, v)| format!("{k}={v:?}"))
-                            .collect();
-                        keys.sort();
-                        format!(" [{} {}]", s.display, keys.join(" "))
-                    });
-                    // Absolute page coordinates, so they can be set beside a real browser's.
-                    eprintln!(
-                        "{}{}{} x={:.0} y={:.0} w={:.0} h={:.0}",
-                        "  ".repeat(depth),
-                        name,
-                        style,
-                        ax,
-                        ay,
-                        f.width,
-                        f.height
-                    );
-                }
-                for child in &f.children {
-                    walk(page, child, depth + 1, ax, ay, y0, y1);
-                }
-            }
-            walk(&page, &page.fragment, 0, 0.0, 0.0, y0, y1);
-        }
         if scripts {
             // Let the page's timers run for a while, as the session tick would.
             let until = std::time::Instant::now()
@@ -704,6 +656,65 @@ mod tests {
                 }
             }
             eprintln!("{hidden} elements hidden by opacity:0 or visibility:hidden");
+        }
+        if let Ok(range) = std::env::var("BI_DUMP") {
+            // Developer aid: print every box overlapping `y0,y1`, with its element.
+            let mut bounds = range.split(',').filter_map(|v| v.parse::<f64>().ok());
+            let (y0, y1) = (bounds.next().unwrap_or(0.0), bounds.next().unwrap_or(900.0));
+            fn walk(page: &Page, f: &blueice_layout::Fragment, depth: usize, ox: f64, oy: f64, y0: f64, y1: f64) {
+                let (ax, ay) = (ox + f.x, oy + f.y);
+                if ay + f.height >= y0 && ay <= y1 && !matches!(f.kind, blueice_layout::FragmentKind::Text { .. }) {
+                    let name = f.node.map_or(String::new(), |n| match page.doc.data(n) {
+                        blueice_dom::NodeData::Element { tag_name, attributes } => {
+                            let get = |k: &str| {
+                                attributes.iter().find(|(a, _)| a == k).map(|(_, v)| v.as_str()).unwrap_or("")
+                            };
+                            format!("<{tag_name} id={} class={}>", get("id"), get("class"))
+                        }
+                        _ => String::new(),
+                    });
+                    let style = f.node.and_then(|n| page.styles.get(&n)).map_or(String::new(), |s| {
+                        let mut keys: Vec<_> = s
+                            .other
+                            .iter()
+                            .filter(|(k, _)| {
+                                k.starts_with("grid")
+                                    || k.ends_with("gap")
+                                    || std::env::var("BI_KEYS").is_ok_and(|w| w.split(',').any(|x| x == k.as_str()))
+                            })
+                            .map(|(k, v)| format!("{k}={v:?}"))
+                            .collect();
+                        keys.sort();
+                        format!(" [{} {}]", s.display, keys.join(" "))
+                    });
+                    // Absolute page coordinates, so they can be set beside a real browser's.
+                    eprintln!(
+                        "{}{}{} x={:.0} y={:.0} w={:.0} h={:.0}",
+                        "  ".repeat(depth),
+                        name,
+                        style,
+                        ax,
+                        ay,
+                        f.width,
+                        f.height
+                    );
+                }
+                for child in &f.children {
+                    walk(page, child, depth + 1, ax, ay, y0, y1);
+                }
+            }
+            walk(&page, &page.fragment, 0, 0.0, 0.0, y0, y1);
+        }
+        if let Ok(class) = std::env::var("BI_CLASS") {
+            // Developer aid: the computed display of every element carrying `class`.
+            for (node, style) in page.styles.iter().filter(|(n, _)| !blueice_css::is_pseudo_node(**n)) {
+                if let blueice_dom::NodeData::Element { tag_name, attributes } = page.doc.data(*node) {
+                    let has = attributes.iter().any(|(k, v)| k == "class" && v.split_whitespace().any(|c| c == class));
+                    if has {
+                        eprintln!("CLASS {class}: <{tag_name}> display={} other={:?}", style.display, style.other.iter().filter(|(k, _)| k.as_str() == "float" || k.as_str() == "width").collect::<Vec<_>>());
+                    }
+                }
+            }
         }
         let pixmap = blueice_raster::rasterize(&page.render());
         eprintln!(

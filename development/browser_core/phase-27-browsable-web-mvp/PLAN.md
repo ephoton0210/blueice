@@ -1045,19 +1045,62 @@ Fixed, each with a test:
   `text-align` fell back to the parent's value; `initial` now resets it. A snapshot decoded for the
   script process drops the flag (the script side does not style).
 
+Side-by-side with Safari (2026-11-15). Safari became scriptable once "Allow remote automation"-style
+settings were on (AppleScript `do JavaScript` returns every element's `getBoundingClientRect`); a
+scratch tool collects Safari's boxes and BlueIce's (`BI_DUMP=y0,y1` of the ignored dev test
+`live_page_to_png` prints every box with absolute coordinates, `BI_CLASS=name` prints the computed
+display of elements with that class) and lists the first differing boxes. Found and fixed, each with
+a test written first (the tests for the quirks line, the table margin and the flex `min-height` line
+were red before their fix):
+- `grid-template` (the shorthand) was not expanded at all; Wikipedia's page, header and body grids
+  lost their columns. `rows / columns` and the `"area" size` forms are now split into the longhands.
+- A lone-keyword `grid-area: pageContent` is lower-cased by the cascade while `grid-template-areas`
+  strings were not, so camel-case area names never matched; area names now compare
+  case-insensitively (a deviation from the spec, which is case-sensitive).
+- `clear` on a float was ignored (Wikipedia stacks its infobox and sidebar with `float: right;
+  clear: right`).
+- Measuring a flex container for max-content gave `flex-grow` items the "unlimited" room, so a
+  growing container measured a million pixels wide and its wrapping parent pushed it to a second
+  line (Wikipedia's header search); a block-level picture with auto margins measured the same way.
+- A single-line flex container is as tall as its `min-height` (held by `max-height`), so a
+  `min-height` button centres its label.
+- Text was painted at the top of its line box: half-leading (a line taller than the glyphs) was
+  ignored, so every `line-height: 1.6` page had its text a few pixels high and underlines (which
+  did allow for it) were off the text. Paint now centres the glyphs in the line box.
+- `placeholder` text of empty `input`/`textarea` was never drawn (`FragmentKind::Placeholder`, muted
+  `#757575`, not selectable or findable).
+- `@supports` knew only a handful of properties and `display: block | inline | none`, so
+  `@supports (display: grid)` (Wikipedia's TOC, many sites' layout) was false; it now reports what
+  layout and paint actually honour (grid, flex, sticky, gap, aspect-ratio, transform, ...).
+- A table with a `width` and `margin: 0 auto` (or inside `<center>`) was not centred: the table
+  branch reset margins the general branch had just shared out. Hacker News is centred now.
+- A table with extra room gave it to every column in proportion; a column with a `width` of its own
+  now keeps it while an automatic column can take the room (HN's 18px logo cell).
+- Quirks mode's line-height rule: a line holding only pictures has no strut, so HN's 20px logo cell
+  is 20px, not 23.
+
+Result: Hacker News boxes now agree with Safari to the pixel in x/y (the remaining width differences
+are text metrics); Wikipedia's header, title, toolbar, infobox stacking, TOC and body column agree
+with Safari's measured positions (x=264 content column, title y=90, header 66px).
+
 Open, not fixed:
-- Wikipedia (Vector 2022): the article title sits at y=238 with about 130px of empty space between
-  the header and it; the hidden "Main menu" dropdown's list is laid out at x=53, y=115..405 (its
-  nodes have bounds though nothing is painted there). Which box makes the gap is not yet found, and
-  how far down Safari puts the title is unchecked.
-- Wikipedia: the search box's placeholder text is not drawn and its "Search" button label sits at
-  the top; some dropdown-arrow icons (e.g. beside "75 languages") are still solid squares.
+- Fonts: `system-ui`, `-apple-system`, Helvetica, Verdana and similar fall back to DejaVu Sans, so
+  text is wider than Safari's and line breaks differ (example.com's paragraph is 3 lines, Safari's 2;
+  lobste.rs nav items are 9-11px wider; HN's inner table 8px narrower). Not a layout bug.
+- Differences that come from running scripts (Safari ran the page's JavaScript before measuring):
+  Wikipedia's TOC sub-items are collapsed by script; python.org hides its `#nojs` notice by script.
+  Compare with `BI_SCRIPTS=1 BI_ASYNC=1` for those.
+- python.org: the header's `options-bar-container` (`float: right` inside `@media (min-width: 40em)`)
+  is laid out full width (1168px) below the logo instead of shrink-wrapped beside it (Safari: x=698,
+  w=518); the search form's Font Awesome magnifier icon (`.icon-search:before`) has width 0, and
+  the page is 150px taller than Safari's. Cause not found yet.
+- rust-lang.org: the header `.brand` box is 284px wide (Safari 148) and the nav is 100px taller;
+  lobste.rs's body is 700px taller than Safari's (text widths, then wrapping). Not yet analysed.
+- Wikipedia: a heading's bottom rule runs under the floated infobox (Safari clips it with the float);
+  a black square next to "View history" when scripts run; dropdown-arrow icons still solid squares.
 - Multi-layer backgrounds are only partly supported: the first loaded picture and the first gradient
   of a layer list are drawn, not the full stack with per-layer size/position/repeat.
-- Hacker News's header: the gap between the logo and "Hacker News" is about 35px; whether Safari's is
-  smaller is unchecked (no Safari access).
-- `system-ui`, Verdana and similar fall back to DejaVu Sans, so line breaks and widths differ from
-  Safari's system font.
 - `get_console_messages` answered "Page console is unavailable" on a local test page.
-- Quirks mode is only "no doctype"; the legacy-doctype table, the quirks line-height and body-height
-  rules, and image-baseline quirks are not implemented.
+- Quirks mode is only "no doctype"; the legacy-doctype table, the body-height rule and the
+  image-baseline quirks other than the picture-only line are not implemented.
+- `grid` shorthand (not `grid-template`) and subgrid are still not expanded/supported.
