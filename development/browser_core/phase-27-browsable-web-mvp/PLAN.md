@@ -1102,8 +1102,11 @@ Open, not fixed:
   `fontface` / `generatedcontent` tests report false (they measure an element styled by a `<style>`
   they just inserted: the JS realm cannot lay out synchronously, so `offsetTop`/`offsetHeight` of
   new nodes are 0). A synchronous layout read from script is the underlying gap.
-- rust-lang.org: the header `.brand` box is 284px wide (Safari 148) and the nav is 100px taller;
-  lobste.rs's body is 700px taller than Safari's (text widths, then wrapping). Not yet analysed.
+- rust-lang.org: a `<select>` was always 20em wide, which pushed the header's language picker to a
+  second line; a drop-down with no width is now as wide as its longest option plus the arrow
+  (fixed, tested). The header is now one line like Safari's; the logo link box is 11px wider than
+  Safari's (91 vs 80) and the nav 16px taller; not yet analysed. lobste.rs's body is still much
+  taller than Safari's and its nav items 9-11px wider (text metrics first).
 - Wikipedia: a heading's bottom rule runs under the floated infobox (Safari clips it with the float);
   a black square next to "View history" when scripts run; dropdown-arrow icons still solid squares.
 - Multi-layer backgrounds are only partly supported: the first loaded picture and the first gradient

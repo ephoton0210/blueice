@@ -78,6 +78,9 @@ fn content_widths_uncached(ctx: &Ctx<'_>, node: NodeId) -> (f64, f64) {
     let padding = style.padding(0.0);
     let border = style.border(0.0);
     let pb_h = padding.horizontal() + border.horizontal();
+    if let Some(w) = drop_down_width(ctx, node, &style) {
+        return (w + pb_h, w + pb_h);
+    }
     // A picture has no content to measure: its size is both widths.
     if ctx.tag(node).is_some_and(crate::block::is_replaced_tag) {
         if let Some((w, _)) = crate::inline::replaced_size(ctx, node, &style, f64::NAN) {
@@ -103,6 +106,26 @@ fn content_widths_uncached(ctx: &Ctx<'_>, node: NodeId) -> (f64, f64) {
     };
     let max = measure(UNBOUNDED);
     (measure(0.0).min(max), max)
+}
+
+/// The content width of a drop-down (`<select>`) with no width of its own: its longest option's
+/// label plus room for the arrow.
+pub(crate) fn drop_down_width(ctx: &Ctx<'_>, node: NodeId, style: &crate::ctx::Style<'_>) -> Option<f64> {
+    if ctx.tag(node) != Some("select")
+        || blueice_css::is_pseudo_node(node)
+        || style.raw("width").is_some_and(|_| !style.is_auto("width"))
+    {
+        return None;
+    }
+    let (bold, italic) = (
+        style.style.is_some_and(|s| s.is_bold()),
+        style.style.is_some_and(|s| s.is_italic()),
+    );
+    let widest = crate::native_text::select_options(ctx.doc, node)
+        .iter()
+        .map(|option| blueice_font::measure_text_width(&option.label, style.font_size(), bold, italic))
+        .fold(0.0f64, f64::max);
+    Some(widest + 24.0)
 }
 
 /// `(min-content, max-content)` border-box widths of `node`, margins excluded.
@@ -153,7 +176,8 @@ pub(crate) fn preferred_widths(ctx: &Ctx<'_>, node: NodeId) -> (f64, f64) {
         style
             .px("width", f64::NAN)
             .map(|w| if style.is_border_box() { w } else { w + pb_h });
-    let result = match explicit {
+    let drop_down = drop_down_width(ctx, node, &style).map(|w| w + pb_h);
+    let result = match explicit.or(drop_down) {
         Some(w) => (w, w),
         None => {
             let max = measure(UNBOUNDED);

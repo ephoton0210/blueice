@@ -803,10 +803,13 @@ fn layout_block_level_uncached(
         let w = max_width.map_or(w, |m| w.min(m));
         w.max(min_width)
     };
-    let specified_width = match forced.width {
+    let mut specified_width = match forced.width {
         Some(w) => Some((w - pb_h).max(0.0)),
         None => style.px("width", cbw).map(to_content_w),
     };
+    if specified_width.is_none() {
+        specified_width = crate::intrinsic::drop_down_width(ctx, node, &style);
+    }
     let (mut content_width, width_determined) = match specified_width {
         Some(w) => (clamp_width(w), true),
         None => {

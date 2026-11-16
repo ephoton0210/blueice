@@ -841,6 +841,8 @@ input, textarea, select {
   background-color: #ffffff;
 }
 textarea { height: 6em; }
+/* A drop-down is as wide as its longest option (layout reads the labels), not a text field's width. */
+select { width: auto; }
 /* A push button is as wide as its caption (the layout reads the label), not the width of a
  * text field. */
 input[type="submit"], input[type="button"], input[type="reset"] {

@@ -2611,6 +2611,29 @@ mod tests {
     }
 
     #[test]
+    fn a_select_is_as_wide_as_its_longest_option_unless_a_width_is_set() {
+        let width_of = |html: &str, css: &str| {
+            let f = body(html, css, 600.0);
+            fn find(f: &Fragment, out: &mut Option<f64>) {
+                if matches!(f.kind, FragmentKind::NativeControl { .. }) {
+                    out.get_or_insert(f.width);
+                }
+                for c in &f.children {
+                    find(c, out);
+                }
+            }
+            let mut w = None;
+            find(&f, &mut w);
+            w.expect("the select's box")
+        };
+        let short = width_of("<select><option>ab</option></select>", "");
+        let long = width_of("<select><option>ab</option><option>abcdefghijklmnopqrstuvwxyz</option></select>", "");
+        assert!(long > short + 100.0, "short {short}, long {long}");
+        assert!(long < 400.0, "not the old fixed 20em: {long}");
+        assert_eq!(width_of("<select><option>ab</option></select>", "select { width: 250px }"), 250.0);
+    }
+
+    #[test]
     fn adjacent_marks_are_trimmed_across_an_inline_element_boundary() {
         let (close_full, _) = full_and_half("\u{300d}");
         let (_, open_half) = full_and_half("\u{300c}");
