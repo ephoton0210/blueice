@@ -538,8 +538,9 @@ mod tests {
             // Developer aid: print every box overlapping `y0,y1`, with its element.
             let mut bounds = range.split(',').filter_map(|v| v.parse::<f64>().ok());
             let (y0, y1) = (bounds.next().unwrap_or(0.0), bounds.next().unwrap_or(900.0));
-            fn walk(page: &Page, f: &blueice_layout::Fragment, depth: usize, y0: f64, y1: f64) {
-                if f.y + f.height >= y0 && f.y <= y1 && !matches!(f.kind, blueice_layout::FragmentKind::Text { .. }) {
+            fn walk(page: &Page, f: &blueice_layout::Fragment, depth: usize, ox: f64, oy: f64, y0: f64, y1: f64) {
+                let (ax, ay) = (ox + f.x, oy + f.y);
+                if ay + f.height >= y0 && ay <= y1 && !matches!(f.kind, blueice_layout::FragmentKind::Text { .. }) {
                     let name = f.node.map_or(String::new(), |n| match page.doc.data(n) {
                         blueice_dom::NodeData::Element { tag_name, attributes } => {
                             let get = |k: &str| {
@@ -563,22 +564,23 @@ mod tests {
                         keys.sort();
                         format!(" [{} {}]", s.display, keys.join(" "))
                     });
+                    // Absolute page coordinates, so they can be set beside a real browser's.
                     eprintln!(
                         "{}{}{} x={:.0} y={:.0} w={:.0} h={:.0}",
                         "  ".repeat(depth),
                         name,
                         style,
-                        f.x,
-                        f.y,
+                        ax,
+                        ay,
                         f.width,
                         f.height
                     );
                 }
                 for child in &f.children {
-                    walk(page, child, depth + 1, y0, y1);
+                    walk(page, child, depth + 1, ax, ay, y0, y1);
                 }
             }
-            walk(&page, &page.fragment, 0, y0, y1);
+            walk(&page, &page.fragment, 0, 0.0, 0.0, y0, y1);
         }
         if scripts {
             // Let the page's timers run for a while, as the session tick would.

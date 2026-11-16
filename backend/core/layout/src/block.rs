@@ -933,6 +933,14 @@ fn layout_block_level_uncached(
         );
         content_width = table.width;
         if forced.width.is_none() && (auto_left || auto_right) {
+            // A specified width already shared its free room out above; start from the fixed
+            // margins again, since the table's own width (min-content wins) may differ.
+            if auto_left {
+                margin_left = 0.0;
+            }
+            if auto_right {
+                margin_right = 0.0;
+            }
             let free = (cbw - content_width - pb_h - margin_left - margin_right).max(0.0);
             match (auto_left, auto_right) {
                 (true, true) => {

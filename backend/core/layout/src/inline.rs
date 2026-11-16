@@ -1650,8 +1650,19 @@ pub(crate) fn layout_run_around(
         }
 
         // ---- vertical metrics ----
-        let mut max_above = strut_above;
-        let mut max_below = strut_below;
+        // The line-height quirk: in quirks mode a line of only pictures (and spaces) does not
+        // carry the block's strut, so the pictures alone set its height.
+        let strutless = ctx.doc.quirks_mode()
+            && line
+                .items
+                .iter()
+                .any(|item| matches!(item, LineItem::Piece(i) if matches!(pieces[*i], Piece::Atomic(_))))
+            && !line
+                .items
+                .iter()
+                .any(|item| matches!(item, LineItem::Piece(i) if matches!(pieces[*i], Piece::Word { .. })));
+        let mut max_above = if strutless { 0.0 } else { strut_above };
+        let mut max_below = if strutless { 0.0 } else { strut_below };
         let mut tall = 0.0f64;
         let mut metrics: Vec<Option<(f64, f64, Align)>> = Vec::new();
         for item in &line.items {
@@ -2552,6 +2563,39 @@ mod tests {
         assert!(shown("<input placeholder='Name' value='Ada'>").is_empty());
         assert!(shown("<input type=checkbox placeholder='x'>").is_empty());
         assert!(shown("<input>").is_empty());
+    }
+
+    #[test]
+    fn a_table_with_a_width_and_auto_side_margins_is_centred() {
+        let x_of = |html: &str| {
+            let f = body(html, "table { width: 50% }", 400.0);
+            f.children.iter().find(|c| c.width > 0.0).map(|c| (c.x, c.width)).unwrap()
+        };
+        let (x, w) = x_of("<table style='margin: 0 auto'><tr><td>a</td></tr></table>");
+        assert!((w - 200.0).abs() < 0.5 && (x - 100.0).abs() < 0.5, "x={x} w={w}");
+        let (x, _) = x_of("<table style='margin-left: auto'><tr><td>a</td></tr></table>");
+        assert!((x - 200.0).abs() < 0.5, "pushed to the right: x={x}");
+        let centred = body("<center><table><tr><td>a</td></tr></table></center>", "table { width: 50% }", 400.0);
+        let table = &centred.children[0].children[0];
+        assert!((table.x - 100.0).abs() < 0.5, "centred by <center>: x={}", table.x);
+    }
+
+    #[test]
+    fn in_quirks_mode_a_line_of_only_pictures_has_no_strut() {
+        // The line-height quirk: Hacker News' 20px logo cell is 20px tall, not 23.
+        let height = |doctype: &str| {
+            let f = body(
+                &format!("{doctype}<html><body><div><img width=20 height=20 alt=x></div></body></html>"),
+                "",
+                400.0,
+            );
+            f.children[0].height
+        };
+        assert_eq!(height(""), 20.0, "quirks mode: the picture alone sets the height");
+        assert!(height("<!DOCTYPE html>") > 20.5, "standards mode keeps the strut's descent");
+        // A line with text keeps its strut in both.
+        let text = body("<div>x<img width=20 height=20 alt=x></div>", "", 400.0);
+        assert!(text.children[0].height > 20.5);
     }
 
     #[test]

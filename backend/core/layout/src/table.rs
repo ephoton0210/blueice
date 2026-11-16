@@ -45,6 +45,8 @@ struct Cell {
     min: f64,
     max: f64,
     percent: Option<f64>,
+    /// A `width` in pixels was set on the cell.
+    fixed: bool,
 }
 
 struct Row {
@@ -202,8 +204,10 @@ pub(crate) fn layout_table(ctx: &Ctx<'_>, table: NodeId, input: &TableInput) -> 
                 Some(Value::Percentage(p)) => Some(*p),
                 _ => None,
             };
+            let mut fixed = false;
             if percent.is_none() {
                 if let Some(w) = style.px("width", f64::NAN) {
+                    fixed = true;
                     let pb = style.padding(0.0).horizontal() + style.border(0.0).horizontal();
                     let w = if style.is_border_box() { w } else { w + pb };
                     max = w.max(min);
@@ -219,6 +223,7 @@ pub(crate) fn layout_table(ctx: &Ctx<'_>, table: NodeId, input: &TableInput) -> 
                 min,
                 max,
                 percent,
+                fixed,
             });
             columns = columns.max(col + colspan);
             col += colspan;
@@ -244,7 +249,9 @@ pub(crate) fn layout_table(ctx: &Ctx<'_>, table: NodeId, input: &TableInput) -> 
     let mut col_min = vec![0.0f64; columns];
     let mut col_max = vec![0.0f64; columns];
     let mut col_pct = vec![0.0f64; columns];
+    let mut col_fixed = vec![false; columns];
     for cell in cells.iter().filter(|c| c.colspan == 1) {
+        col_fixed[cell.col] |= cell.fixed;
         col_min[cell.col] = col_min[cell.col].max(cell.min);
         col_max[cell.col] = col_max[cell.col].max(cell.max);
         if let Some(p) = cell.percent {
@@ -306,7 +313,23 @@ pub(crate) fn layout_table(ctx: &Ctx<'_>, table: NodeId, input: &TableInput) -> 
     let max_sum: f64 = col_max.iter().sum();
     let mut col_width: Vec<f64> = if distributable >= max_sum {
         let extra = distributable - max_sum;
-        if max_sum > 0.0 && (input.specified.is_some() || input.forced.is_some()) {
+        // Columns with a width of their own keep it while an automatic column can take the
+        // extra room, as browsers do; only when every column is fixed do they all share it.
+        let auto_sum: f64 = (0..columns)
+            .filter(|&i| !col_fixed[i] && col_pct[i] == 0.0)
+            .map(|i| col_max[i])
+            .sum();
+        if auto_sum > 0.0 && (input.specified.is_some() || input.forced.is_some()) {
+            (0..columns)
+                .map(|i| {
+                    if !col_fixed[i] && col_pct[i] == 0.0 {
+                        col_max[i] + extra * col_max[i] / auto_sum
+                    } else {
+                        col_max[i]
+                    }
+                })
+                .collect()
+        } else if max_sum > 0.0 && (input.specified.is_some() || input.forced.is_some()) {
             col_max.iter().map(|m| m + extra * m / max_sum).collect()
         } else if input.specified.is_some() || input.forced.is_some() {
             col_max.iter().map(|m| m + extra / columns as f64).collect()
@@ -645,6 +668,20 @@ mod tests {
         let c = cells(&f);
         assert_eq!(c[0].2 + c[1].2, 300.0);
         assert!(c[1].2 > c[0].2, "the wider column stays wider");
+    }
+
+    #[test]
+    fn a_wide_table_gives_its_extra_room_to_columns_without_a_set_width() {
+        // HN's header: a 18px logo cell must stay 18px; the extra goes to the auto columns.
+        let f = table(
+            "<table><tr><td style='width:18px'>x</td><td><i style='width:50px'></i></td><td><i style='width:30px'></i></td></tr></table>",
+            "table { width: 400px; }",
+            800.0,
+        );
+        let c = cells(&f);
+        assert_eq!(f.width.round(), 400.0);
+        assert!((c[0].2 - 18.0).abs() < 0.5, "the fixed column keeps its width: {}", c[0].2);
+        assert!((c[1].2 + c[2].2 - 382.0).abs() < 0.5, "the others share the rest");
     }
 
     #[test]
