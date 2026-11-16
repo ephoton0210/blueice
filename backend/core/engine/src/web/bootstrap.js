@@ -304,7 +304,7 @@
     'keyup', 'load', 'loadeddata', 'loadedmetadata', 'mousedown', 'mouseenter', 'mouseleave', 'mousemove', 'mouseout',
     'mouseover', 'mouseup', 'paste', 'pause', 'play', 'pointercancel', 'pointerdown', 'pointerenter', 'pointerleave',
     'pointermove', 'pointerout', 'pointerover', 'pointerup', 'reset', 'resize', 'scroll', 'select', 'submit',
-    'touchcancel', 'touchend', 'touchmove', 'touchstart', 'transitionend', 'wheel',
+    'transitionend', 'wheel',
   ];
   const WINDOW_HANDLERS = [
     'beforeunload', 'hashchange', 'languagechange', 'message', 'offline', 'online', 'pagehide', 'pageshow', 'popstate',
@@ -2125,6 +2125,9 @@
   class SVGSVGElement extends SVGElement {
     createSVGPoint() {
       return { x: 0, y: 0 };
+    }
+    createSVGRect() {
+      return { x: 0, y: 0, width: 0, height: 0 };
     }
   }
 
@@ -5086,10 +5089,29 @@
     return list;
   };
 
+  // What `display` a tag has when nothing has styled it yet (an element made a moment ago, before
+  // the next layout): the user-agent default, which is what a page asking for it expects.
+  const UA_DISPLAY = (() => {
+    const table = { none: 'head script style title meta link template area base datalist noscript param source track',
+      'list-item': 'li summary', table: 'table', 'table-row': 'tr', 'table-cell': 'td th', 'table-caption': 'caption',
+      'table-row-group': 'tbody', 'table-header-group': 'thead', 'table-footer-group': 'tfoot', 'table-column': 'col',
+      'table-column-group': 'colgroup', 'inline-block': 'button input select textarea meter progress',
+      block: 'address article aside blockquote body center dd details dialog div dl dt fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 header hgroup hr html legend main menu nav ol p pre section ul' };
+    const byTag = {};
+    for (const [display, tags] of Object.entries(table)) for (const tag of tags.split(' ')) byTag[tag] = display;
+    return byTag;
+  })();
+  const computedValue = (el, name) => {
+    const styled = bi('computed', el._id, name);
+    if (styled) return styled;
+    const inline = el.style.getPropertyValue(name);
+    if (inline) return inline;
+    return name === 'display' && el.tagName ? UA_DISPLAY[el.tagName.toLowerCase()] || 'inline' : '';
+  };
   const computed = (el) => {
     const inline = el.style;
     const api = {
-      getPropertyValue: (name) => bi('computed', el._id, toStr(name)) || inline.getPropertyValue(name),
+      getPropertyValue: (name) => computedValue(el, toStr(name)),
       getPropertyPriority: () => '',
       item: () => '',
       length: 0,
@@ -5098,7 +5120,7 @@
       get(t, p) {
         if (typeof p === 'symbol') return undefined;
         if (p in t) return t[p];
-        return bi('computed', el._id, camelToKebab(p)) || inline[p] || '';
+        return computedValue(el, camelToKebab(p)) || inline[p] || '';
       },
     });
   };

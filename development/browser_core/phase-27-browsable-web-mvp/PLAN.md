@@ -1091,9 +1091,17 @@ Open, not fixed:
   Wikipedia's TOC sub-items are collapsed by script; python.org hides its `#nojs` notice by script.
   Compare with `BI_SCRIPTS=1 BI_ASYNC=1` for those.
 - python.org: the header's `float: right` options bar was laid out full width because a right float
-  inside a content-width measure sat a million pixels out (fixed: it now asks for its own width, so
-  the bar sits at Safari's x/y). Still differing: the header is 256px shorter than Safari's (306 vs
-  562) and the search form's Font Awesome icon (`.icon-search:before`) has width 0; cause not found.
+  inside a content-width measure sat a million pixels out (fixed). Modernizr reported `touch` (the
+  engine defined `ontouchstart` and the other touch handler properties, which a desktop Safari does
+  not) and `no-svg` (no `createSVGRect`), so the page hid its main navigation; both are fixed, and
+  a freshly made element's computed `display` is its tag's default instead of an empty string
+  (jQuery 1.8 `.show()` needs it). Still differing: the header is 262px shorter than Safari's (300 vs
+  562) because the flexslider slideshow's active slide stays `display: none` (jQuery's `css()` reads
+  a computed style that is only refreshed at the next layout, so scripts that read after writing in
+  one turn see stale values), the search form's Font Awesome icon has width 0, and Modernizr's
+  `fontface` / `generatedcontent` tests report false (they measure an element styled by a `<style>`
+  they just inserted: the JS realm cannot lay out synchronously, so `offsetTop`/`offsetHeight` of
+  new nodes are 0). A synchronous layout read from script is the underlying gap.
 - rust-lang.org: the header `.brand` box is 284px wide (Safari 148) and the nav is 100px taller;
   lobste.rs's body is 700px taller than Safari's (text widths, then wrapping). Not yet analysed.
 - Wikipedia: a heading's bottom rule runs under the floated infobox (Safari clips it with the float);

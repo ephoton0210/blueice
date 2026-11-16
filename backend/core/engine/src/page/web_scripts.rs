@@ -919,6 +919,38 @@ mod tests {
     }
 
     #[test]
+    fn a_desktop_page_detects_no_touch_and_has_svg() {
+        // Modernizr's checks: a desktop browser has no `ontouchstart` and SVG elements have
+        // `createSVGRect`. Pages key their whole layout on the resulting `no-touch` / `svg` classes.
+        let mut page = page("<body><p id=out>x</p></body>");
+        page.web_eval(
+            "document.getElementById('out').textContent = [\
+               'ontouchstart' in window, 'ontouchstart' in document.body,\
+               !!document.createElementNS('http://www.w3.org/2000/svg', 'svg').createSVGRect].join(',');",
+        );
+        page.settle();
+        assert!(texts(&page).iter().any(|t| t == "false,false,true"), "{:?}", texts(&page));
+    }
+
+    #[test]
+    fn a_new_elements_computed_display_is_its_default_until_the_next_layout() {
+        // jQuery 1.8's `.show()` asks a freshly made `<li>` for its display; an empty answer
+        // sends it down a path that needs an iframe's document.
+        let mut page = page("<body><p id=out>x</p></body>");
+        page.web_eval(
+            "var d = {}; ['li', 'span', 'div', 'table', 'tr', 'td', 'script', 'button'].forEach(function (t) {\
+               var e = document.createElement(t); document.body.appendChild(e);\
+               d[t] = getComputedStyle(e).display; });\
+             var s = document.createElement('li'); s.style.display = 'inline'; document.body.appendChild(s);\
+             document.getElementById('out').textContent = Object.keys(d).map(function (k) { return k + '=' + d[k]; }).join(' ') + ' ' + getComputedStyle(s).display;",
+        );
+        page.settle();
+        let want = "li=list-item span=inline div=block table=table tr=table-row td=table-cell script=none button=inline-block inline";
+        let all = texts(&page).join(" ");
+        assert!(all.contains(want), "{all}");
+    }
+
+    #[test]
     fn scroll_position_reads_back_in_the_same_script() {
         let mut page = page(
             "<body style='margin:0'><div style='height:3000px'></div><p id=out>x</p></body>",
