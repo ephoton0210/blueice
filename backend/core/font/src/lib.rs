@@ -45,6 +45,7 @@
 //! regular-weight CJK inside a bold heading), not a second missing-
 //! glyph bug reappearing one level down.
 
+pub mod system;
 pub mod web;
 pub use fontdue::Metrics as GlyphMetrics;
 mod opentype;
@@ -556,7 +557,20 @@ pub fn baseline_offset(
 /// The share of the font size above the baseline in a box of bundled-font text.
 pub const ASSUMED_ASCENT_RATIO: f64 = 0.8;
 
-/// [`ascent_descent`] of a page's own face (`None`: the bundled fonts).
+/// What `line-height: normal` comes to in a face: the ascent, the descent and the line gap, each
+/// rounded to whole pixels and added, as WebKit does. `None` for the bundled fonts (they are
+/// 1.2 em).
+pub fn normal_line_height_in(font_size_px: f64, face: Option<web::WebFontId>) -> Option<f64> {
+    let id = face?;
+    let font = web::get(id)?;
+    let metrics = font.horizontal_line_metrics(font_size_px as f32)?;
+    let gap = f64::from(metrics.line_gap).max(system::extra_line_gap(id) * font_size_px);
+    let (a, d) = (f64::from(metrics.ascent).round(), f64::from(-metrics.descent).round());
+    Some(a + d + gap.round())
+}
+
+/// [`ascent_descent`] of a page's own face (`None`: the bundled fonts). A face's are whole
+/// pixels, as WebKit rounds them.
 pub fn ascent_descent_in(
     font_size_px: f64,
     bold: bool,
@@ -565,7 +579,7 @@ pub fn ascent_descent_in(
 ) -> (f64, f64) {
     match face.and_then(web::get) {
         Some(font) => match font.horizontal_line_metrics(font_size_px as f32) {
-            Some(metrics) => (f64::from(metrics.ascent), f64::from(-metrics.descent)),
+            Some(metrics) => (f64::from(metrics.ascent).round(), f64::from(-metrics.descent).round()),
             None => (font_size_px * 0.93, font_size_px * 0.24),
         },
         None => ascent_descent(font_size_px, bold, italic),

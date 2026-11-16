@@ -722,11 +722,17 @@ fn atomic_for(ctx: &Ctx<'_>, node: NodeId, cb_width: f64) -> Atomic {
             },
         );
         pending = placed.pending_abs;
-        line_baseline = last_baseline(&placed.fragment);
+        line_baseline = if matches!(style.display(), crate::ctx::Display::InlineFlex) {
+            flex_first_baseline(&placed.fragment)
+        } else {
+            last_baseline(&placed.fragment)
+        };
         fragment = placed.fragment;
     }
+    let is_flex = matches!(style.display(), crate::ctx::Display::InlineFlex);
     let baseline = match line_baseline {
-        Some(b) if !style.clips_overflow() => b,
+        // A flex container's baseline is its first item's, clipped or not.
+        Some(b) if is_flex || !style.clips_overflow() => b,
         _ => fragment.height + margin_bottom,
     };
     let own_line_height = fragment.height + margin_top + margin_bottom;
@@ -757,6 +763,16 @@ pub(crate) fn first_baseline(fragment: &Fragment) -> Option<f64> {
         }
     }
     None
+}
+
+/// The baseline of a flex container: its first item's first baseline, or, for an item with no
+/// text in it, the bottom edge of that item.
+fn flex_first_baseline(fragment: &Fragment) -> Option<f64> {
+    let item = fragment
+        .children
+        .iter()
+        .find(|c| matches!(c.kind, FragmentKind::Block) && !c.positioned && !c.hidden)?;
+    Some(item.y + first_baseline(item).unwrap_or(item.height))
 }
 
 /// The baseline of the last line box inside `fragment`, from its top edge.
@@ -1001,7 +1017,8 @@ fn line_height_of(style: &Style<'_>) -> f64 {
     let font_size = style.font_size();
     match style.style.and_then(|s| s.line_height.as_ref()) {
         Some(blueice_css::Value::Number(n)) => n * font_size,
-        Some(blueice_css::Value::Keyword(_)) | None => crate::text::default_line_height(font_size),
+        Some(blueice_css::Value::Keyword(_)) | None => blueice_font::normal_line_height_in(font_size, style.web_face())
+            .unwrap_or_else(|| crate::text::default_line_height(font_size)),
         Some(other) => other
             .to_px(&style.length_context(font_size))
             .unwrap_or_else(|| crate::text::default_line_height(font_size)),
@@ -2670,6 +2687,26 @@ mod tests {
         }
         let height = first_line(&f).expect("a line");
         assert!((height - 23.2).abs() < 0.01, "line height {height}");
+    }
+
+    #[test]
+    fn an_inline_flex_container_sits_on_its_first_items_baseline() {
+        // Wikipedia's menu button: a 32px inline-flex label whose only item is a 20px icon,
+        // centred. With no text in it the item's baseline is its bottom edge, which is 6px above
+        // the label's own, so the line is 26 + 6 tall in Safari, not 32 + the strut's descent.
+        let f = body(
+            "<!DOCTYPE html><nav><div>\n<input type=checkbox style=\"position:absolute\">\n<label><span></span></label>\n<div style=\"position:absolute\">x</div></div></nav>",
+            "nav { font-size: 16px } label { display: inline-flex; align-items: center; min-height: 32px; overflow: hidden } \
+             span { display: block; width: 20px; height: 20px }",
+            600.0,
+        );
+        fn find_nav(f: &Fragment) -> Option<&Fragment> {
+            f.children.iter().find(|c| c.height > 0.0 && c.kind == FragmentKind::Block).and_then(|c| {
+                if c.children.iter().any(|g| matches!(g.kind, FragmentKind::Line)) { Some(c) } else { find_nav(c) }
+            })
+        }
+        let nav = find_nav(&f).expect("the nav");
+        assert!((nav.height - 32.0).abs() < 0.6, "nav height {}", nav.height);
     }
 
     #[test]

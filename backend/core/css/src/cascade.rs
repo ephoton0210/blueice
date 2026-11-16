@@ -831,6 +831,12 @@ thead, tbody, tfoot, tr { vertical-align: middle; }
 th { text-align: center; }
 button, input, select, textarea {
   display: inline-block;
+  /* WebKit's `font: -webkit-small-control`: a form control does not take its parent's font. */
+  font-family: system-ui;
+  font-size: 13.3333px;
+  font-weight: 400;
+  font-style: normal;
+  line-height: normal;
 }
 /* The MVP block algorithm deliberately treats inline-block as a block box.
  * Give editable inputs a visible, stable control box within that model so a

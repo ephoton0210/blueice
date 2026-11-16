@@ -416,6 +416,7 @@ mod tests {
             return;
         };
         let out = std::env::var("BI_OUT").unwrap_or_else(|_| "/tmp/live.png".to_string());
+        blueice_font::system::set_enabled(std::env::var("BI_SYSFONTS").map_or(true, |v| v != "0"));
         let width: f64 = std::env::var("BI_WIDTH")
             .ok()
             .and_then(|w| w.parse().ok())
@@ -711,7 +712,7 @@ mod tests {
                 if let blueice_dom::NodeData::Element { tag_name, attributes } = page.doc.data(*node) {
                     let has = attributes.iter().any(|(k, v)| k == "class" && v.split_whitespace().any(|c| c == class));
                     if has {
-                        eprintln!("CLASS {class}: <{tag_name}> display={} attrs={attributes:?} other={:?}", style.display, style.other);
+                        eprintln!("CLASS {class}: <{tag_name}> display={} font={:?} size={} lh={:?} attrs={attributes:?} other={:?}", style.display, style.font_family, style.font_size_px, style.line_height, style.other);
                     }
                 }
             }

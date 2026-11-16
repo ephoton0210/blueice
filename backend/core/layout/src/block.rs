@@ -879,7 +879,14 @@ fn layout_block_level_uncached(
     };
     let child_cb_height = specified_height.map(clamp_height);
 
-    let bfc = is_bfc_root(&style, display, c.root);
+    // A flex or grid item is a formatting root of its own.
+    let is_item = !blueice_css::is_pseudo_node(node) && ctx.doc.parent(node).is_some_and(|p| {
+        matches!(
+            ctx.style(p).display(),
+            Display::Flex | Display::InlineFlex | Display::Grid | Display::InlineGrid
+        )
+    });
+    let bfc = is_item || is_bfc_root(&style, display, c.root);
     let collapse_top = !bfc && padding.top == 0.0 && border.top == 0.0;
     let collapse_bottom = !bfc
         && padding.bottom == 0.0

@@ -237,6 +237,30 @@ mod tests {
     }
 
     #[test]
+    fn a_block_formatting_root_holds_the_margin_of_an_empty_child_it_cannot_pass_on() {
+        // Wikipedia's site notice: an empty div with `margin: 24px 0` inside a grid item. The
+        // margin collapses through the empty div but, with a new formatting context around it,
+        // has nowhere to go but into the container, which is 24px tall in Safari.
+        for container in ["overflow:hidden", "display:flow-root", "display:inline-block"] {
+            let f = layout::body(
+                &format!("<div style='{container}'><div style='margin:24px 0'></div></div><p>x</p>"),
+                "",
+                400.0,
+            );
+            assert_eq!(f.children[0].height, 24.0, "{container}");
+        }
+        // A grid item and a flex item are formatting roots too.
+        for container in ["display:grid", "display:flex;flex-direction:column"] {
+            let f = layout::body(
+                &format!("<div style='{container}'><div><div style='margin:24px 0'></div></div></div><p>x</p>"),
+                "",
+                400.0,
+            );
+            assert_eq!(f.children[0].height, 24.0, "{container}");
+        }
+    }
+
+    #[test]
     fn a_right_float_takes_the_right_edge() {
         let f = layout::body(
             "<div class=f style='float:right;width:80px'></div><p>x</p>",

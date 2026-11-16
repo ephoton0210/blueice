@@ -556,8 +556,11 @@ fn size_tracks(
     }
     for c in contributions.iter().filter(|c| c.span > 1) {
         let range = c.start..(c.start + c.span).min(n);
+        // An item that spans a flexible track asks only that track for its room.
+        let any_fr = range.clone().any(|i| matches!(tracks[i].max, Sz::Fr(_)));
         let flexible: Vec<usize> = range
             .clone()
+            .filter(|&i| !any_fr || matches!(tracks[i].max, Sz::Fr(_)))
             .filter(|&i| intrinsic_min(&tracks[i]) || intrinsic_max(&tracks[i]))
             .collect();
         if flexible.is_empty() {
@@ -1507,6 +1510,25 @@ mod tests {
         let b = boxes(&f);
         assert_eq!(b[0].2, 250.0, "two filled tracks share the row");
         assert_eq!(b[1].0, 250.0);
+    }
+
+    #[test]
+    fn an_item_spanning_a_flexible_row_does_not_stretch_the_rows_before_it() {
+        // Wikipedia's article grid: a tall sidebar spans three `min-content` rows and the `1fr`
+        // row after them. Only the flexible row takes its extra height.
+        let f = grid(
+            "<i class=h style='height:10px'></i><i class=t style='height:20px'></i>\
+             <i class=s style='height:500px'></i><i class=m style='height:30px'></i>",
+            ".g { grid-template-columns: 100px 100px; \
+               grid-template-rows: min-content min-content 1fr; \
+               grid-template-areas: 'h s' 't s' 'm s'; } \
+             .h { grid-area: h } .t { grid-area: t } .s { grid-area: s } .m { grid-area: m }",
+            400.0,
+        );
+        let b = boxes(&f);
+        assert_eq!((b[0].1, b[0].3), (0.0, 10.0), "{b:?}");
+        assert_eq!((b[1].1, b[1].3), (10.0, 20.0), "{b:?}");
+        assert_eq!(b[3].1, 30.0, "{b:?}");
     }
 
     #[test]

@@ -592,20 +592,23 @@ pub(crate) fn assign_faces(
             catalog.feature_values.resolve(style);
         }
     }
-    if catalog.is_empty() {
+    if catalog.is_empty() && !blueice_font::system::enabled() {
         return;
     }
     let mut chosen: HashMap<(String, FaceRequest), (Option<WebFontId>, u8)> = HashMap::new();
     for style in styles.values_mut() {
-        let Some(families) = style.font_family.as_deref() else {
-            style.other.remove("-blueice-web-font");
-            style.other.remove("-blueice-web-synth");
-            continue;
-        };
-        let key = (families.to_string(), request_of(style));
-        let (face, synthesis) = *chosen
-            .entry(key.clone())
-            .or_insert_with(|| catalog.face_for_request(&key.0, &key.1));
+        let req = request_of(style);
+        let key = (style.font_family.clone().unwrap_or_default(), req);
+        let (face, synthesis) = *chosen.entry(key.clone()).or_insert_with(|| {
+            let page = if key.0.is_empty() { (None, 0) } else { catalog.face_for_request(&key.0, &key.1) };
+            if page.0.is_some() {
+                return page;
+            }
+            // The page has no face for it: the system's, where the engine may use those.
+            let families = (!key.0.is_empty()).then_some(key.0.as_str());
+            let italic = key.1.slant != Slant::Upright;
+            (blueice_font::system::face_for(families, key.1.weight, italic, key.1.size), 0)
+        });
         let synthesis = synthesis & synthesis_allowed(style);
         match face {
             Some(id) => {

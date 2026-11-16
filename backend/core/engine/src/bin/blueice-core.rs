@@ -299,6 +299,11 @@ fn cleanup_private_sockets(
 
 #[cfg(unix)]
 fn main() -> ExitCode {
+    // Pages are drawn with the system's own fonts where the OS has them (so text is as wide as in
+    // the system's browser); `BLUEICE_NO_SYSTEM_FONTS=1` keeps the bundled ones.
+    blueice_font::system::set_enabled(
+        cfg!(target_os = "macos") && std::env::var_os("BLUEICE_NO_SYSTEM_FONTS").is_none(),
+    );
     if std::env::args_os()
         .nth(1)
         .is_some_and(|arg| arg == "--stdio")

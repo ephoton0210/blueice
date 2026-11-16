@@ -1148,3 +1148,24 @@ Open, not fixed:
 - Quirks mode is only "no doctype"; the legacy-doctype table, the body-height rule and the
   image-baseline quirks other than the picture-only line are not implemented.
 - `grid` shorthand (not `grid-template`) and subgrid are still not expanded/supported.
+
+### System fonts and the Wikipedia article page (2026-11-16)
+
+The font-availability gap above is closed where the OS has the fonts: `blueice_font::system`
+(opt-in, `set_enabled(true)`; the live-page dev test turns it on, `BI_SYSFONTS=0` off) reads
+Helvetica/Times/Courier/Menlo/Arial/Georgia/Verdana/Times New Roman and the variable SF face
+(`system-ui`, `-apple-system`) from the macOS font folders at use, splits `.ttc` files into faces
+(weight/slant from `OS/2`/`head`), and registers them as page faces, so widths match Safari
+(Wikipedia's "Contents" heading 61px = 61px). `line-height: normal` for such a face is
+round(ascent)+round(descent)+round(gap) (WebKit; Apple's own Helvetica/Times/Courier add 0.15em,
+measured sizes 9-30), and ascent/descent of a face are whole pixels. Form controls take
+`system-ui` 13.33px with `line-height: normal` (WebKit's `font: -webkit-small-control`).
+Also fixed (each tested): an inline-flex container sits on its first item's baseline even when it
+clips overflow; flex and grid items are formatting roots (an empty child's margin stays inside:
+Wikipedia's site notice); an item spanning a `fr` row asks only that row for height (the article
+grid's header was 26px too tall).
+Wikipedia "Rust (programming language)": total height difference 2747px -> 531px; header, TOC rows
+and the infobox top now match. Still open there: ~531px accumulated lower in the article, expand
+icons 20px vs 12px (mask/background-size icons), the hidden `vector-dropdown-label-text` abs
+position, infobox label column 110 vs 106. Not done: Windows/Linux system fonts (the bundled fonts
+still apply there; `blueice-core` does not yet enable system fonts, only the dev test).
