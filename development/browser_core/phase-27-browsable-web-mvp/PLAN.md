@@ -1105,8 +1105,10 @@ Open, not fixed:
 - rust-lang.org: a `<select>` was always 20em wide, which pushed the header's language picker to a
   second line; a drop-down with no width is now as wide as its longest option plus the arrow
   (fixed, tested). The header is now one line like Safari's; the logo link box is 11px wider than
-  Safari's (91 vs 80) and the nav 16px taller; not yet analysed. lobste.rs's body is still much
-  taller than Safari's and its nav items 9-11px wider (text metrics first).
+  Safari's (91 vs 80) and the nav 16px taller; not yet analysed. A closed `<details>` showed
+  its content (no UA rule); `details:not([open]) > :not(summary) { display: none }` fixes it
+  (tested), cutting lobste.rs's body overshoot from ~700px to 108px. Still open there: stories
+  6px taller each (the `.details` rows) and nav items 9-11px wider (text metrics first).
 - Wikipedia: a heading's bottom rule runs under the floated infobox (Safari clips it with the float);
   a black square next to "View history" when scripts run; dropdown-arrow icons still solid squares.
 - Multi-layer backgrounds are only partly supported: the first loaded picture and the first gradient

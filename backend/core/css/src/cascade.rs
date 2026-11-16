@@ -843,6 +843,8 @@ input, textarea, select {
 textarea { height: 6em; }
 /* A drop-down is as wide as its longest option (layout reads the labels), not a text field's width. */
 select { width: auto; }
+/* A closed disclosure widget shows only its summary. */
+details:not([open]) > :not(summary) { display: none; }
 /* A push button is as wide as its caption (the layout reads the label), not the width of a
  * text field. */
 input[type="submit"], input[type="button"], input[type="reset"] {
@@ -1016,6 +1018,22 @@ mod tests {
         let author = parse("div { color: green; }");
         let styles = cascade(&doc, &[(Origin::Author, &author)]);
         assert_eq!(styles[&p].color, Color::Rgba(0, 128, 0, 255));
+    }
+
+    #[test]
+    fn a_closed_details_shows_only_its_summary_and_an_open_one_shows_everything() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let closed = elem(&mut doc, root, "details", &[]);
+        let closed_summary = elem(&mut doc, closed, "summary", &[]);
+        let closed_body = elem(&mut doc, closed, "ul", &[]);
+        let open = elem(&mut doc, root, "details", &[("open", "")]);
+        let open_body = elem(&mut doc, open, "ul", &[]);
+        let ua = ua_stylesheet();
+        let styles = cascade(&doc, &[(Origin::Ua, &ua)]);
+        assert_eq!(styles[&closed_summary].display, "block");
+        assert_eq!(styles[&closed_body].display, "none");
+        assert_eq!(styles[&open_body].display, "block");
     }
 
     #[test]
