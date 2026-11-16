@@ -1117,6 +1117,19 @@ Open, not fixed:
   DejaVu/Noto, so glyph advances and line metrics differ. This accounts for lobste.rs' nav widths
   (9-11px), the 51 vs 46px vote column (a 1.2rem `system-ui` triangle) and the tag pill rows
   (23 vs 25px). Closing it needs system-font loading or metric-compatible faces, not layout work.
+- python.org header (root cause found 2026-11-16, not yet fixed): `#dive-into-python` has no
+  `flexslider` class when `.flexslider()` runs, so `.flexslider .slides > li { display: none }` does
+  not match yet; the constructor adds the class, then calls `slides.eq(0).fadeIn()`. A browser
+  recalculates style synchronously, sees the slide hidden and `fadeIn` shows it. The realm reads the
+  styles and boxes snapshotted at the start of the turn (display `block`, 980 wide), so jQuery's
+  `:hidden` is false, `fadeIn` does nothing, and the stylesheet then hides the slide for good (the
+  header ends 262px short). Calling `fadeIn` again later works (verified). The fix is the same
+  mechanism Modernizr's `fontface`/`generatedcontent` tests need: a script that reads computed
+  style, `offsetWidth` or a rect after changing the DOM in the same turn must see a fresh cascade
+  and layout. Needs an in-turn flush: the realm sends its pending DOM changes to the page, the page
+  restyles and lays out (the incremental cascade and layout cache exist), and the realm continues
+  with the new styles and boxes; in process mode that is a new round trip over the worker channel.
+  Not a browser-interpretation difference.
 - Wikipedia: a heading's bottom rule runs under the floated infobox (Safari clips it with the float);
   a black square next to "View history" when scripts run; dropdown-arrow icons still solid squares.
 - Multi-layer backgrounds are only partly supported: the first loaded picture and the first gradient

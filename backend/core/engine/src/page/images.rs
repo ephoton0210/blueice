@@ -711,7 +711,7 @@ mod tests {
                 if let blueice_dom::NodeData::Element { tag_name, attributes } = page.doc.data(*node) {
                     let has = attributes.iter().any(|(k, v)| k == "class" && v.split_whitespace().any(|c| c == class));
                     if has {
-                        eprintln!("CLASS {class}: <{tag_name}> display={} other={:?}", style.display, style.other.iter().filter(|(k, _)| k.as_str() == "float" || k.as_str() == "width").collect::<Vec<_>>());
+                        eprintln!("CLASS {class}: <{tag_name}> display={} attrs={attributes:?} other={:?}", style.display, style.other);
                     }
                 }
             }
