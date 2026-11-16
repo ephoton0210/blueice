@@ -78,6 +78,9 @@ struct Atomic {
 enum Align {
     /// Raised above the baseline by this much (negative: lowered).
     Baseline(f64),
+    /// `vertical-align: middle`: the box's midpoint sits this far (half the x-height) above the
+    /// parent baseline. Turned into a `Baseline` shift once the box's own extent is known.
+    Middle(f64),
     Top,
     Bottom,
 }
@@ -626,7 +629,7 @@ fn vertical_align(style: &Style<'_>, line_height: f64) -> Align {
             "bottom" | "text-bottom" => Align::Bottom,
             "sub" => Align::Baseline(-font_size * 0.2),
             "super" => Align::Baseline(font_size * 0.33),
-            "middle" => Align::Baseline(font_size * 0.25),
+            "middle" => Align::Middle(font_size * 0.25),
             _ => Align::Baseline(0.0),
         },
         Some(blueice_css::Value::Percentage(p)) => Align::Baseline(line_height * p / 100.0),
@@ -1689,6 +1692,11 @@ pub(crate) fn layout_run_around(
                     (above, below, align)
                 }),
             };
+            // A middle-aligned box is centred, not baseline-shifted by a fixed amount.
+            let entry = entry.map(|(above, below, align)| match align {
+                Align::Middle(half_x) => (above, below, Align::Baseline(half_x - (above - below) / 2.0)),
+                other => (above, below, other),
+            });
             if let Some((above, below, align)) = entry {
                 match align {
                     Align::Baseline(shift) => {
@@ -1696,6 +1704,7 @@ pub(crate) fn layout_run_around(
                         max_below = max_below.max(below - shift);
                     }
                     Align::Top | Align::Bottom => tall = tall.max(above + below),
+                    Align::Middle(_) => unreachable!("resolved to a baseline shift above"),
                 }
             }
             metrics.push(entry);
@@ -1860,6 +1869,7 @@ pub(crate) fn layout_run_around(
                         ));
                         let top = match align {
                             Align::Baseline(shift) => baseline - shift - above,
+                            Align::Middle(_) => unreachable!("resolved to a baseline shift above"),
                             Align::Top => 0.0,
                             Align::Bottom => line_height - (above + below),
                         };
@@ -1930,6 +1940,11 @@ pub(crate) fn layout_run_around(
                         fragment.x = x + a.margin_left;
                         fragment.y = match a.align {
                             Align::Baseline(shift) => baseline - shift - a.baseline,
+                            Align::Middle(half_x) => {
+                                let above = a.margin_top + a.baseline;
+                                let below = (a.margin_top + a.fragment.height + a.margin_bottom) - above;
+                                baseline - (half_x - (above - below) / 2.0) - a.baseline
+                            }
                             Align::Top => a.margin_top,
                             Align::Bottom => line_height - a.margin_bottom - a.fragment.height,
                         };
@@ -2631,6 +2646,27 @@ mod tests {
         assert!(long > short + 100.0, "short {short}, long {long}");
         assert!(long < 400.0, "not the old fixed 20em: {long}");
         assert_eq!(width_of("<select><option>ab</option></select>", "select { width: 250px }"), 250.0);
+    }
+
+    #[test]
+    fn a_middle_aligned_avatar_does_not_make_a_line_taller_than_its_line_height() {
+        // lobste.rs's byline: a 16px avatar (vertical-align: middle, a 2px
+        // bottom margin) before the text, with `line-height: 1.45em`. The
+        // line stays one line-height tall, as in Safari.
+        let f = body(
+            "<div><a><img width=16 height=16></a> by me</div>",
+            "body { line-height: 1.45em } img { border-radius: 50%; height: 1rem; width: 1rem; \\
+             margin-bottom: 0.125rem; margin-right: 0.125rem; vertical-align: middle }",
+            600.0,
+        );
+        fn first_line(f: &Fragment) -> Option<f64> {
+            if matches!(f.kind, FragmentKind::Line) {
+                return Some(f.height);
+            }
+            f.children.iter().find_map(first_line)
+        }
+        let height = first_line(&f).expect("a line");
+        assert!((height - 23.2).abs() < 0.01, "line height {height}");
     }
 
     #[test]

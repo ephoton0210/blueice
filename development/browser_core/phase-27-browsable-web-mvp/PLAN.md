@@ -1107,8 +1107,11 @@ Open, not fixed:
   (fixed, tested). The header is now one line like Safari's; the logo link box is 11px wider than
   Safari's (91 vs 80) and the nav 16px taller; not yet analysed. A closed `<details>` showed
   its content (no UA rule); `details:not([open]) > :not(summary) { display: none }` fixes it
-  (tested), cutting lobste.rs's body overshoot from ~700px to 108px. Still open there: stories
-  6px taller each (the `.details` rows) and nav items 9-11px wider (text metrics first).
+  (tested), cutting lobste.rs's body overshoot from ~700px to 108px. `vertical-align: middle` was a fixed
+  0.25em baseline shift; it now centres the box on baseline + half the x-height, so a 16px avatar
+  no longer makes the byline line 28px instead of 23px (tested); story rows now match Safari. Still
+  open there: the vote column is 5px taller (inline-flex `upvoter`), the body is 75px short of
+  Safari's, and nav items are 9-11px wider (text metrics first).
 - Wikipedia: a heading's bottom rule runs under the floated infobox (Safari clips it with the float);
   a black square next to "View history" when scripts run; dropdown-arrow icons still solid squares.
 - Multi-layer backgrounds are only partly supported: the first loaded picture and the first gradient
