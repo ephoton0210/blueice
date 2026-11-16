@@ -39,7 +39,7 @@ Lines before the first "#data" (like these) are ignored by the parser.
 |         "hi" 0.0,0.0 14.6x19.2
 
 #paint
-text 8.0,16.0 "hi" #000000 16.0 normal normal
+text 8.0,16.3 "hi" #000000 16.0 normal normal
 
 
 #data
