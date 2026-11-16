@@ -337,10 +337,7 @@ pub(crate) fn layout_table(ctx: &Ctx<'_>, table: NodeId, input: &TableInput) -> 
             col_max.clone()
         }
     } else if distributable > min_sum && max_sum > min_sum {
-        let t = (distributable - min_sum) / (max_sum - min_sum);
-        (0..columns)
-            .map(|i| col_min[i] + (col_max[i] - col_min[i]) * t)
-            .collect()
+        share_between_min_and_max(&col_min, &col_max, distributable)
     } else {
         col_min.clone()
     };
@@ -586,8 +583,55 @@ pub(crate) fn layout_table(ctx: &Ctx<'_>, table: NodeId, input: &TableInput) -> 
     result
 }
 
+/// Column widths when the table is wider than its minimum and narrower than its maximum content:
+/// proportional to the columns' max widths, none under its minimum (WebKit's auto layout).
+fn share_between_min_and_max(col_min: &[f64], col_max: &[f64], room: f64) -> Vec<f64> {
+    let n = col_min.len();
+    let mut width = vec![0.0f64; n];
+    let mut held = vec![false; n];
+    // A column whose proportional share falls under its minimum is held at the minimum; what is
+    // left goes to the rest in the same proportion, until no more columns are held.
+    loop {
+        let left = room - (0..n).filter(|&i| held[i]).map(|i| col_min[i]).sum::<f64>();
+        let max_sum: f64 = (0..n).filter(|&i| !held[i]).map(|i| col_max[i]).sum();
+        let mut changed = false;
+        for i in 0..n {
+            if held[i] {
+                continue;
+            }
+            width[i] = if max_sum > 0.0 { left * col_max[i] / max_sum } else { col_min[i] };
+            if width[i] < col_min[i] {
+                held[i] = true;
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    for i in 0..n {
+        if held[i] {
+            width[i] = col_min[i];
+        }
+    }
+    width
+}
+
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn columns_between_min_and_max_share_the_room_in_proportion_to_their_max_widths() {
+        // WebKit's auto table layout (Safari): each column takes `room * max / sum(max)`, but never
+        // less than its minimum; the others share what is left in the same proportion.
+        let w = super::share_between_min_and_max(&[20.0, 20.0], &[100.0, 400.0], 250.0);
+        assert!((w[0] - 50.0).abs() < 0.01 && (w[1] - 200.0).abs() < 0.01, "{w:?}");
+        // A column held at its minimum leaves the rest to the others.
+        let w = super::share_between_min_and_max(&[80.0, 20.0, 20.0], &[100.0, 100.0, 300.0], 250.0);
+        assert!((w[0] - 80.0).abs() < 0.01, "{w:?}");
+        assert!((w.iter().sum::<f64>() - 250.0).abs() < 0.01, "{w:?}");
+        assert!((w[1] / w[2] - 100.0 / 300.0).abs() < 0.01, "{w:?}");
+    }
     use crate::block::layout_block;
     use crate::fragment::Fragment;
     use blueice_css::{cascade, ua_stylesheet, Origin};
