@@ -547,6 +547,11 @@ impl<'a> Style<'a> {
     }
 
     /// Whether the property is `auto` (an unset property is not).
+    /// `display: flow-root`: a block that contains its floats and sits beside others.
+    pub fn is_flow_root(&self) -> bool {
+        self.style.is_some_and(|s| s.display == "flow-root")
+    }
+
     pub fn is_auto(&self, property: &str) -> bool {
         self.keyword(property) == Some("auto")
     }

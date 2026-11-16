@@ -1133,7 +1133,9 @@ Open, not fixed:
   restyles and lays out (the incremental cascade and layout cache exist), and the realm continues
   with the new styles and boxes; in process mode that is a new round trip over the worker channel.
   Not a browser-interpretation difference.
-- Wikipedia: a heading's bottom rule runs under the floated infobox (Safari clips it with the float);
+- Wikipedia: a block that clips overflow or is `flow-root` (the headings) now sits beside a float
+  instead of under it, as Safari does (tested; heading widths match, 428). The page still differs: rows
+  run taller than Safari's so y drifts down (first heading +84px, infobox 973 vs 820), not yet analysed;
   a black square next to "View history" when scripts run; dropdown-arrow icons still solid squares.
 - Multi-layer backgrounds are only partly supported: the first loaded picture and the first gradient
   of a layer list are drawn, not the full stack with per-layer size/position/repeat.

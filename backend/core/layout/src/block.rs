@@ -122,6 +122,7 @@ fn is_bfc_root(style: &Style<'_>, display: Display, root: bool) -> bool {
     root || style.float().is_some()
         || style.is_out_of_flow()
         || style.clips_overflow()
+        || style.is_flow_root()
         || !matches!(
             display,
             Display::Block | Display::ListItem | Display::Inline
@@ -384,6 +385,31 @@ pub(crate) fn layout_flow(
                         cursor_y = target;
                     }
                 }
+                // A block that establishes its own formatting context (clipping overflow,
+                // `flow-root`) does not run under a float: it takes the room beside it.
+                let mut beside_left = 0.0;
+                let constraint = if !all_floats.is_empty()
+                    && child_style.display() == Display::Block
+                    && (child_style.clips_overflow() || child_style.is_flow_root())
+                    && child_style.px("width", content_width).is_none()
+                {
+                    let y = cursor_y
+                        + if top_open {
+                            0.0
+                        } else {
+                            pending
+                                .join(Margin::of(child_style.side("margin-top", content_width)))
+                                .value()
+                        };
+                    let (left, right) = float::free_span(&all_floats, y, y + 1.0, content_width);
+                    beside_left = left;
+                    Constraint {
+                        cb_width: right - left,
+                        ..constraint
+                    }
+                } else {
+                    constraint
+                };
                 let child_floats = if !all_floats.is_empty()
                     && !is_bfc_root(&child_style, child_style.display(), false)
                 {
@@ -430,7 +456,7 @@ pub(crate) fn layout_flow(
                 no_lines_yet = false;
                 flow.empty = false;
                 let mut fragment = std::mem::replace(&mut placed.fragment, Fragment::empty_block());
-                fragment.x = placed.margin_left + placed.shift;
+                fragment.x = placed.margin_left + placed.shift + beside_left;
                 fragment.y = cursor_y;
                 flow.extent = flow
                     .extent

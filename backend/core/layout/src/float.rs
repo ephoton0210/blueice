@@ -216,6 +216,27 @@ mod tests {
     }
 
     #[test]
+    fn a_block_that_clips_or_is_a_flow_root_sits_beside_a_float_not_under_it() {
+        // Wikipedia's headings (`overflow: hidden`): the rule under a heading stops at the infobox.
+        for style in ["overflow:hidden", "display:flow-root"] {
+            let f = layout::body(
+                &format!("<div style='float:right;width:100px;height:50px'></div><h2 style='{style};height:20px'>x</h2>"),
+                "",
+                400.0,
+            );
+            let heading = &f.children[1];
+            assert_eq!((heading.x, heading.width), (0.0, 300.0), "{style}");
+        }
+        // A plain block still runs under the float (its text flows around it instead).
+        let f = layout::body(
+            "<div style='float:right;width:100px;height:50px'></div><h2 style='height:20px'>x</h2>",
+            "",
+            400.0,
+        );
+        assert_eq!(f.children[1].width, 400.0);
+    }
+
+    #[test]
     fn a_right_float_takes_the_right_edge() {
         let f = layout::body(
             "<div class=f style='float:right;width:80px'></div><p>x</p>",
