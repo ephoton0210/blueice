@@ -1066,6 +1066,16 @@ fn layout_block_level_uncached(
         );
         content_flow_height += lines.len() as f64 * line_height;
         children.extend(lines);
+        // The hint of an empty control sits where its text would, and takes no room of its own.
+        children.extend(crate::native_text::placeholder_lines(
+            &value,
+            node,
+            content_width,
+            font_size,
+            line_height,
+            style.style.is_some_and(|s| s.is_bold()),
+            style.style.is_some_and(|s| s.is_italic()),
+        ));
     }
 
     // ---- final box ----

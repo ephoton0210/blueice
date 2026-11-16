@@ -733,6 +733,14 @@ pub(crate) fn layout_flex(ctx: &Ctx<'_>, container: NodeId, input: &FlexInput) -
             if let Some(first) = line_cross.first_mut() {
                 *first = cross;
             }
+        } else if row {
+            // Otherwise the line is as tall as its tallest item, held within the container's
+            // `min-height`/`max-height` (so a `min-height` button centres its label).
+            if let Some(first) = line_cross.first_mut() {
+                *first = first
+                    .max(input.min_height)
+                    .min(input.max_height.unwrap_or(f64::INFINITY));
+            }
         }
     }
 
@@ -1375,6 +1383,24 @@ mod tests {
         );
         let min = flex(ITEMS, &css(".f{min-height:90px} i{width:10px}"), 400.0);
         assert_eq!(min.height, 90.0);
+    }
+
+    #[test]
+    fn a_single_line_is_stretched_to_the_containers_min_height_so_items_centre_in_it() {
+        // `.cdx-button { min-height: 32px; align-items: center }`: the label sits in the middle.
+        let f = flex(
+            "<div class=f><i class=a></i></div>",
+            &css(".f{min-height:90px;align-items:center} i{width:10px}"),
+            400.0,
+        );
+        assert_eq!(f.height, 90.0);
+        assert_eq!(ys(&f), vec![35.0], "centred in the 90px line");
+        let capped = flex(
+            "<div class=f><i class=a></i></div>",
+            &css(".f{max-height:10px;align-items:center} i{width:10px}"),
+            400.0,
+        );
+        assert_eq!(capped.height, 10.0);
     }
 
     #[test]

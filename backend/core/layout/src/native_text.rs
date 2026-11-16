@@ -150,6 +150,8 @@ pub(super) struct ControlText {
     value: String,
     multiline: bool,
     protected: bool,
+    /// The `placeholder` attribute, shown while `value` is empty.
+    placeholder: String,
 }
 
 pub(super) fn control_text(doc: &Document, node: NodeId) -> Option<ControlText> {
@@ -175,6 +177,11 @@ pub(super) fn control_text(doc: &Document, node: NodeId) -> Option<ControlText> 
             value,
             multiline: true,
             protected: false,
+            placeholder: attributes
+                .iter()
+                .find(|(name, _)| name == "placeholder")
+                .map(|(_, value)| value.clone())
+                .unwrap_or_default(),
         });
     }
     if tag_name != "input" {
@@ -200,7 +207,42 @@ pub(super) fn control_text(doc: &Document, node: NodeId) -> Option<ControlText> 
         value,
         multiline: false,
         protected: kind == "password",
+        placeholder: attributes
+            .iter()
+            .find(|(name, _)| name == "placeholder")
+            .map(|(_, value)| value.clone())
+            .unwrap_or_default(),
     })
+}
+
+/// The hint lines of an empty control, laid out like its text would be.
+pub(super) fn placeholder_lines(
+    value: &ControlText,
+    node: NodeId,
+    width: f64,
+    font: f64,
+    line_height: f64,
+    bold: bool,
+    italic: bool,
+) -> Vec<Fragment> {
+    if !value.value.is_empty() || value.placeholder.trim().is_empty() {
+        return Vec::new();
+    }
+    let hint = ControlText {
+        value: value.placeholder.clone(),
+        multiline: value.multiline,
+        protected: false,
+        placeholder: String::new(),
+    };
+    lines(&hint, node, width, font, line_height, bold, italic)
+        .into_iter()
+        .map(|mut line| {
+            if let FragmentKind::NativeText { text, .. } = std::mem::replace(&mut line.kind, FragmentKind::Block) {
+                line.kind = FragmentKind::Placeholder(text);
+            }
+            line
+        })
+        .collect()
 }
 
 pub(super) fn lines(

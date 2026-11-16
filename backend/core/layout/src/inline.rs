@@ -2532,6 +2532,29 @@ mod tests {
     }
 
     #[test]
+    fn an_empty_text_control_shows_its_placeholder_and_a_filled_one_does_not() {
+        fn placeholders(f: &Fragment, out: &mut Vec<String>) {
+            if let FragmentKind::Placeholder(text) = &f.kind {
+                out.push(text.clone());
+            }
+            for child in &f.children {
+                placeholders(child, out);
+            }
+        }
+        let shown = |html: &str| {
+            let f = body(html, "", 400.0);
+            let mut found = Vec::new();
+            placeholders(&f, &mut found);
+            found
+        };
+        assert_eq!(shown("<input type=search placeholder='Search Wikipedia'>"), ["Search Wikipedia"]);
+        assert_eq!(shown("<textarea placeholder='Notes'></textarea>"), ["Notes"]);
+        assert!(shown("<input placeholder='Name' value='Ada'>").is_empty());
+        assert!(shown("<input type=checkbox placeholder='x'>").is_empty());
+        assert!(shown("<input>").is_empty());
+    }
+
+    #[test]
     fn adjacent_marks_are_trimmed_across_an_inline_element_boundary() {
         let (close_full, _) = full_and_half("\u{300d}");
         let (_, open_half) = full_and_half("\u{300c}");

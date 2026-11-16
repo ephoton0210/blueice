@@ -917,11 +917,21 @@ fn paint_fragment(
             }
         }
         FragmentKind::Block | FragmentKind::NativeControl { .. } | FragmentKind::Line => {}
-        FragmentKind::Text(text) | FragmentKind::NativeText { text, .. } if !fragment.hidden => {
+        FragmentKind::Text(text)
+        | FragmentKind::NativeText { text, .. }
+        | FragmentKind::Placeholder(text)
+            if !fragment.hidden =>
+        {
             if let Some(style) = own_style {
                 let (face, bold, italic) = text_face(style);
                 // The nearest block ancestor's opacity is already in `inherited`.
-                let color = apply_opacity(style.color, inherited.opacity);
+                // The hint of an empty control is muted, whatever colour the text would have.
+                let base = if matches!(fragment.kind, FragmentKind::Placeholder(_)) {
+                    Color::Rgba(117, 117, 117, 255)
+                } else {
+                    style.color
+                };
+                let color = apply_opacity(base, inherited.opacity);
                 // The rasterizer draws a string at its natural advances, so a
                 // run with letter-spacing is emitted one character at a time at
                 // the positions layout measured.
@@ -935,6 +945,20 @@ fn paint_fragment(
                 let spacing = spacing.filter(|_| orient == TextOrient::Horizontal);
                 // Text that runs up the page starts at the bottom of its box.
                 let y = if orient == TextOrient::SidewaysCcw { y + fragment.height } else { y };
+                // Half-leading: a line taller than the glyphs' own extent puts the extra above
+                // and below them, so the glyphs sit in the middle of the line box.
+                let y = if orient == TextOrient::Horizontal {
+                    // (Synthesized small capitals share the baseline of the full-size run.)
+                    let (ascent, descent) = blueice_font::ascent_descent_in(
+                        style.font_size_px,
+                        bold,
+                        italic,
+                        face.map(blueice_font::web::WebFontId::from_u32),
+                    );
+                    y + (fragment.height - (ascent + descent)) / 2.0
+                } else {
+                    y
+                };
                 let features = {
                     let face_id = face.map(blueice_font::web::WebFontId::from_u32);
                     let supports = |tag: [u8; 4]| blueice_font::face_supports_feature(bold, italic, face_id, tag);
@@ -990,7 +1014,7 @@ fn paint_fragment(
                 paint_decorations(fragment, x, y, style, inherited, color, out);
             }
         }
-        FragmentKind::Text(_) | FragmentKind::NativeText { .. } => {}
+        FragmentKind::Text(_) | FragmentKind::NativeText { .. } | FragmentKind::Placeholder(_) => {}
     }
 
     let native_clip = if let FragmentKind::NativeControl {
@@ -1734,6 +1758,39 @@ mod tests {
             }
             _ => unreachable!(),
         }
+    }
+
+    #[test]
+    fn a_placeholder_is_drawn_in_a_muted_colour_whatever_the_text_colour_is() {
+        let f = paint_html(
+            "<input placeholder='Search Wikipedia'>",
+            "input { color: rgb(0, 0, 255); }",
+            320.0,
+        );
+        let hint = f
+            .commands
+            .iter()
+            .find_map(|c| match c {
+                PaintCommand::Text { text, color, .. } if text == "Search Wikipedia" => Some(*color),
+                _ => None,
+            })
+            .expect("the placeholder is drawn");
+        assert_eq!(hint, Color::Rgba(117, 117, 117, 255));
+    }
+
+    #[test]
+    fn text_in_a_tall_line_sits_in_the_middle_of_its_line_box() {
+        // half-leading: with `line-height: 100px` the glyphs are centred in the line, not at its top
+        let f = paint_html("<div>hi</div>", "div { line-height: 100px; font-size: 16px }", 320.0);
+        let y = f
+            .commands
+            .iter()
+            .find_map(|c| match c {
+                PaintCommand::Text { y, .. } => Some(*y),
+                _ => None,
+            })
+            .expect("text");
+        assert!(y > 30.0 && y < 50.0, "the text starts at y={y}");
     }
 
     #[test]

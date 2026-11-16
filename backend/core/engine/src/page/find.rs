@@ -232,6 +232,8 @@ fn collect(
                 index.run(text, bounds, style, clip);
             }
         }
+        // A hint is not the page's text: find-in-page does not match it.
+        FragmentKind::Placeholder(_) => {}
         FragmentKind::Block => {
             index.boundary();
             for child in &fragment.children {

@@ -87,6 +87,9 @@ pub enum FragmentKind {
         source_start: u32,
         source_end: u32,
     },
+    /// The hint an empty text control shows (its `placeholder`), drawn in a muted colour. It has
+    /// no source offsets: it is not the control's text and can neither be edited nor selected.
+    Placeholder(String),
 }
 
 /// One box in the output tree. `x`/`y` are relative to the parent

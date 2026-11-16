@@ -172,7 +172,9 @@ impl Index {
                 continue;
             }
             match &fragment.kind {
-                FragmentKind::NativeControl { .. } | FragmentKind::NativeText { .. } => {
+                FragmentKind::NativeControl { .. }
+                | FragmentKind::NativeText { .. }
+                | FragmentKind::Placeholder(_) => {
                     boundary = true;
                     continue;
                 }

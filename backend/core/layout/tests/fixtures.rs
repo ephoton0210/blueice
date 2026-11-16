@@ -57,7 +57,7 @@ fn dump_layout(doc: &Document, fragment: &Fragment, depth: usize, out: &mut Stri
         FragmentKind::Line => {
             out.push_str(&format!("| {indent}line {geometry}\n"));
         }
-        FragmentKind::Text(text) | FragmentKind::NativeText { text, .. } => {
+        FragmentKind::Text(text) | FragmentKind::NativeText { text, .. } | FragmentKind::Placeholder(text) => {
             out.push_str(&format!("| {indent}\"{text}\" {geometry}\n"));
         }
     }
