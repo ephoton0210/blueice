@@ -1137,7 +1137,9 @@ Open, not fixed:
   instead of under it, as Safari does (tested; heading widths match, 428). Auto table columns between
   their min and max content widths now share the room in proportion to their max widths (WebKit's
   auto layout, not linear interpolation; tested), cutting the infobox height error from 153px to 90px.
-  The page still differs: rows
+  A `line-height` in em/rem/% is now fixed at the declaring element and inherited as pixels
+  (`.infobox { line-height: 1.5em }` made its larger headings 26px lines instead of 21px; tested), so
+  `infobox-above` is 23px like Safari's. The page still differs: rows
   run taller than Safari's so y drifts down (first heading +84px, infobox 973 vs 820), not yet analysed;
   a black square next to "View history" when scripts run; dropdown-arrow icons still solid squares.
 - Multi-layer backgrounds are only partly supported: the first loaded picture and the first gradient

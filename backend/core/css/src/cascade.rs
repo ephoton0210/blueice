@@ -704,10 +704,15 @@ fn compute_style_for(
     };
     style.text_align = inherited_keyword("text-align", &parent.text_align);
 
-    style.line_height = winners
-        .get("line-height")
-        .cloned()
-        .or_else(|| parent.line_height.clone());
+    // A length (`1.5em`, `150%`) is worked out against this element's own font size and
+    // inherited as pixels; a bare number stays a factor of each descendant's size.
+    style.line_height = match winners.get("line-height") {
+        Some(Value::Length(crate::value::Length::Em(n))) => Some(Value::Length(crate::value::Length::Px(n * style.font_size_px))),
+        Some(Value::Length(crate::value::Length::Rem(n))) => Some(Value::Length(crate::value::Length::Px(n * root_font_size))),
+        Some(Value::Percentage(p)) => Some(Value::Length(crate::value::Length::Px(p / 100.0 * style.font_size_px))),
+        Some(other) => Some(other.clone()),
+        None => parent.line_height.clone(),
+    };
 
     for (prop, value) in &winners {
         let prop = prop.as_str();
@@ -1034,6 +1039,28 @@ mod tests {
         assert_eq!(styles[&closed_summary].display, "block");
         assert_eq!(styles[&closed_body].display, "none");
         assert_eq!(styles[&open_body].display, "block");
+    }
+
+    #[test]
+    fn a_line_height_in_ems_is_fixed_at_the_declaring_element_and_inherited_as_a_length() {
+        // Wikipedia's `.infobox { font-size: 88%; line-height: 1.5em }`: a heading in the box with a
+        // bigger font still has the box's 1.5 x 10px line, not 1.5 x its own size.
+        let mut doc = Document::new();
+        let root = doc.root();
+        let outer = elem(&mut doc, root, "div", &[]);
+        let inner = elem(&mut doc, outer, "p", &[]);
+        let author = parse("div { font-size: 10px; line-height: 1.5em } p { font-size: 20px }");
+        let styles = cascade(&doc, &[(Origin::Author, &author)]);
+        let px = |id: &NodeId| match styles[id].line_height {
+            Some(Value::Length(crate::value::Length::Px(v))) => v,
+            ref other => panic!("not a pixel length: {other:?}"),
+        };
+        assert_eq!(px(&outer), 15.0);
+        assert_eq!(px(&inner), 15.0);
+        // A bare number is kept as a factor: it scales with each element's own size.
+        let author = parse("div { font-size: 10px; line-height: 1.5 } p { font-size: 20px }");
+        let styles = cascade(&doc, &[(Origin::Author, &author)]);
+        assert_eq!(styles[&inner].line_height, Some(Value::Number(1.5)));
     }
 
     #[test]
