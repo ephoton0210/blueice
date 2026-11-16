@@ -49,7 +49,122 @@ const SUPPORTED_PROPERTIES: &[&str] = &[
 ];
 
 /// Display keywords layout currently generates boxes for.
-const SUPPORTED_DISPLAY: &[&str] = &["block", "inline", "none"];
+const SUPPORTED_DISPLAY: &[&str] = &[
+    "block",
+    "inline",
+    "none",
+    "inline-block",
+    "flow-root",
+    "list-item",
+    "contents",
+    "flex",
+    "inline-flex",
+    "grid",
+    "inline-grid",
+    "table",
+    "inline-table",
+    "table-row",
+    "table-row-group",
+    "table-header-group",
+    "table-footer-group",
+    "table-cell",
+    "table-caption",
+    "table-column",
+    "table-column-group",
+];
+
+/// Properties layout or paint honour whose values are not plain lengths, keywords or colours
+/// (lists, functions, ratios): any non-empty value counts as understood, as the cascade keeps
+/// the tokens for layout to read.
+const SUPPORTED_COMPLEX_PROPERTIES: &[&str] = &[
+    "align-content",
+    "align-items",
+    "align-self",
+    "aspect-ratio",
+    "background",
+    "background-image",
+    "background-position",
+    "background-repeat",
+    "background-size",
+    "border",
+    "border-bottom",
+    "border-left",
+    "border-radius",
+    "border-right",
+    "border-top",
+    "bottom",
+    "box-shadow",
+    "clear",
+    "column-gap",
+    "direction",
+    "flex",
+    "flex-basis",
+    "flex-direction",
+    "flex-flow",
+    "flex-grow",
+    "flex-shrink",
+    "flex-wrap",
+    "float",
+    "font-variant",
+    "font-variant-caps",
+    "font-variant-ligatures",
+    "font-variant-numeric",
+    "font-feature-settings",
+    "gap",
+    "grid-area",
+    "grid-auto-columns",
+    "grid-auto-flow",
+    "grid-auto-rows",
+    "grid-column",
+    "grid-row",
+    "grid-template",
+    "grid-template-areas",
+    "grid-template-columns",
+    "grid-template-rows",
+    "inset",
+    "justify-content",
+    "justify-items",
+    "justify-self",
+    "left",
+    "letter-spacing",
+    "list-style",
+    "list-style-type",
+    "mask",
+    "mask-image",
+    "max-height",
+    "max-width",
+    "min-height",
+    "min-width",
+    "object-fit",
+    "object-position",
+    "order",
+    "overflow",
+    "overflow-wrap",
+    "overflow-x",
+    "overflow-y",
+    "place-content",
+    "place-items",
+    "place-self",
+    "pointer-events",
+    "position",
+    "right",
+    "row-gap",
+    "text-decoration",
+    "text-decoration-line",
+    "text-indent",
+    "text-overflow",
+    "text-transform",
+    "top",
+    "transform",
+    "translate",
+    "unicode-bidi",
+    "vertical-align",
+    "white-space",
+    "word-break",
+    "word-spacing",
+    "writing-mode",
+    "z-index",
+];
 
 fn declaration_supported(property: &str, value: &[Token]) -> bool {
     let property = property.to_ascii_lowercase();
@@ -67,6 +182,9 @@ fn declaration_supported(property: &str, value: &[Token]) -> bool {
     if property == "display" {
         return matches!(value.as_slice(), [Token::Ident(word)]
             if SUPPORTED_DISPLAY.iter().any(|d| d.eq_ignore_ascii_case(word)));
+    }
+    if SUPPORTED_COMPLEX_PROPERTIES.contains(&property.as_str()) {
+        return true;
     }
     SUPPORTED_PROPERTIES.contains(&property.as_str()) && parse_value(&value).is_some()
 }

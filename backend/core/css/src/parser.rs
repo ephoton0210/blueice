@@ -1597,11 +1597,20 @@ mod tests {
             selectors_of("@supports (display: block) { p { color: red; } }"),
             1
         );
-        assert_eq!(
-            selectors_of("@supports (display: flex) { p { color: red; } }"),
-            0,
-            "flex is not laid out, so a page must get its fallback"
-        );
+        for supported in ["display: flex", "display: grid", "display: inline-flex", "position: sticky", "gap: 8px", "grid-template-columns: 1fr 2fr", "aspect-ratio: 16 / 9", "transform: translateX(1px)", "object-fit: cover"] {
+            assert_eq!(
+                selectors_of(&format!("@supports ({supported}) {{ p {{ color: red; }} }}")),
+                1,
+                "{supported} is laid out, so a page may rely on it"
+            );
+        }
+        for unsupported in ["display: made-up", "backdrop-filter: blur(2px)", "display: ruby"] {
+            assert_eq!(
+                selectors_of(&format!("@supports ({unsupported}) {{ p {{ color: red; }} }}")),
+                0,
+                "{unsupported} is not, so a page must get its fallback"
+            );
+        }
         assert_eq!(
             selectors_of("@supports (made-up-property: 1) { p { color: red; } }"),
             0
@@ -1615,12 +1624,12 @@ mod tests {
     #[test]
     fn supports_combinators_and_not() {
         for (condition, included) in [
-            ("not (display: flex)", true),
+            ("not (display: made-up)", true),
             ("not (display: block)", false),
             ("(display: block) and (color: red)", true),
-            ("(display: block) and (display: grid)", false),
+            ("(display: block) and (display: made-up)", false),
             ("(display: grid) or (color: red)", true),
-            ("(display: grid) or (display: flex)", false),
+            ("(display: made-up) or (backdrop-filter: blur(1px))", false),
             ("((display: block))", true),
             (
                 "(display: grid) or ((color: red) and (not (display: flex)))",
@@ -1641,7 +1650,7 @@ mod tests {
 
     #[test]
     fn rules_after_a_skipped_supports_block_still_parse() {
-        let rules = parse("@supports (display: grid) { p { color: red; } } b { color: blue; }");
+        let rules = parse("@supports (display: made-up) { p { color: red; } } b { color: blue; }");
         assert_eq!(rules.len(), 1);
     }
 
