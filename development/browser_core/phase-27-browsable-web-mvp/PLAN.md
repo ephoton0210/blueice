@@ -1112,6 +1112,11 @@ Open, not fixed:
   no longer makes the byline line 28px instead of 23px (tested); story rows now match Safari. Still
   open there: the vote column is 5px taller (inline-flex `upvoter`), the body is 75px short of
   Safari's, and nav items are 9-11px wider (text metrics first).
+  Not a browser-interpretation difference but a font-availability gap (recorded here as such, not
+  as accepted): Safari draws `system-ui`/Helvetica with macOS system fonts, BlueIce bundles only
+  DejaVu/Noto, so glyph advances and line metrics differ. This accounts for lobste.rs' nav widths
+  (9-11px), the 51 vs 46px vote column (a 1.2rem `system-ui` triangle) and the tag pill rows
+  (23 vs 25px). Closing it needs system-font loading or metric-compatible faces, not layout work.
 - Wikipedia: a heading's bottom rule runs under the floated infobox (Safari clips it with the float);
   a black square next to "View history" when scripts run; dropdown-arrow icons still solid squares.
 - Multi-layer backgrounds are only partly supported: the first loaded picture and the first gradient
