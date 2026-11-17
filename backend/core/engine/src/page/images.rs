@@ -712,7 +712,7 @@ mod tests {
                 if let blueice_dom::NodeData::Element { tag_name, attributes } = page.doc.data(*node) {
                     let has = attributes.iter().any(|(k, v)| (k == "class" && v.split_whitespace().any(|c| c == class)) || (k == "id" && v == &class) || class == format!("<{tag_name}>"));
                     if has {
-                        eprintln!("CLASS {class}: <{tag_name}> display={} font={:?} size={} lh={:?} attrs={attributes:?} other={:?}", style.display, style.font_family, style.font_size_px, style.line_height, style.other);
+                        eprintln!("CLASS {class}: GO={:.2} <{tag_name}> display={} font={:?} size={} lh={:?} attrs={attributes:?} other={:?}", blueice_font::measure_text_width_in("GO", 16.0, false, false, match style.other.get("-blueice-web-font") { Some(blueice_css::Value::Number(n)) => Some(blueice_font::web::WebFontId::from_u32(*n as u32)), _ => None }), style.display, style.font_family, style.font_size_px, style.line_height, style.other);
                     }
                 }
             }

@@ -42,9 +42,17 @@ enum Piece {
         width: f64,
         style_node: NodeId,
         wrap: bool,
+        /// A collapsible space (not `pre`): it vanishes at the start and end of a line even
+        /// when `white-space: nowrap` forbids breaking at it.
+        collapsible: bool,
     },
     /// Horizontal padding, border or margin of an inline box: unbreakable.
     Gap(f64),
+    /// The start of an inline box whose font or `line-height` differs from its parent's: it
+    /// takes no room, but its own box (the line-height around its font's ascent and descent)
+    /// counts toward the height of every line it is on, even when its text is in a pseudo-element
+    /// of another size (CSS 2.1 10.8.1).
+    Strut(NodeId),
     /// The same for an inline box that paints something of its own (a
     /// background, border, radius or shadow): `outside` of `width` is margin,
     /// the rest is the box's own border and padding.
@@ -501,6 +509,7 @@ fn push_text(
                         width: props.space(),
                         style_node,
                         wrap,
+                        collapsible: true,
                     });
                     state.last_space = true;
                 }
@@ -510,6 +519,7 @@ fn push_text(
                     width: props.space() * columns,
                     style_node,
                     wrap,
+                    collapsible: false,
                 });
                 state.last_space = false;
             }
@@ -901,6 +911,11 @@ fn collect(
             let paints = paints_own_box(&style);
             let (opening, closing) = bidi_marks(ctx, node, &style);
             pieces.extend(opening.into_iter().map(Piece::Mark));
+            if let Some(parent) = ctx.parent(node) {
+                if !ctx.children(node).is_empty() && text_extent(&style) != text_extent(&ctx.style(parent)) {
+                    pieces.push(Piece::Strut(node));
+                }
+            }
             if paints {
                 pieces.push(Piece::Edge {
                     node,
@@ -1074,11 +1089,13 @@ fn into_chunks(pieces: &[Piece]) -> Vec<Chunk> {
     let mut need_new = false;
     for (i, piece) in pieces.iter().enumerate() {
         match piece {
-            Piece::Space { width, wrap, .. } => {
+            Piece::Space { width, wrap, collapsible, .. } => {
                 if *wrap {
                     lead += width;
                     lead_piece = i;
                     need_new = true;
+                } else if *collapsible && current.is_none() {
+                    // A collapsible space that cannot break still vanishes at a line's start.
                 } else if let Some(chunk) = current.as_mut() {
                     chunk.items.push(i);
                     chunk.width += width;
@@ -1114,7 +1131,11 @@ fn into_chunks(pieces: &[Piece]) -> Vec<Chunk> {
                 }
                 need_new = false;
             }
-            Piece::Gap(width) | Piece::Edge { width, .. } => {
+            Piece::Gap(_) | Piece::Edge { .. } | Piece::Strut(_) => {
+                let width = match piece {
+                    Piece::Gap(width) | Piece::Edge { width, .. } => *width,
+                    _ => 0.0,
+                };
                 if let Some(chunk) = current.as_mut().filter(|_| !need_new) {
                     chunk.items.push(i);
                     chunk.width += width;
@@ -1124,7 +1145,7 @@ fn into_chunks(pieces: &[Piece]) -> Vec<Chunk> {
                         lead: std::mem::take(&mut lead),
                         lead_piece,
                         items: vec![i],
-                        width: *width,
+                        width,
                         forced_break_after: false,
                     });
                     need_new = false;
@@ -1159,6 +1180,23 @@ fn into_chunks(pieces: &[Piece]) -> Vec<Chunk> {
         }
     }
     chunks.extend(current);
+    // Collapsible spaces that cannot break still vanish at the end of a line: at the end of the
+    // run, and before a forced break.
+    let last = chunks.len().saturating_sub(1);
+    for (k, chunk) in chunks.iter_mut().enumerate() {
+        if !(chunk.forced_break_after || k == last) {
+            continue;
+        }
+        while let Some(&i) = chunk.items.last() {
+            match &pieces[i] {
+                Piece::Space { width, wrap: false, collapsible: true, .. } => {
+                    chunk.width -= width;
+                    chunk.items.pop();
+                }
+                _ => break,
+            }
+        }
+    }
     chunks
 }
 
@@ -1325,6 +1363,7 @@ fn piece_style<'a>(ctx: &'a Ctx<'a>, piece: &Piece) -> Option<Style<'a>> {
         Piece::Word { style_node, .. } | Piece::Space { style_node, .. } => {
             Some(ctx.style(*style_node))
         }
+        Piece::Strut(node) => Some(ctx.style(*node)),
         _ => None,
     }
 }
@@ -1364,7 +1403,7 @@ fn apply_trimming(ctx: &Ctx<'_>, pieces: Vec<Piece>) -> Vec<Piece> {
                 }
             }
             Piece::Space { .. } | Piece::Break | Piece::Atomic(_) => slots.push(None),
-            Piece::Gap(_) | Piece::Edge { .. } | Piece::Mark(_) => {}
+            Piece::Gap(_) | Piece::Edge { .. } | Piece::Mark(_) | Piece::Strut(_) => {}
         }
     }
     let class_at = |k: usize| slots.get(k).and_then(|s| s.as_ref()).and_then(|s| trim_class(s.c));
@@ -1484,6 +1523,7 @@ fn resolve_bidi(ctx: &Ctx<'_>, pieces: Vec<Piece>, base: Base) -> (Vec<Piece>, V
             Piece::Gap(_) | Piece::Edge { .. } | Piece::Atomic(_) => text.push('\u{fffc}'),
             Piece::Break => text.push('\u{2028}'),
             Piece::Mark(c) => text.push(*c),
+            Piece::Strut(_) => {}
         }
     }
     if base != Base::Rtl && !bidi::needs_bidi(&text) {
@@ -1712,7 +1752,9 @@ pub(crate) fn layout_run_around(
                 piece => piece_style(ctx, piece).map(|style| {
                     let (above, below) = text_extent(&style);
                     let align = match piece {
-                        Piece::Word { style_node, .. } | Piece::Space { style_node, .. }
+                        Piece::Word { style_node, .. }
+                        | Piece::Space { style_node, .. }
+                        | Piece::Strut(style_node)
                             if *style_node != container =>
                         {
                             match vertical_align(&style, above + below) {
@@ -1998,7 +2040,7 @@ pub(crate) fn layout_run_around(
                         fragment.logical = *i as u32;
                         children.push(fragment);
                     }
-                    Piece::Break | Piece::Mark(_) => {}
+                    Piece::Break | Piece::Mark(_) | Piece::Strut(_) => {}
                 },
             }
         }
@@ -2729,6 +2771,47 @@ mod tests {
         }
         let height = first_line(&f).expect("a line");
         assert!((23.2..=25.2).contains(&height), "line height {height}");
+    }
+
+    #[test]
+    fn an_inline_box_counts_toward_the_line_even_when_its_text_is_in_a_pseudo_element() {
+        // python.org's widget titles: `<h2><span class=icon></span>Title</h2>` where the span has
+        // its own font and `line-height: 1` and only its `::before` has text, at another size. The
+        // span's own box (30px here) still makes the line at least that tall.
+        let f = body(
+            "<!DOCTYPE html><div><span class=i></span>x</div>",
+            "div { font-size: 10px; line-height: 20px } .i { font-size: 30px; line-height: 1 } \
+             .i::before { content: 'y'; font-size: 5px }",
+            600.0,
+        );
+        assert!(f.children[0].height >= 29.9, "line {}", f.children[0].height);
+    }
+
+    #[test]
+    fn spaces_at_the_ends_of_an_inline_blocks_text_do_not_widen_it() {
+        // python.org's search button: `<button>\n   GO\n   </button>` is as wide as "GO".
+        fn width(html: &str) -> f64 {
+            let f = body(html, "b { display: inline-block } button { padding: 0 12px; border: 1px solid #000 }", 600.0);
+            // body > div > line > the inline-block
+            let line = &f.children[0].children[0];
+            assert!(matches!(line.kind, FragmentKind::Line));
+            line.children.iter().find(|c| c.node.is_some()).expect("the inline-block").width
+        }
+        let plain = width("<div><b>GO</b></div>");
+        let spaced = width("<div><b>\n      GO\n    </b></div>");
+        assert!((plain - spaced).abs() < 0.01, "{plain} vs {spaced}");
+        // A `<button>` is the same, whatever the page's styles say about its box.
+        let plain = width("<div><button style='white-space:nowrap'>GO</button></div>");
+        let spaced = width("<div><button style='white-space:nowrap'>\n      GO\n    </button></div>");
+        assert!((plain - spaced).abs() < 0.01, "button: {plain} vs {spaced}");
+        // ... also in a page's own face.
+        let face = blueice_font::web::register(ROBOTO).expect("a face");
+        let styled = |inner: &str| {
+            width(&format!("<div><button style='white-space:nowrap;-blueice-web-font:{}'>{inner}</button></div>", face.as_u32()))
+        };
+        let plain = styled("GO");
+        let spaced = styled("\n      GO\n    ");
+        assert!((plain - spaced).abs() < 0.01, "button: {plain} vs {spaced}");
     }
 
     #[test]

@@ -1201,3 +1201,15 @@ made: Modernizr's `generatedcontent`), so python.org gets Safari's `fontface gen
 classes and its search icon. A right float after inline content starts at that line's top, and a
 shrink-to-fit box counts a line's text together with the floats beside it. python.org header: 557px
 vs Safari 562px; page 2523 vs 2701px.
+
+### Inline boxes, controls and nowrap spaces (2026-11-16, last batch)
+
+An inline box whose font or line-height differs from its parent's now counts toward the line
+(`Piece::Strut`): python.org's widget titles are 32px like Safari's. A `display: inline` form control
+computes to `inline-block` (WebKit), `font: inherit` sets every font longhand, a control's text is
+measured in the page's own face, and collapsible spaces at the ends of a `white-space: nowrap` run
+vanish (python.org's search button 46px). python.org header 562px = Safari's; the remaining 168px
+of page height is the random "success story" block (a different story, 362px vs 173px, is served on
+each load) plus a few pixels. Wikipedia: navbox collapse needs the site's ResourceLoader JS (about
+475px, open); `<pre>` trailing-newline line is a WebKit-vs-others interpretation (recorded above).
+Open and not interpretation: solid-square icons, multi-layer backgrounds.

@@ -1140,28 +1140,20 @@ fn layout_block_level_uncached(
             .style
             .and_then(|s| s.line_height.as_ref())
             .and_then(|line_height| line_height_for(&style, line_height))
+            .or_else(|| blueice_font::normal_line_height_in(font_size, style.web_face()))
             .unwrap_or_else(|| default_line_height(font_size));
-        let lines = crate::native_text::lines(
-            &value,
-            node,
-            content_width,
-            font_size,
+        let control_font = crate::native_text::ControlFont {
+            size: font_size,
             line_height,
-            style.style.is_some_and(|s| s.is_bold()),
-            style.style.is_some_and(|s| s.is_italic()),
-        );
+            bold: style.style.is_some_and(|s| s.is_bold()),
+            italic: style.style.is_some_and(|s| s.is_italic()),
+            face: style.web_face(),
+        };
+        let lines = crate::native_text::lines(&value, node, content_width, control_font);
         content_flow_height += lines.len() as f64 * line_height;
         children.extend(lines);
         // The hint of an empty control sits where its text would, and takes no room of its own.
-        children.extend(crate::native_text::placeholder_lines(
-            &value,
-            node,
-            content_width,
-            font_size,
-            line_height,
-            style.style.is_some_and(|s| s.is_bold()),
-            style.style.is_some_and(|s| s.is_italic()),
-        ));
+        children.extend(crate::native_text::placeholder_lines(&value, node, content_width, control_font));
     }
 
     // ---- final box ----

@@ -762,6 +762,15 @@ fn expand_grid_template(value_tokens: &[Token]) -> Vec<(String, Value)> {
 /// (`caption`, `menu`...) set nothing.
 fn expand_font(tokens: &[Token]) -> Vec<(String, Value)> {
     let tokens = trim_ws(tokens);
+    // `font: inherit` (and `initial`, `unset`) is that keyword for every longhand.
+    if let [Token::Ident(word)] = tokens {
+        if matches!(word.to_ascii_lowercase().as_str(), "inherit" | "initial" | "unset") {
+            return ["font-style", "font-weight", "font-stretch", "font-size", "line-height", "font-family"]
+                .into_iter()
+                .flat_map(|name| expand_property(name, tokens))
+                .collect();
+        }
+    }
     let is_size = |t: &Token| match t {
         Token::Dimension(..) | Token::Percentage(_) => true,
         // A weight is never below 1, so a bare zero is a size (Modernizr's `font: 0/0 a`).

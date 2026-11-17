@@ -746,6 +746,13 @@ fn compute_style_for(
         }
         None => {}
     }
+    // A form control is never plain `inline`: it is a box of its own.
+    if pseudo.is_none()
+        && style.display == "inline"
+        && matches!(doc.data(node), NodeData::Element { tag_name, .. } if matches!(tag_name.as_str(), "button" | "input" | "select" | "textarea"))
+    {
+        style.display = "inline-block".to_string();
+    }
     Some(style)
 }
 
@@ -1068,6 +1075,37 @@ mod tests {
         let author = parse("div { font-size: 10px; line-height: 1.5 } p { font-size: 20px }");
         let styles = cascade(&doc, &[(Origin::Author, &author)]);
         assert_eq!(styles[&inner].line_height, Some(Value::Number(1.5)));
+    }
+
+    #[test]
+    fn font_inherit_takes_every_font_longhand_from_the_parent() {
+        // Pages reset controls with `button, input { font: inherit }`.
+        let mut doc = Document::new();
+        let root = doc.root();
+        let outer = elem(&mut doc, root, "div", &[]);
+        let button = elem(&mut doc, outer, "button", &[]);
+        let author = parse("div { font: italic 700 20px/30px Georgia, serif } button { font: inherit }");
+        let ua = ua_stylesheet();
+        let styles = cascade(&doc, &[(Origin::Ua, &ua), (Origin::Author, &author)]);
+        assert_eq!(styles[&button].font_size_px, 20.0);
+        assert_eq!(styles[&button].font_family.as_deref(), Some("georgia,serif"));
+        assert_eq!(styles[&button].font_style.as_deref(), Some("italic"));
+        assert!(styles[&button].is_bold());
+        assert_eq!(styles[&button].line_height, Some(Value::Length(crate::value::Length::Px(30.0))));
+    }
+
+    #[test]
+    fn a_form_control_that_is_display_inline_is_laid_out_as_an_inline_block() {
+        // WebKit makes `<button>`, `<input>`, `<select>` and `<textarea>` inline-block whatever
+        // `display: inline` a page gives them (python.org's `.search-button`).
+        let mut doc = Document::new();
+        let root = doc.root();
+        let button = elem(&mut doc, root, "button", &[]);
+        let span = elem(&mut doc, root, "span", &[]);
+        let author = parse("button, span { display: inline }");
+        let styles = cascade(&doc, &[(Origin::Author, &author)]);
+        assert_eq!(styles[&button].display, "inline-block");
+        assert_eq!(styles[&span].display, "inline");
     }
 
     #[test]

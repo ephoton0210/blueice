@@ -216,14 +216,21 @@ pub(super) fn control_text(doc: &Document, node: NodeId) -> Option<ControlText> 
 }
 
 /// The hint lines of an empty control, laid out like its text would be.
+/// The font a control's text is set in.
+#[derive(Clone, Copy)]
+pub(super) struct ControlFont {
+    pub size: f64,
+    pub line_height: f64,
+    pub bold: bool,
+    pub italic: bool,
+    pub face: Option<blueice_font::web::WebFontId>,
+}
+
 pub(super) fn placeholder_lines(
     value: &ControlText,
     node: NodeId,
     width: f64,
-    font: f64,
-    line_height: f64,
-    bold: bool,
-    italic: bool,
+    font: ControlFont,
 ) -> Vec<Fragment> {
     if !value.value.is_empty() || value.placeholder.trim().is_empty() {
         return Vec::new();
@@ -234,7 +241,7 @@ pub(super) fn placeholder_lines(
         protected: false,
         placeholder: String::new(),
     };
-    lines(&hint, node, width, font, line_height, bold, italic)
+    lines(&hint, node, width, font)
         .into_iter()
         .map(|mut line| {
             if let FragmentKind::NativeText { text, .. } = std::mem::replace(&mut line.kind, FragmentKind::Block) {
@@ -245,15 +252,9 @@ pub(super) fn placeholder_lines(
         .collect()
 }
 
-pub(super) fn lines(
-    value: &ControlText,
-    node: NodeId,
-    width: f64,
-    font: f64,
-    line_height: f64,
-    bold: bool,
-    italic: bool,
-) -> Vec<Fragment> {
+pub(super) fn lines(value: &ControlText, node: NodeId, width: f64, font: ControlFont) -> Vec<Fragment> {
+    let ControlFont { size: font_size, line_height, bold, italic, face } = font;
+    let font = font_size;
     let mut result = Vec::new();
     let mut text = String::new();
     let mut measured = 0.0;
@@ -293,7 +294,7 @@ pub(super) fn lines(
             continue;
         }
         let shown = if value.protected { "•" } else { cluster };
-        let advance = blueice_font::measure_text_width(shown, font, bold, italic);
+        let advance = blueice_font::measure_text_width_in(shown, font, bold, italic, face);
         if value.multiline && !text.is_empty() && measured + advance > width {
             emit(
                 &mut result,
