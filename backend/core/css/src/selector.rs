@@ -59,6 +59,10 @@ pub enum PseudoClass {
     Is(Vec<ComplexSelector>),
     /// Like `:is()` but contributes no specificity.
     Where(Vec<ComplexSelector>),
+    /// `:host` and `:host(<selector>)`: an element that carries a shadow root (and matches the
+    /// selector, if given). Styles of a shadow tree are not scoped to it here, so this is the way
+    /// they reach their own host.
+    Host(Vec<ComplexSelector>),
     /// `:link` / `:any-link`: an `a`/`area` with an `href`.
     Link,
     Checked,
@@ -472,6 +476,8 @@ fn parse_pseudo(name: &str, args: Option<&[Token]>) -> Option<PseudoClass> {
         ("not", Some(args)) => PseudoClass::Not(list(args)?),
         ("is" | "matches" | "-webkit-any" | "-moz-any", Some(args)) => PseudoClass::Is(list(args)?),
         ("where", Some(args)) => PseudoClass::Where(list(args)?),
+        ("host", None) => PseudoClass::Host(Vec::new()),
+        ("host", Some(args)) => PseudoClass::Host(list(args)?),
         (
             kind @ ("nth-child" | "nth-last-child" | "nth-of-type" | "nth-last-of-type"),
             Some(args),
@@ -589,7 +595,7 @@ fn element_sibling(
         doc.prev_sibling(node)
     };
     while let Some(s) = sibling {
-        if let Some(t) = tag_of(doc, s) {
+        if let Some(t) = tag_of(doc, s).filter(|t| *t != "#comment") {
             if tag.is_none_or(|wanted| wanted == t) {
                 return Some(s);
             }
@@ -661,7 +667,7 @@ fn pseudo_matches(doc: &Document, node: NodeId, pseudo: &PseudoClass) -> bool {
             Some(scope) => node == scope,
             None => doc.parent(node) == Some(doc.root()),
         },
-        PseudoClass::Empty => doc.first_child(node).is_none(),
+        PseudoClass::Empty => doc.children(node).all(|c| matches!(doc.data(c), NodeData::Element { tag_name, .. } if tag_name == "#comment")),
         PseudoClass::FirstChild => is_edge(doc, node, false, false),
         PseudoClass::LastChild => is_edge(doc, node, true, false),
         PseudoClass::OnlyChild => {
@@ -681,6 +687,9 @@ fn pseudo_matches(doc: &Document, node: NodeId, pseudo: &PseudoClass) -> bool {
         PseudoClass::Not(list) => !list.iter().any(|s| matches(doc, node, s)),
         PseudoClass::Is(list) | PseudoClass::Where(list) => {
             list.iter().any(|s| matches(doc, node, s))
+        }
+        PseudoClass::Host(list) => {
+            doc.shadow_root(node).is_some() && (list.is_empty() || list.iter().any(|s| matches(doc, node, s)))
         }
         PseudoClass::Link => matches!(tag_name.as_str(), "a" | "area") && has("href"),
         PseudoClass::Checked => {

@@ -675,6 +675,33 @@ impl DomState {
                     attributes: vec![("data".to_string(), text(0))],
                 })?
                 .into(),
+            // ---- shadow trees ----
+            "attachShadow" => {
+                let host = self.node(args.first())?;
+                let root = self.create(NodeData::Element {
+                    tag_name: "#fragment".to_string(),
+                    attributes: Vec::new(),
+                })?;
+                self.doc.attach_shadow(host, root);
+                self.dirty = true;
+                root.into()
+            }
+            "shadowRoot" => {
+                let host = self.node(args.first())?;
+                self.doc.shadow_root(host).map_or(Reply::Null, Reply::from)
+            }
+            "shadowHost" => {
+                let root = self.node(args.first())?;
+                self.doc.shadow_host(root).map_or(Reply::Null, Reply::from)
+            }
+            "assignedNodes" => ids_json(self.doc.assigned_nodes(self.node(args.first())?).into_iter()),
+            "assignedSlot" => {
+                let node = self.node(args.first())?;
+                match self.doc.composed_parent(node) {
+                    Some(parent) if self.doc.parent(node) != Some(parent) => parent.into(),
+                    _ => Reply::Null,
+                }
+            }
             "createFragment" => self
                 .create(NodeData::Element {
                     tag_name: "#fragment".to_string(),

@@ -189,6 +189,92 @@ pub(crate) fn dynamic_import_literals(source: &str) -> Vec<String> {
     out
 }
 
+/// The chunk files a webpack-built page will `import()` under computed names
+/// (`import("./" + __webpack_require__.u(id))`), which no literal scan can see.
+/// `scripts` are `(url, text)` pairs of the page's scripts: the one holding the
+/// chunk-filename table (`{7489:"879b548e785958fd", ...}` beside `".js"`) says what
+/// each chunk id is called, and a context map (`"./dropdown/element.js":["58623",[2868]]`)
+/// says which chunks a custom element's code lives in. Only the elements the page's own
+/// HTML uses (`<dropdown>`, `<mdn-dropdown>`) have their chunks wanted.
+pub(crate) fn webpack_chunk_urls(scripts: &[(Url, String)], html: &str) -> Vec<Url> {
+    let mut tags: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    for piece in html.split('<').skip(1) {
+        let end = piece
+            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
+            .unwrap_or(piece.len());
+        if end > 0 {
+            tags.insert(&piece[..end]);
+        }
+    }
+    let mut hashes: std::collections::HashMap<String, (String, &Url)> = Default::default();
+    for (url, text) in scripts {
+        if !text.contains("\".js\"") {
+            continue;
+        }
+        let bytes = text.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            // `<digits>:"<16 hex>"`
+            if bytes[i].is_ascii_digit() && (i == 0 || !bytes[i - 1].is_ascii_alphanumeric()) {
+                let mut j = i;
+                while j < bytes.len() && bytes[j].is_ascii_digit() {
+                    j += 1;
+                }
+                if text[j..].starts_with(":\"") {
+                    let hash = &text[j + 2..];
+                    if hash.len() > 17
+                        && hash.as_bytes()[16] == b'"'
+                        && hash[..16].bytes().all(|b| b.is_ascii_hexdigit())
+                    {
+                        hashes.insert(text[i..j].to_string(), (hash[..16].to_string(), url));
+                    }
+                }
+                i = j.max(i + 1);
+            } else {
+                i += 1;
+            }
+        }
+    }
+    if hashes.len() < 8 {
+        return Vec::new();
+    }
+    let mut wanted: Vec<String> = Vec::new();
+    for (_, text) in scripts {
+        let mut rest = text.as_str();
+        while let Some(at) = rest.find("/element.js\":[\"") {
+            let before = &rest[..at];
+            let dir = before
+                .rsplit('/')
+                .next()
+                .unwrap_or("")
+                .to_string();
+            let after = &rest[at + 16..];
+            if let (Some(open), Some(close)) = (after.find('['), after.find("]]")) {
+                if open < close
+                    && tags
+                        .iter()
+                        .any(|t| *t == dir || t.ends_with(&format!("-{dir}")))
+                {
+                    for id in after[open + 1..close].split(',') {
+                        let id = id.trim();
+                        if !id.is_empty() && !wanted.iter().any(|w| w == id) {
+                            wanted.push(id.to_string());
+                        }
+                    }
+                }
+            }
+            rest = &rest[at + 16..];
+        }
+    }
+    wanted
+        .iter()
+        .filter_map(|id| {
+            let (hash, runtime) = hashes.get(id)?;
+            runtime.join(&format!("{id}.{hash}.js")).ok()
+        })
+        .collect()
+}
+
 /// The module URLs the document names itself: `<script type=module src>`,
 /// `modulepreload` links, and the `*-url` attributes custom elements (such as
 /// Astro islands) carry for the module they will import.
@@ -337,6 +423,11 @@ pub(crate) fn fetch_linked_modules(
     for (origin, text) in &texts {
         scan(origin, text, &mut frontier, false);
     }
+    frontier.extend(
+        webpack_chunk_urls(&texts, html)
+            .into_iter()
+            .filter(|u| matches!(u.scheme(), "http" | "https")),
+    );
     for _ in 0..limits.rounds {
         let wanted: Vec<Url> = std::mem::take(&mut frontier)
             .into_iter()
@@ -413,6 +504,33 @@ mod tests {
             resolve_key("https://cdn.example/x/y.js", "./z.js"),
             "https://cdn.example/x/z.js"
         );
+    }
+
+    #[test]
+    fn webpack_chunks_of_the_elements_a_page_uses_are_wanted() {
+        let runtime = Url::parse("https://x.test/static/client/runtime.js").unwrap();
+        let table: String = (1..=9)
+            .map(|n| format!("{}:\"{:016x}\"", 100 + n, n))
+            .collect::<Vec<_>>()
+            .join(",");
+        let scripts = vec![
+            (runtime, format!("o.u=e=>\"\"+e+\".\"+{{{table}}}[e]+\".js\"")),
+            (
+                Url::parse("https://x.test/static/client/index.js").unwrap(),
+                r#"var a={"./dropdown/element.js":["58623",[102,103]],"./gone/element.js":["1",[104]]}"#.into(),
+            ),
+        ];
+        let urls = webpack_chunk_urls(&scripts, "<body><mdn-dropdown></mdn-dropdown></body>");
+        let urls: Vec<String> = urls.iter().map(|u| u.to_string()).collect();
+        assert_eq!(
+            urls,
+            vec![
+                "https://x.test/static/client/102.0000000000000002.js".to_string(),
+                "https://x.test/static/client/103.0000000000000003.js".to_string()
+            ],
+            "only the chunks of an element the page has, named by the filename table"
+        );
+        assert!(webpack_chunk_urls(&scripts, "<body></body>").is_empty());
     }
 
     #[test]

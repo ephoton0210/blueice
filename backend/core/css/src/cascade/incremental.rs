@@ -280,6 +280,10 @@ pub fn cascade_incremental_report(
     if changes.is_empty() {
         return true;
     }
+    // The composed tree (shadow roots, slots) is not what the journal describes.
+    if doc.has_shadow_roots() {
+        return false;
+    }
     let index = RuleIndex::build(stylesheets);
     let uses = index.structure;
     let environment = Environment {

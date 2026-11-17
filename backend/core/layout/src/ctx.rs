@@ -361,7 +361,7 @@ impl<'a> Ctx<'a> {
             self.pseudo.contains_key(&id).then_some(id)
         };
         out.extend(generated(blueice_css::PseudoElement::Before));
-        out.extend(self.doc.children(node));
+        out.extend(self.doc.composed_children(node));
         out.extend(generated(blueice_css::PseudoElement::After));
         out
     }
@@ -373,7 +373,7 @@ impl<'a> Ctx<'a> {
             // Text ids carry the text bit; their box is the same id without it.
             return Some(NodeId::from_u64(raw & !(1 << 61))).filter(|p| *p != node);
         }
-        self.doc.parent(node)
+        self.doc.composed_parent(node)
     }
 
     pub fn attr(&self, node: NodeId, name: &str) -> Option<&str> {

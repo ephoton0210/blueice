@@ -413,7 +413,7 @@ fn cascade_subtree(
         parent_style.cloned()
     };
 
-    for child in doc.children(node) {
+    for child in doc.composed_children(node) {
         cascade_subtree(
             doc,
             child,
@@ -468,6 +468,12 @@ fn compute_style_for(
     let mut matched: Vec<Matched> = Vec::new();
     for rule_id in index.candidates(doc, node) {
         let indexed = &index.rules[rule_id as usize];
+        // A shadow tree's own styles reach that tree and its host, not the document around it.
+        if let Some(scope) = indexed.rule.scope {
+            if doc.tree_root(node) != scope && doc.shadow_root(node) != Some(scope) {
+                continue;
+            }
+        }
         let best_specificity = indexed
             .rule
             .selectors
@@ -753,6 +759,10 @@ fn compute_style_for(
     {
         style.display = "inline-block".to_string();
     }
+    // A comment node (kept for scripts that read Lit's markers) draws nothing.
+    if matches!(doc.data(node), NodeData::Element { tag_name, .. } if tag_name == "#comment") {
+        style.display = "none".to_string();
+    }
     Some(style)
 }
 
@@ -864,6 +874,10 @@ textarea { width: 14.27em; height: 2.3636em; padding: 2px 5px; border-width: 1px
 select { box-sizing: border-box; width: auto; height: auto; padding: 0; border: 1px solid #444444; }
 /* A closed disclosure widget shows only its summary. */
 details:not([open]) > :not(summary) { display: none; }
+/* A slot draws what is assigned to it, with no box of its own. */
+slot { display: contents; }
+/* A dialog that is not open takes no part in the page. */
+dialog:not([open]) { display: none; }
 /* A push button is as wide as its caption (the layout reads the label), not the width of a
  * text field. */
 input[type="submit"], input[type="button"], input[type="reset"], button {
@@ -1120,6 +1134,89 @@ mod tests {
         assert_eq!(other.get("padding-left"), Some(&Value::Length(crate::value::Length::Px(6.0))));
         assert_eq!(other.get("border-top-width"), Some(&Value::Length(crate::value::Length::Px(2.0))));
         assert!(other.contains_key("border-top-left-radius"));
+    }
+
+    #[test]
+    fn a_shadow_trees_nodes_are_styled_and_inherit_through_the_composed_tree() {
+        // `<host style="color:red"><span slot=x/></host>` drawing `<div><slot name=x/></div>`:
+        // the div inherits from the host, the slotted span from the slot (so also the host).
+        let mut doc = Document::new();
+        let root = doc.root();
+        let host = elem(&mut doc, root, "my-card", &[("style", "color: rgb(255,0,0)")]);
+        let span = elem(&mut doc, host, "span", &[("slot", "x")]);
+        let shadow = doc.create_node(NodeData::Element { tag_name: "#fragment".into(), attributes: vec![] });
+        let div = elem(&mut doc, shadow, "div", &[]);
+        let slot = elem(&mut doc, div, "slot", &[("name", "x")]);
+        doc.attach_shadow(host, shadow);
+        let author = parse("slot { display: contents } :host { padding-left: 7px } div { margin-left: 3px }");
+        let styles = cascade(&doc, &[(Origin::Author, &author)]);
+        let red = Color::Rgba(255, 0, 0, 255);
+        assert_eq!(styles[&div].color, red);
+        assert_eq!(styles[&slot].color, red);
+        assert_eq!(styles[&span].color, red, "a slotted node inherits through its slot");
+        assert_eq!(styles[&div].other.get("margin-left"), Some(&Value::Length(crate::value::Length::Px(3.0))));
+        assert_eq!(styles[&host].other.get("padding-left"), Some(&Value::Length(crate::value::Length::Px(7.0))), ":host reaches the host");
+    }
+
+    #[test]
+    fn a_shadow_trees_own_rules_do_not_reach_the_document_around_it() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let outside = elem(&mut doc, root, "div", &[]);
+        let host = elem(&mut doc, root, "my-card", &[]);
+        let shadow = doc.create_node(NodeData::Element { tag_name: "#fragment".into(), attributes: vec![] });
+        let inside = elem(&mut doc, shadow, "div", &[]);
+        doc.attach_shadow(host, shadow);
+        let mut author = parse("div { margin-left: 3px } :host { padding-left: 7px }");
+        for rule in &mut author {
+            rule.scope = Some(shadow);
+        }
+        let styles = cascade(&doc, &[(Origin::Author, &author)]);
+        let px = |n: &NodeId, prop: &str| styles[n].other.get(prop).cloned();
+        assert_eq!(px(&inside, "margin-left"), Some(Value::Length(crate::value::Length::Px(3.0))));
+        assert_eq!(px(&outside, "margin-left"), None, "a shadow tree's `div` rule is not the page's");
+        assert_eq!(px(&host, "padding-left"), Some(Value::Length(crate::value::Length::Px(7.0))));
+    }
+
+    #[test]
+    fn a_dialog_that_is_not_open_is_not_displayed() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let closed = elem(&mut doc, root, "dialog", &[]);
+        let open = elem(&mut doc, root, "dialog", &[("open", "")]);
+        let styles = cascade(&doc, &[(Origin::Ua, &ua_stylesheet())]);
+        assert_eq!(styles[&closed].display, "none");
+        assert_eq!(styles[&open].display, "block");
+    }
+
+    #[test]
+    fn an_is_list_holding_a_descendant_selector_matches_inside_a_descendant_rule() {
+        // MDN's nested CSS, written out: `:is(.a .b) h1 { margin: 1rem 0 }`.
+        let doc = blueice_html::parse("<div class=a><div class=b><h1 id=t>x</h1></div></div>");
+        let author = parse(":is(.a .b) h1 { margin-top: 16px }");
+        let styles = cascade(&doc, &[(Origin::Author, &author)]);
+        let h1 = styles
+            .keys()
+            .copied()
+            .find(|n| matches!(doc.data(*n), NodeData::Element { tag_name, .. } if tag_name == "h1"))
+            .unwrap();
+        assert!(styles[&h1].other.contains_key("margin-top"));
+    }
+
+    #[test]
+    fn a_comment_node_draws_nothing_and_is_not_an_element_sibling() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let parent = elem(&mut doc, root, "div", &[]);
+        let note = elem(&mut doc, parent, "#comment", &[("data", "lit-part")]);
+        let first = elem(&mut doc, parent, "p", &[]);
+        let empty = elem(&mut doc, root, "span", &[]);
+        elem(&mut doc, empty, "#comment", &[("data", "lit-part")]);
+        let author = parse("p:first-child { margin-left: 4px } span:empty { margin-left: 5px }");
+        let styles = cascade(&doc, &[(Origin::Author, &author)]);
+        assert_eq!(styles[&note].display, "none");
+        assert!(styles[&first].other.contains_key("margin-left"), "the comment is not a first child");
+        assert!(styles[&empty].other.contains_key("margin-left"), "a comment does not make an element non-empty");
     }
 
     #[test]

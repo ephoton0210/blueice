@@ -101,6 +101,9 @@ pub struct Document {
     revision: u64,
     // Parsed without a doctype (or with a legacy one): CSS and layout keep their historical quirks.
     quirks: bool,
+    // Shadow hosts and their shadow roots (`host -> root`). A root is a node of its own with no
+    // parent; what is drawn is the *composed* tree, see [`Document::composed_children`].
+    shadow_roots: HashMap<NodeId, NodeId>,
 }
 
 /// A node's data as it was before it was first touched in a journal period.
@@ -204,6 +207,7 @@ impl Document {
         if self.contains(id) {
             if names.is_empty() {
                 self.file_names.remove(&id);
+        self.shadow_roots.remove(&id);
             } else {
                 self.file_names.insert(id, names);
             }
@@ -232,6 +236,134 @@ impl Document {
         let root = doc.create_node(NodeData::Document);
         doc.root = Some(root);
         doc
+    }
+
+    /// Makes `root` (a node with no parent) the shadow root of `host`. What `host` draws is then
+    /// the root's tree, with the host's own children shown where its `<slot>`s are.
+    pub fn attach_shadow(&mut self, host: NodeId, root: NodeId) {
+        self.revision += 1;
+        self.shadow_roots.insert(host, root);
+        self.journal.overflow = true;
+    }
+
+    /// The shadow root `host` carries, if any.
+    pub fn shadow_root(&self, host: NodeId) -> Option<NodeId> {
+        self.shadow_roots.get(&host).copied()
+    }
+
+    /// The host of the shadow root `root`.
+    pub fn shadow_host(&self, root: NodeId) -> Option<NodeId> {
+        self.shadow_roots.iter().find(|(_, r)| **r == root).map(|(h, _)| *h)
+    }
+
+    /// Whether any element carries a shadow root.
+    pub fn has_shadow_roots(&self) -> bool {
+        !self.shadow_roots.is_empty()
+    }
+
+    /// The `slot` name of `node` (`""` for the default slot), for an element.
+    fn slot_name(&self, node: NodeId) -> String {
+        match self.data(node) {
+            NodeData::Element { attributes, .. } => attributes
+                .iter()
+                .find(|(k, _)| k == "slot")
+                .map_or_else(String::new, |(_, v)| v.clone()),
+            _ => String::new(),
+        }
+    }
+
+    fn is_slot(&self, node: NodeId) -> bool {
+        matches!(self.data(node), NodeData::Element { tag_name, .. } if tag_name == "slot")
+    }
+
+    /// The root of the tree `node` is in (a shadow root, or the document).
+    pub fn tree_root(&self, node: NodeId) -> NodeId {
+        let mut at = node;
+        while let Some(parent) = self.parent(at) {
+            at = parent;
+        }
+        at
+    }
+
+    /// The first `<slot>` in a shadow tree with this name: the one that takes the host's children
+    /// of that slot name.
+    fn slot_for(&self, root: NodeId, name: &str) -> Option<NodeId> {
+        let mut stack = vec![root];
+        while let Some(node) = stack.pop() {
+            if node != root && self.is_slot(node) {
+                let own = match self.data(node) {
+                    NodeData::Element { attributes, .. } => attributes
+                        .iter()
+                        .find(|(k, _)| k == "name")
+                        .map_or("", |(_, v)| v.as_str()),
+                    _ => "",
+                };
+                if own == name {
+                    return Some(node);
+                }
+            }
+            let kids: Vec<NodeId> = self.children(node).collect();
+            stack.extend(kids.into_iter().rev());
+        }
+        None
+    }
+
+    /// The nodes the `<slot>` `slot` shows: the children of its shadow host that name it (or, for
+    /// the default slot, name none). Empty when the slot is not in a shadow tree.
+    pub fn assigned_nodes(&self, slot: NodeId) -> Vec<NodeId> {
+        let root = self.tree_root(slot);
+        let Some(host) = self.shadow_host(root) else {
+            return Vec::new();
+        };
+        let name = match self.data(slot) {
+            NodeData::Element { attributes, .. } => attributes
+                .iter()
+                .find(|(k, _)| k == "name")
+                .map_or("", |(_, v)| v.as_str())
+                .to_string(),
+            _ => return Vec::new(),
+        };
+        if self.slot_for(root, &name) != Some(slot) {
+            return Vec::new();
+        }
+        self.children(host)
+            .filter(|&c| match self.data(c) {
+                NodeData::Element { .. } => self.slot_name(c) == name,
+                NodeData::Text { data } => name.is_empty() && !data.trim().is_empty(),
+                NodeData::Document => false,
+            })
+            .collect()
+    }
+
+    /// The children of `node` as they are drawn: a shadow host shows its shadow root's children,
+    /// a `<slot>` the nodes assigned to it (or its own children when none are), anything else its
+    /// own children.
+    pub fn composed_children(&self, node: NodeId) -> Vec<NodeId> {
+        if let Some(root) = self.shadow_root(node) {
+            return self.children(root).collect();
+        }
+        if self.is_slot(node) && self.shadow_host(self.tree_root(node)).is_some() {
+            let assigned = self.assigned_nodes(node);
+            if !assigned.is_empty() {
+                return assigned;
+            }
+        }
+        self.children(node).collect()
+    }
+
+    /// The parent of `node` in the composed tree: a shadow root's child has the host, a node
+    /// assigned to a slot has that slot.
+    pub fn composed_parent(&self, node: NodeId) -> Option<NodeId> {
+        let parent = self.parent(node)?;
+        if let Some(host) = self.shadow_host(parent) {
+            return Some(host);
+        }
+        if self.shadow_root(parent).is_some() {
+            let name = self.slot_name(node);
+            let root = self.shadow_root(parent)?;
+            return self.slot_for(root, &name).filter(|slot| self.assigned_nodes(*slot).contains(&node));
+        }
+        Some(parent)
     }
 
     /// Whether the document is in quirks mode.
@@ -905,5 +1037,86 @@ mod tests {
         doc.append_child(other_parent, reference);
         let child = doc.create_node(text("x"));
         doc.insert_before(root, child, Some(reference));
+    }
+}
+
+#[cfg(test)]
+mod shadow_tests {
+    use super::*;
+
+    fn el(doc: &mut Document, parent: NodeId, tag: &str, attrs: &[(&str, &str)]) -> NodeId {
+        let id = doc.create_node(NodeData::Element {
+            tag_name: tag.to_string(),
+            attributes: attrs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+        });
+        doc.append_child(parent, id);
+        id
+    }
+
+    /// `<my-card><a slot=x/><b/><i slot=gone/></my-card>` with the shadow tree
+    /// `<div><slot name=x/><slot><u/></slot></div>`.
+    struct Fixture {
+        doc: Document,
+        host: NodeId,
+        shadow: NodeId,
+        div: NodeId,
+        named: NodeId,
+        default: NodeId,
+        a: NodeId,
+        b: NodeId,
+        gone: NodeId,
+    }
+
+    fn fixture() -> Fixture {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let host = el(&mut doc, root, "my-card", &[]);
+        let a = el(&mut doc, host, "a", &[("slot", "x")]);
+        let b = el(&mut doc, host, "b", &[]);
+        let gone = el(&mut doc, host, "i", &[("slot", "gone")]);
+        let shadow = doc.create_node(NodeData::Element { tag_name: "#fragment".into(), attributes: vec![] });
+        let div = el(&mut doc, shadow, "div", &[]);
+        let named = el(&mut doc, div, "slot", &[("name", "x")]);
+        let default = el(&mut doc, div, "slot", &[]);
+        doc.attach_shadow(host, shadow);
+        Fixture { doc, host, shadow, div, named, default, a, b, gone }
+    }
+
+    #[test]
+    fn a_host_draws_its_shadow_tree_with_its_children_where_the_slots_are() {
+        let f = fixture();
+        assert_eq!(f.doc.composed_children(f.host), vec![f.div]);
+        assert_eq!(f.doc.composed_children(f.div), vec![f.named, f.default]);
+        assert_eq!(f.doc.composed_children(f.named), vec![f.a], "the named slot takes slot=x");
+        assert_eq!(f.doc.composed_children(f.default), vec![f.b], "the default slot takes the rest that names none");
+        // A child that names no slot of the shadow tree is drawn nowhere.
+        let drawn: Vec<NodeId> = f.doc.composed_children(f.named).into_iter().chain(f.doc.composed_children(f.default)).collect();
+        assert!(!drawn.contains(&f.gone));
+    }
+
+    #[test]
+    fn a_slot_without_assigned_nodes_shows_its_fallback() {
+        let mut f = fixture();
+        f.doc.detach(f.b);
+        let fallback = el(&mut f.doc, f.default, "u", &[]);
+        assert_eq!(f.doc.composed_children(f.default), vec![fallback]);
+    }
+
+    #[test]
+    fn composed_parents_follow_the_composed_tree() {
+        let f = fixture();
+        assert_eq!(f.doc.composed_parent(f.div), Some(f.host), "a shadow root's child belongs to the host");
+        assert_eq!(f.doc.composed_parent(f.a), Some(f.named));
+        assert_eq!(f.doc.composed_parent(f.b), Some(f.default));
+        assert_eq!(f.doc.composed_parent(f.gone), None, "unassigned: drawn nowhere");
+        assert_eq!(f.doc.shadow_host(f.shadow), Some(f.host));
+    }
+
+    #[test]
+    fn shadow_roots_survive_encode_and_decode() {
+        let f = fixture();
+        let copy = Document::decode(&f.doc.encode()).expect("decodes");
+        assert_eq!(copy.shadow_root(f.host), Some(f.shadow));
+        assert_eq!(copy.composed_children(f.named), vec![f.a]);
     }
 }

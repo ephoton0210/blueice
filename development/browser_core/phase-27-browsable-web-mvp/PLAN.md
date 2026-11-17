@@ -1273,3 +1273,20 @@ position and size (`-blueice-background-layers`), the engine keeps each layer's 
 `no-repeat` now applies to that layer alone (`url(x), linear-gradient(..) no-repeat` tiles the
 picture, as Safari does). Still single-valued: longhand lists such as
 `background-size: 10px, auto` apply their first value to every layer.
+
+## Shadow DOM (composed tree)
+
+`blueice_dom::Document` keeps a host -> shadow-root map (in the snapshot too). Drawing uses the *composed* tree: `composed_children`/`composed_parent` show a host's shadow tree, put the host's children into the `<slot>` that names them (an unnamed slot takes children naming none; a child naming no slot is drawn nowhere; an empty slot shows its fallback). The cascade and layout (`Ctx::children`/`parent`) walk it; `slot` is `display: contents`; `:host`/`:host(sel)` match a shadow host; a `<style>` inside a shadow root is a `Rule { scope: Some(root) }` that reaches only that tree and its host. With any shadow root, incremental cascade/layout caches fall back to a full pass (the change journal does not describe the composed tree). JS: `attachShadow` makes a real root (`ShadowRoot`), `shadowRoot`, `host`, `assignedNodes/assignedElements/assignedSlot`, `slot.name`.
+
+Not done: event retargeting, `::slotted`, `::part`, `adoptedStyleSheets` painting (stored only), declarative shadow DOM (`<template shadowrootmode>`), `slotchange`.
+
+Open, separate gap found on MDN: Lit custom elements never upgrade because dynamic `import()` of the site's chunks reports "module ... was not supplied by the host" (no module fetching for dynamic import), so MDN's menu still differs from Safari.
+
+### Shadow DOM follow-up: declarative roots, Lit hydration, chunk prefetch
+
+- `<template shadowrootmode>` / `shadowroot` is parsed into a real shadow root (`blueice-html`); `host.shadowRoot` shows it to scripts.
+- Lit's SSR marker comments (`<!--lit-part-->`, `<?lit$..$>`) are kept as `#comment` elements (`data` attribute); every other comment is still dropped. `#comment` is `display: none` and is not an element sibling or content for `:empty`.
+- `NodeFilter`, `TreeWalker`, `NodeIterator` exist (they were stubs; Lit's first update threw `ReferenceError: NodeFilter`), and comments have `nextElementSibling`/`previousElementSibling`.
+- Webpack's computed `import("./" + u(id))` chunks are found from the runtime's filename table plus the `"./x/element.js":["id",[chunks]]` context map, for the custom elements the page's HTML uses (`webpack_chunk_urls`). A general lazy module loader in the VM is still open.
+- A `<dialog>` without `open` is `display: none`.
+- MDN `/docs/Web/CSS` now matches Safari's header (no open mega menu). Still differing: the h1 in `.reference-layout__header` is 16px high of Safari's (its `margin: 1rem 0` is lost), page height 4591 vs 4270, the navigation search box 28 vs 34px, the logo svg size; the diff script also pairs the off-screen skip links wrongly.

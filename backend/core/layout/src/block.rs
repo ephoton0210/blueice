@@ -909,7 +909,7 @@ fn layout_block_level_uncached(
     let child_cb_height = specified_height.map(clamp_height);
 
     // A flex or grid item is a formatting root of its own.
-    let is_item = !blueice_css::is_pseudo_node(node) && ctx.doc.parent(node).is_some_and(|p| {
+    let is_item = !blueice_css::is_pseudo_node(node) && ctx.parent(node).is_some_and(|p| {
         matches!(
             ctx.style(p).display(),
             Display::Flex | Display::InlineFlex | Display::Grid | Display::InlineGrid
@@ -1560,6 +1560,39 @@ mod tests {
         let (doc, styles) = styled(&placeholder, html, css);
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
         layout_block(&doc, body, &styles, available_width)
+    }
+
+    #[test]
+    fn a_shadow_host_lays_out_its_shadow_tree_with_its_children_in_the_slots() {
+        // `<my-card><p>in</p><p slot=none>out</p></my-card>` drawing
+        // `<div style="padding-left:10px"><slot></slot></div>`: the first paragraph is inside
+        // the padding, the second (naming no slot) is not drawn at all.
+        let mut doc = blueice_html::parse("<body style='overflow:hidden'><my-card><p>in</p><p slot=none>out</p></my-card></body>");
+        let host = find_by_tag(&doc, doc.root(), "my-card").unwrap();
+        let shadow = doc.create_node(NodeData::Element { tag_name: "#fragment".into(), attributes: vec![] });
+        let div = doc.create_node(NodeData::Element { tag_name: "div".into(), attributes: vec![("style".into(), "padding-left:10px".into())] });
+        doc.append_child(shadow, div);
+        let slot = doc.create_node(NodeData::Element { tag_name: "slot".into(), attributes: vec![] });
+        doc.append_child(div, slot);
+        doc.attach_shadow(host, shadow);
+        let ua = ua_stylesheet();
+        let styles = cascade(&doc, &[(Origin::Ua, &ua)]);
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        let f = layout_block(&doc, body, &styles, 400.0);
+        fn collect(f: &Fragment, out: &mut Vec<(Option<NodeId>, f64, f64)>) {
+            out.push((f.node, f.x, f.width));
+            for c in &f.children {
+                collect(c, out);
+            }
+        }
+        let mut all = Vec::new();
+        collect(&f, &mut all);
+        let p_in = doc.children(host).next().unwrap();
+        let p_out = doc.children(host).nth(1).unwrap();
+        let drawn = |n| all.iter().find(|(node, ..)| *node == Some(n));
+        let inside = drawn(p_in).expect("the slotted paragraph is drawn");
+        assert_eq!(inside.1, 10.0, "inside the shadow div's padding");
+        assert!(drawn(p_out).is_none(), "a child that names no slot is not drawn");
     }
 
     #[test]

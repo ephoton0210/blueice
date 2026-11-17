@@ -47,7 +47,8 @@ impl LayoutCache {
     /// edited) or `style_changed` (the nodes whose computed style came to differ) may have
     /// changed the result of.
     pub fn invalidate(&mut self, doc: &Document, changes: &Changes, style_changed: &[NodeId]) {
-        if changes.overflow {
+        // What a shadow tree's host draws is the composed tree, which the journal does not describe.
+        if changes.overflow || doc.has_shadow_roots() {
             self.clear();
             return;
         }

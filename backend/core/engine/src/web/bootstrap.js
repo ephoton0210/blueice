@@ -740,6 +740,22 @@
       parent.removeChild(this);
     }
   }
+  Object.defineProperties(CharacterData.prototype, {
+    previousElementSibling: {
+      get() {
+        let n = this.previousSibling;
+        while (n && n.nodeType !== 1) n = n.previousSibling;
+        return n;
+      },
+    },
+    nextElementSibling: {
+      get() {
+        let n = this.nextSibling;
+        while (n && n.nodeType !== 1) n = n.nextSibling;
+        return n;
+      },
+    },
+  });
   class Text extends CharacterData {
     constructor(data) {
       super();
@@ -1056,6 +1072,158 @@
     }
   }
   mixIn(DocumentFragment.prototype, parentNodeMethods);
+  class ShadowRoot extends DocumentFragment {
+    get innerHTML() {
+      return Array.from(this.childNodes).map((n) => n.outerHTML || n.textContent || '').join('');
+    }
+    set innerHTML(v) {
+      this.replaceChildren();
+      const t = document.createElement('template');
+      t.innerHTML = v;
+      this.append(t.content);
+    }
+    get adoptedStyleSheets() {
+      return this._adopted || [];
+    }
+    set adoptedStyleSheets(v) {
+      Object.defineProperty(this, '_adopted', { value: v, configurable: true, writable: true });
+    }
+    get activeElement() {
+      return null;
+    }
+  }
+
+  // ------------------------------------------------------ TreeWalker / NodeIterator
+  const NodeFilter = {
+    FILTER_ACCEPT: 1, FILTER_REJECT: 2, FILTER_SKIP: 3,
+    SHOW_ALL: 0xFFFFFFFF, SHOW_ELEMENT: 0x1, SHOW_ATTRIBUTE: 0x2, SHOW_TEXT: 0x4, SHOW_CDATA_SECTION: 0x8,
+    SHOW_ENTITY_REFERENCE: 0x10, SHOW_ENTITY: 0x20, SHOW_PROCESSING_INSTRUCTION: 0x40, SHOW_COMMENT: 0x80,
+    SHOW_DOCUMENT: 0x100, SHOW_DOCUMENT_TYPE: 0x200, SHOW_DOCUMENT_FRAGMENT: 0x400, SHOW_NOTATION: 0x800,
+  };
+  class TreeWalker {
+    constructor(root, whatToShow, filter) {
+      Object.defineProperty(this, 'root', { value: root });
+      Object.defineProperty(this, 'whatToShow', { value: whatToShow === undefined ? 0xFFFFFFFF : whatToShow >>> 0 });
+      Object.defineProperty(this, 'filter', { value: filter || null });
+      this.currentNode = root;
+    }
+    _accept(node) {
+      if (!((1 << (node.nodeType - 1)) & this.whatToShow)) return NodeFilter.FILTER_SKIP;
+      const f = this.filter;
+      if (!f) return NodeFilter.FILTER_ACCEPT;
+      return typeof f === 'function' ? f(node) : f.acceptNode(node);
+    }
+    parentNode() {
+      let n = this.currentNode;
+      while (n && n !== this.root) {
+        n = n.parentNode;
+        if (n && this._accept(n) === NodeFilter.FILTER_ACCEPT) return (this.currentNode = n);
+      }
+      return null;
+    }
+    _child(first) {
+      let n = first ? this.currentNode.firstChild : this.currentNode.lastChild;
+      while (n) {
+        const r = this._accept(n);
+        if (r === NodeFilter.FILTER_ACCEPT) return (this.currentNode = n);
+        if (r === NodeFilter.FILTER_SKIP) {
+          const inner = first ? n.firstChild : n.lastChild;
+          if (inner) { n = inner; continue; }
+        }
+        for (;;) {
+          const sib = first ? n.nextSibling : n.previousSibling;
+          if (sib) { n = sib; break; }
+          const p = n.parentNode;
+          if (!p || p === this.root || p === this.currentNode) return null;
+          n = p;
+        }
+      }
+      return null;
+    }
+    firstChild() { return this._child(true); }
+    lastChild() { return this._child(false); }
+    _sibling(next) {
+      let n = this.currentNode;
+      if (n === this.root) return null;
+      for (;;) {
+        let sib = next ? n.nextSibling : n.previousSibling;
+        while (sib) {
+          const r = this._accept(sib);
+          if (r === NodeFilter.FILTER_ACCEPT) return (this.currentNode = sib);
+          const inner = next ? sib.firstChild : sib.lastChild;
+          if (r === NodeFilter.FILTER_REJECT || !inner) sib = next ? sib.nextSibling : sib.previousSibling;
+          else sib = inner;
+        }
+        n = n.parentNode;
+        if (!n || n === this.root) return null;
+        if (this._accept(n) === NodeFilter.FILTER_ACCEPT) return null;
+      }
+    }
+    nextSibling() { return this._sibling(true); }
+    previousSibling() { return this._sibling(false); }
+    nextNode() {
+      let n = this.currentNode;
+      let result = NodeFilter.FILTER_ACCEPT;
+      for (;;) {
+        while (result !== NodeFilter.FILTER_REJECT && n.firstChild) {
+          n = n.firstChild;
+          result = this._accept(n);
+          if (result === NodeFilter.FILTER_ACCEPT) return (this.currentNode = n);
+        }
+        let t = n;
+        let next = null;
+        while (t) {
+          if (t === this.root) return null;
+          if (t.nextSibling) { next = t.nextSibling; break; }
+          t = t.parentNode;
+        }
+        if (!next) return null;
+        n = next;
+        result = this._accept(n);
+        if (result === NodeFilter.FILTER_ACCEPT) return (this.currentNode = n);
+      }
+    }
+    previousNode() {
+      let n = this.currentNode;
+      while (n !== this.root) {
+        let sib = n.previousSibling;
+        while (sib) {
+          n = sib;
+          let result = this._accept(n);
+          while (result !== NodeFilter.FILTER_REJECT && n.lastChild) {
+            n = n.lastChild;
+            result = this._accept(n);
+          }
+          if (result === NodeFilter.FILTER_ACCEPT) return (this.currentNode = n);
+          sib = n.previousSibling;
+        }
+        if (n === this.root || !n.parentNode) return null;
+        n = n.parentNode;
+        if (this._accept(n) === NodeFilter.FILTER_ACCEPT) return (this.currentNode = n);
+      }
+      return null;
+    }
+  }
+  class NodeIterator {
+    constructor(root, whatToShow, filter) {
+      Object.defineProperty(this, 'root', { value: root });
+      Object.defineProperty(this, 'whatToShow', { value: whatToShow === undefined ? 0xFFFFFFFF : whatToShow >>> 0 });
+      Object.defineProperty(this, 'filter', { value: filter || null });
+      this._walker = new TreeWalker(root, whatToShow, filter);
+      this._walker.currentNode = root;
+      this._started = false;
+    }
+    get referenceNode() { return this._walker.currentNode; }
+    nextNode() {
+      if (!this._started) {
+        this._started = true;
+        if (this._walker._accept(this.root) === NodeFilter.FILTER_ACCEPT) return this.root;
+      }
+      return this._walker.nextNode();
+    }
+    previousNode() { return this._walker.previousNode(); }
+    detach() {}
+  }
 
   // ------------------------------------------------------ Web Animations
   // Timing, not interpolation: nothing here paints a value between the first and last keyframe,
@@ -1992,14 +2160,29 @@
       this.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     }
     attachShadow(init) {
-      const root = document.createDocumentFragment();
+      if (this.shadowRoot !== null || this._shadow) throw new DOMException('Shadow root cannot be created on a host which already hosts a shadow tree.', 'NotSupportedError');
+      const root = wrap(bi('attachShadow', this._id));
+      Object.setPrototypeOf(root, ShadowRoot.prototype);
       Object.defineProperty(root, 'host', { value: this });
       Object.defineProperty(root, 'mode', { value: (init && init.mode) || 'open' });
       Object.defineProperty(this, '_shadow', { value: root, configurable: true });
       return root;
     }
     get shadowRoot() {
-      return this._shadow && this._shadow.mode === 'open' ? this._shadow : null;
+      if (this._shadow) return this._shadow.mode === 'open' ? this._shadow : null;
+      // A root the parser made from `<template shadowrootmode>`.
+      const id = bi('shadowRoot', this._id);
+      if (id === null) return null;
+      const root = wrap(id);
+      Object.setPrototypeOf(root, ShadowRoot.prototype);
+      Object.defineProperty(root, 'host', { value: this });
+      Object.defineProperty(root, 'mode', { value: 'open' });
+      Object.defineProperty(this, '_shadow', { value: root, configurable: true });
+      return root;
+    }
+    get assignedSlot() {
+      const id = bi('assignedSlot', this._id);
+      return id === null ? null : wrap(id);
     }
     animate(keyframes, options) {
       const animation = new Animation(new KeyframeEffect(this, keyframes, options), documentTimeline);
@@ -3805,6 +3988,25 @@
   const HTMLSourceElement = simple('HTMLSourceElement', 'source');
   const HTMLPictureElement = simple('HTMLPictureElement', 'picture');
   const HTMLSlotElement = simple('HTMLSlotElement', 'slot');
+  Object.defineProperties(HTMLSlotElement.prototype, {
+    name: {
+      get() {
+        return this.getAttribute('name') || '';
+      },
+      set(v) {
+        this.setAttribute('name', v);
+      },
+    },
+  });
+  HTMLSlotElement.prototype.assignedNodes = function (options) {
+    const mine = JSON.parse(bi('assignedNodes', this._id)).map(wrap);
+    if (!(options && options.flatten)) return mine;
+    if (mine.length === 0) return Array.from(this.childNodes);
+    return mine.flatMap((n) => (n instanceof HTMLSlotElement ? n.assignedNodes(options) : [n]));
+  };
+  HTMLSlotElement.prototype.assignedElements = function (options) {
+    return this.assignedNodes(options).filter((n) => n.nodeType === 1);
+  };
   const HTMLDetailsElement = simple('HTMLDetailsElement', 'details');
   const HTMLFieldSetElement = simple('HTMLFieldSetElement', 'fieldset');
   const HTMLLegendElement = simple('HTMLLegendElement', 'legend');
@@ -4208,8 +4410,11 @@
     createRange() {
       return { setStart() {}, setEnd() {}, selectNodeContents() {}, collapse() {}, getBoundingClientRect: () => ({ x: 0, y: 0, width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0 }), createContextualFragment: (html) => { const f = document.createDocumentFragment(); const d = document.createElement('div'); d.innerHTML = html; for (const k of d.childNodes) f.appendChild(k); return f; } };
     }
-    createTreeWalker() {
-      return { nextNode: () => null, currentNode: null };
+    createTreeWalker(root, whatToShow, filter) {
+      return new TreeWalker(root, whatToShow, filter);
+    }
+    createNodeIterator(root, whatToShow, filter) {
+      return new NodeIterator(root, whatToShow, filter);
     }
     importNode(node, deep) {
       return node.cloneNode(deep);
@@ -5341,7 +5546,7 @@
     HTMLTableSectionElement, HTMLTableCaptionElement, HTMLQuoteElement, HTMLMenuElement, HTMLDListElement,
     HTMLAreaElement, HTMLMapElement, HTMLDataElement, HTMLTimeElement, HTMLModElement, HTMLParamElement,
     HTMLTrackElement, HTMLOptGroupElement, HTMLDataListElement, HTMLMeterElement, HTMLTableColElement,
-    CSSRule, CSSStyleRule, CSSMediaRule, CSSFontFaceRule, CSSStyleSheet, CSSStyleDeclaration,
+    CSSRule, CSSStyleRule, CSSMediaRule, CSSFontFaceRule, CSSStyleSheet, CSSStyleDeclaration, ShadowRoot, NodeFilter, TreeWalker, NodeIterator,
     DOMParser, XMLSerializer, IntersectionObserver, ResizeObserver, PerformanceObserver, MessageChannel, BroadcastChannel,
     URL, URLSearchParams, TextEncoder, TextDecoder, FontFace, CanvasGradient, CanvasPattern, Path2D,
     // values

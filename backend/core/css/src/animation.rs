@@ -183,6 +183,7 @@ pub(crate) fn append_finished_animations(tokens: &[Token], rules: &mut Vec<Rule>
             for name in finishing_names(value) {
                 if let Some(frame) = frames.get(&name) {
                     extra.push(Rule {
+                        scope: rule.scope,
                         selectors: rule.selectors.clone(),
                         declarations: frame
                             .iter()

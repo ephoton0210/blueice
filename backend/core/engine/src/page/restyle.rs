@@ -356,6 +356,43 @@ mod tests {
     }
 
     #[test]
+    fn a_style_a_script_puts_in_a_shadow_root_styles_the_host_and_its_tree() {
+        // Lit's `:host { display: contents }`: the shadow tree is not under the document root,
+        // yet its sheet counts.
+        let mut page = page(
+            "<body><my-el id=h><b id=k>x</b></my-el><script></script></body>",
+        );
+        page.web_eval(
+            "const r = document.getElementById('h').attachShadow({mode: 'open'});\
+             const s = document.createElement('style'); s.textContent = ':host { display: contents } slot { color: red }';\
+             r.appendChild(s); r.appendChild(document.createElement('slot'));",
+        );
+        page.settle();
+        let host = page.styles.keys().copied().find(|n| {
+            matches!(page.doc.data(*n), NodeData::Element { tag_name, .. } if tag_name == "my-el")
+        });
+        let host = host.expect("the host");
+        assert_eq!(page.styles[&host].display, "contents");
+        assert_eq!(page.styles, fresh(&page));
+    }
+
+    #[test]
+    fn hiding_a_slot_later_hides_what_is_assigned_to_it() {
+        let mut page = page("<body><my-el id=h><p id=k>x</p></my-el><script></script></body>");
+        page.web_eval(
+            "const r = document.getElementById('h').attachShadow({mode: 'open'}); r.innerHTML = '<slot id=s></slot>';",
+        );
+        page.settle();
+        page.web_eval("r2 = document.getElementById('h').shadowRoot.getElementById('s'); r2.setAttribute('hidden', '')");
+        page.settle();
+        let slot = page.styles.keys().copied().find(|n| {
+            matches!(page.doc.data(*n), NodeData::Element { tag_name, .. } if tag_name == "slot")
+        });
+        assert_eq!(page.styles[&slot.expect("the slot")].display, "none");
+        assert_eq!(page.styles, fresh(&page));
+    }
+
+    #[test]
     fn rules_appended_after_all_the_old_ones_restyle_only_what_they_match() {
         // A logo's own `<style>` (`.st0 { fill: ... }`) arrives with the picture.
         let mut page = page(

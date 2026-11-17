@@ -140,6 +140,7 @@ pub struct Tokenizer {
     /// The tag name of the most recently emitted start tag -- an "end tag
     /// token is appropriate" (spec term) if its name matches this one.
     last_start_tag_name: Option<String>,
+    last_comment: String,
 
     tag_name: String,
     tag_is_end: bool,
@@ -166,6 +167,7 @@ impl Tokenizer {
             state: State::Data,
             content_model: ContentModel::Data,
             last_start_tag_name: None,
+            last_comment: String::new(),
             tag_name: String::new(),
             tag_is_end: false,
             tag_self_closing: false,
@@ -747,7 +749,29 @@ impl Tokenizer {
         "&".to_string()
     }
 
+    /// The text of the comment `consume_comment`/`consume_bogus_comment` just ended: what the
+    /// tree builder keeps for the few comments a page's scripts read (Lit's markers).
+    pub fn last_comment(&self) -> &str {
+        &self.last_comment
+    }
+
+    fn record_comment(&mut self, start: usize) {
+        let raw: String = self.input[start..self.pos.min(self.input.len())].iter().collect();
+        let text = ["-->", "--!>", ">"]
+            .iter()
+            .find_map(|end| raw.strip_suffix(end))
+            .unwrap_or(&raw);
+        self.last_comment = text.to_string();
+    }
+
     fn consume_comment(&mut self) -> Token {
+        let start = self.pos;
+        let token = self.consume_comment_text();
+        self.record_comment(start);
+        token
+    }
+
+    fn consume_comment_text(&mut self) -> Token {
         // WHATWG "comment start"/"comment start dash" states: `<!-->`
         // (immediate `>`) and `<!--->` (one extra dash then `>`) abruptly
         // close an empty/near-empty comment right there -- an
@@ -792,6 +816,13 @@ impl Tokenizer {
     }
 
     fn consume_bogus_comment(&mut self) -> Token {
+        let start = self.pos;
+        let token = self.consume_bogus_comment_text();
+        self.record_comment(start);
+        token
+    }
+
+    fn consume_bogus_comment_text(&mut self) -> Token {
         while !matches!(self.peek(), None | Some('>')) {
             self.advance();
         }

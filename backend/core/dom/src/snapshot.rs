@@ -123,6 +123,13 @@ impl Document {
                 w.str(name);
             }
         }
+        let mut shadows: Vec<(&NodeId, &NodeId)> = self.shadow_roots.iter().collect();
+        shadows.sort_unstable_by_key(|(host, _)| **host);
+        w.u64(shadows.len() as u64);
+        for (host, root) in shadows {
+            w.u64(host.as_u64());
+            w.u64(root.as_u64());
+        }
         w.0
     }
 
@@ -190,6 +197,15 @@ impl Document {
             }
             file_names.insert(id, names);
         }
+        let mut shadow_roots = HashMap::new();
+        for _ in 0..r.len()? {
+            let host = NodeId::from_u64(r.u64()?);
+            let root = NodeId::from_u64(r.u64()?);
+            if !nodes.contains_key(&host) || !nodes.contains_key(&root) {
+                return None;
+            }
+            shadow_roots.insert(host, root);
+        }
         if !r.0.is_empty() {
             return None;
         }
@@ -216,6 +232,7 @@ impl Document {
             journal: Default::default(),
             revision: 0,
             quirks: false,
+            shadow_roots,
         })
     }
 }

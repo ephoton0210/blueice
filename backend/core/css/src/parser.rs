@@ -31,6 +31,9 @@ pub struct Declaration {
 pub struct Rule {
     pub selectors: Vec<ComplexSelector>,
     pub declarations: Vec<Declaration>,
+    /// The shadow root whose tree this rule is scoped to (a `<style>` inside a shadow root): it
+    /// styles that tree's nodes and the host, and nothing in the document around it.
+    pub scope: Option<blueice_dom::NodeId>,
 }
 
 /// Properties whose value is a length/percentage/keyword, for which a
@@ -1255,6 +1258,7 @@ fn parse_rules_in(
                     rules.push(Rule {
                         selectors,
                         declarations: parse_declarations(body_tokens),
+                        scope: None,
                     });
                 }
                 i = body_start + close_offset + 1;

@@ -443,6 +443,50 @@ mod tests {
     }
 
     #[test]
+    fn a_script_attaches_a_shadow_tree_and_the_host_draws_it_with_its_children_slotted() {
+        // Lit's `mdn-dropdown`: `<slot name=button></slot><slot name=dropdown hidden></slot>`.
+        let mut h = host("<my-dd id=h><button slot=button>b</button><div slot=dropdown id=d>menu</div></my-dd>");
+        assert_eq!(
+            log(&mut h, "const host = document.getElementById('h'); const root = host.attachShadow({mode: 'open'}); root.innerHTML = '<slot name=button></slot><slot name=dropdown hidden></slot>'; const slots = root.querySelectorAll('slot'); console.log(root instanceof ShadowRoot, root.host === host, host.shadowRoot === root, slots.length, slots[0].assignedElements().length, slots[1].assignedNodes()[0].id, document.getElementById('d').assignedSlot === slots[1], document.querySelectorAll('slot').length)"),
+            "[log] true true true 2 1 d true 0"
+        );
+        h.with_state(|s| {
+            let host = s.call("byId", &[Reply::Text("h".into())]).unwrap();
+            let Reply::Number(host) = host else { panic!() };
+            let host = blueice_dom::NodeId::from_u64(host as u64);
+            let root = s.doc.shadow_root(host).expect("a shadow root");
+            assert_eq!(s.doc.composed_children(host), s.doc.children(root).collect::<Vec<_>>());
+        });
+    }
+
+    #[test]
+    fn a_declarative_shadow_root_is_the_hosts_shadow_root_to_scripts() {
+        let mut h = host("<my-el id=h><template shadowrootmode=open><p id=in>x</p><slot></slot></template><b>l</b></my-el>");
+        assert_eq!(
+            log(&mut h, "const host = document.getElementById('h'); const r = host.shadowRoot; let threw = false; try { host.attachShadow({mode: 'open'}) } catch (e) { threw = e.name } console.log(r instanceof ShadowRoot, r.host === host, r.querySelector('#in').tagName, r.querySelectorAll('slot').length, host.shadowRoot === r, threw, document.querySelectorAll('template').length)"),
+            "[log] true true P 1 true NotSupportedError 0"
+        );
+    }
+
+    #[test]
+    fn a_tree_walker_visits_what_it_is_asked_to_show_in_document_order() {
+        let mut h = host("<div id=r><p>a<!--c--><b>b</b></p><i>i</i></div>");
+        assert_eq!(
+            log(&mut h, "const r = document.getElementById('r'); const names = (mask, filter) => { const w = document.createTreeWalker(r, mask, filter); const out = []; let n; while ((n = w.nextNode())) out.push(n.nodeName); return out.join(','); }; const w = document.createTreeWalker(r, 1); const it = document.createNodeIterator(r, NodeFilter.SHOW_TEXT); const t = []; let x; while ((x = it.nextNode())) t.push(x.data); console.log([NodeFilter.SHOW_ELEMENT, NodeFilter.SHOW_TEXT, names(NodeFilter.SHOW_ELEMENT), names(NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_TEXT), names(NodeFilter.SHOW_ELEMENT, { acceptNode: (n) => n.nodeName === 'P' ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT }), names(NodeFilter.SHOW_ELEMENT, (n) => n.nodeName === 'P' ? NodeFilter.FILTER_SKIP : NodeFilter.FILTER_ACCEPT), w.root === r, w.currentNode === r, w.firstChild().nodeName, w.nextSibling().nodeName, w.previousSibling().nodeName, w.parentNode() === r, t.join('|')].join(' ; '))"),
+            "[log] 1 ; 4 ; P,B,I ; P,#text,B,#text,I,#text ; I ; B,I ; true ; true ; P ; I ; P ; true ; a|b|i"
+        );
+    }
+
+    #[test]
+    fn a_lit_marker_comment_is_a_comment_node_with_element_siblings() {
+        let mut h = host("<div id=d><!--lit-node 0--><b id=n>x</b><!--/lit-part--></div>");
+        assert_eq!(
+            log(&mut h, "const d = document.getElementById('d'); const c = d.firstChild; console.log(c.nodeType, c.data, c.nextElementSibling.id, d.lastChild.previousElementSibling.id, d.childNodes.length, d.children.length, c instanceof Comment)"),
+            "[log] 8 lit-node 0 n n 3 1 true"
+        );
+    }
+
+    #[test]
     fn query_selectors_wrap_the_same_node_every_time() {
         let mut h = host("<ul><li class=a>1</li><li class=a>2</li></ul>");
         assert_eq!(

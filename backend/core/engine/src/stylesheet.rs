@@ -81,6 +81,11 @@ pub(crate) fn stylesheet_link_hrefs(doc: &Document) -> Vec<String> {
         for child in doc.children(node) {
             walk(doc, child, out);
         }
+        if let Some(shadow) = doc.shadow_root(node) {
+            for child in doc.children(shadow) {
+                walk(doc, child, out);
+            }
+        }
     }
     let mut hrefs = Vec::new();
     walk(doc, doc.root(), &mut hrefs);
@@ -133,6 +138,16 @@ fn collect(
     }
     for child in doc.children(node) {
         collect(doc, child, rules, environment, linked);
+    }
+    // The styles of a shadow tree (not scoped to it: they follow their host's own).
+    if let Some(shadow) = doc.shadow_root(node) {
+        let before = rules.len();
+        for child in doc.children(shadow) {
+            collect(doc, child, rules, environment, linked);
+        }
+        for rule in &mut rules[before..] {
+            rule.scope.get_or_insert(shadow);
+        }
     }
 }
 

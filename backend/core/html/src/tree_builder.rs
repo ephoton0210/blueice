@@ -261,7 +261,43 @@ pub fn parse_continuing_from(input: &str, next_id: u64) -> Document {
     let mut tb = TreeBuilder::new(input, next_id);
     tb.run();
     tb.document.set_quirks_mode(tb.quirks_mode);
+    attach_declarative_shadow_roots(&mut tb.document);
     tb.document
+}
+
+/// Declarative shadow DOM: a `<template shadowrootmode=open|closed>` (or the older
+/// `shadowroot=` spelling) that is the child of an element becomes that element's shadow root,
+/// holding the template's content. Server-rendered web components (Lit SSR) arrive this way.
+fn attach_declarative_shadow_roots(doc: &mut Document) {
+    let mut found: Vec<(NodeId, NodeId)> = Vec::new();
+    let mut stack = vec![doc.root()];
+    while let Some(node) = stack.pop() {
+        if let (NodeData::Element { tag_name, attributes }, Some(host)) = (doc.data(node), doc.parent(node)) {
+            if tag_name == "template"
+                && attributes.iter().any(|(k, v)| {
+                    (k == "shadowrootmode" || k == "shadowroot") && matches!(v.as_str(), "open" | "closed")
+                })
+                && matches!(doc.data(host), NodeData::Element { .. })
+                && !found.iter().any(|(h, _)| *h == host)
+            {
+                found.push((host, node));
+            }
+        }
+        stack.extend(doc.children(node));
+    }
+    for (host, template) in found {
+        let root = doc.create_node(NodeData::Element {
+            tag_name: "#fragment".to_string(),
+            attributes: Vec::new(),
+        });
+        let kids: Vec<NodeId> = doc.children(template).collect();
+        for kid in kids {
+            doc.detach(kid);
+            doc.append_child(root, kid);
+        }
+        doc.remove_subtree(template);
+        doc.attach_shadow(host, root);
+    }
 }
 
 impl TreeBuilder {
@@ -311,6 +347,20 @@ impl TreeBuilder {
         // character token later.
         if !matches!(token, Token::Character(_)) {
             self.strip_leading_newline = false;
+        }
+        // Lit's markers (`<!--lit-part-->`, `<?lit$1$>`) are real comment nodes to the scripts
+        // that hydrate server-rendered components; every other comment is dropped.
+        if matches!(token, Token::Comment) && matches!(self.mode, Mode::InBody | Mode::AfterBody | Mode::AfterAfterBody) {
+            let text = self.tokenizer.last_comment();
+            if (text.starts_with("lit") || text.starts_with("/lit") || text.starts_with("?lit"))
+                && !self.current_node_needs_foster()
+            {
+                let id = self.document.create_node(NodeData::Element {
+                    tag_name: "#comment".to_string(),
+                    attributes: vec![("data".to_string(), text.to_string())],
+                });
+                self.insert_node(id);
+            }
         }
         let result = self.dispatch(token);
         self.just_saw_dropped_comment_or_doctype = is_comment_or_doctype;
@@ -2280,5 +2330,56 @@ fn svg_attribute_name(lower: &str) -> &str {
         "ychannelselector" => "yChannelSelector",
         "zoomandpan" => "zoomAndPan",
         other => other,
+    }
+}
+
+#[cfg(test)]
+mod declarative_shadow_tests {
+    use super::*;
+
+    #[test]
+    fn lit_marker_comments_are_kept_as_comment_nodes_and_other_comments_are_not() {
+        let doc = parse("<body><div><!--lit-part abc--><b>x</b><!--/lit-part--><!-- plain --></div></body>");
+        let div = doc
+            .children(doc.root())
+            .flat_map(|n| doc.children(n).collect::<Vec<_>>())
+            .flat_map(|n| doc.children(n).collect::<Vec<_>>())
+            .next()
+            .expect("div");
+        let kinds: Vec<String> = doc
+            .children(div)
+            .map(|n| match doc.data(n) {
+                NodeData::Element { tag_name, attributes } if tag_name == "#comment" => {
+                    format!("#comment:{}", attributes[0].1)
+                }
+                NodeData::Element { tag_name, .. } => tag_name.clone(),
+                _ => "?".into(),
+            })
+            .collect();
+        assert_eq!(kinds, vec!["#comment:lit-part abc", "b", "#comment:/lit-part"]);
+    }
+
+    #[test]
+    fn a_template_with_shadowrootmode_becomes_the_hosts_shadow_root() {
+        let doc = parse(
+            "<body><my-el><template shadowrootmode=open><style>:host{display:contents}</style><slot></slot></template><b>light</b></my-el><template><i>inert</i></template></body>",
+        );
+        let host = doc
+            .children(doc.root())
+            .flat_map(|n| doc.children(n).collect::<Vec<_>>())
+            .flat_map(|n| doc.children(n).collect::<Vec<_>>())
+            .find(|n| matches!(doc.data(*n), NodeData::Element { tag_name, .. } if tag_name == "my-el"))
+            .expect("host");
+        let root = doc.shadow_root(host).expect("a shadow root");
+        let tags: Vec<String> = doc
+            .children(root)
+            .filter_map(|n| match doc.data(n) {
+                NodeData::Element { tag_name, .. } => Some(tag_name.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(tags, vec!["style", "slot"]);
+        let light: Vec<NodeId> = doc.children(host).collect();
+        assert_eq!(light.len(), 1, "the template itself is gone, the light child stays");
     }
 }
