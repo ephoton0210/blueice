@@ -129,5 +129,7 @@ clip 72.3,180.6 141.8x13.2
 text 72.3,180.8 "" #000000 11.0 normal normal
 text 72.3,180.8 "Your name" #757575 11.0 normal normal
 endclip
-text 226.2,180.8 "Go" #000000 11.0 normal normal
+roundrect 226.2,178.6 31.3x18.2 5.0x5.0/5.0x5.0/5.0x5.0/5.0x5.0 #ffffff
+roundborder 226.2,178.6 31.3x18.2 5.0x5.0/5.0x5.0/5.0x5.0/5.0x5.0 2.0 #d4d4d4
+text 234.2,180.8 "Go" #000000 11.0 normal normal
 

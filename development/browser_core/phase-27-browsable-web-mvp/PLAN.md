@@ -1260,3 +1260,9 @@ arrow (`label::after { mask-image: url(...) }`) or any generated background pict
 drawn and left a solid colour square. Both maps are keyed by the style node now (tested for a mask
 and a plain background picture). Wikipedia's blue dot under the bookmark is not a defect: Safari
 has the same `mw-pulsating-dot` element at the same place.
+
+Default push button (2026-11-17): `button` had no padding, border or background, so it was a bare
+text run. It now has Safari's measured padding (`0 6px 1px`), a 2px pale frame, white fill and a
+5px radius: 31.3 x 18.2px for "Go" at 11px against Safari's 30.84 x 18. Safari draws the real
+control natively (gradient, shadow); this machine has no screen-capture permission, so the exact
+native look could not be compared by eye and the frame is an approximation. Recorded as such.

@@ -873,6 +873,16 @@ input[type="submit"], input[type="button"], input[type="reset"] {
   width: auto;
   padding: 1px 6px;
 }
+/* A push button: Safari draws it natively (a pale rounded frame); this is the same size, a 2px frame. */
+button {
+  padding: 0 6px 1px;
+  border: 2px solid #d4d4d4;
+  background-color: #ffffff;
+}
+button, input[type="submit"], input[type="button"], input[type="reset"] {
+  border-radius: 5px;
+  text-align: center;
+}
 /* Safari: a 12px box, no padding or border, 3px above and below. */
 input[type="checkbox"], input[type="radio"] { box-sizing: border-box; width: 12px; height: 12px; padding: 0; border: 0; margin: 3px 3px 3px 4px; }
 input[type="range"] { width: 12em; height: 1.5em; padding: 0; border: 0; }
@@ -1097,6 +1107,19 @@ mod tests {
         let mask = format!("{:?}", styles[&icon].other.get("mask-image"));
         assert!(mask.contains("real.svg"), "{mask}");
         assert!(!styles[&icon].other.contains_key("background-image") || format!("{:?}", styles[&icon].other.get("background-image")).contains("none"));
+    }
+
+    #[test]
+    fn a_default_button_has_safaris_padding_and_a_frame_of_two_pixels() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let button = elem(&mut doc, root, "button", &[]);
+        let ua = ua_stylesheet();
+        let styles = cascade(&doc, &[(Origin::Ua, &ua)]);
+        let other = &styles[&button].other;
+        assert_eq!(other.get("padding-left"), Some(&Value::Length(crate::value::Length::Px(6.0))));
+        assert_eq!(other.get("border-top-width"), Some(&Value::Length(crate::value::Length::Px(2.0))));
+        assert!(other.contains_key("border-top-left-radius"));
     }
 
     #[test]
