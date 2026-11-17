@@ -103,11 +103,13 @@ fn paper_background_option_keeps_text_and_form_control_paint() {
         .commands
         .iter()
         .any(|c| matches!(c,PaintCommand::Text{text,..} if text=="Ink")));
+    // The checked box itself is still drawn (a control has no border of its own any more: a
+    // checkbox is a 12px box, as in Safari).
     assert!(off
         .frame
         .commands
         .iter()
-        .any(|c| matches!(c, PaintCommand::BorderEdge { .. })));
+        .any(|c| matches!(c, PaintCommand::Text { text, .. } if text == "☑")));
 }
 
 #[cfg(unix)]

@@ -1213,3 +1213,16 @@ of page height is the random "success story" block (a different story, 362px vs 
 each load) plus a few pixels. Wikipedia: navbox collapse needs the site's ResourceLoader JS (about
 475px, open); `<pre>` trailing-newline line is a WebKit-vs-others interpretation (recorded above).
 Open and not interpretation: solid-square icons, multi-layer backgrounds.
+
+### Wikipedia navbox, :scope, empty-box margins (2026-11-16, evening)
+
+The navbox "gap" was time, not a missing feature: the ResourceLoader chain (`mediawiki.page.ready`
+hook -> `jquery.makeCollapsible` -> site JS `autocollapse`) runs one script turn after another, and
+in a debug build each turn is followed by a 0.3-2 s restyle+relayout of a 3,000-node page, so a 10 s
+dev wait stops before the navboxes collapse. With enough time (`BI_WAIT=45`) `#mwGIs` is 36px,
+Safari's value, and the whole page is 34356px against Safari's 34338px (18px). `:scope` now exists
+in selectors (`element.querySelectorAll(':scope > tbody > tr')`, which makeCollapsible-era code
+uses), checkboxes and radios are 12px boxes without padding or border (Safari: 12x12), an empty
+box inside an empty box collapses its margins through (Wikipedia's site notice is 24px, not 48),
+and the dev test has `BI_WAIT_AFTER`. What remains on Wikipedia: the two-code-block `<pre>`
+trailing-newline lines (recorded above as WebKit's reading) and small per-figure offsets.

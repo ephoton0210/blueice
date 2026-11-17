@@ -60,7 +60,7 @@ pub use font_features::{
 pub use font_face::{face_descriptors, font_faces, FaceDescriptors, FontFaceRule, FontSource};
 pub use parser::{Declaration, Rule};
 pub use selector::{
-    matches, matches_pseudo_element, ComplexSelector, Compound, PseudoElement, SelectorKey,
+    matches, matches_pseudo_element, with_scope, ComplexSelector, Compound, PseudoElement, SelectorKey,
     SimpleSelector,
     Specificity,
 };

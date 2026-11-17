@@ -39,6 +39,8 @@ pub enum AttrOp {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PseudoClass {
     Root,
+    /// `:scope`: the element a selector query was made on, else the document element.
+    Scope,
     Empty,
     FirstChild,
     LastChild,
@@ -445,6 +447,7 @@ fn parse_pseudo(name: &str, args: Option<&[Token]>) -> Option<PseudoClass> {
     };
     Some(match (name.as_str(), args) {
         ("root", None) => PseudoClass::Root,
+        ("scope", None) => PseudoClass::Scope,
         ("empty", None) => PseudoClass::Empty,
         ("first-child", None) => PseudoClass::FirstChild,
         ("last-child", None) => PseudoClass::LastChild,
@@ -654,6 +657,10 @@ fn pseudo_matches(doc: &Document, node: NodeId, pseudo: &PseudoClass) -> bool {
     );
     match pseudo {
         PseudoClass::Root => doc.parent(node) == Some(doc.root()),
+        PseudoClass::Scope => match SCOPE.with(std::cell::Cell::get) {
+            Some(scope) => node == scope,
+            None => doc.parent(node) == Some(doc.root()),
+        },
         PseudoClass::Empty => doc.first_child(node).is_none(),
         PseudoClass::FirstChild => is_edge(doc, node, false, false),
         PseudoClass::LastChild => is_edge(doc, node, true, false),
@@ -744,6 +751,19 @@ fn compound_matches_with(
         SimpleSelector::Pseudo(pseudo) => pseudo_matches(doc, node, pseudo),
         SimpleSelector::PseudoElement(_) => pseudo_element,
     })
+}
+
+thread_local! {
+    /// The element `:scope` stands for during a query (`element.querySelector(":scope > p")`).
+    static SCOPE: std::cell::Cell<Option<NodeId>> = const { std::cell::Cell::new(None) };
+}
+
+/// Runs `f` with `:scope` standing for `scope`.
+pub fn with_scope<R>(scope: NodeId, f: impl FnOnce() -> R) -> R {
+    let previous = SCOPE.with(|s| s.replace(Some(scope)));
+    let result = f();
+    SCOPE.with(|s| s.set(previous));
+    result
 }
 
 /// Whether `node` matches `selector`, walking up `doc`'s tree for
@@ -1255,6 +1275,21 @@ mod tests {
         let root = one(":root");
         assert!(matches(&doc, html, &root));
         assert!(!matches(&doc, p, &root));
+    }
+
+    #[test]
+    fn scope_is_the_element_a_query_was_made_on() {
+        let doc = blueice_html::parse("<div id=a><p>1</p><div><p>2</p></div></div>");
+        let div = find(&doc, doc.root(), "div").unwrap();
+        let html = find(&doc, doc.root(), "html").unwrap();
+        let direct = one(":scope > p");
+        let kids: Vec<NodeId> = doc.children(div).collect();
+        let inner = kids[1];
+        let ps = [kids[0], doc.first_child(inner).unwrap()];
+        let found: Vec<bool> = with_scope(div, || ps.iter().map(|&p| matches(&doc, p, &direct)).collect());
+        assert_eq!(found, vec![true, false], "only the child of the scope");
+        assert!(matches(&doc, html, &one(":scope")), "outside a query it is the document element");
+        assert!(with_scope(div, || matches(&doc, div, &one(":scope"))));
     }
 
     #[test]

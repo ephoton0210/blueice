@@ -1177,7 +1177,8 @@ fn layout_block_level_uncached(
         && min_height == 0.0
         && padding.vertical() == 0.0
         && border.vertical() == 0.0
-        && children.is_empty()
+        // Children that are themselves empty boxes (they collapsed through) do not count.
+        && children.iter().all(|c| c.height == 0.0 && c.children.is_empty())
         && content_flow_height == 0.0;
     let mut fragment = Fragment {
         node: Some(node),

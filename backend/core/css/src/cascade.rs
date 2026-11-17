@@ -870,8 +870,9 @@ input[type="submit"], input[type="button"], input[type="reset"] {
   width: auto;
   padding: 1px 6px;
 }
-input[type="checkbox"], input[type="radio"] { width: 1.5em; height: 1.5em; padding: 1px; }
-input[type="range"] { width: 12em; height: 1.5em; }
+/* Safari: a 12px box, no padding or border, 3px above and below. */
+input[type="checkbox"], input[type="radio"] { box-sizing: border-box; width: 12px; height: 12px; padding: 0; border: 0; margin: 3px 3px 3px 4px; }
+input[type="range"] { width: 12em; height: 1.5em; padding: 0; border: 0; }
 [hidden], input[type="hidden"] { display: none; }
 area, base, basefont, datalist, head, link, meta, noembed, noframes, param,
 rp, script, style, template, title {

@@ -616,6 +616,13 @@ mod tests {
             }
             if let Ok(probe) = std::env::var("BI_EVAL") {
                 page.web_eval(&probe);
+                // `BI_WAIT_AFTER` seconds more for what the probe started to finish.
+                let more: u64 = std::env::var("BI_WAIT_AFTER").ok().and_then(|w| w.parse().ok()).unwrap_or(0);
+                let until = std::time::Instant::now() + std::time::Duration::from_secs(more);
+                while std::time::Instant::now() < until {
+                    page.tick_web();
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
             }
             // A probe's own lines (`console.log('EVAL ...')`) and its failures, found among
             // whatever noise the page made.

@@ -829,7 +829,8 @@ impl DomState {
                 let hit = |doc: &Document, id: NodeId| {
                     selectors.iter().any(|s| blueice_css::matches(doc, id, s))
                 };
-                match op {
+                // `:scope` is the element the query is made on.
+                blueice_css::with_scope(root, || match op {
                     "matches" => hit(&self.doc, root).into(),
                     "query" => self
                         .descendants(root)
@@ -841,7 +842,7 @@ impl DomState {
                             .into_iter()
                             .filter(|&id| hit(&self.doc, id)),
                     ),
-                }
+                })
             }
             "byId" => {
                 let wanted = text(0);

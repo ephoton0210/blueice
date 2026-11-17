@@ -249,6 +249,14 @@ mod tests {
             );
             assert_eq!(f.children[0].height, 24.0, "{container}");
         }
+        // The same with whitespace, a comment and an empty child around the margin (Wikipedia's
+        // `#siteNotice > #centralNotice`).
+        let f = layout::body(
+            "<div style='display:grid'><div class=item>\n<div style='margin:24px 0;position:relative'>\n<div></div><!-- c -->\n</div>\n</div></div><p>x</p>",
+            "",
+            400.0,
+        );
+        assert_eq!(f.children[0].height, 24.0, "{:?}", f.children[0].children.iter().map(|c| c.height).collect::<Vec<_>>());
         // A grid item and a flex item are formatting roots too.
         for container in ["display:grid", "display:flex;flex-direction:column"] {
             let f = layout::body(
