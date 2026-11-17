@@ -323,40 +323,9 @@ fn expand_flex_flow(tokens: &[Token]) -> Vec<(String, Value)> {
     out
 }
 
-/// The colour of a `background` shorthand; a layer with none resets it.
-fn expand_background(tokens: &[Token]) -> Vec<(String, Value)> {
-    let mut out = vec![("background-image".to_string(), keyword("none"))];
-    // Each comma-separated layer contributes its picture or gradient, in order, so a layer
-    // list like `url(x), linear-gradient(...)` keeps all of them.
-    let mut images: Vec<Token> = Vec::new();
-    for layer in crate::content::background_layers(tokens) {
-        if let Some(image) = components(layer).into_iter().find(|c| {
-            matches!(c.first(), Some(Token::Url(_)))
-                || matches!(c.first(), Some(Token::Ident(name))
-                    if matches!(c.get(1), Some(Token::LeftParen))
-                        && (name.to_ascii_lowercase().ends_with("gradient")
-                            || name.eq_ignore_ascii_case("url")))
-        }) {
-            if !images.is_empty() {
-                images.push(Token::Comma);
-            }
-            images.extend_from_slice(image);
-        }
-    }
-    if !images.is_empty() {
-        out[0].1 = Value::Unparsed(images);
-    }
-    let color = components(tokens)
-        .into_iter()
-        .find_map(|c| match parse_value(c) {
-            Some(color @ Value::Color(_)) => Some(color),
-            _ => None,
-        })
-        .unwrap_or(Value::Color(crate::value::Color::Rgba(0, 0, 0, 0)));
-    out.push(("background-color".to_string(), color));
-
-    // Repeat, position and size: whatever is left once colours and the image
-    // are set aside, with the size after a `/`.
+/// The repeat, position and size values of one background layer (`tokens`), after the colour and
+/// the picture are set aside; the size is what follows a `/`.
+fn layer_props(tokens: &[Token]) -> (Vec<Value>, Vec<Value>, Vec<Value>) {
     let mut repeat: Vec<Value> = Vec::new();
     let mut position: Vec<Value> = Vec::new();
     let mut size: Vec<Value> = Vec::new();
@@ -441,6 +410,44 @@ fn expand_background(tokens: &[Token]) -> Vec<(String, Value)> {
         }
         i += 1;
     }
+    (repeat, position, size)
+}
+
+/// The colour of a `background` shorthand; a layer with none resets it.
+fn expand_background(tokens: &[Token]) -> Vec<(String, Value)> {
+    let mut out = vec![("background-image".to_string(), keyword("none"))];
+    // Each comma-separated layer contributes its picture or gradient, in order, so a layer
+    // list like `url(x), linear-gradient(...)` keeps all of them.
+    let mut images: Vec<Token> = Vec::new();
+    for layer in crate::content::background_layers(tokens) {
+        if let Some(image) = components(layer).into_iter().find(|c| {
+            matches!(c.first(), Some(Token::Url(_)))
+                || matches!(c.first(), Some(Token::Ident(name))
+                    if matches!(c.get(1), Some(Token::LeftParen))
+                        && (name.to_ascii_lowercase().ends_with("gradient")
+                            || name.eq_ignore_ascii_case("url")))
+        }) {
+            if !images.is_empty() {
+                images.push(Token::Comma);
+            }
+            images.extend_from_slice(image);
+        }
+    }
+    if !images.is_empty() {
+        out[0].1 = Value::Unparsed(images);
+    }
+    let color = components(tokens)
+        .into_iter()
+        .find_map(|c| match parse_value(c) {
+            Some(color @ Value::Color(_)) => Some(color),
+            _ => None,
+        })
+        .unwrap_or(Value::Color(crate::value::Color::Rgba(0, 0, 0, 0)));
+    out.push(("background-color".to_string(), color));
+
+    // Repeat, position and size: whatever is left once colours and the image
+    // are set aside, with the size after a `/`.
+    let (repeat, position, size) = layer_props(tokens);
     let pack = |mut values: Vec<Value>| match values.len() {
         0 => None,
         1 => Some(values.remove(0)),
@@ -460,6 +467,36 @@ fn expand_background(tokens: &[Token]) -> Vec<(String, Value)> {
         "background-size".to_string(),
         pack(size).unwrap_or_else(|| keyword("auto")),
     ));
+    // With more than one layer, each keeps its own picture, repeat, position and size, top
+    // layer first: `[image, repeat, position, size]` per layer.
+    let layers = crate::content::background_layers(tokens);
+    if layers.len() >= 2 {
+        let each: Vec<Value> = layers
+            .into_iter()
+            .map(|layer| {
+                let image = components(layer).into_iter().find(|c| {
+                    matches!(c.first(), Some(Token::Url(_)))
+                        || matches!(c.first(), Some(Token::Ident(name))
+                            if matches!(c.get(1), Some(Token::LeftParen))
+                                && (name.to_ascii_lowercase().ends_with("gradient")
+                                    || name.eq_ignore_ascii_case("url")))
+                });
+                let (r, p, z) = layer_props(layer);
+                let one = |mut v: Vec<Value>, default: Value| match v.len() {
+                    0 => default,
+                    1 => v.remove(0),
+                    _ => Value::List(v),
+                };
+                Value::List(vec![
+                    image.map_or_else(|| keyword("none"), |c| Value::Unparsed(c.to_vec())),
+                    one(r, keyword("repeat")),
+                    one(p, Value::List(vec![Value::Percentage(0.0), Value::Percentage(0.0)])),
+                    one(z, keyword("auto")),
+                ])
+            })
+            .collect();
+        out.push(("-blueice-background-layers".to_string(), Value::List(each)));
+    }
     out
 }
 
@@ -1310,6 +1347,32 @@ mod tests {
         let decls: Vec<String> = sheet.rules[0].declarations.iter().map(|d| d.property.clone()).collect();
         assert!(decls.contains(&"mask-image".to_string()), "{decls:?}");
         assert!(decls.contains(&"background-color".to_string()), "{decls:?}");
+    }
+
+    #[test]
+    fn each_layer_of_a_background_keeps_its_own_picture_repeat_position_and_size() {
+        let out = expand_property(
+            "background",
+            &tokenize("url(a.png) no-repeat 10px 20px / 5px 6px, linear-gradient(red, blue) repeat-x, #fff"),
+        );
+        let layers = out
+            .iter()
+            .find(|(name, _)| name == "-blueice-background-layers")
+            .map(|(_, v)| v.clone())
+            .expect("layers");
+        let Value::List(layers) = layers else { panic!("not a list") };
+        assert_eq!(layers.len(), 3, "{layers:?}");
+        let Value::List(first) = &layers[0] else { panic!() };
+        assert!(matches!(&first[0], Value::Unparsed(t) if matches!(t.first(), Some(Token::Url(_)) | Some(Token::Ident(_)))));
+        assert_eq!(first[1], Value::Keyword("no-repeat".into()));
+        assert_eq!(first[2], Value::List(vec![Value::Length(Length::Px(10.0)), Value::Length(Length::Px(20.0))]));
+        assert_eq!(first[3], Value::List(vec![Value::Length(Length::Px(5.0)), Value::Length(Length::Px(6.0))]));
+        let Value::List(second) = &layers[1] else { panic!() };
+        assert_eq!(second[1], Value::Keyword("repeat-x".into()));
+        // A single layer needs no such record.
+        assert!(!expand_property("background", &tokenize("url(a.png) no-repeat"))
+            .iter()
+            .any(|(name, _)| name == "-blueice-background-layers"));
     }
 
     #[test]

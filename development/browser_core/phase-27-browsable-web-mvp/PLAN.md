@@ -1266,3 +1266,10 @@ text run. It now has Safari's measured padding (`0 6px 1px`), a 2px pale frame, 
 5px radius: 31.3 x 18.2px for "Go" at 11px against Safari's 30.84 x 18. Safari draws the real
 control natively (gradient, shadow); this machine has no screen-capture permission, so the exact
 native look could not be compared by eye and the frame is an approximation. Recorded as such.
+
+Multi-layer backgrounds (2026-11-17): `background: a, b, c` keeps each layer's picture, repeat,
+position and size (`-blueice-background-layers`), the engine keeps each layer's picture by
+`(node, layer)`, and paint draws them last to first so the first ends on top. A layer's own
+`no-repeat` now applies to that layer alone (`url(x), linear-gradient(..) no-repeat` tiles the
+picture, as Safari does). Still single-valued: longhand lists such as
+`background-size: 10px, auto` apply their first value to every layer.

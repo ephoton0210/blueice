@@ -194,6 +194,20 @@ impl Page {
                 );
             }
         }
+        // Boxes with more than one background layer: each picture by its place in the list.
+        for (node, style) in &self.styles {
+            let Some(Value::List(layers)) = style.other.get("-blueice-background-layers") else { continue };
+            for (index, layer) in layers.iter().enumerate() {
+                let Value::List(parts) = layer else { continue };
+                let Some(Value::Unparsed(tokens)) = parts.first() else { continue };
+                let loaded = blueice_css::background_layers(tokens)
+                    .into_iter()
+                    .find_map(|l| blueice_css::url_of(l).and_then(|u| self.linked_images.get(u.trim())));
+                if let Some(loaded) = loaded {
+                    images.layers.insert((*node, index), loaded.image.clone());
+                }
+            }
+        }
         self.images = images;
         let lang = document_language(&self.doc);
         crate::fonts::assign_faces(&self.linked_fonts, &mut self.styles, lang.as_deref());
@@ -414,7 +428,6 @@ mod tests {
         // `background: url(x), linear-gradient(...)` is how pages (Hacker News's vote arrows)
         // give a picture a fallback: the picture is one layer of a comma-separated list.
         for rule in [
-            "background: url(bg.svg), linear-gradient(transparent, transparent) no-repeat",
             "background-image: url(\"bg.svg\"), linear-gradient(transparent, transparent); background-repeat: no-repeat",
             "background: linear-gradient(transparent, transparent), url(bg.svg) no-repeat",
             "background: url(missing.png), url(bg.svg) no-repeat",
@@ -428,6 +441,16 @@ mod tests {
             );
             assert_eq!(image_commands(&page).len(), 1, "{rule}");
         }
+        // `no-repeat` after the gradient belongs to the gradient's layer: the picture's own layer
+        // repeats, as it does in Safari (a 10x6 picture tiles 3 x 2 times in 30 x 12).
+        let mut page = Page::new(400.0, 300.0);
+        page.pending_linked_images
+            .insert("bg.svg".to_string(), loaded(RED_SVG));
+        page.load_html_str(
+            "<style>div{width:30px;height:12px;background: url(bg.svg), linear-gradient(transparent, transparent) no-repeat}</style><body style='margin:0'><div></div></body>",
+            None,
+        );
+        assert_eq!(image_commands(&page).len(), 6);
     }
 
     #[test]
@@ -498,6 +521,23 @@ mod tests {
             None,
         );
         assert_eq!(page.render_visible().get_pixel(3, 3), [255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn every_layer_of_a_multi_layer_background_is_painted_with_its_own_placement() {
+        // A 10x6 red picture at the top left, a 10x6 blue one at 20px 20px, and a green gradient
+        // below both.
+        let mut page = Page::new(400.0, 300.0);
+        let red = format!("data:image/svg+xml;utf8,{RED_SVG}");
+        let blue = format!("data:image/svg+xml;utf8,{}", RED_SVG.replace("#ff0000", "#0000ff"));
+        page.load_html_str(
+            &format!("<style>body{{margin:0}} div{{width:40px;height:40px;background:url(\"{red}\") no-repeat, url(\"{blue}\") no-repeat 20px 20px, linear-gradient(rgb(0,255,0), rgb(0,255,0))}}</style><div></div>"),
+            None,
+        );
+        let pixel = |x, y| page.render_visible().get_pixel(x, y);
+        assert_eq!(pixel(3, 3), [255, 0, 0, 255], "the first layer is on top");
+        assert_eq!(pixel(23, 22), [0, 0, 255, 255], "the second layer sits where it was put");
+        assert_eq!(pixel(35, 5), [0, 255, 0, 255], "the layer below shows elsewhere");
     }
 
     #[test]

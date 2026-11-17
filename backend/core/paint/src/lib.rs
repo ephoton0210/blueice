@@ -835,7 +835,35 @@ fn paint_fragment(
                         PaintCommand::Rect { rect, color }
                     });
                 }
-                if let Some(Value::Unparsed(tokens)) = style.other.get("background-image") {
+                // More than one background layer: each is painted, the last one first so the first
+                // ends on top, with its own repeat, position and size.
+                let layers = match style.other.get("-blueice-background-layers") {
+                    Some(Value::List(layers)) => Some(layers),
+                    _ => None,
+                };
+                if let Some(layers) = layers {
+                    let key = fragment.style_node.or(fragment.node);
+                    for (index, layer) in layers.iter().enumerate().rev() {
+                        let Value::List(parts) = layer else { continue };
+                        let [Value::Unparsed(image_tokens), repeat, position, size] = parts.as_slice() else { continue };
+                        if let Some(mut gradient) = blueice_css::background_layers(image_tokens)
+                            .into_iter()
+                            .find_map(blueice_css::parse_gradient)
+                        {
+                            for stop in &mut gradient.stops {
+                                let color = if stop.color == Color::CurrentColor { style.color } else { stop.color };
+                                stop.color = apply_opacity(color, opacity);
+                            }
+                            out.push(PaintCommand::Gradient { rect, radii, gradient });
+                        } else if let Some(image) = key.and_then(|n| images.layers.get(&(n, index))) {
+                            let mut own = style.clone();
+                            own.other.insert("background-repeat".to_string(), repeat.clone());
+                            own.other.insert("background-position".to_string(), position.clone());
+                            own.other.insert("background-size".to_string(), size.clone());
+                            paint_background_image(&own, rect, image, opacity, false, out);
+                        }
+                    }
+                } else if let Some(Value::Unparsed(tokens)) = style.other.get("background-image") {
                     // The first layer that is a gradient (the others may be pictures).
                     if let Some(mut gradient) = blueice_css::background_layers(tokens)
                         .into_iter()
@@ -856,8 +884,10 @@ fn paint_fragment(
                         });
                     }
                 }
-                if let Some(image) = fragment.style_node.or(fragment.node).and_then(|n| images.background.get(&n)) {
-                    paint_background_image(style, rect, image, opacity, masked, out);
+                if layers.is_none() {
+                    if let Some(image) = fragment.style_node.or(fragment.node).and_then(|n| images.background.get(&n)) {
+                        paint_background_image(style, rect, image, opacity, masked, out);
+                    }
                 }
                 let sides: Vec<Option<(Rect, f64)>> = BORDER_SIDES
                     .iter()
@@ -1330,6 +1360,8 @@ pub fn paint(fragment: &Fragment, styles: &HashMap<NodeId, ComputedStyle>) -> Fr
 pub struct ImageMap {
     pub content: HashMap<NodeId, Arc<RasterImage>>,
     pub background: HashMap<NodeId, Arc<RasterImage>>,
+    /// The pictures of a box's background layers when it has more than one, by `(node, layer)`.
+    pub layers: HashMap<(NodeId, usize), Arc<RasterImage>>,
 }
 
 /// [`paint`] with the page's decoded images.
