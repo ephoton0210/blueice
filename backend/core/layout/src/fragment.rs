@@ -115,6 +115,8 @@ pub struct Fragment {
     pub z_index: Option<i32>,
     /// `position` is not `static`.
     pub positioned: bool,
+    /// `position: absolute` or `fixed`: out of flow, so no baseline of its parent comes from it.
+    pub out_of_flow: bool,
     /// `overflow` is not `visible`: children are clipped to the padding box.
     pub clips: bool,
     /// `position: fixed`: laid out against the viewport, not the page.
@@ -165,6 +167,7 @@ impl Fragment {
             children: Vec::new(),
             z_index: None,
             positioned: false,
+            out_of_flow: false,
             clips: false,
             fixed: false,
             hidden: false,

@@ -729,6 +729,19 @@ fn atomic_for(ctx: &Ctx<'_>, node: NodeId, cb_width: f64) -> Atomic {
         };
         fragment = placed.fragment;
     }
+    // A text control sits on the baseline of its own first row of text, not on its bottom edge.
+    let line_baseline = line_baseline.or_else(|| {
+        matches!(ctx.tag(node), Some("select" | "input" | "button")).then(|| {
+            let (ascent, descent) = blueice_font::ascent_descent_in(
+                style.font_size(),
+                style.style.is_some_and(|s| s.is_bold()),
+                style.style.is_some_and(|s| s.is_italic()),
+                style.web_face(),
+            );
+            let leading = (line_height_of(&style) - (ascent + descent)) / 2.0;
+            border.top + padding.top + leading + ascent
+        })
+    });
     let is_flex = matches!(style.display(), crate::ctx::Display::InlineFlex);
     let baseline = match line_baseline {
         // A flex container's baseline is its first item's, clipped or not.
@@ -756,7 +769,7 @@ pub(crate) fn first_baseline(fragment: &Fragment) -> Option<f64> {
                 return Some(child.y + b);
             }
         }
-        if matches!(child.kind, FragmentKind::Block) && !child.positioned {
+        if matches!(child.kind, FragmentKind::Block) && !child.out_of_flow {
             if let Some(b) = first_baseline(child) {
                 return Some(child.y + b);
             }
@@ -771,7 +784,7 @@ fn flex_first_baseline(fragment: &Fragment) -> Option<f64> {
     let item = fragment
         .children
         .iter()
-        .find(|c| matches!(c.kind, FragmentKind::Block) && !c.positioned && !c.hidden)?;
+        .find(|c| matches!(c.kind, FragmentKind::Block) && !c.out_of_flow && !c.hidden)?;
     Some(item.y + first_baseline(item).unwrap_or(item.height))
 }
 
@@ -783,7 +796,7 @@ fn last_baseline(fragment: &Fragment) -> Option<f64> {
                 return Some(child.y + b);
             }
         }
-        if matches!(child.kind, FragmentKind::Block) && !child.positioned {
+        if matches!(child.kind, FragmentKind::Block) && !child.out_of_flow {
             if let Some(b) = last_baseline(child) {
                 return Some(child.y + b);
             }
@@ -1702,7 +1715,16 @@ pub(crate) fn layout_run_around(
                         Piece::Word { style_node, .. } | Piece::Space { style_node, .. }
                             if *style_node != container =>
                         {
-                            vertical_align(&style, above + below)
+                            match vertical_align(&style, above + below) {
+                                // `middle` is half the PARENT's x-height above its baseline.
+                                Align::Middle(_) => {
+                                    let parent_size = ctx
+                                        .parent(*style_node)
+                                        .map_or(style.font_size(), |p| ctx.style(p).font_size());
+                                    Align::Middle(parent_size * 0.25)
+                                }
+                                other => other,
+                            }
                         }
                         _ => Align::Baseline(0.0),
                     };
@@ -2690,6 +2712,26 @@ mod tests {
     }
 
     #[test]
+    fn a_small_middle_aligned_span_is_centred_on_its_parents_x_height() {
+        // lobste.rs's tag pills: 10.56px text with `vertical-align: middle` in a 16px line with
+        // `line-height: 23.2px`. The pill's middle sits half the *parent's* x-height above the
+        // baseline, so the line grows by under 2px (24.97 vs 23.2 in Safari), not by 4.
+        let f = body(
+            "<!DOCTYPE html><div><span>x</span><a>tag</a></div>",
+            "div { line-height: 23.2px } a { font-size: 10.56px; vertical-align: middle; padding-bottom: 1px }",
+            600.0,
+        );
+        fn first_line(f: &Fragment) -> Option<f64> {
+            if matches!(f.kind, FragmentKind::Line) {
+                return Some(f.height);
+            }
+            f.children.iter().find_map(first_line)
+        }
+        let height = first_line(&f).expect("a line");
+        assert!((23.2..=25.2).contains(&height), "line height {height}");
+    }
+
+    #[test]
     fn an_inline_flex_container_sits_on_its_first_items_baseline() {
         // Wikipedia's menu button: a 32px inline-flex label whose only item is a 20px icon,
         // centred. With no text in it the item's baseline is its bottom edge, which is 6px above
@@ -2707,6 +2749,51 @@ mod tests {
         }
         let nav = find_nav(&f).expect("the nav");
         assert!((nav.height - 32.0).abs() < 0.6, "nav height {}", nav.height);
+    }
+
+    #[test]
+    fn a_select_is_as_tall_as_its_line_height_plus_padding_and_border() {
+        // rust-lang.org: 15px text, `line-height: 1.15`, 2px padding, 1px border: 23.25px.
+        let f = body(
+            "<select><option>English</option></select>",
+            "select { font-size: 15px; line-height: 1.15; padding: 2px 6px; border: 1px solid #000; box-sizing: border-box }",
+            600.0,
+        );
+        fn control_height(f: &Fragment) -> Option<f64> {
+            if matches!(f.kind, FragmentKind::NativeControl { .. }) {
+                return Some(f.height);
+            }
+            f.children.iter().find_map(control_height)
+        }
+        let h = control_height(&f).expect("the select's box");
+        assert!((h - 23.25).abs() < 0.01, "height {h}");
+    }
+
+    #[test]
+    fn an_inline_block_sits_on_the_baseline_of_its_last_line() {
+        // rust-lang.org's "Why Rust?" header: an inline-block holding a heading and an empty
+        // positioned bar. Its baseline is the heading's, so the line is as tall as the header.
+        let f = body(
+            "<!DOCTYPE html><div><header><h2>Why</h2><div class=bar></div></header></div>",
+            "div { line-height: 28.8px; font-size: 18px } header { display: inline-block; padding-bottom: 12px } \
+             h2 { margin: 10px 0; line-height: 25px; position: relative } .bar { position: relative; height: 12px }",
+            600.0,
+        );
+        let header = &f.children[0].children[0].children[0];
+        let line = &f.children[0];
+        assert!((line.height - header.height).abs() < 0.5, "line {} header {}", line.height, header.height);
+    }
+
+    #[test]
+    fn a_select_sits_on_the_baseline_of_its_text() {
+        // rust-lang.org's language menu: a 23px select in a 28.8px-line div. Its text baseline,
+        // not its bottom edge, meets the line's baseline, so the line is 29px, not 32.
+        let f = body(
+            "<!DOCTYPE html><div><select><option>English</option></select></div>",
+            "div { line-height: 28.8px } select { font-size: 15px; line-height: 1.15; padding: 2px 6px; border: 1px solid #000; box-sizing: border-box }",
+            600.0,
+        );
+        assert!(f.children[0].height < 30.5, "line height {}", f.children[0].height);
     }
 
     #[test]

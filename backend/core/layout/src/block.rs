@@ -1068,6 +1068,13 @@ fn layout_block_level_uncached(
     }
 
     let font_size = style.font_size();
+    // One row of a drop-down or list box: the control's `line-height`, else its font's normal.
+    let control_row = style
+        .style
+        .and_then(|s| s.line_height.as_ref())
+        .and_then(|line_height| line_height_for(&style, line_height))
+        .or_else(|| blueice_font::normal_line_height_in(font_size, style.web_face()))
+        .unwrap_or_else(|| default_line_height(font_size).max(20.0));
     if let Some(crate::NativeForm::SelectList {
         options,
         first,
@@ -1075,7 +1082,7 @@ fn layout_block_level_uncached(
         ..
     }) = &mut form
     {
-        *row_height = default_line_height(font_size).max(20.0);
+        *row_height = control_row;
         *first = options
             .iter()
             .position(|option| option.selected)
@@ -1084,7 +1091,7 @@ fn layout_block_level_uncached(
         content_flow_height =
             *row_height * crate::select_display_size(ctx.doc, node).min(1000) as f64;
     } else if matches!(form, Some(crate::NativeForm::Select(_))) {
-        content_flow_height = default_line_height(font_size).max(20.0);
+        content_flow_height = control_row;
     }
     let option_placeholder = |node: NodeId| Fragment {
         node: Some(node),
@@ -1379,6 +1386,7 @@ fn layout_abs(
         (None, None) => pending.y + mt,
     };
     fragment.positioned = true;
+    fragment.out_of_flow = true;
     fragment.fixed = style.position() == Position::Fixed;
     fragment.z_index = style.z_index();
     // An abspos box's own descendants escape only if they are fixed: what is still pending

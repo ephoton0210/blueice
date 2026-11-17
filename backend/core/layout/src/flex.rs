@@ -114,6 +114,16 @@ impl Item {
             + self.margin_main(row, false).unwrap_or(0.0)
     }
 
+    /// The padding and border along the main axis.
+    fn pb_main(&self, row: bool) -> f64 {
+        if row { self.pb_h } else { self.pb_v }
+    }
+
+    /// `flex-shrink` scaled by the inner (content-box) flex base size, as the spec asks.
+    fn scaled_shrink(&self, row: bool) -> f64 {
+        self.shrink * (self.base - self.pb_main(row)).max(0.0)
+    }
+
     fn outer_cross(&self, row: bool) -> f64 {
         self.cross
             + self.margin_cross(row, true).unwrap_or(0.0)
@@ -638,11 +648,11 @@ pub(crate) fn layout_flex(ctx: &Ctx<'_>, container: NodeId, input: &FlexInput) -
                         .iter()
                         .enumerate()
                         .filter(|(slot, _)| !frozen[*slot])
-                        .map(|(_, &i)| items[i].shrink * items[i].base)
+                        .map(|(_, &i)| items[i].scaled_shrink(row))
                         .sum();
                     for (slot, &i) in line.iter().enumerate() {
                         if !frozen[slot] && scaled_sum > 0.0 {
-                            let share = items[i].shrink * items[i].base / scaled_sum;
+                            let share = items[i].scaled_shrink(row) / scaled_sum;
                             items[i].used = items[i].base + free * share;
                         }
                     }
@@ -929,7 +939,16 @@ pub(crate) fn layout_flex(ctx: &Ctx<'_>, container: NodeId, input: &FlexInput) -
     // ---- fragments ----
     let mut natural_cross = 0.0f64;
     let mut max_bottom = 0.0f64;
-    for item in items {
+    // Measuring a column for its content width: an item that fills the (stand-in) width is as wide
+    // as its own content wants, not as the million pixels it was stretched to.
+    let natural_widths: Vec<Option<f64>> = items
+        .iter()
+        .map(|it| {
+            (!row && content_width >= UNBOUNDED / 2.0 && !it.cross_definite)
+                .then(|| helper.content_widths(it).1)
+        })
+        .collect();
+    for (index, item) in items.into_iter().enumerate() {
         let mut fragment = item.fragment;
         let (x, y) = if row {
             (item.main_pos, item.cross_pos)
@@ -940,7 +959,9 @@ pub(crate) fn layout_flex(ctx: &Ctx<'_>, container: NodeId, input: &FlexInput) -
         fragment.y = y;
         // For a column, the widest item's margin box, wherever `align-items` puts it.
         natural_cross = natural_cross.max(
-            item.margin[3].unwrap_or(0.0) + fragment.width + item.margin[1].unwrap_or(0.0),
+            item.margin[3].unwrap_or(0.0)
+                + natural_widths[index].unwrap_or(fragment.width)
+                + item.margin[1].unwrap_or(0.0),
         );
         max_bottom = max_bottom.max(y + fragment.height + item.margin[2].unwrap_or(0.0));
         for p in item.pending {
@@ -1061,6 +1082,44 @@ mod tests {
         );
         // 100px over; a and b shrink 3:1 -> 75 and 25.
         assert_eq!(ws(&f), vec![225.0, 75.0, 100.0]);
+    }
+
+    #[test]
+    fn border_box_items_of_full_width_shrink_by_their_content_box_sizes() {
+        // rust-lang.org's four columns: `width: 100%` with `box-sizing: border-box`, the last
+        // three with 24px of left padding, in a 1128px row. Safari: 268, 286, 286, 287 wide.
+        let f = flex(
+            "<div class=f><i class=a>word</i><i class=b>word</i><i class=b>word</i><i class=b>word</i></div>",
+            &css("i{width:100%;box-sizing:border-box;flex:0 1 auto} .b{padding-left:24px}"),
+            1128.0,
+        );
+        let w = ws(&f);
+        assert!((w[0] - 268.2).abs() < 0.5 && (w[1] - 286.6).abs() < 0.5, "{w:?}");
+    }
+
+    #[test]
+    fn an_item_over_its_max_width_after_shrinking_is_clamped_and_the_rest_take_what_is_left() {
+        // rust-lang.org's two 50% columns: bases 800 and 700 in 1128px with a 24px margin; the
+        // first shrinks to 589, over its `max-width: 50%`, so it is held at 564 and the second
+        // gets 1128 - 24 - 564 = 540.
+        let f = flex(
+            "<div class=f><i class=a></i><i class=b></i></div>",
+            &css(".a{width:800px;margin-right:24px} .b{width:700px} i{max-width:50%}"),
+            1128.0,
+        );
+        assert_eq!(ws(&f), vec![564.0, 540.0]);
+    }
+
+    #[test]
+    fn column_flex_items_are_as_wide_as_their_longest_unwrapped_line_before_shrinking() {
+        let long = "word ".repeat(100);
+        let short = "word ".repeat(80);
+        let f = flex(
+            &format!("<div class=f><div class=a><p>{long}</p></div><div class=b><p>{short}</p></div></div>"),
+            &css(".a,.b{display:flex;flex-direction:column;max-width:50%} .a{margin-right:24px}"),
+            1128.0,
+        );
+        assert_eq!(ws(&f), vec![564.0, 540.0]);
     }
 
     #[test]
