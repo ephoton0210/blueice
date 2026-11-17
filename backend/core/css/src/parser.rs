@@ -1303,6 +1303,16 @@ mod tests {
     use crate::value::{Color, Length};
 
     #[test]
+    fn a_data_url_with_escaped_quotes_and_markup_is_one_url() {
+        // Wikipedia's icons: `url("data:image/svg+xml;utf8,<svg xmlns=\"...\" ...>")`.
+        let css = r#".a { mask-image: url("data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\"><path d=\"m16.7 8z\"/></svg>"); background-color: red }"#;
+        let sheet = crate::parse(css);
+        let decls: Vec<String> = sheet.rules[0].declarations.iter().map(|d| d.property.clone()).collect();
+        assert!(decls.contains(&"mask-image".to_string()), "{decls:?}");
+        assert!(decls.contains(&"background-color".to_string()), "{decls:?}");
+    }
+
+    #[test]
     fn mask_shorthand_and_webkit_prefix_become_mask_longhands() {
         let names = |property: &str, value: &str| -> Vec<String> {
             expand_property(property, &tokenize(value)).into_iter().map(|(n, _)| n).collect()

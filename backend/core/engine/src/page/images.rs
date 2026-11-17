@@ -44,7 +44,43 @@ fn tinted(mask: &blueice_image::RasterImage, tint: [u8; 4]) -> blueice_image::Ra
 }
 
 impl Page {
+    /// Pictures that styles name as `data:` URLs need no fetching, so those the page's load never
+    /// asked for (styles that arrived later: a script's, ResourceLoader's) are decoded when they
+    /// are first wanted.
+    fn decode_data_urls_in_styles(&mut self) {
+        const MAX_DATA_PICTURES: usize = 256;
+        let mut wanted: Vec<String> = Vec::new();
+        for style in self.styles.values() {
+            for property in ["background-image", "mask-image"] {
+                if let Some(Value::Unparsed(tokens)) = style.other.get(property) {
+                    for layer in blueice_css::background_layers(tokens) {
+                        if let Some(url) = blueice_css::url_of(layer) {
+                            let url = url.trim();
+                            if url.starts_with("data:") && !self.linked_images.contains_key(url) {
+                                wanted.push(url.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        wanted.sort();
+        wanted.dedup();
+        for url in wanted {
+            if self.linked_images.len() >= MAX_DATA_PICTURES {
+                break;
+            }
+            let loaded = crate::images::data_url_bytes(&url)
+                .as_deref()
+                .and_then(crate::images::decode_loaded);
+            if let Some(loaded) = loaded {
+                self.linked_images.insert(url, Arc::new(loaded));
+            }
+        }
+    }
+
     pub(super) fn rebuild_images(&mut self) {
+        self.decode_data_urls_in_styles();
         let mut images = blueice_paint::ImageMap::default();
         let mut sizes: Vec<(NodeId, (f64, f64))> = Vec::new();
         let mut masked: Vec<NodeId> = Vec::new();
@@ -404,6 +440,21 @@ mod tests {
         let centred = "mask-image: url(m.svg); mask-repeat: no-repeat; mask-position: center";
         assert_eq!(pixel(centred, 15, 15), blue);
         assert_eq!(pixel(centred, 3, 3), white);
+    }
+
+    #[test]
+    fn a_mask_given_as_an_inline_data_url_is_drawn_even_when_nothing_fetched_it() {
+        // ResourceLoader's styles arrive after the page loaded: nothing fetched their icons, but a
+        // `data:` URL needs no fetching.
+        let mut page = Page::new(400.0, 300.0);
+        let url = format!("data:image/svg+xml;utf8,{RED_SVG}");
+        page.load_html_str(
+            &format!("<style>body{{margin:0}} div{{width:30px;height:30px;background:rgb(0,0,255);mask-image:url(\"{url}\");mask-repeat:no-repeat}}</style><div></div>"),
+            None,
+        );
+        let pixel = |x, y| page.render_visible().get_pixel(x, y);
+        assert_eq!(pixel(3, 3), [0, 0, 255, 255], "inside the picture the colour shows");
+        assert_eq!(pixel(25, 25), [255, 255, 255, 255], "outside it nothing does");
     }
 
     #[test]

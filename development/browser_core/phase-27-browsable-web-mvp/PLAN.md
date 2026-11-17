@@ -1239,3 +1239,17 @@ system's PingFang, custom property names are case-sensitive (`--Mhs7de`; Google'
 was lost), `CSSStyleRule`/`CSSRule`/`CSSStyleSheet` exist (Google's script threw a ReferenceError
 and never finished), and push buttons are `border-box` as in Safari. Google serves different HTML
 and CSS to different clients, so Safari's Google and BlueIce's Google are never the same page.
+
+### Icons from late styles, and system-ui (2026-11-17)
+
+The solid squares were masks whose picture nobody had decoded: Wikipedia's icon styles arrive
+after the page loaded (ResourceLoader inserts them) with `mask-image: url("data:image/svg+xml;...")`,
+and the page only decodes the pictures its load fetched. `data:` URLs are now decoded the first
+time a style wants them (test: a mask given as an inline data URL), and the TOC chevrons are
+drawn. A regression of mine is fixed too: `system-ui` text drew nothing, because this macOS's
+San Francisco keeps its outlines in a table no font library here reads (ttf-parser and fontdue
+both return empty glyphs), so every control's text vanished. Helvetica Neue stands in for it now.
+Because San Francisco cannot be drawn, `system-ui` text is a little narrower or wider than
+Safari's: a font-technology limit, recorded, not an interpretation difference.
+Still open on Wikipedia: the blue square beside "60 languages", the blue dot under the bookmark,
+and the default push button (Safari draws a native rounded control; BlueIce a flat box).

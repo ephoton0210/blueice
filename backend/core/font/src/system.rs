@@ -244,12 +244,39 @@ fn faces_of(name: &str) -> &'static [Loaded] {
     faces
 }
 
+/// Whether the system's San Francisco can be drawn: its `h` has an outline.
+fn system_font_draws() -> bool {
+    static DRAWS: OnceLock<bool> = OnceLock::new();
+    *DRAWS.get_or_init(|| {
+        struct Nothing;
+        impl ttf_parser::OutlineBuilder for Nothing {
+            fn move_to(&mut self, _: f32, _: f32) {}
+            fn line_to(&mut self, _: f32, _: f32) {}
+            fn quad_to(&mut self, _: f32, _: f32, _: f32, _: f32) {}
+            fn curve_to(&mut self, _: f32, _: f32, _: f32, _: f32, _: f32, _: f32) {}
+            fn close(&mut self) {}
+        }
+        let Ok(data) = std::fs::read("/System/Library/Fonts/SFNS.ttf") else {
+            return false;
+        };
+        ttf_parser::Face::parse(&data, 0)
+            .ok()
+            .and_then(|face| face.glyph_index('h').and_then(|id| face.outline_glyph(id, &mut Nothing)))
+            .is_some()
+    })
+}
+
 /// The face of the named family that best matches a weight and slant: the same slant first, then
 /// the nearest weight (a heavier one for a bold request, as CSS asks).
 fn face_of(name: &str, weight: u16, italic: bool, size_tenths: u16) -> Option<WebFontId> {
     let faces = faces_of(name);
     // The system's own face is one variable font whose weight and optical size are asked for.
     if matches!(name, "system-ui" | "-apple-system" | "blinkmacsystemfont" | "ui-sans-serif" | "san francisco") {
+        // Recent macOS keeps the outlines of San Francisco in a table no font library here reads
+        // (its glyphs come out empty), so Helvetica Neue stands in for it.
+        if !system_font_draws() {
+            return face_of("helvetica neue", weight, italic, size_tenths);
+        }
         let (face, _) = faces.iter().filter(|(f, _)| f.italic == italic).chain(faces.iter()).next().map(|f| (&f.0, &f.1))?;
         let id = web::register_system(&face.sfnt)?;
         let variation = crate::Variation {
@@ -397,6 +424,21 @@ mod tests {
     }
 
     #[test]
+    fn system_ui_text_has_glyphs_to_draw() {
+        // macOS's San Francisco may have no outlines a font library can read; whatever stands in
+        // for `system-ui` must draw, or every control's text disappears.
+        if !std::path::Path::new("/System/Library/Fonts/Helvetica.ttc").exists() {
+            return; // not macOS
+        }
+        set_enabled(true);
+        let id = face_for(Some("system-ui"), 400, false, 130, None);
+        set_enabled(false);
+        let glyphs = web::get(id.expect("a face")).expect("glyphs");
+        let (metrics, bitmap) = glyphs.rasterize('h', 16.0);
+        assert!(metrics.width > 0 && bitmap.iter().any(|&b| b > 0), "{metrics:?}");
+    }
+
+    #[test]
     fn a_chinese_pages_sans_serif_is_pingfang_with_its_latin_letters() {
         // Safari: `sans-serif` on a zh-TW page is PingFang TC; "Google" is 46.28px at 14px there.
         if pingfang("PingFang TC").is_none() {
@@ -424,3 +466,5 @@ mod tests {
         }
     }
 }
+
+

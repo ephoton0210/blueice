@@ -269,7 +269,19 @@ impl VarInstance {
     /// row above the baseline, as `fontdue` reports.
     fn pixel_box(&self, c: char, px: f32) -> Option<(i32, i32, usize, usize)> {
         let id = self.face.glyph_index(c)?;
-        let b = self.face.glyph_bounding_box(id)?;
+        // A variable face's own bounding box is missing for some fonts (macOS's system font):
+        // the outline's own extent then stands in.
+        let b = self.face.glyph_bounding_box(id).or_else(|| {
+            struct Nothing;
+            impl ttf_parser::OutlineBuilder for Nothing {
+                fn move_to(&mut self, _: f32, _: f32) {}
+                fn line_to(&mut self, _: f32, _: f32) {}
+                fn quad_to(&mut self, _: f32, _: f32, _: f32, _: f32) {}
+                fn curve_to(&mut self, _: f32, _: f32, _: f32, _: f32, _: f32, _: f32) {}
+                fn close(&mut self) {}
+            }
+            self.face.outline_glyph(id, &mut Nothing)
+        })?;
         let s = self.scale(px);
         let (x0, x1) = ((f32::from(b.x_min) * s).floor() as i32, (f32::from(b.x_max) * s).ceil() as i32);
         let (y0, y1) = ((f32::from(b.y_min) * s).floor() as i32, (f32::from(b.y_max) * s).ceil() as i32);

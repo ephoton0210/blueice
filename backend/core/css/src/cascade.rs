@@ -1082,6 +1082,24 @@ mod tests {
     }
 
     #[test]
+    fn a_supports_mask_image_block_overrides_the_base_mask() {
+        // Wikipedia's icons: `.vector-icon { mask-image: <1px png> }` at screen, then
+        // `@supports ((-webkit-mask-image: none) or (mask-image: none)) { .icon { mask-image: <svg> } }`.
+        let mut doc = Document::new();
+        let root = doc.root();
+        let icon = elem(&mut doc, root, "span", &[("class", "vector-icon icon")]);
+        let author = parse(
+            "@media screen { .vector-icon { mask-image: url(base.png) } } \
+             @supports not ((-webkit-mask-image: none) or (mask-image: none)) { .icon { background-image: url(plain.svg) } } \
+             @supports ((-webkit-mask-image: none) or (mask-image: none)) { .icon { mask-image: url(real.svg); background-color: red } }",
+        );
+        let styles = cascade(&doc, &[(Origin::Author, &author)]);
+        let mask = format!("{:?}", styles[&icon].other.get("mask-image"));
+        assert!(mask.contains("real.svg"), "{mask}");
+        assert!(!styles[&icon].other.contains_key("background-image") || format!("{:?}", styles[&icon].other.get("background-image")).contains("none"));
+    }
+
+    #[test]
     fn push_buttons_are_border_box_and_text_fields_content_box() {
         // Safari: `height: 30px` on a submit button is 30px tall in all; on a text field it is the
         // content (padding and border come on top).
