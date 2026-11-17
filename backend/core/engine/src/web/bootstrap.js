@@ -2444,9 +2444,62 @@
   }
   reflect(HTMLLinkElement.prototype, [['href', 'href', 'url'], ['rel', 'rel'], ['type', 'type'], ['media', 'media'], ['as', 'as'], ['crossOrigin', 'crossorigin']]);
   register(HTMLLinkElement, 'link');
+  // The top-level rules of a stylesheet's text, each as written (comments dropped).
+  const splitCssRules = (text) => {
+    const source = String(text).replace(/\/\*[\s\S]*?\*\//g, '');
+    const rules = [];
+    let depth = 0;
+    let start = 0;
+    let quote = '';
+    for (let i = 0; i < source.length; i++) {
+      const c = source[i];
+      if (quote) {
+        if (c === '\\') i++;
+        else if (c === quote) quote = '';
+      } else if (c === '"' || c === "'") quote = c;
+      else if (c === '{') depth++;
+      else if (c === '}') {
+        depth--;
+        if (depth === 0) {
+          rules.push(source.slice(start, i + 1).trim());
+          start = i + 1;
+        }
+      } else if (c === ';' && depth === 0) {
+        rules.push(source.slice(start, i + 1).trim());
+        start = i + 1;
+      }
+    }
+    return rules.filter((r) => r);
+  };
   class HTMLStyleElement extends HTMLElement {
     get sheet() {
-      return { cssRules: [], insertRule() {}, deleteRule() {} };
+      const owner = this;
+      const rules = () =>
+        splitCssRules(owner.textContent).map((cssText) => {
+          const brace = cssText.indexOf('{');
+          return { cssText, selectorText: brace < 0 ? cssText : cssText.slice(0, brace).trim() };
+        });
+      return {
+        ownerNode: owner,
+        get cssRules() {
+          return rules();
+        },
+        get rules() {
+          return rules();
+        },
+        insertRule(rule, index) {
+          const all = splitCssRules(owner.textContent);
+          const at = index === undefined ? 0 : Math.min(index, all.length);
+          all.splice(at, 0, String(rule));
+          owner.textContent = all.join('\n');
+          return at;
+        },
+        deleteRule(index) {
+          const all = splitCssRules(owner.textContent);
+          all.splice(index, 1);
+          owner.textContent = all.join('\n');
+        },
+      };
     }
   }
   register(HTMLStyleElement, 'style');
@@ -4028,7 +4081,9 @@
       return this.querySelectorAll('*');
     }
     get styleSheets() {
-      return [];
+      return Array.from(this.querySelectorAll('style'))
+        .map((style) => style.sheet)
+        .filter((sheet) => sheet);
     }
     get fonts() {
       return fontFaceSet;

@@ -251,6 +251,9 @@ pub(crate) fn layout_flow(
     // through to this box's own top margin.
     let mut top_open = true;
     let mut inline_run: Vec<NodeId> = Vec::new();
+    // The top and text extent of the last line laid out, while a float that follows it may still
+    // sit beside it.
+    let mut last_line: Option<(f64, f64)> = None;
 
     let mut no_lines_yet = true;
     // Every float in force here: inherited ones, then this flow's own.
@@ -286,6 +289,8 @@ pub(crate) fn layout_flow(
                     flow.extent = flow.extent.max(run.extent);
                     for mut line in run.lines {
                         line.y += cursor_y;
+                        let text_right = line.children.iter().map(|c| c.x + c.width).fold(0.0f64, f64::max);
+                        last_line = Some((line.y, text_right));
                         flow.children.push(line);
                     }
                     cursor_y += run.height;
@@ -306,6 +311,7 @@ pub(crate) fn layout_flow(
             }
             Item::Float(child) => {
                 flush_inline!();
+                let beside_line = last_line.take();
                 let constraint = Constraint {
                     cb_width: content_width,
                     cb_height: content_height,
@@ -336,6 +342,13 @@ pub(crate) fn layout_flow(
                 let (w, h) = (ml + fragment.width + mr, mt + fragment.height + mb);
                 let earliest = all_floats.iter().map(|f| f.top).fold(0.0, f64::max);
                 let mut top = (cursor_y + pending.value()).max(earliest);
+                // A right float after inline content that leaves it room starts at the top of
+                // that content's line (CSS 2.1 9.5.1), not below it.
+                if let (crate::ctx::Side::Right, Some((line_top, text_right))) = (side, beside_line) {
+                    if text_right + w <= content_width + 0.01 {
+                        top = line_top.max(earliest);
+                    }
+                }
                 if style.clear() != crate::ctx::Clear::None {
                     top = top.max(float::clear_y(&all_floats, style.clear()));
                 }
@@ -365,6 +378,7 @@ pub(crate) fn layout_flow(
             }
             Item::Block(child) => {
                 flush_inline!();
+                last_line = None;
                 let constraint = Constraint {
                     cb_width: content_width,
                     cb_height: content_height,
@@ -474,6 +488,21 @@ pub(crate) fn layout_flow(
         }
     }
     flush_inline!();
+
+    // Measuring for content width: a line and the floats beside it ask for room side by side,
+    // so a line's text counts together with the floats that share its height.
+    if content_width >= crate::intrinsic::UNBOUNDED / 2.0 && !flow.floats.is_empty() {
+        for line in flow.children.iter().filter(|c| matches!(c.kind, FragmentKind::Line)) {
+            let text = line.children.iter().map(|c| c.x + c.width).fold(0.0f64, f64::max);
+            let beside: f64 = flow
+                .floats
+                .iter()
+                .filter(|f| f.top < line.y + line.height && f.bottom > line.y)
+                .map(|f| f.right - f.left)
+                .sum();
+            flow.extent = flow.extent.max(text + beside);
+        }
+    }
 
     if collapse_bottom && !top_open {
         flow.bottom_margin = pending;

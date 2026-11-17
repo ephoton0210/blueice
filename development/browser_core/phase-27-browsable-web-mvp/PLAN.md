@@ -1189,3 +1189,15 @@ Still open and not interpretation: python.org's header is 15px too tall and its 
 (input 187 vs 224 wide: `font-size` on `.search-field`); Wikipedia's `mw-collapsible` navboxes are
 expanded because the ResourceLoader modules that collapse them do not run (about 475px of the
 remaining height); solid-square icons; multi-layer backgrounds; lobste.rs tag pills 2px narrow.
+
+### Form controls, CSSOM, floats (2026-11-16, later)
+
+Controls match Safari's measured defaults (macOS): 11px `system-ui`, content-box, 2px border and
+`2px 5px` padding on a text field (155.9 x 21 at 20 characters; `size`, `cols`, `rows` set the
+content box at 0.6357em per character; tested against Safari). `style.sheet.cssRules`,
+`insertRule`, `deleteRule` and `document.styleSheets` now exist (Modernizr's `fontface` test), and
+a realm lays out its own document for a box the page never laid out (an element a script just
+made: Modernizr's `generatedcontent`), so python.org gets Safari's `fontface generatedcontent`
+classes and its search icon. A right float after inline content starts at that line's top, and a
+shrink-to-fit box counts a line's text together with the floats beside it. python.org header: 557px
+vs Safari 562px; page 2523 vs 2701px.

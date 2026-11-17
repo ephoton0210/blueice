@@ -114,20 +114,20 @@ text 32.2,116.8 "•" #000000 16.0 normal normal
 text 48.0,116.8 "one" #000000 16.0 normal normal
 text 32.2,136.0 "•" #000000 16.0 normal normal
 text 48.0,136.0 "two" #000000 16.0 normal normal
-rect 8.0,170.9 304.0x59.3 #eeeeee
+rect 8.0,170.9 304.0x31.9 #eeeeee
 border 8.0,170.9 304.0x1.0 #333333
-border 311.0,170.9 1.0x59.3 #333333
-border 8.0,229.1 304.0x1.0 #333333
-border 8.0,170.9 1.0x59.3 #333333
+border 311.0,170.9 1.0x31.9 #333333
+border 8.0,201.8 304.0x1.0 #333333
+border 8.0,170.9 1.0x31.9 #333333
 text 13.0,176.2 "Name" #000000 16.0 normal normal
-rect 13.0,195.1 266.7x26.7 #ffffff
-border 13.0,195.1 266.7x1.0 #767676
-border 278.7,195.1 1.0x26.7 #767676
-border 13.0,220.7 266.7x1.0 #767676
-border 13.0,195.1 1.0x26.7 #767676
-clip 18.0,198.1 256.7x20.7
-text 18.0,198.3 "" #000000 13.3 normal normal
-text 18.0,198.3 "Your name" #757575 13.3 normal normal
+rect 65.3,176.6 155.8x21.2 #ffffff
+border 65.3,176.6 155.8x2.0 #d4d4d4
+border 219.1,176.6 2.0x21.2 #d4d4d4
+border 65.3,195.8 155.8x2.0 #d4d4d4
+border 65.3,176.6 2.0x21.2 #d4d4d4
+clip 72.3,180.6 141.8x13.2
+text 72.3,180.8 "" #000000 11.0 normal normal
+text 72.3,180.8 "Your name" #757575 11.0 normal normal
 endclip
-text 284.8,209.4 "Go" #000000 13.3 normal normal
+text 226.2,180.8 "Go" #000000 11.0 normal normal
 

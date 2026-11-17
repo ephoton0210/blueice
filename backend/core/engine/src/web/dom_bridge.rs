@@ -103,7 +103,11 @@ pub(crate) struct FreshStyles {
     revision: Option<u64>,
     /// The author rules `styles` was cascaded with, and how many style/link elements made them.
     author: Vec<blueice_css::Rule>,
-    sheet_elements: usize,
+    sheet_signature: u64,
+    /// Boxes of the document as `styles` has it, laid out when a script asks about a box the page
+    /// has never laid out (an element it just made), and the revision they are for.
+    rects: HashMap<NodeId, (f64, f64, f64, f64)>,
+    rects_revision: Option<u64>,
     /// Whether `styles` can be updated from the journal (it is a cascade of this turn's start).
     valid: bool,
     /// Time this turn has spent restyling: a loop that changes and asks, changes and asks, must
@@ -111,18 +115,50 @@ pub(crate) struct FreshStyles {
     spent: std::time::Duration,
 }
 
-fn is_sheet_element(doc: &Document, node: NodeId) -> bool {
-    matches!(doc.data(node), NodeData::Element { tag_name, .. } if tag_name == "style" || tag_name == "link")
+fn collect_fragment_rects(
+    fragment: &blueice_layout::Fragment,
+    ox: f64,
+    oy: f64,
+    out: &mut HashMap<NodeId, (f64, f64, f64, f64)>,
+) {
+    let (x, y) = (ox + fragment.x, oy + fragment.y);
+    if let Some(node) = fragment.node {
+        out.entry(node).or_insert((x, y, fragment.width, fragment.height));
+    }
+    for child in &fragment.children {
+        collect_fragment_rects(child, x, y, out);
+    }
 }
 
-fn count_sheet_elements(doc: &Document) -> usize {
-    let mut count = 0;
+
+/// What the author stylesheets are made of: every style element's text and every link's
+/// address, in document order, hashed. Equal signatures mean the same rules.
+fn sheet_signature(doc: &Document) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
     let mut stack = vec![doc.root()];
     while let Some(node) = stack.pop() {
-        count += usize::from(is_sheet_element(doc, node));
-        stack.extend(doc.children(node));
+        if let NodeData::Element { tag_name, attributes } = doc.data(node) {
+            if tag_name == "style" {
+                for child in doc.children(node) {
+                    if let NodeData::Text { data: text } = doc.data(child) {
+                        text.hash(&mut hasher);
+                    }
+                }
+                1u8.hash(&mut hasher);
+            } else if tag_name == "link" {
+                for (name, value) in attributes {
+                    if matches!(name.as_str(), "href" | "rel" | "media") {
+                        value.hash(&mut hasher);
+                    }
+                }
+                2u8.hash(&mut hasher);
+            }
+        }
+        let kids: Vec<NodeId> = doc.children(node).collect();
+        stack.extend(kids.into_iter().rev());
     }
-    count
+    hasher.finish()
 }
 
 /// Time one turn may spend restyling for its scripts' questions.
@@ -898,7 +934,8 @@ impl DomState {
                 if self.hidden_now(id) == Some(true) {
                     return Ok("[0,0,0,0]".into());
                 }
-                match self.rects.get(&id).copied() {
+                let known = self.rects.get(&id).copied().or_else(|| self.fresh_rect(id));
+                match known {
                     Some((x, y, w, h)) => format!("[{x},{y},{w},{h}]").into(),
                     None => "[0,0,0,0]".into(),
                 }
@@ -1227,7 +1264,9 @@ impl DomState {
             revision: None,
             spent: std::time::Duration::ZERO,
             author: Vec::new(),
-            sheet_elements: 0,
+            rects: HashMap::new(),
+            rects_revision: None,
+            sheet_signature: 0,
             valid: false,
         });
     }
@@ -1238,6 +1277,7 @@ impl DomState {
         if let Some(fresh) = &mut self.fresh {
             fresh.base_revision = revision;
             fresh.revision = None;
+            fresh.rects_revision = None;
             fresh.valid = false;
             fresh.spent = std::time::Duration::ZERO;
         }
@@ -1257,14 +1297,9 @@ impl DomState {
                 return None;
             }
             let started = std::time::Instant::now();
-            let sheet_elements = count_sheet_elements(&self.doc);
+            let signature = sheet_signature(&self.doc);
             let changes = self.doc.pending_changes();
-            let sheets_moved = sheet_elements != fresh.sheet_elements
-                || changes.touched.keys().any(|&n| {
-                    self.doc.contains(n)
-                        && (is_sheet_element(&self.doc, n)
-                            || self.doc.parent(n).is_some_and(|p| is_sheet_element(&self.doc, p)))
-                });
+            let sheets_moved = signature != fresh.sheet_signature;
             let done = fresh.valid
                 && !sheets_moved
                 && blueice_css::cascade_incremental_report(
@@ -1286,13 +1321,36 @@ impl DomState {
                     width,
                     height,
                 );
-                fresh.sheet_elements = sheet_elements;
+                fresh.sheet_signature = signature;
                 fresh.valid = true;
             }
             fresh.revision = Some(revision);
             fresh.spent += started.elapsed();
         }
         Some(&fresh.styles)
+    }
+
+    /// The box of a node the page has not laid out, from a layout of the realm's own document
+    /// (its images and faces are not known here, so only the shape is right).
+    fn fresh_rect(&mut self, id: NodeId) -> Option<(f64, f64, f64, f64)> {
+        let revision = self.doc.revision();
+        let (width, height) = self.viewport;
+        self.fresh_styles()?;
+        let started = std::time::Instant::now();
+        let fresh = self.fresh.as_mut()?;
+        if fresh.rects_revision != Some(revision) {
+            let fragment = blueice_layout::layout(
+                &self.doc,
+                self.doc.root(),
+                &fresh.styles,
+                blueice_layout::Constraints { available_width: width, viewport_height: height },
+            );
+            fresh.rects.clear();
+            collect_fragment_rects(&fragment, 0.0, 0.0, &mut fresh.rects);
+            fresh.rects_revision = Some(revision);
+            fresh.spent += started.elapsed();
+        }
+        fresh.rects.get(&id).copied()
     }
 
     /// Whether `id`, or something around it, is `display: none` now. `None` when the realm has
@@ -1572,6 +1630,26 @@ mod tests {
         s.begin_turn();
         s.styles = Default::default();
         assert_eq!(s.call("rect", &[n(l)]).unwrap(), text("[0,0,100,20]"), "a new turn starts from the page's own");
+    }
+
+    #[test]
+    fn a_style_swapped_for_another_between_two_questions_restyles_with_the_new_rules() {
+        // Modernizr makes a style, asks, removes it, makes another, asks: the count of style
+        // elements is the same both times, the rules are not.
+        let mut s = state("<div id=d></div>");
+        s.set_linked_sheets(&[]);
+        let d = id_of(s.call("byId", &[text("d")]).unwrap());
+        let body = id_of(s.call("body", &[]).unwrap());
+        let mut with_rule = |s: &mut DomState, rule: &str| {
+            let style = id_of(s.call("createElement", &[text("style")]).unwrap());
+            s.call("setTextContent", &[n(style), text(rule)]).unwrap();
+            s.call("append", &[n(body), n(style), Reply::Null]).unwrap();
+            let shown = s.call("computed", &[n(d), text("display")]).unwrap();
+            s.call("remove", &[n(style)]).unwrap();
+            shown
+        };
+        assert_eq!(with_rule(&mut s, "#d { display: none }"), text("none"));
+        assert_eq!(with_rule(&mut s, "#d { display: inline }"), text("inline"));
     }
 
     #[test]

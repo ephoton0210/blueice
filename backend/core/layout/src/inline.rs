@@ -3558,7 +3558,8 @@ mod tests {
             .filter(|c| matches!(c.kind, FragmentKind::NativeControl { .. }))
             .collect();
         assert_eq!(buttons.len(), 2);
-        let search = word_width("Search");
+        // Controls are drawn at 11px, not the page's 16.
+        let search = word_width("Search") * 11.0 / 16.0;
         assert!(
             buttons[0].width > search && buttons[0].width < search + 40.0,
             "label plus padding and border, not the 20em of a text field: {}",
@@ -3576,6 +3577,7 @@ mod tests {
             .iter()
             .find(|c| matches!(c.kind, FragmentKind::NativeControl { .. }))
             .unwrap();
-        assert_eq!(button.width, 200.0);
+        // (A control is content-box, as in Safari: 200px of content plus its padding and border.)
+        assert!((200.0..=220.0).contains(&button.width), "{}", button.width);
     }
 }

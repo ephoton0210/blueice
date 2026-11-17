@@ -406,6 +406,32 @@ mod tests {
     }
 
     #[test]
+    fn a_style_elements_sheet_lists_its_rules_and_takes_new_ones() {
+        // Modernizr's `fontface` test reads `sheet.cssRules[0].cssText` of a style it just made.
+        let mut h = host("<style id=s>@font-face {font-family:\"f\";src:url(\"https://\")} p { color: red }</style><p>x</p>");
+        assert_eq!(
+            log(&mut h, "const s = document.getElementById('s').sheet; console.log(s.cssRules.length, s.cssRules[0].cssText.indexOf('@font-face'), /src/i.test(s.cssRules[0].cssText), s.cssRules[1].selectorText, document.styleSheets.length)"),
+            "[log] 2 0 true p 1"
+        );
+        assert_eq!(
+            log(&mut h, "const t = document.getElementById('s').sheet; t.insertRule('b { margin: 0 }', 0); t.deleteRule(1); console.log(t.cssRules.length, t.cssRules[0].selectorText, t.cssRules[1].selectorText)"),
+            "[log] 2 b p"
+        );
+    }
+
+    #[test]
+    fn an_element_a_script_just_made_has_a_box_for_modernizrs_generated_content_test() {
+        // Modernizr 2.6.2 adds `#m { font: 0/0 a } #m:after { content: ":)"; font: 3px/1 a }` and
+        // an element, and takes `offsetHeight >= 3` to mean generated content works.
+        let mut h = host("<p>x</p>");
+        h.with_state(|s| s.set_linked_sheets(&[]));
+        assert_eq!(
+            log(&mut h, "const m = document.createElement('div'); m.id = 'm'; m.innerHTML += '&shy;<style>#m{font:0/0 a}#m:after{content:\":)\";visibility:hidden;font:3px/1 a}</style>'; document.body.appendChild(m); console.log(m.offsetHeight)"),
+            "[log] 3"
+        );
+    }
+
+    #[test]
     fn query_selectors_wrap_the_same_node_every_time() {
         let mut h = host("<ul><li class=a>1</li><li class=a>2</li></ul>");
         assert_eq!(

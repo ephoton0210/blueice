@@ -371,7 +371,8 @@ fn editing_and_find_geometry_remain_css_coordinates_at_zoom_and_retina_density()
         document_generation: input.document_generation,
         focus_generation: input.focus_generation,
     };
-    assert_eq!(input.focused.unwrap().bounds.width, 100.0);
+    // 100px of content plus the control's own padding and border (a control is content-box).
+    assert_eq!(input.focused.unwrap().bounds.width, 114.0);
     assert!(matches!(
         browser.request(
             1,

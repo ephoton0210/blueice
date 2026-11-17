@@ -833,7 +833,7 @@ button, input, select, textarea {
   display: inline-block;
   /* WebKit's `font: -webkit-small-control`: a form control does not take its parent's font. */
   font-family: system-ui;
-  font-size: 13.3333px;
+  font-size: 11px;
   font-weight: 400;
   font-style: normal;
   line-height: normal;
@@ -844,16 +844,17 @@ button, input, select, textarea {
  * the rest of the page. This is a narrow text-input default, not an attempt
  * to reproduce platform-native form controls. */
 input, textarea, select {
-  box-sizing: border-box;
-  width: 20em;
-  height: 2em;
-  padding: 2px 4px;
-  border: 1px solid #767676;
+  box-sizing: content-box;
+  /* Safari's text field: 20 characters of the control font at 11px is 141.9px of content. */
+  width: 12.894em;
+  height: auto;
+  padding: 2px 5px;
+  border: 2px solid #d4d4d4;
   background-color: #ffffff;
 }
-textarea { height: 6em; }
+textarea { width: 14.27em; height: 2.3636em; padding: 2px 5px; border-width: 1px; }
 /* A drop-down is as wide as its longest option (layout reads the labels) and one line tall, not a text field's size. */
-select { width: auto; height: auto; }
+select { box-sizing: border-box; width: auto; height: auto; padding: 0; border: 1px solid #444444; }
 /* A closed disclosure widget shows only its summary. */
 details:not([open]) > :not(summary) { display: none; }
 /* A push button is as wide as its caption (the layout reads the label), not the width of a

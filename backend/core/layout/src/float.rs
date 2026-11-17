@@ -261,6 +261,19 @@ mod tests {
     }
 
     #[test]
+    fn a_shrink_to_fit_box_is_as_wide_as_its_inline_content_and_the_float_beside_it() {
+        // python.org's header: a floated bar holding a donate button (inline) and a right float
+        // (the search bar). Safari: 75 + 435 wide, not just the float's 435.
+        let f = layout::body(
+            "<div class=c><i class=a>donate button</i><div class=b></div></div>",
+            ".c { float: right } .a { display: inline-block; width: 75px; height: 20px } \
+             .b { float: right; width: 435px; height: 50px }",
+            1000.0,
+        );
+        assert_eq!(f.children[0].width, 510.0);
+    }
+
+    #[test]
     fn a_right_float_takes_the_right_edge() {
         let f = layout::body(
             "<div class=f style='float:right;width:80px'></div><p>x</p>",

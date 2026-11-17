@@ -99,6 +99,26 @@ pub(crate) fn hints(doc: &Document, node: NodeId) -> Vec<Declaration> {
             css.push_str(&format!("padding:{n}px;"));
         }
     }
+    // A text field's `size` (characters) and a text area's `cols`/`rows` give its content box:
+    // the average character is 0.6357em of the control font and a text area keeps a 1.55em
+    // scrollbar, as measured in Safari.
+    if tag == "input" {
+        let textual = !matches!(
+            attr("type").map(|t| t.to_ascii_lowercase()).as_deref(),
+            Some("checkbox" | "radio" | "hidden" | "submit" | "button" | "reset" | "image" | "range" | "color" | "file")
+        );
+        if let (true, Some(n)) = (textual, attr("size").and_then(positive_integer)) {
+            css.push_str(&format!("width:{:.4}em;", f64::from(n) * 0.6357 + 0.18));
+        }
+    }
+    if tag == "textarea" {
+        if let Some(n) = attr("cols").and_then(positive_integer) {
+            css.push_str(&format!("width:{:.4}em;", f64::from(n) * 0.6357 + 1.55));
+        }
+        if let Some(n) = attr("rows").and_then(positive_integer) {
+            css.push_str(&format!("height:{:.4}em;", f64::from(n) * 1.1818));
+        }
+    }
     if tag == "font" {
         if let Some(color) = attr("color").and_then(legacy_color) {
             css.push_str(&format!("color:{color};"));
@@ -115,6 +135,10 @@ pub(crate) fn hints(doc: &Document, node: NodeId) -> Vec<Declaration> {
         return Vec::new();
     }
     parse_declarations(&crate::tokenizer::tokenize(&css))
+}
+
+fn positive_integer(value: &str) -> Option<u32> {
+    value.trim().parse::<u32>().ok().filter(|n| (1..=10_000).contains(n))
 }
 
 /// The value of `name` on the nearest `<table>` above `node`.

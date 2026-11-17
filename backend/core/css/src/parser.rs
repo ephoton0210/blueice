@@ -764,6 +764,8 @@ fn expand_font(tokens: &[Token]) -> Vec<(String, Value)> {
     let tokens = trim_ws(tokens);
     let is_size = |t: &Token| match t {
         Token::Dimension(..) | Token::Percentage(_) => true,
+        // A weight is never below 1, so a bare zero is a size (Modernizr's `font: 0/0 a`).
+        Token::Number(n) => *n == 0.0,
         Token::Ident(i) => matches!(
             i.to_ascii_lowercase().as_str(),
             "xx-small" | "x-small" | "small" | "medium" | "large" | "x-large" | "xx-large" | "xxx-large" | "smaller" | "larger"
