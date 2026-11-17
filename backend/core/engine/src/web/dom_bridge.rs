@@ -1640,7 +1640,7 @@ mod tests {
         s.set_linked_sheets(&[]);
         let d = id_of(s.call("byId", &[text("d")]).unwrap());
         let body = id_of(s.call("body", &[]).unwrap());
-        let mut with_rule = |s: &mut DomState, rule: &str| {
+        let with_rule = |s: &mut DomState, rule: &str| {
             let style = id_of(s.call("createElement", &[text("style")]).unwrap());
             s.call("setTextContent", &[n(style), text(rule)]).unwrap();
             s.call("append", &[n(body), n(style), Reply::Null]).unwrap();
