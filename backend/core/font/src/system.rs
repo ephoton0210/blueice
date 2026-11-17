@@ -94,6 +94,41 @@ struct Face {
     sfnt: Vec<u8>,
 }
 
+/// The full name of the font whose offset table starts at `base` (Windows platform, UTF-16).
+fn full_name(d: &[u8], dir: &[([u8; 4], usize, usize)]) -> String {
+    let Some(&(_, offset, length)) = dir.iter().find(|(t, _, _)| t == b"name") else {
+        return String::new();
+    };
+    let Some(table) = d.get(offset..offset.saturating_add(length)) else {
+        return String::new();
+    };
+    let count = usize::from(be16(table, 2).unwrap_or(0));
+    let strings = usize::from(be16(table, 4).unwrap_or(0));
+    // The English name (language 0x409) if there is one, else the first.
+    let mut first = None;
+    for i in 0..count {
+        let r = 6 + 12 * i;
+        let (platform, language, id, len, at) = (
+            be16(table, r).unwrap_or(0),
+            be16(table, r + 4).unwrap_or(0),
+            be16(table, r + 6).unwrap_or(0),
+            usize::from(be16(table, r + 8).unwrap_or(0)),
+            usize::from(be16(table, r + 10).unwrap_or(0)),
+        );
+        if platform == 3 && id == 4 {
+            if let Some(raw) = table.get(strings + at..strings + at + len) {
+                let units: Vec<u16> = raw.chunks_exact(2).map(|c| u16::from_be_bytes([c[0], c[1]])).collect();
+                let name = String::from_utf16_lossy(&units);
+                if language == 0x409 {
+                    return name;
+                }
+                first.get_or_insert(name);
+            }
+        }
+    }
+    first.unwrap_or_default()
+}
+
 fn be16(d: &[u8], at: usize) -> Option<u16> {
     Some(u16::from_be_bytes(d.get(at..at + 2)?.try_into().ok()?))
 }
@@ -113,9 +148,9 @@ fn tables(d: &[u8], base: usize) -> Option<Vec<([u8; 4], usize, usize)>> {
         .collect()
 }
 
-/// The font whose offset table starts at `base`, as a standalone font file, with its weight and
-/// slant (`OS/2`, else `head`'s style bits).
-fn face_at(d: &[u8], base: usize) -> Option<Face> {
+/// A face's weight, slant (`OS/2`, else `head`'s style bits) and full name, read without copying
+/// it: a collection of dozens of faces is looked through before one is taken out.
+fn face_info(d: &[u8], base: usize) -> Option<(u16, bool, String)> {
     let dir = tables(d, base)?;
     let table = |tag: &[u8; 4]| dir.iter().find(|(t, _, _)| t == tag).map(|&(_, o, l)| (o, l));
     let (weight, italic) = match table(b"OS/2") {
@@ -126,6 +161,27 @@ fn face_at(d: &[u8], base: usize) -> Option<Face> {
             (if style & 1 != 0 { 700 } else { 400 }, style & 2 != 0)
         }
     };
+    Some((weight, italic, full_name(d, &dir)))
+}
+
+/// The upright face of a collection whose full name contains `part`, at weight 400.
+fn face_named(d: &[u8], part: &str) -> Option<Face> {
+    if d.get(..4) != Some(b"ttcf") {
+        return None;
+    }
+    let count = be32(d, 8)?.min(256) as usize;
+    (0..count).find_map(|i| {
+        let base = be32(d, 12 + 4 * i)? as usize;
+        let (weight, italic, name) = face_info(d, base)?;
+        (weight == 400 && !italic && name.contains(part)).then(|| face_at(d, base)).flatten()
+    })
+}
+
+/// The font whose offset table starts at `base`, as a standalone font file, with its weight and
+/// slant.
+fn face_at(d: &[u8], base: usize) -> Option<Face> {
+    let dir = tables(d, base)?;
+    let (weight, italic, _) = face_info(d, base)?;
     // Rebuilt with offsets that count from the start of the new file.
     let mut out = Vec::new();
     out.extend_from_slice(d.get(base..base + 12)?);
@@ -195,7 +251,7 @@ fn face_of(name: &str, weight: u16, italic: bool, size_tenths: u16) -> Option<We
     // The system's own face is one variable font whose weight and optical size are asked for.
     if matches!(name, "system-ui" | "-apple-system" | "blinkmacsystemfont" | "ui-sans-serif" | "san francisco") {
         let (face, _) = faces.iter().filter(|(f, _)| f.italic == italic).chain(faces.iter()).next().map(|f| (&f.0, &f.1))?;
-        let id = web::register(&face.sfnt)?;
+        let id = web::register_system(&face.sfnt)?;
         let variation = crate::Variation {
             wght: Some(weight.clamp(1, 1000)),
             opsz: Some(size_tenths),
@@ -209,7 +265,7 @@ fn face_of(name: &str, weight: u16, italic: bool, size_tenths: u16) -> Option<We
         (u32::from(f.italic != italic), lighter_for_bold, distance)
     })?;
     *best.1.get_or_init(|| {
-        let id = web::register(&best.0.sfnt)?;
+        let id = web::register_system(&best.0.sfnt)?;
         if family_files(name).is_some_and(|f| f.legacy) {
             legacy_ids().lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(id.as_u32());
         }
@@ -231,7 +287,13 @@ pub(crate) fn extra_line_gap(face: WebFontId) -> f64 {
 /// The system's face for the first family of a `font-family` list that the system has, with the
 /// weight and slant asked for. `None` when system fonts are off or the system has none of them.
 /// A list with no `font-family` at all is the browser's default family, a serif.
-pub fn face_for(families: Option<&str>, weight: u16, italic: bool, size_tenths: u16) -> Option<WebFontId> {
+pub fn face_for(
+    families: Option<&str>,
+    weight: u16,
+    italic: bool,
+    size_tenths: u16,
+    lang: Option<&str>,
+) -> Option<WebFontId> {
     if !enabled() {
         return None;
     }
@@ -240,8 +302,78 @@ pub fn face_for(families: Option<&str>, weight: u16, italic: bool, size_tenths: 
     };
     families.split(',').find_map(|family| {
         let family = family.trim().trim_matches(|c| c == '"' || c == '\'').trim().to_ascii_lowercase();
+        // Safari draws the generic sans-serif of a Chinese page with PingFang, Latin letters too.
+        if family == "sans-serif" {
+            if let Some(variant) = pingfang_for(lang) {
+                if let Some(id) = pingfang(variant) {
+                    return Some(id);
+                }
+            }
+        }
         face_of(&family, weight, italic, size_tenths)
     })
+}
+
+/// Whether a character is one the bundled Latin fonts cannot draw and the system's CJK face
+/// should: Han, kana, hangul, the CJK symbols and the fullwidth forms.
+fn is_cjk(c: char) -> bool {
+    matches!(c as u32,
+        0x2E80..=0x9FFF | 0xAC00..=0xD7A3 | 0xF900..=0xFAFF | 0xFE30..=0xFE4F | 0xFF00..=0xFFEF | 0x20000..=0x2FA1F)
+}
+
+/// A PingFang face of the system (`variant`: "PingFang TC", "PingFang SC", "PingFang HK"), which
+/// macOS keeps in a downloadable font asset; found once. `None` where it is not installed.
+fn pingfang(variant: &str) -> Option<WebFontId> {
+    static FACES: OnceLock<Mutex<HashMap<String, Option<WebFontId>>>> = OnceLock::new();
+    let cache = FACES.get_or_init(Default::default);
+    if let Some(found) = cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(variant) {
+        return *found;
+    }
+    let found = (|| {
+        for dir in std::fs::read_dir("/System/Library/AssetsV2").ok()?.flatten() {
+            if !dir.file_name().to_string_lossy().starts_with("com_apple_MobileAsset_Font") {
+                continue;
+            }
+            let Ok(versions) = std::fs::read_dir(dir.path()) else { continue };
+            for version in versions.flatten() {
+                let Ok(bytes) = std::fs::read(version.path().join("AssetData/PingFang.ttc")) else { continue };
+                if let Some(face) = face_named(&bytes, variant) {
+                    return web::register_system(&face.sfnt);
+                }
+            }
+        }
+        None
+    })();
+    cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(variant.to_string(), found);
+    found
+}
+
+/// The PingFang variant a language's generic sans-serif is drawn in.
+fn pingfang_for(lang: Option<&str>) -> Option<&'static str> {
+    let lang = lang?.to_ascii_lowercase();
+    if lang == "zh-hk" || lang == "zh-mo" {
+        Some("PingFang HK")
+    } else if lang == "zh-tw" || lang.starts_with("zh-hant") {
+        Some("PingFang TC")
+    } else if lang == "zh" || lang.starts_with("zh-cn") || lang.starts_with("zh-hans") || lang.starts_with("zh-sg") {
+        Some("PingFang SC")
+    } else {
+        None
+    }
+}
+
+fn cjk_face() -> Option<WebFontId> {
+    pingfang("PingFang TC")
+}
+
+/// The system face that draws `c` when the page's own face cannot: PingFang for CJK text. `None`
+/// when system fonts are off, `c` is not CJK or the face lacks it.
+pub fn fallback_glyphs(c: char) -> Option<crate::Glyphs> {
+    if !enabled() || !is_cjk(c) {
+        return None;
+    }
+    let glyphs = web::get(cjk_face()?)?;
+    glyphs.has_glyph(c).then_some(glyphs)
 }
 
 #[cfg(test)]
@@ -249,9 +381,34 @@ mod tests {
     use super::*;
 
     #[test]
-    fn off_by_default_so_the_bundled_fonts_stay_the_same_everywhere() {
+    fn off_by_default_and_when_on_cjk_text_comes_from_the_systems_face() {
+        // One test, because the switch is the process's.
         assert!(!enabled());
-        assert!(face_for(Some("Helvetica"), 400, false, 160).is_none());
+        assert!(face_for(Some("Helvetica"), 400, false, 160, None).is_none());
+        assert!(fallback_glyphs('關').is_none(), "off: the bundled CJK face draws it");
+        set_enabled(true);
+        let found = fallback_glyphs('關');
+        let latin = fallback_glyphs('a');
+        set_enabled(false);
+        assert!(latin.is_none(), "only CJK is a fallback");
+        if cjk_face().is_some() {
+            assert!(found.is_some_and(|g| g.has_glyph('關')), "PingFang draws Han");
+        }
+    }
+
+    #[test]
+    fn a_chinese_pages_sans_serif_is_pingfang_with_its_latin_letters() {
+        // Safari: `sans-serif` on a zh-TW page is PingFang TC; "Google" is 46.28px at 14px there.
+        if pingfang("PingFang TC").is_none() {
+            return; // not macOS, or the font asset is not downloaded
+        }
+        set_enabled(true);
+        let chinese = face_for(Some("sans-serif"), 400, false, 140, Some("zh-TW"));
+        let plain = face_for(Some("sans-serif"), 400, false, 140, Some("en"));
+        set_enabled(false);
+        assert_ne!(chinese, plain, "a Chinese page gets PingFang, an English one Helvetica");
+        let width = crate::measure_text_width_in("Google", 14.0, false, false, chinese);
+        assert!((width - 46.28).abs() < 0.2, "{width}");
     }
 
     #[test]

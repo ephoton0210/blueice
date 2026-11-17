@@ -2471,35 +2471,98 @@
     }
     return rules.filter((r) => r);
   };
+  // CSSOM rule objects: as much as pages test for (`instanceof CSSStyleRule`, `cssText`,
+  // `selectorText`, `style`), read off the rule's source text.
+  class CSSStyleDeclaration {
+    constructor(text) {
+      Object.defineProperty(this, '_map', { value: new Map() });
+      for (const part of String(text || '').split(';')) {
+        const at = part.indexOf(':');
+        if (at > 0) this._map.set(part.slice(0, at).trim().toLowerCase(), part.slice(at + 1).trim());
+      }
+    }
+    get length() {
+      return this._map.size;
+    }
+    getPropertyValue(name) {
+      return this._map.get(String(name).toLowerCase()) || '';
+    }
+    get cssText() {
+      return Array.from(this._map, ([k, v]) => k + ': ' + v + ';').join(' ');
+    }
+  }
+  class CSSRule {
+    constructor(text) {
+      Object.defineProperty(this, '_text', { value: text });
+    }
+    get cssText() {
+      return this._text;
+    }
+    get type() {
+      return this.constructor.TYPE || 0;
+    }
+  }
+  CSSRule.STYLE_RULE = 1;
+  CSSRule.IMPORT_RULE = 3;
+  CSSRule.MEDIA_RULE = 4;
+  CSSRule.FONT_FACE_RULE = 5;
+  class CSSStyleRule extends CSSRule {
+    constructor(text) {
+      super(text);
+      const brace = text.indexOf('{');
+      Object.defineProperty(this, '_sel', { value: brace < 0 ? text : text.slice(0, brace).trim() });
+      Object.defineProperty(this, '_style', { value: new CSSStyleDeclaration(brace < 0 ? '' : text.slice(brace + 1, text.lastIndexOf('}'))) });
+    }
+    get selectorText() {
+      return this._sel;
+    }
+    get style() {
+      return this._style;
+    }
+    // WebKit's serialization: `selector { property: value; }`.
+    get cssText() {
+      return this._sel + ' { ' + this._style.cssText + ' }';
+    }
+  }
+  CSSStyleRule.TYPE = 1;
+  class CSSMediaRule extends CSSRule {
+    get conditionText() {
+      return this._text.slice(6, this._text.indexOf('{')).trim();
+    }
+  }
+  CSSMediaRule.TYPE = 4;
+  class CSSFontFaceRule extends CSSRule {}
+  CSSFontFaceRule.TYPE = 5;
+  const makeRule = (text) =>
+    /^@media/i.test(text) ? new CSSMediaRule(text) : /^@font-face/i.test(text) ? new CSSFontFaceRule(text) : /^@/.test(text) ? new CSSRule(text) : new CSSStyleRule(text);
+  class CSSStyleSheet {
+    constructor(owner) {
+      Object.defineProperty(this, 'ownerNode', { value: owner || null });
+    }
+    get cssRules() {
+      return splitCssRules(this.ownerNode ? this.ownerNode.textContent : '').map(makeRule);
+    }
+    get rules() {
+      return this.cssRules;
+    }
+    insertRule(rule, index) {
+      const owner = this.ownerNode;
+      const all = splitCssRules(owner.textContent);
+      const at = index === undefined ? 0 : Math.min(index, all.length);
+      all.splice(at, 0, String(rule));
+      owner.textContent = all.join('\n');
+      return at;
+    }
+    deleteRule(index) {
+      const owner = this.ownerNode;
+      const all = splitCssRules(owner.textContent);
+      all.splice(index, 1);
+      owner.textContent = all.join('\n');
+    }
+  }
   class HTMLStyleElement extends HTMLElement {
     get sheet() {
-      const owner = this;
-      const rules = () =>
-        splitCssRules(owner.textContent).map((cssText) => {
-          const brace = cssText.indexOf('{');
-          return { cssText, selectorText: brace < 0 ? cssText : cssText.slice(0, brace).trim() };
-        });
-      return {
-        ownerNode: owner,
-        get cssRules() {
-          return rules();
-        },
-        get rules() {
-          return rules();
-        },
-        insertRule(rule, index) {
-          const all = splitCssRules(owner.textContent);
-          const at = index === undefined ? 0 : Math.min(index, all.length);
-          all.splice(at, 0, String(rule));
-          owner.textContent = all.join('\n');
-          return at;
-        },
-        deleteRule(index) {
-          const all = splitCssRules(owner.textContent);
-          all.splice(index, 1);
-          owner.textContent = all.join('\n');
-        },
-      };
+      return new CSSStyleSheet(this);
     }
   }
   register(HTMLStyleElement, 'style');
@@ -5278,6 +5341,7 @@
     HTMLTableSectionElement, HTMLTableCaptionElement, HTMLQuoteElement, HTMLMenuElement, HTMLDListElement,
     HTMLAreaElement, HTMLMapElement, HTMLDataElement, HTMLTimeElement, HTMLModElement, HTMLParamElement,
     HTMLTrackElement, HTMLOptGroupElement, HTMLDataListElement, HTMLMeterElement, HTMLTableColElement,
+    CSSRule, CSSStyleRule, CSSMediaRule, CSSFontFaceRule, CSSStyleSheet, CSSStyleDeclaration,
     DOMParser, XMLSerializer, IntersectionObserver, ResizeObserver, PerformanceObserver, MessageChannel, BroadcastChannel,
     URL, URLSearchParams, TextEncoder, TextDecoder, FontFace, CanvasGradient, CanvasPattern, Path2D,
     // values

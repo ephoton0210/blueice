@@ -420,6 +420,17 @@ mod tests {
     }
 
     #[test]
+    fn google_sanitizes_a_style_string_through_a_scratch_documents_stylesheet() {
+        // Closure's SafeStyle: insert the rule into a style in a new document and use the
+        // sheet's own `cssText` if the rule is a CSSStyleRule.
+        let mut h = host("<p>x</p>");
+        assert_eq!(
+            log(&mut h, "const d = document.implementation.createHTMLDocument(''); const st = d.createElement('style'); d.head.appendChild(st); const sh = st.sheet; sh.insertRule('a{color:red;margin:0}', 0); const r = sh.cssRules[0]; console.log(sh.cssRules.length, r instanceof CSSStyleRule, r.cssText, r.selectorText, r.style.getPropertyValue('color'), CSSRule.STYLE_RULE === r.type)"),
+            "[log] 1 true a { color: red; margin: 0; } a red true"
+        );
+    }
+
+    #[test]
     fn an_element_a_script_just_made_has_a_box_for_modernizrs_generated_content_test() {
         // Modernizr 2.6.2 adds `#m { font: 0/0 a } #m:after { content: ":)"; font: 3px/1 a }` and
         // an element, and takes `offsetHeight >= 3` to mean generated content works.

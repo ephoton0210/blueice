@@ -114,6 +114,18 @@ pub fn register(bytes: &[u8]) -> Option<WebFontId> {
     std::panic::catch_unwind(|| register_unguarded(bytes)).ok().flatten()
 }
 
+/// [`register`] for a font file of the operating system itself, which may be larger than a page's
+/// may be (the CJK faces are tens of megabytes). The process-wide bounds still apply.
+pub(crate) fn register_system(bytes: &[u8]) -> Option<WebFontId> {
+    if bytes.is_empty() || bytes.len() > MAX_SYSTEM_FONT_BYTES {
+        return None;
+    }
+    std::panic::catch_unwind(|| register_unguarded(bytes)).ok().flatten()
+}
+
+/// The largest system font file taken.
+const MAX_SYSTEM_FONT_BYTES: usize = 48 * 1024 * 1024;
+
 fn register_unguarded(bytes: &[u8]) -> Option<WebFontId> {
     let sfnt = to_sfnt(bytes)?;
     let mut hasher = DefaultHasher::new();

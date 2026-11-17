@@ -1226,3 +1226,16 @@ uses), checkboxes and radios are 12px boxes without padding or border (Safari: 1
 box inside an empty box collapses its margins through (Wikipedia's site notice is 24px, not 48),
 and the dev test has `BI_WAIT_AFTER`. What remains on Wikipedia: the two-code-block `<pre>`
 trailing-newline lines (recorded above as WebKit's reading) and small per-figure offsets.
+
+### Google (2026-11-17)
+
+The search results page cannot be compared: Google answers BlueIce's honest user agent with a
+JavaScript verification page, where Safari gets the results (a bot check; BlueIce does not get
+around it, and nothing was spoofed). The home page was compared, and on the same saved HTML
+loaded in both browsers 10 elements differ (Apps button 44 vs 48px, 1px text widths, 10px of
+page height; the Apps padding is a class that Safari's script toggles). Fixed on the way: the
+generic `sans-serif` of a `zh-*` page is PingFang (Latin letters too), CJK text falls back to the
+system's PingFang, custom property names are case-sensitive (`--Mhs7de`; Google's whole type scale
+was lost), `CSSStyleRule`/`CSSRule`/`CSSStyleSheet` exist (Google's script threw a ReferenceError
+and never finished), and push buttons are `border-box` as in Safari. Google serves different HTML
+and CSS to different clients, so Safari's Google and BlueIce's Google are never the same page.

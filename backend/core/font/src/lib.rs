@@ -395,6 +395,9 @@ pub fn font_for_char_in(
     if let Some(font) = face.and_then(|id| web::font_for(id, c)) {
         return font;
     }
+    if let Some(font) = system::fallback_glyphs(c) {
+        return font;
+    }
     Glyphs::Static(font_for_char(c, bold, italic))
 }
 

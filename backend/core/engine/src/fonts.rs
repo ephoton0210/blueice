@@ -584,6 +584,7 @@ fn request_of(style: &blueice_css::ComputedStyle) -> FaceRequest {
 pub(crate) fn assign_faces(
     catalog: &FontCatalog,
     styles: &mut HashMap<blueice_dom::NodeId, blueice_css::ComputedStyle>,
+    lang: Option<&str>,
 ) {
     use blueice_css::Value;
     // The names a page gave to alternates become the OpenType settings they stand for.
@@ -607,7 +608,7 @@ pub(crate) fn assign_faces(
             // The page has no face for it: the system's, where the engine may use those.
             let families = (!key.0.is_empty()).then_some(key.0.as_str());
             let italic = key.1.slant != Slant::Upright;
-            (blueice_font::system::face_for(families, key.1.weight, italic, key.1.size), 0)
+            (blueice_font::system::face_for(families, key.1.weight, italic, key.1.size, lang), 0)
         });
         let synthesis = synthesis & synthesis_allowed(style);
         match face {
@@ -1613,7 +1614,7 @@ mod tests {
         let ua = blueice_css::ua_stylesheet();
         let author = blueice_css::parse(&html[html.find("<style>").unwrap() + 7..html.find("</style>").unwrap()]).rules;
         let mut styles = blueice_css::cascade(&doc, &[(blueice_css::Origin::Ua, &ua), (blueice_css::Origin::Author, &author)]);
-        assign_faces(&catalog(html), &mut styles);
+        assign_faces(&catalog(html), &mut styles, None);
         let features = |id: &str| -> Vec<(String, u32)> {
             let node = styles
                 .keys()
@@ -1651,7 +1652,7 @@ mod tests {
         let ua = blueice_css::ua_stylesheet();
         let author = blueice_css::parse(&html[html.find("<style>").unwrap() + 7..html.find("</style>").unwrap()]).rules;
         let mut styles = blueice_css::cascade(&doc, &[(blueice_css::Origin::Ua, &ua), (blueice_css::Origin::Author, &author)]);
-        assign_faces(&catalog(&html), &mut styles);
+        assign_faces(&catalog(&html), &mut styles, None);
         let synth = |id: &str| {
             let node = styles
                 .keys()

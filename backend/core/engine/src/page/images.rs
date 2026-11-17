@@ -137,7 +137,8 @@ impl Page {
             }
         }
         self.images = images;
-        crate::fonts::assign_faces(&self.linked_fonts, &mut self.styles);
+        let lang = document_language(&self.doc);
+        crate::fonts::assign_faces(&self.linked_fonts, &mut self.styles, lang.as_deref());
     }
 
     /// Repoints canvases at their latest pictures without a restyle.
@@ -165,6 +166,17 @@ impl Page {
         self.svg_renders.insert(key, rendered.clone());
         rendered
     }
+}
+
+/// The `lang` of the document element (the page's language, which picks its generic fonts).
+fn document_language(doc: &blueice_dom::Document) -> Option<String> {
+    doc.children(doc.root()).find_map(|html| match doc.data(html) {
+        blueice_dom::NodeData::Element { tag_name, attributes } if tag_name == "html" => attributes
+            .iter()
+            .find(|(k, _)| k == "lang")
+            .map(|(_, v)| v.trim().to_string()),
+        _ => None,
+    })
 }
 
 #[cfg(test)]

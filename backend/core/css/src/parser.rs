@@ -1044,7 +1044,8 @@ pub fn parse_declarations(tokens: &[Token]) -> Vec<Declaration> {
             let Token::Ident(prop) = &decl_tokens[0] else {
                 return None;
             };
-            let property = prop.to_ascii_lowercase();
+            // Custom properties are case-sensitive; every other property name is not.
+            let property = if prop.starts_with("--") { prop.clone() } else { prop.to_ascii_lowercase() };
             if decl_tokens.get(1) != Some(&Token::Colon) {
                 return None;
             }

@@ -866,6 +866,9 @@ select { box-sizing: border-box; width: auto; height: auto; padding: 0; border: 
 details:not([open]) > :not(summary) { display: none; }
 /* A push button is as wide as its caption (the layout reads the label), not the width of a
  * text field. */
+input[type="submit"], input[type="button"], input[type="reset"], button {
+  box-sizing: border-box;
+}
 input[type="submit"], input[type="button"], input[type="reset"] {
   width: auto;
   padding: 1px 6px;
@@ -1076,6 +1079,38 @@ mod tests {
         let author = parse("div { font-size: 10px; line-height: 1.5 } p { font-size: 20px }");
         let styles = cascade(&doc, &[(Origin::Author, &author)]);
         assert_eq!(styles[&inner].line_height, Some(Value::Number(1.5)));
+    }
+
+    #[test]
+    fn push_buttons_are_border_box_and_text_fields_content_box() {
+        // Safari: `height: 30px` on a submit button is 30px tall in all; on a text field it is the
+        // content (padding and border come on top).
+        let mut doc = Document::new();
+        let root = doc.root();
+        let submit = elem(&mut doc, root, "input", &[("type", "submit")]);
+        let button = elem(&mut doc, root, "button", &[]);
+        let text = elem(&mut doc, root, "input", &[("type", "text")]);
+        let ua = ua_stylesheet();
+        let styles = cascade(&doc, &[(Origin::Ua, &ua)]);
+        let box_sizing = |n: &NodeId| match styles[n].other.get("box-sizing") {
+            Some(Value::Keyword(k)) => k.clone(),
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(box_sizing(&submit), "border-box");
+        assert_eq!(box_sizing(&button), "border-box");
+        assert_eq!(box_sizing(&text), "content-box");
+    }
+
+    #[test]
+    fn custom_property_names_are_case_sensitive() {
+        // Google: `:root { --Mhs7de: 14px } body { font-size: var(--Mhs7de) }`; `--a` and `--A`
+        // are different properties.
+        let mut doc = Document::new();
+        let root = doc.root();
+        let p = elem(&mut doc, root, "p", &[]);
+        let author = parse("p { --Mhs7de: 14px; --mhs7de: 30px; font-size: var(--Mhs7de) }");
+        let styles = cascade(&doc, &[(Origin::Author, &author)]);
+        assert_eq!(styles[&p].font_size_px, 14.0);
     }
 
     #[test]
