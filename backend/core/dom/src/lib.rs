@@ -157,6 +157,12 @@ impl Changes {
 }
 
 impl Document {
+    /// The record of what changed since the last [`take_changes`](Self::take_changes), left in
+    /// place.
+    pub fn pending_changes(&self) -> &Changes {
+        &self.journal
+    }
+
     /// Takes (and clears) the record of what changed since the last call.
     pub fn take_changes(&mut self) -> Changes {
         std::mem::take(&mut self.journal)

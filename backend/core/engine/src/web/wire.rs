@@ -341,6 +341,9 @@ pub(crate) enum ToChild {
     Answer(AnswerWire),
     /// The faces the page has now (all of them), for canvas text to name.
     Fonts(Vec<crate::fonts::ScriptFont>),
+    /// The linked stylesheets the page fetched, `(address, source)`, so the realm can restyle
+    /// its own document when a script asks about styles after changing it.
+    Sheets(Vec<(String, String)>),
 }
 
 /// [`Answer`] as it travels (a picture is compared by its pixels in tests).
@@ -449,6 +452,14 @@ impl ToChild {
                     put_font(&mut e, font);
                 }
             }
+            ToChild::Sheets(sheets) => {
+                e.u8(6);
+                e.u64(sheets.len() as u64);
+                for (address, source) in sheets {
+                    e.str(address);
+                    e.str(source);
+                }
+            }
             ToChild::Answer(AnswerWire(answer)) => {
                 e.u8(4);
                 match answer {
@@ -506,6 +517,14 @@ impl ToChild {
                     fonts.push(get_font(&mut d)?);
                 }
                 ToChild::Fonts(fonts)
+            }
+            6 => {
+                let n = d.count()?;
+                let mut sheets = Vec::with_capacity(n);
+                for _ in 0..n {
+                    sheets.push((d.str()?, d.str()?));
+                }
+                ToChild::Sheets(sheets)
             }
             4 => ToChild::Answer(AnswerWire(match d.u8()? {
                 0 => Answer::Text(d.opt_str()?),
@@ -827,6 +846,7 @@ mod tests {
                 family: "x".into(), weight_min: 400, weight_max: 700, italic: false, slant: None, stretch_min: 750, stretch_max: 1250,
                 ranges: vec![(1, 2)], bytes: vec![9, 8, 7],
             }]),
+            ToChild::Sheets(vec![("https://e.test/a.css".into(), "p { color: red }".into())]),
             ToChild::Answer(AnswerWire(Answer::Text(Some("block".into())))),
             ToChild::Answer(AnswerWire(Answer::Text(None))),
             ToChild::Answer(AnswerWire(Answer::Image(Some(picture(3, 2, 9))))),

@@ -90,7 +90,49 @@ pub(crate) trait RemoteQueries {
     fn forget(&self);
 }
 
+/// What a realm needs to restyle its own document: a script that changes the document and then
+/// asks about styles or boxes in the same turn (jQuery's `fadeIn` after `addClass`) must see the
+/// change, which the page's styles from before the turn cannot show.
+pub(crate) struct FreshStyles {
+    linked: crate::stylesheet::LinkedStyles,
+    ua: Vec<blueice_css::Rule>,
+    styles: HashMap<NodeId, ComputedStyle>,
+    /// The document revision the page's styles describe.
+    base_revision: u64,
+    /// The revision `styles` was cascaded for.
+    revision: Option<u64>,
+    /// The author rules `styles` was cascaded with, and how many style/link elements made them.
+    author: Vec<blueice_css::Rule>,
+    sheet_elements: usize,
+    /// Whether `styles` can be updated from the journal (it is a cascade of this turn's start).
+    valid: bool,
+    /// Time this turn has spent restyling: a loop that changes and asks, changes and asks, must
+    /// not turn a turn into minutes.
+    spent: std::time::Duration,
+}
+
+fn is_sheet_element(doc: &Document, node: NodeId) -> bool {
+    matches!(doc.data(node), NodeData::Element { tag_name, .. } if tag_name == "style" || tag_name == "link")
+}
+
+fn count_sheet_elements(doc: &Document) -> usize {
+    let mut count = 0;
+    let mut stack = vec![doc.root()];
+    while let Some(node) = stack.pop() {
+        count += usize::from(is_sheet_element(doc, node));
+        stack.extend(doc.children(node));
+    }
+    count
+}
+
+/// Time one turn may spend restyling for its scripts' questions.
+/// (A debug build is about ten times slower at the cascade, and is given as much more time.)
+const FRESH_STYLE_TIME_PER_TURN: std::time::Duration =
+    std::time::Duration::from_millis(if cfg!(debug_assertions) { 8000 } else { 1500 });
+
 pub(crate) struct DomState {
+    /// Set once the page has given its linked stylesheets.
+    pub(crate) fresh: Option<FreshStyles>,
     /// Set in a realm that asks the page for styles, boxes and pictures.
     pub remote: Option<Box<dyn RemoteQueries>>,
     pub doc: Document,
@@ -134,6 +176,7 @@ pub(crate) struct DomState {
 impl DomState {
     pub fn new(doc: Document, url: &str, viewport: (f64, f64)) -> Self {
         DomState {
+            fresh: None,
             remote: None,
             doc,
             dirty: false,
@@ -836,15 +879,25 @@ impl DomState {
             // ---- style and geometry ----
             "computed" => {
                 let id = self.node(args.first())?;
-                let value = match &self.remote {
-                    Some(remote) => remote.computed(id, &text(1)),
-                    None => self.computed_value(id, &text(1)),
+                let property = text(1);
+                
+                let value = if let Some(styles) = self.fresh_styles() {
+                    styles.get(&id).and_then(|style| computed_value_of(style, &property))
+                } else {
+                    match &self.remote {
+                        Some(remote) => remote.computed(id, &property),
+                        None => self.computed_value(id, &property),
+                    }
                 };
                 value.map_or(Reply::Text(String::new()), Reply::Text)
             }
             "rect" => {
                 let id = self.node(args.first())?;
                 // Boxes are sent with each turn after a layout, so this never leaves the realm.
+                // A box a script has hidden since the last layout has none.
+                if self.hidden_now(id) == Some(true) {
+                    return Ok("[0,0,0,0]".into());
+                }
                 match self.rects.get(&id).copied() {
                     Some((x, y, w, h)) => format!("[{x},{y},{w},{h}]").into(),
                     None => "[0,0,0,0]".into(),
@@ -1164,6 +1217,99 @@ impl DomState {
         }
     }
 
+    /// The page's linked stylesheets, for restyling after a script's own changes.
+    pub(crate) fn set_linked_sheets(&mut self, sheets: &[(String, String)]) {
+        self.fresh = Some(FreshStyles {
+            linked: sheets.iter().cloned().collect(),
+            ua: blueice_css::ua_stylesheet(),
+            styles: HashMap::new(),
+            base_revision: self.doc.revision(),
+            revision: None,
+            spent: std::time::Duration::ZERO,
+            author: Vec::new(),
+            sheet_elements: 0,
+            valid: false,
+        });
+    }
+
+    /// A new turn: the page's styles describe the document as it is now.
+    pub(crate) fn begin_turn(&mut self) {
+        let revision = self.doc.revision();
+        if let Some(fresh) = &mut self.fresh {
+            fresh.base_revision = revision;
+            fresh.revision = None;
+            fresh.valid = false;
+            fresh.spent = std::time::Duration::ZERO;
+        }
+    }
+
+    /// Styles of the document as a script has left it, when it has changed it this turn and
+    /// the realm can restyle (`None`: the page's own answers are current).
+    fn fresh_styles(&mut self) -> Option<&HashMap<NodeId, ComputedStyle>> {
+        let revision = self.doc.revision();
+        let (width, height) = self.viewport;
+        let fresh = self.fresh.as_mut()?;
+        if fresh.base_revision == revision {
+            return None;
+        }
+        if fresh.revision != Some(revision) {
+            if fresh.spent >= FRESH_STYLE_TIME_PER_TURN {
+                return None;
+            }
+            let started = std::time::Instant::now();
+            let sheet_elements = count_sheet_elements(&self.doc);
+            let changes = self.doc.pending_changes();
+            let sheets_moved = sheet_elements != fresh.sheet_elements
+                || changes.touched.keys().any(|&n| {
+                    self.doc.contains(n)
+                        && (is_sheet_element(&self.doc, n)
+                            || self.doc.parent(n).is_some_and(|p| is_sheet_element(&self.doc, p)))
+                });
+            let done = fresh.valid
+                && !sheets_moved
+                && blueice_css::cascade_incremental_report(
+                    &self.doc,
+                    &[(blueice_css::Origin::Ua, &fresh.ua), (blueice_css::Origin::Author, &fresh.author)],
+                    width,
+                    height,
+                    &mut fresh.styles,
+                    changes,
+                    &mut Vec::new(),
+                );
+            if !done {
+                let environment = blueice_css::MediaEnvironment { width, height, ..Default::default() };
+                fresh.author =
+                    crate::stylesheet::extract_inline_stylesheets_with_linked(&self.doc, &environment, &fresh.linked);
+                fresh.styles = blueice_css::cascade_with_viewport(
+                    &self.doc,
+                    &[(blueice_css::Origin::Ua, &fresh.ua), (blueice_css::Origin::Author, &fresh.author)],
+                    width,
+                    height,
+                );
+                fresh.sheet_elements = sheet_elements;
+                fresh.valid = true;
+            }
+            fresh.revision = Some(revision);
+            fresh.spent += started.elapsed();
+        }
+        Some(&fresh.styles)
+    }
+
+    /// Whether `id`, or something around it, is `display: none` now. `None` when the realm has
+    /// no fresher answer than the page's boxes.
+    fn hidden_now(&mut self, id: NodeId) -> Option<bool> {
+        self.fresh_styles()?;
+        let styles = &self.fresh.as_ref()?.styles;
+        let mut node = Some(id);
+        while let Some(n) = node {
+            if styles.get(&n).is_some_and(|s| s.display == "none") {
+                return Some(true);
+            }
+            node = self.doc.parent(n);
+        }
+        Some(false)
+    }
+
     fn computed_value(&self, id: NodeId, property: &str) -> Option<String> {
         computed_value_of(self.styles.get(&id)?, property)
     }
@@ -1407,6 +1553,25 @@ mod tests {
         let a = id_of(s.call("byId", &[text("a")]).unwrap());
         assert_eq!(s.call("tag", &[n(a)]).unwrap(), text("p"));
         assert_eq!(s.call("byId", &[text("none")]).unwrap(), Reply::Null);
+    }
+
+    #[test]
+    fn a_script_that_changes_a_class_then_asks_sees_the_stylesheets_effect_at_once() {
+        // python.org's slider: `.flexslider .slides > li { display: none }` starts to match
+        // when the constructor adds the class, and the next line asks whether the slide is
+        // hidden (jQuery's `fadeIn`). The page's styles from before the turn say "block".
+        let mut s = state("<style>.f li { display: none }</style><div id=d><ul><li id=l>x</li></ul></div>");
+        s.set_linked_sheets(&[]);
+        let d = id_of(s.call("byId", &[text("d")]).unwrap());
+        let l = id_of(s.call("byId", &[text("l")]).unwrap());
+        s.rects.insert(l, (0.0, 0.0, 100.0, 20.0));
+        assert_eq!(s.call("rect", &[n(l)]).unwrap(), text("[0,0,100,20]"));
+        s.call("setAttr", &[n(d), text("class"), text("f")]).unwrap();
+        assert_eq!(s.call("computed", &[n(l), text("display")]).unwrap(), text("none"));
+        assert_eq!(s.call("rect", &[n(l)]).unwrap(), text("[0,0,0,0]"));
+        s.begin_turn();
+        s.styles = Default::default();
+        assert_eq!(s.call("rect", &[n(l)]).unwrap(), text("[0,0,100,20]"), "a new turn starts from the page's own");
     }
 
     #[test]

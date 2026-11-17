@@ -757,6 +757,65 @@ fn expand_grid_template(value_tokens: &[Token]) -> Vec<(String, Value)> {
     out
 }
 
+/// `font: [style || variant || weight || stretch] size[/line-height] family`: the longhands it
+/// sets, with the ones it leaves out reset to `normal` as the shorthand does. The system fonts
+/// (`caption`, `menu`...) set nothing.
+fn expand_font(tokens: &[Token]) -> Vec<(String, Value)> {
+    let tokens = trim_ws(tokens);
+    let is_size = |t: &Token| match t {
+        Token::Dimension(..) | Token::Percentage(_) => true,
+        Token::Ident(i) => matches!(
+            i.to_ascii_lowercase().as_str(),
+            "xx-small" | "x-small" | "small" | "medium" | "large" | "x-large" | "xx-large" | "xxx-large" | "smaller" | "larger"
+        ),
+        _ => false,
+    };
+    let Some(size_at) = tokens.iter().position(is_size) else {
+        return vec![];
+    };
+    let (mut style, mut weight, mut stretch) = (None, None, None);
+    for t in &tokens[..size_at] {
+        match t {
+            Token::Whitespace => {}
+            Token::Number(_) => weight = Some(t.clone()),
+            Token::Ident(i) => match i.to_ascii_lowercase().as_str() {
+                "normal" | "small-caps" => {}
+                "italic" | "oblique" => style = Some(t.clone()),
+                "bold" | "bolder" | "lighter" => weight = Some(t.clone()),
+                "ultra-condensed" | "extra-condensed" | "condensed" | "semi-condensed" | "semi-expanded"
+                | "expanded" | "extra-expanded" | "ultra-expanded" => stretch = Some(t.clone()),
+                _ => return vec![],
+            },
+            _ => return vec![],
+        }
+    }
+    let mut rest = &tokens[size_at + 1..];
+    let mut line_height: Vec<Token> = vec![Token::Ident("normal".to_string())];
+    if let Some(after) = trim_ws(rest).strip_prefix(&[Token::Delim('/')]) {
+        let after = trim_ws(after);
+        let Some(end) = after.iter().position(|t| *t == Token::Whitespace) else {
+            return vec![];
+        };
+        line_height = after[..end].to_vec();
+        rest = &after[end..];
+    }
+    let family = trim_ws(rest);
+    if family.is_empty() {
+        return vec![];
+    }
+    let mut out = Vec::new();
+    let one = |name: &str, tokens: &[Token], out: &mut Vec<(String, Value)>| {
+        out.extend(expand_property(name, tokens));
+    };
+    one("font-style", &[style.unwrap_or(Token::Ident("normal".to_string()))], &mut out);
+    one("font-weight", &[weight.unwrap_or(Token::Ident("normal".to_string()))], &mut out);
+    one("font-stretch", &[stretch.unwrap_or(Token::Ident("normal".to_string()))], &mut out);
+    one("font-size", &tokens[size_at..=size_at], &mut out);
+    one("line-height", &line_height, &mut out);
+    one("font-family", family, &mut out);
+    out
+}
+
 pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(String, Value)> {
     // `-webkit-mask-*` is the same property as `mask-*`.
     let property = match property.strip_prefix("-webkit-") {
@@ -854,6 +913,7 @@ pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(St
         "background" => expand_background(value_tokens),
         "border-radius" => expand_border_radius(value_tokens),
         "list-style" => expand_list_style(value_tokens),
+        "font" => expand_font(value_tokens),
         "text-decoration" => expand_text_decoration(value_tokens),
         "inset" => {
             expand_box_shorthand_property_named(["top", "right", "bottom", "left"], value_tokens)

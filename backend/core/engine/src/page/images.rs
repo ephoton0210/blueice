@@ -710,7 +710,7 @@ mod tests {
             // Developer aid: the computed display of every element carrying `class`.
             for (node, style) in page.styles.iter().filter(|(n, _)| !blueice_css::is_pseudo_node(**n)) {
                 if let blueice_dom::NodeData::Element { tag_name, attributes } = page.doc.data(*node) {
-                    let has = attributes.iter().any(|(k, v)| k == "class" && v.split_whitespace().any(|c| c == class));
+                    let has = attributes.iter().any(|(k, v)| (k == "class" && v.split_whitespace().any(|c| c == class)) || (k == "id" && v == &class) || class == format!("<{tag_name}>"));
                     if has {
                         eprintln!("CLASS {class}: <{tag_name}> display={} font={:?} size={} lh={:?} attrs={attributes:?} other={:?}", style.display, style.font_family, style.font_size_px, style.line_height, style.other);
                     }

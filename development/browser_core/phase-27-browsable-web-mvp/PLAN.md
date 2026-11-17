@@ -1120,7 +1120,7 @@ Open, not fixed:
   DejaVu/Noto, so glyph advances and line metrics differ. This accounts for lobste.rs' nav widths
   (9-11px), the 51 vs 46px vote column (a 1.2rem `system-ui` triangle) and the tag pill rows
   (23 vs 25px). Closing it needs system-font loading or metric-compatible faces, not layout work.
-- python.org header (root cause found 2026-11-16, not yet fixed): `#dive-into-python` has no
+- python.org header (root cause found 2026-11-16; FIXED the same day, see "Fresh styles in a turn" below; the text that follows is the analysis): `#dive-into-python` has no
   `flexslider` class when `.flexslider()` runs, so `.flexslider .slides > li { display: none }` does
   not match yet; the constructor adds the class, then calls `slides.eq(0).fadeIn()`. A browser
   recalculates style synchronously, sees the slide hidden and `fadeIn` shows it. The realm reads the
@@ -1169,3 +1169,23 @@ and the infobox top now match. Still open there: ~531px accumulated lower in the
 icons 20px vs 12px (mask/background-size icons), the hidden `vector-dropdown-label-text` abs
 position, infobox label column 110 vs 106. Not done: Windows/Linux system fonts (the bundled fonts
 still apply there; `blueice-core` does not yet enable system fonts, only the dev test).
+
+### Fresh styles in a turn, and the `font` shorthand (2026-11-16)
+
+A realm (thread or process) now restyles its own document when a script reads a computed style or
+a box after changing the DOM in the same turn: the page sends its linked stylesheets once
+(`ToChild::Sheets` / `Handoff.sheets`), `DomState::fresh_styles` cascades the realm's document
+(full once per turn, then incrementally from the document's pending change journal,
+`Document::pending_changes`), and a box that is `display: none` now (itself or an ancestor) reads as
+`[0,0,0,0]`. A per-turn time limit (1.5 s release, 8 s debug) stops a script that changes and asks
+in a loop. This is what jQuery's `fadeIn` after `addClass` needs, and it fixed python.org's slider
+(header 0 -> 280px, page height gap 687 -> 175px). Test: `a_script_that_changes_a_class_then_asks_sees_the_stylesheets_effect_at_once`.
+The `font` shorthand was not expanded at all (python.org's body font fell back to the default);
+`font: [style weight stretch] size[/line-height] family` now sets the longhands (tested).
+Recorded as a browser *interpretation* difference, not fixed: a `<pre>` (`white-space: pre-wrap`)
+whose text ends in a newline is one empty line taller in Safari/WebKit (Wikipedia code blocks:
+8 lines vs 7); the CSS text model gives 7 and Blink/Gecko differ from WebKit here.
+Still open and not interpretation: python.org's header is 15px too tall and its search form wrong
+(input 187 vs 224 wide: `font-size` on `.search-field`); Wikipedia's `mw-collapsible` navboxes are
+expanded because the ResourceLoader modules that collapse them do not run (about 475px of the
+remaining height); solid-square icons; multi-layer backgrounds; lobste.rs tag pills 2px narrow.

@@ -1070,6 +1070,28 @@ mod tests {
     }
 
     #[test]
+    fn the_font_shorthand_sets_style_weight_size_line_height_and_family() {
+        // python.org: `body { font: normal 100%/1.625 SourceSansProRegular, Arial, sans-serif }`.
+        let mut doc = Document::new();
+        let root = doc.root();
+        let a = elem(&mut doc, root, "div", &[]);
+        let b = elem(&mut doc, root, "p", &[]);
+        let author = parse(
+            "div { font: normal 150%/1.625 SourceSansProRegular, Arial, sans-serif } \
+             p { font-weight: 700; font: italic bold 12px/20px 'Helvetica Neue', serif }",
+        );
+        let styles = cascade(&doc, &[(Origin::Author, &author)]);
+        assert_eq!(styles[&a].font_family.as_deref(), Some("sourcesansproregular,arial,sans-serif"));
+        assert_eq!(styles[&a].font_size_px, 24.0);
+        assert_eq!(styles[&a].line_height, Some(Value::Number(1.625)));
+        assert_eq!(styles[&b].font_family.as_deref(), Some("helvetica neue,serif"));
+        assert_eq!(styles[&b].font_size_px, 12.0);
+        assert_eq!(styles[&b].font_style.as_deref(), Some("italic"));
+        assert!(styles[&b].is_bold());
+        assert_eq!(styles[&b].line_height, Some(Value::Length(crate::value::Length::Px(20.0))));
+    }
+
+    #[test]
     fn display_does_not_inherit() {
         let mut doc = Document::new();
         let root = doc.root();

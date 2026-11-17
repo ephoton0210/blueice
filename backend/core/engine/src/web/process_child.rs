@@ -168,6 +168,7 @@ fn serve(stream: UnixStream) -> io::Result<()> {
                         }
                     }
                     s.dirty = false;
+                    s.begin_turn();
                     s.doc.revision()
                 });
                 run_turn(&mut host, turn);
@@ -221,6 +222,9 @@ fn serve(stream: UnixStream) -> io::Result<()> {
             }
             ToChild::Fonts(fonts) => {
                 host.with_state(|s| s.set_page_fonts(&fonts));
+            }
+            ToChild::Sheets(sheets) => {
+                host.with_state(|s| s.set_linked_sheets(&sheets));
             }
             ToChild::FetchDoc => {
                 // The journal travels with the document and starts over, so the page

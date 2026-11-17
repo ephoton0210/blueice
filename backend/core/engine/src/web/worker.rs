@@ -48,6 +48,8 @@ pub(crate) struct Handoff {
     pub url: Option<String>,
     /// The faces the page has, when they changed since the worker was last told.
     pub fonts: Option<Vec<crate::fonts::ScriptFont>>,
+    /// The linked stylesheets, when the worker has not been given them.
+    pub sheets: Option<Vec<(String, String)>>,
 }
 
 /// What a turn leaves behind for the page to take over.
@@ -200,7 +202,11 @@ impl ScriptWorker {
                         if let Some(fonts) = &handoff.fonts {
                             s.set_page_fonts(fonts);
                         }
+                        if let Some(sheets) = &handoff.sheets {
+                            s.set_linked_sheets(sheets);
+                        }
                         s.dirty = false;
+                        s.begin_turn();
                     });
                     run_turn(&mut host, turn);
                     let returned = host.with_state(|s| Returned {
@@ -365,6 +371,11 @@ impl ScriptWorker {
             Backend::Process(link) => {
                 if let Some(fonts) = handoff.fonts {
                     if wire::write_frame(&mut link.stream, &ToChild::Fonts(fonts).encode()).is_err() {
+                        link.failed = true;
+                    }
+                }
+                if let Some(sheets) = handoff.sheets {
+                    if wire::write_frame(&mut link.stream, &ToChild::Sheets(sheets).encode()).is_err() {
                         link.failed = true;
                     }
                 }

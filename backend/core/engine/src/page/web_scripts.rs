@@ -208,6 +208,10 @@ impl Page {
         let fonts = (self.linked_fonts.generation() != self.web_fonts_sent)
             .then(|| self.linked_fonts.script_view());
         self.web_fonts_sent = self.linked_fonts.generation();
+        let sheets = (!self.web_sheets_sent).then(|| {
+            self.linked_styles.iter().map(|(a, b)| (a.clone(), b.clone())).collect::<Vec<_>>()
+        });
+        self.web_sheets_sent = true;
         let lent_state = self.web.as_ref().is_none_or(ScriptWorker::is_lent_state);
         if !lent_state {
             // A process holds its own document and asks about styles and pictures when it
@@ -229,6 +233,7 @@ impl Page {
                 viewport: (self.viewport_width, self.viewport_height),
                 url: self.url.clone(),
                 fonts,
+                sheets,
             };
         }
         let mut rects = HashMap::new();
@@ -250,6 +255,7 @@ impl Page {
             viewport: (self.viewport_width, self.viewport_height),
             url: self.url.clone(),
             fonts,
+            sheets,
         }
     }
 
@@ -696,6 +702,7 @@ impl Page {
         }
         self.web = Some(worker);
         self.web_fonts_sent = 0;
+        self.web_sheets_sent = false;
         self.web_force_relayout = true;
         self.web_turn(Turn::Startup(Startup {
             scripts: scripts

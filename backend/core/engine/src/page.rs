@@ -97,6 +97,8 @@ pub struct Page {
     web_rects_sent: u64,
     /// The generation of `linked_fonts` the scripts were last told of.
     web_fonts_sent: u64,
+    /// Whether the scripts have been given the linked stylesheets.
+    web_sheets_sent: bool,
     /// Reports on layout still to be run in the background after the page changed.
     web_after_layout: u8,
     web_in_flight_after_layout: bool,
@@ -227,6 +229,7 @@ impl Page {
             layout_generation: 1,
             web_rects_sent: 0,
             web_fonts_sent: 0,
+            web_sheets_sent: false,
             web_after_layout: 0,
             web_in_flight_after_layout: false,
             web_scripts_lost: false,
