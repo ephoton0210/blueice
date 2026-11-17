@@ -856,7 +856,7 @@ fn paint_fragment(
                         });
                     }
                 }
-                if let Some(image) = fragment.node.and_then(|n| images.background.get(&n)) {
+                if let Some(image) = fragment.style_node.or(fragment.node).and_then(|n| images.background.get(&n)) {
                     paint_background_image(style, rect, image, opacity, masked, out);
                 }
                 let sides: Vec<Option<(Rect, f64)>> = BORDER_SIDES

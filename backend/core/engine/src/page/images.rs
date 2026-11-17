@@ -159,6 +159,28 @@ impl Page {
                 stack.push((child, inside));
             }
         }
+        // The boxes made for `::before` and `::after` have pictures of their own too.
+        let pseudo: Vec<NodeId> = self.styles.keys().copied().filter(|&id| blueice_css::is_pseudo_node(id)).collect();
+        for node in pseudo {
+            let Some(style) = self.styles.get(&node) else { continue };
+            if let Some(Value::Unparsed(tokens)) = style.other.get("background-image") {
+                if let Some(loaded) = blueice_css::background_layers(tokens).into_iter().find_map(|layer| {
+                    blueice_css::url_of(layer).and_then(|u| self.linked_images.get(u.trim()))
+                }) {
+                    images.background.insert(node, loaded.image.clone());
+                }
+            }
+            if let Some(Value::Unparsed(tokens)) = style.other.get("mask-image") {
+                if let Some(loaded) = blueice_css::background_layers(tokens).into_iter().find_map(|layer| {
+                    blueice_css::url_of(layer).and_then(|u| self.linked_images.get(u.trim()))
+                }) {
+                    if let Some(tint) = background_tint(style) {
+                        images.background.insert(node, Arc::new(tinted(&loaded.image, tint)));
+                        masked.push(node);
+                    }
+                }
+            }
+        }
         for node in masked {
             if let Some(style) = self.styles.get_mut(&node) {
                 style.other.insert("-blueice-masked".to_string(), Value::Number(1.0));
@@ -455,6 +477,27 @@ mod tests {
         let pixel = |x, y| page.render_visible().get_pixel(x, y);
         assert_eq!(pixel(3, 3), [0, 0, 255, 255], "inside the picture the colour shows");
         assert_eq!(pixel(25, 25), [255, 255, 255, 255], "outside it nothing does");
+    }
+
+    #[test]
+    fn a_pseudo_element_mask_cuts_its_colour_to_the_pictures_shape() {
+        // Wikipedia's dropdown arrow is `label::after { content: ""; mask-image: url(...); background: blue }`.
+        let mut page = Page::new(400.0, 300.0);
+        let url = format!("data:image/svg+xml;utf8,{RED_SVG}");
+        page.load_html_str(
+            &format!("<style>body{{margin:0}} div::after{{content:'';display:block;width:30px;height:30px;background:rgb(0,0,255);mask-image:url(\"{url}\");mask-repeat:no-repeat}}</style><div></div>"),
+            None,
+        );
+        let pixel = |x, y| page.render_visible().get_pixel(x, y);
+        assert_eq!(pixel(3, 3), [0, 0, 255, 255], "inside the picture the colour shows");
+        assert_eq!(pixel(25, 25), [255, 255, 255, 255], "outside it nothing does");
+        // A plain background picture on a generated box is drawn as well.
+        let mut page = Page::new(400.0, 300.0);
+        page.load_html_str(
+            &format!("<style>body{{margin:0}} div::after{{content:'';display:block;width:30px;height:30px;background:url(\"{url}\") no-repeat}}</style><div></div>"),
+            None,
+        );
+        assert_eq!(page.render_visible().get_pixel(3, 3), [255, 0, 0, 255]);
     }
 
     #[test]

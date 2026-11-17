@@ -1253,3 +1253,10 @@ Because San Francisco cannot be drawn, `system-ui` text is a little narrower or 
 Safari's: a font-technology limit, recorded, not an interpretation difference.
 Still open on Wikipedia: the blue square beside "60 languages", the blue dot under the bookmark,
 and the default push button (Safari draws a native rounded control; BlueIce a flat box).
+
+Pictures on generated boxes (2026-11-17): a `::before`/`::after` box keeps its own style under a
+pseudo node id, and the picture maps were looked up by the fragment's real node, so a dropdown
+arrow (`label::after { mask-image: url(...) }`) or any generated background picture was never
+drawn and left a solid colour square. Both maps are keyed by the style node now (tested for a mask
+and a plain background picture). Wikipedia's blue dot under the bookmark is not a defect: Safari
+has the same `mw-pulsating-dot` element at the same place.
