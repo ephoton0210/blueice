@@ -28,7 +28,9 @@ function encode(segments) {
 }
 function mutate(ts, view, offset, owner) {
   const segments = view.decoded.segments.map(segment => [...segment]);
-  const changes = [[offset, owner], [offset + 1, view.owner(offset + 1)]];
+  assert(Number.isInteger(offset) && offset >= 0 && offset <= view.code.length, 'bounded mutation offset');
+  const changes = [[offset, owner]];
+  if (offset < view.code.length) changes.push([offset + 1, view.owner(offset + 1)]);
   for (const [position, next] of changes) {
     const { line, character } = view.source.getLineAndCharacterOfPosition(position);
     const index = segments.findIndex(segment => segment[0] > line || segment[0] === line && segment[1] >= character);
@@ -64,4 +66,30 @@ function run(ts, native, actual, check) {
     return { label, rejected: true };
   });
 }
-module.exports = { run, encode, mutate };
+// Swap complete adjacent phase statements and project every existing map point.
+// Each original source role survives exactly once; only generated coordinates move.
+function transpose(ts, view, start, firstEnd, secondStart, end) {
+  assert(0 <= start && start < firstEnd && firstEnd <= secondStart && secondStart < end && end <= view.code.length);
+  const first = view.code.slice(start, firstEnd), gap = view.code.slice(firstEnd, secondStart), second = view.code.slice(secondStart, end);
+  assert.equal(gap.trim(), '', 'phase control swaps adjacent statements only');
+  const code = view.code.slice(0, start) + second + gap + first + view.code.slice(end);
+  assert.equal(code.length, view.code.length, 'bounded complete phase permutation');
+  const source = ts.createSourceFile('emitted.js', code, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  assert.equal(source.parseDiagnostics.length, 0, 'phase control remains valid JavaScript');
+  assert.equal(source.getLineStarts().length, view.source.getLineStarts().length, 'complete generated line inventory');
+  const segments = view.decoded.segments.map(point => {
+    const offset = view.source.getPositionOfLineAndCharacter(point[0], point[1]);
+    let target = offset;
+    if (start <= offset && offset < firstEnd) target = start + second.length + gap.length + offset - start;
+    else if (firstEnd <= offset && offset < secondStart) target = start + second.length + offset - firstEnd;
+    else if (secondStart <= offset && offset < end) target = start + offset - secondStart;
+    const position = source.getLineAndCharacterOfPosition(target);
+    return [position.line, position.character, ...point.slice(2)];
+  }).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const changed = stream(ts, code, JSON.stringify({...JSON.parse(view.raw), mappings: encode(segments)}));
+  assert.deepEqual(changed.decoded.metadata, view.decoded.metadata, 'complete metadata is unchanged');
+  assert.deepEqual(changed.decoded.segments, segments, 'every projected segment remains strictly bounded and decoded');
+  assert.deepEqual(changed.decoded.segments.map(point => JSON.stringify(point.slice(2))).sort(), view.decoded.segments.map(point => JSON.stringify(point.slice(2))).sort(), 'every original source role survives exactly once');
+  return changed;
+}
+module.exports = { run, encode, mutate, transpose };

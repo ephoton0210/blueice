@@ -104,7 +104,7 @@ pub(super) fn parse(source: &str, range: Range<usize>) -> Vec<Tag> {
         let name_start = cursor;
         while cursor < end
             && !bytes[cursor].is_ascii_whitespace()
-            && ![b']', b'=', b'*', b'@'].contains(&bytes[cursor])
+            && !b"]=*@".contains(&bytes[cursor])
         {
             cursor += 1;
         }

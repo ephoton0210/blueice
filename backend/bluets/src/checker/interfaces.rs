@@ -18,8 +18,13 @@ pub(super) fn merge_interface_values(earlier: &Type, later: &Type) -> Type {
             if matches!(
                 field.value,
                 Type::Function { .. } | Type::GenericFunction { .. }
-            ) || !fields.iter().any(|existing| existing.name == field.name)
-            {
+            ) {
+                fields.push(field);
+            } else if let Some(later) = fields.iter_mut().find(|later| later.name == field.name) {
+                // A conflicting property is diagnosed at its later declaration;
+                // uses still see the first declaration's type and source owner.
+                *later = field;
+            } else {
                 fields.push(field);
             }
         }

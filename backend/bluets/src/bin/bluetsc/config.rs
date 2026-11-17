@@ -78,6 +78,12 @@ pub(super) struct PackageSettings {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct BlueTscConfig {
     #[serde(default)]
+    pub(super) no_emit: bool,
+    #[serde(default)]
+    pub(super) native_layout: bool,
+    #[serde(default)]
+    pub(super) always_strict: bool,
+    #[serde(default)]
     pub(super) entries: Vec<String>,
     #[serde(default)]
     pub(super) project_root: Option<String>,
@@ -587,8 +593,8 @@ pub(super) fn resolve_config_document(
         }
         entries.push(entry);
     }
-    entries.sort();
-    entries.dedup();
+    let mut unique_entries = BTreeSet::new();
+    entries.retain(|entry| unique_entries.insert(entry.clone()));
     if !config.strict_boundaries.is_empty()
         && entries
             .iter()
@@ -658,6 +664,13 @@ pub(super) fn resolve_config_document(
     }
     let options_module_kind = parse_module_kind(config.module.as_deref())?;
     let options = CompilerOptions {
+        javascript_layout: if config.native_layout {
+            blueice_bluets::JavaScriptLayout::TypeScript
+        } else {
+            blueice_bluets::JavaScriptLayout::PreserveSource
+        },
+        always_strict: config.always_strict,
+        no_emit: config.no_emit,
         checking: None,
         target: parse_target(config.target.as_deref())?,
         symbol_metadata: config.lib.as_ref().is_some_and(|libraries| libraries.iter().any(|name| name.eq_ignore_ascii_case("esnext.decorators"))),

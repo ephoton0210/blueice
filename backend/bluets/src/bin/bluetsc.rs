@@ -4,6 +4,8 @@
 
 //! The standalone BlueTSC command-line front end.
 
+#[cfg(test)]
+use blueice_bluets::compile;
 use blueice_bluets::package_resolution::{
     ImportMode, ModuleResolution, OsPackageFs, PackageResolver, PackageResolverConfig,
     ResolveError, RESOLUTION_VERSION,
@@ -12,8 +14,8 @@ use blueice_bluets::remote_declarations::{
     DeclarationCache, RemoteDeclarationSource, RemoteFetcher, RemoteLimits,
 };
 use blueice_bluets::{
-    compile, BuildArtifact, CompilerLimits, CompilerOptions, EcmaTarget, JsxMode, ModuleKind,
-    ModuleLoader, ModuleSource, RuntimePolicy, SourceSpan, StrictRuntimeBoundary,
+    compile_program, BuildArtifact, CompilerLimits, CompilerOptions, EcmaTarget, JsxMode,
+    ModuleKind, ModuleLoader, ModuleSource, RuntimePolicy, SourceSpan, StrictRuntimeBoundary,
 };
 use ring::digest::{digest, SHA256};
 use serde::{Deserialize, Serialize};
@@ -29,6 +31,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 mod config;
 use config::*;
 
+#[path = "bluetsc/program.rs"]
+mod program;
+use program::compile_entries;
+
 #[path = "bluetsc/file_loader.rs"]
 mod file_loader;
 use file_loader::FileLoader;
@@ -38,6 +44,11 @@ mod node_modules;
 
 #[path = "bluetsc/source_map_data.rs"]
 mod source_map_data;
+
+#[path = "bluetsc/publication_maps.rs"]
+mod publication_maps;
+#[path = "bluetsc/publication_ownership.rs"]
+mod publication_ownership;
 
 #[path = "bluetsc/build_graph.rs"]
 mod build_graph;
@@ -178,12 +189,10 @@ fn main() -> ExitCode {
         },
         references: BTreeMap::new(),
     };
-    let mut summary = compile_entries(
-        &invocation.entries,
-        &loader,
-        invocation.options.clone(),
-        args.diagnostics_json,
-    );
+    if args.command == Command::Check {
+        invocation.options.no_emit = true;
+    }
+    let mut summary = compile_entries(&invocation, &loader, args.diagnostics_json);
     if summary.has_errors {
         return ExitCode::FAILURE;
     }
@@ -191,7 +200,7 @@ fn main() -> ExitCode {
         eprintln!("bluetsc: {message}");
         return ExitCode::FAILURE;
     }
-    if args.command == Command::Check {
+    if args.command == Command::Check || invocation.options.no_emit {
         println!(
             "checked {} entry point(s), {} module(s), fingerprint {}",
             invocation.entries.len(),
@@ -246,6 +255,7 @@ struct CompileSummary {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct BuildMetadata {
+    javascript_layout: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     root_dir: Option<String>,
     standard_library: blueice_bluets::standard_library::Identity,
@@ -426,81 +436,6 @@ fn strict_artifact_inventory(
         .collect()
 }
 
-fn compile_entries(
-    entries: &[PathBuf],
-    loader: &FileLoader,
-    options: CompilerOptions,
-    diagnostics_json: bool,
-) -> CompileSummary {
-    let mut artifacts = BTreeMap::new();
-    let mut declaration_modules = BTreeMap::new();
-    let mut assets = BTreeMap::new();
-    let mut modules = BTreeSet::new();
-    let mut fingerprints = Vec::new();
-    let mut has_errors = false;
-    let has_runtime_entries = entries.iter().any(|entry| !is_declaration_path(entry));
-    for entry in entries {
-        let module = loader
-            .module_id(entry)
-            .expect("entry has an authorized identity");
-        let mut entry_options = options.clone();
-        entry_options
-            .ambient_declaration_modules
-            .retain(|source| source.id != module);
-        if is_declaration_path(entry) {
-            if entry_options.runtime_policy == RuntimePolicy::StrictRuntime {
-                entry_options.runtime_policy = RuntimePolicy::Checked;
-            }
-            entry_options.strict_runtime_boundaries.clear();
-        }
-        let result = compile(&module, loader, entry_options);
-        for diagnostic in &result.diagnostics {
-            if diagnostics_json {
-                eprintln!("{}", diagnostic.to_json());
-            } else {
-                eprintln!(
-                    "{}:{}:{}: {}: {}",
-                    diagnostic.span.module,
-                    diagnostic.span.start,
-                    diagnostic.span.end,
-                    diagnostic.code,
-                    diagnostic.message
-                );
-            }
-        }
-        has_errors |= result.has_errors();
-        modules.extend(result.project.modules.keys().cloned());
-        if let Some(output) = result.output {
-            assets.extend(output.assets);
-            if !has_runtime_entries || !is_declaration_path(entry) {
-                fingerprints.push(output.fingerprint);
-            }
-            for (module_id, artifact) in output.artifacts {
-                artifacts.entry(module_id).or_insert(artifact);
-            }
-            for (module_id, source) in output.declaration_modules {
-                declaration_modules.entry(module_id).or_insert(source);
-            }
-        }
-    }
-    fingerprints.sort();
-    if fingerprints.is_empty() {
-        fingerprints.extend([
-            blueice_bluets::LANGUAGE_VERSION.to_string(),
-            blueice_bluets::standard_library::VERSION.to_string(),
-            options.resolver_fingerprint,
-        ]);
-    }
-    CompileSummary {
-        artifacts,
-        declaration_modules,
-        assets,
-        fingerprint: fingerprint_entries(&fingerprints),
-        module_count: modules.len(),
-        has_errors,
-    }
-}
-
 fn build_metadata(
     invocation: &Invocation,
     summary: &CompileSummary,
@@ -549,6 +484,7 @@ fn build_metadata(
         .collect();
     let declaration_modules = summary.declaration_modules.keys().cloned().collect();
     BuildMetadata {
+        javascript_layout: invocation.options.javascript_layout.as_str(),
         root_dir: invocation
             .project_config
             .as_ref()
@@ -815,6 +751,12 @@ fn publish_build(
             "output directory must not replace the project root",
         ));
     }
+    if fs::symlink_metadata(&output).is_ok_and(|metadata| metadata.is_file()) {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            format!("{} exists and is not a directory", output.display()),
+        ));
+    }
     ensure_output_does_not_contain_sources(&output, root, artifacts, declaration_modules)?;
     assets_publish::validate_sources(&output, root, assets)?;
     let parent = output
@@ -845,46 +787,63 @@ fn publish_build(
                 .parent()
                 .ok_or_else(|| io::Error::other("artifact path has no parent"))?;
             fs::create_dir_all(js_parent)?;
+            let source = root.join(module_path);
+            let emit_root = metadata
+                .root_dir
+                .as_ref()
+                .map_or_else(|| root.to_path_buf(), |relative| root.join(relative));
             let mut javascript = artifact.javascript.clone();
             if let Some(map) = &artifact.source_map {
+                let (map, external_url) = publication_maps::publication(
+                    map,
+                    &source,
+                    &emit_root,
+                    &relative,
+                    &output.join(&output_relative),
+                    extension,
+                    metadata.map_root.as_deref(),
+                )?;
                 let url = if metadata.inline_source_map == Some(true) {
-                    source_map_data::url(map)
+                    source_map_data::url(&map)
                 } else {
-                    let map_name = js_path
-                        .file_name()
-                        .and_then(|name| name.to_str())
-                        .map(|name| format!("{name}.map"))
-                        .ok_or_else(|| io::Error::other("artifact filename is not UTF-8"))?;
-                    metadata
-                        .map_root
-                        .as_deref()
-                        .filter(|root| !root.is_empty())
-                        .map_or_else(
-                            || map_name.clone(),
-                            |root| format!("{}/{map_name}", root.trim_end_matches('/')),
-                        )
+                    fs::write(
+                        js_path.with_extension(format!("{extension}.map")),
+                        map.to_json(),
+                    )?;
+                    external_url
                 };
                 let newline = if metadata.new_line == "crlf" {
                     "\r\n"
                 } else {
                     "\n"
                 };
-                javascript.push_str(&format!("{newline}//# sourceMappingURL={url}{newline}"));
-            }
-            fs::write(&js_path, javascript)?;
-            if let Some(source_map) = &artifact.source_map {
-                if metadata.inline_source_map != Some(true) {
-                    fs::write(
-                        js_path.with_extension(format!("{extension}.map")),
-                        source_map.to_json(),
-                    )?;
+                if metadata.javascript_layout == "typescript" {
+                    javascript.push_str(&format!("//# sourceMappingURL={url}"));
+                } else {
+                    javascript.push_str(&format!("{newline}//# sourceMappingURL={url}{newline}"));
                 }
             }
+            fs::write(&js_path, javascript)?;
             if let Some(declaration) = &artifact.declaration {
-                fs::write(
-                    js_path.with_extension(node_modules::declaration_extension(extension)),
-                    declaration,
-                )?;
+                let extension = node_modules::declaration_extension(extension);
+                let path = js_path.with_extension(extension);
+                let mut declaration = declaration.clone();
+                if let Some(map) = &artifact.declaration_map {
+                    let (map, url) = publication_maps::publication(
+                        map,
+                        &source,
+                        &emit_root,
+                        &relative,
+                        &output.join(output_relative.with_extension(extension)),
+                        extension,
+                        metadata.map_root.as_deref(),
+                    )?;
+                    declaration.push_str(&format!("//# sourceMappingURL={url}"));
+                    let mut map_path = path.clone().into_os_string();
+                    map_path.push(".map");
+                    fs::write(PathBuf::from(map_path), map.to_json())?;
+                }
+                fs::write(path, declaration)?;
             }
         }
         for (module_id, source) in declaration_modules {
@@ -907,13 +866,22 @@ fn publish_build(
             fs::write(declaration_path, source)?;
         }
         assets_publish::stage(root, &stage, assets, metadata)?;
-        let manifest = serde_json::to_vec_pretty(metadata).map_err(io::Error::other)?;
-        fs::write(stage.join("bluetsc.manifest.json"), manifest)?;
         if metadata.has_configured_imports {
             let import_map = serde_json::json!({ "imports": &metadata.imports });
             let import_map = serde_json::to_vec_pretty(&import_map).map_err(io::Error::other)?;
             fs::write(stage.join("bluetsc.importmap.json"), import_map)?;
         }
+        let owned = publication_ownership::OwnedOutputs::from_directory(&stage)?;
+        owned.validate_destinations(&output)?;
+        let previous = publication_ownership::OwnedOutputs::legacy(&output)?;
+        previous.retired(&output, &owned)?;
+        let mut manifest = serde_json::to_value(metadata).map_err(io::Error::other)?;
+        manifest["outputOwnership"] = serde_json::to_value(&owned).map_err(io::Error::other)?;
+        fs::write(
+            stage.join("bluetsc.manifest.json"),
+            serde_json::to_vec_pretty(&manifest).map_err(io::Error::other)?,
+        )?;
+        previous.preserve(&output, &stage, &owned)?;
         Ok(())
     })();
     if let Err(error) = write_result {

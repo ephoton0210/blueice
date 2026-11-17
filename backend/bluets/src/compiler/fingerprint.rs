@@ -43,6 +43,10 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     add(crate::emitter::HELPER_SELECTION_VERSION);
     add(&options.import_helpers.to_string());
     add(&options.no_emit_helpers.to_string());
+    add(&options.no_emit.to_string());
+    add(options.javascript_layout.as_str());
+    add(&options.always_strict.to_string());
+    add("bluets-native-layout/3");
     add(options.target.as_str());
     add(if options.defines_class_fields() {
         "define-class-fields"
@@ -170,6 +174,10 @@ pub(crate) fn fingerprint(project: &Project, options: &CompilerOptions) -> Strin
     } else {
         "no-declaration"
     });
+    add("bluets-program-roots/1");
+    for root in &project.program_roots {
+        add(root);
+    }
     for (id, module) in &project.modules {
         add(id);
         add(&module.source);

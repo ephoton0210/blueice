@@ -13,7 +13,7 @@ mod inferred;
 mod members;
 mod modules;
 mod types;
-pub(crate) const VERSION: &str = "declaration-map-provenance-v3";
+pub(crate) const VERSION: &str = "declaration-map-provenance-v6";
 
 pub(super) fn build(
     id: &str,
@@ -22,6 +22,9 @@ pub(super) fn build(
     inferred: &BTreeMap<usize, Type>,
     options: &CompilerOptions,
 ) -> Result<SourceMap, Diagnostic> {
+    // The BOM stays in the emitted bytes; Native map columns begin at the
+    // first declaration character, excluding that encoding marker.
+    let declaration = declaration.strip_prefix('\u{feff}').unwrap_or(declaration);
     let generated = crate::parser::parse_module_with_limits(
         format!("{id}.d.ts"),
         declaration,

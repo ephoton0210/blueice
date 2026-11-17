@@ -4,6 +4,7 @@
 
 //! Original syntax boundaries that survive annotation and generic erasure.
 use super::*;
+use crate::syntax::TokenKind;
 mod class_headers;
 mod exports;
 mod generator_operands;
@@ -12,6 +13,25 @@ mod private_names;
 mod retained;
 mod spreads;
 mod templates;
+
+mod body_entries;
+
+pub(super) fn separate_arrow_entries(
+    module: &Module,
+    options: &CompilerOptions,
+    edits: &mut Vec<TextEdit>,
+) {
+    body_entries::separate_arrows(module, options, edits);
+}
+
+pub(super) fn separate_method_entries(
+    module: &Module,
+    options: &CompilerOptions,
+    anchors: &BTreeMap<usize, Option<usize>>,
+    edits: &mut Vec<TextEdit>,
+) {
+    body_entries::separate(module, options, anchors, edits);
+}
 
 pub(super) fn token_end_anchors(
     module: &Module,
@@ -116,15 +136,40 @@ pub(super) fn token_anchors(
             }),
         });
     if leading_runtime && module.source.starts_with("/*") {
-        anchors.insert(0, Some(0));
-        if let Some(end) = module.source.find("*/").map(|end| end + 2) {
+        let mut start = 0;
+        while module.source[start..].starts_with("/*") {
+            let Some(end) = module.source[start..].find("*/").map(|end| start + end + 2) else {
+                break;
+            };
+            anchors.insert(start, Some(start));
             anchors.insert(end, Some(end));
+            start = end;
+            while let Some(character) = module.source[start..]
+                .chars()
+                .next()
+                .filter(|ch| ch.is_whitespace())
+            {
+                start += character.len_utf8();
+            }
         }
     }
     templates::anchors(module, &tokens, &mut anchors);
     generator_operands::anchors(module, &tokens, &mut anchors);
     super::binding_patterns::javascript_anchors(module, &tokens, &mut anchors);
     for (index, token) in tokens.iter().enumerate() {
+        // A member call/index opener continues its receiver's end. Source
+        // whitespace between that name and opener adds no new Native role.
+        if options.javascript_layout == crate::JavaScriptLayout::TypeScript
+            && matches!(token.text.as_str(), "(" | "[")
+            && index >= 2
+            && matches!(tokens[index - 2].text.as_str(), "." | "?.")
+            && matches!(
+                tokens[index - 1].kind,
+                TokenKind::Identifier | TokenKind::Keyword
+            )
+        {
+            anchors.insert(token.start, Some(tokens[index - 1].end));
+        }
         if (token.is("else") || token.is("finally"))
             && index > 0
             && (tokens[index - 1].is("}") || tokens[index - 1].is(";"))

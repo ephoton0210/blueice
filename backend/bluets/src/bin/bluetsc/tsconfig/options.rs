@@ -389,9 +389,15 @@ pub(super) fn owner_options(
     let computed = effective(raw, root);
     owner.insert("target".to_string(), json!("es5"));
     owner.insert("inlineSources".to_string(), json!(false));
+    owner.insert("nativeLayout".to_string(), json!(true));
+    owner.insert(
+        "alwaysStrict".to_string(),
+        json!(checking(raw)?.always_strict),
+    );
     for name in [
         "target",
         "lib",
+        "noEmit",
         "downlevelIteration",
         "importHelpers",
         "noEmitHelpers",

@@ -317,6 +317,7 @@ fn owner_catalog_file_checks_physical_roots_before_launch() {
     let mut catalog = CompilerCatalogBootstrap {
         version: COMPILER_CATALOG_BOOTSTRAP_VERSION,
         projects: vec![CompilerCatalogProject {
+            program_roots: None,
             canonical_project_root: project.to_str().unwrap().to_string(),
             canonical_config_root: project.join("blue-ts.json").to_str().unwrap().to_string(),
             canonical_output_root: output.to_str().unwrap().to_string(),

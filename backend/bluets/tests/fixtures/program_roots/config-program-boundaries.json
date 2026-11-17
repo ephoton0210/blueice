@@ -1,0 +1,542 @@
+{
+  "typescript": "5.9.3",
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "cases": [
+    {
+      "id": "null/inherited-null",
+      "files": {
+        "base.json": "{\"files\":[\"other.ts\"],\"include\":[],\"exclude\":[\"main.ts\"]}",
+        "main.ts": "const main: number = 1;\n",
+        "other.ts": "const other: number = \"bad\";\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "noEmit": true
+        },
+        "extends": "./base.json",
+        "files": null,
+        "include": null,
+        "exclude": null
+      },
+      "nativeProjectRoot": "/Users/ephoton/git/blueice-bluets/target/program-roots-lifecycle-20261115/config-program-native-1/null/inherited-null",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "other.ts",
+            "position": {
+              "line": 1,
+              "column": 7,
+              "length": 5
+            },
+            "relatedInformation": []
+          }
+        ]
+      },
+      "parsedRoots": [
+        "other.ts"
+      ],
+      "shownFiles": [],
+      "actualCli": {
+        "exit": 2,
+        "stdoutSha256": "efe5bd8edd90a340721e277edd0d7c5bc297212f29cee7d620407b62c8f33e5f",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "id": "null/inherited-omitted",
+      "files": {
+        "base.json": "{\"files\":[\"other.ts\"],\"include\":[],\"exclude\":[\"main.ts\"]}",
+        "main.ts": "const main: number = 1;\n",
+        "other.ts": "const other: number = \"bad\";\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "noEmit": true
+        },
+        "extends": "./base.json"
+      },
+      "nativeProjectRoot": "/Users/ephoton/git/blueice-bluets/target/program-roots-lifecycle-20261115/config-program-native-1/null/inherited-omitted",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "other.ts",
+            "position": {
+              "line": 1,
+              "column": 7,
+              "length": 5
+            },
+            "relatedInformation": []
+          }
+        ]
+      },
+      "parsedRoots": [
+        "other.ts"
+      ],
+      "shownFiles": [],
+      "actualCli": {
+        "exit": 2,
+        "stdoutSha256": "efe5bd8edd90a340721e277edd0d7c5bc297212f29cee7d620407b62c8f33e5f",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "id": "null/direct-null",
+      "files": {
+        "main.ts": "const main: number = 1;\n",
+        "other.ts": "const other: number = \"bad\";\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "noEmit": true
+        },
+        "files": null
+      },
+      "nativeProjectRoot": "/Users/ephoton/git/blueice-bluets/target/program-roots-lifecycle-20261115/config-program-native-1/null/direct-null",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "other.ts",
+            "position": {
+              "line": 1,
+              "column": 7,
+              "length": 5
+            },
+            "relatedInformation": []
+          }
+        ]
+      },
+      "parsedRoots": [
+        "main.ts",
+        "other.ts"
+      ],
+      "shownFiles": [
+        "./main.ts",
+        "./other.ts"
+      ],
+      "actualCli": {
+        "exit": 2,
+        "stdoutSha256": "efe5bd8edd90a340721e277edd0d7c5bc297212f29cee7d620407b62c8f33e5f",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "id": "null/direct-null-excluded",
+      "files": {
+        "main.ts": "const main: number = 1;\n",
+        "other.ts": "const other: number = \"bad\";\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "noEmit": true
+        },
+        "files": null,
+        "include": [
+          "main.ts"
+        ]
+      },
+      "nativeProjectRoot": "/Users/ephoton/git/blueice-bluets/target/program-roots-lifecycle-20261115/config-program-native-1/null/direct-null-excluded",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      },
+      "parsedRoots": [
+        "main.ts"
+      ],
+      "shownFiles": [
+        "./main.ts"
+      ],
+      "actualCli": {
+        "exit": 0,
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "id": "null/inherited-null-custom-include",
+      "files": {
+        "base.json": "{\"files\":[\"other.ts\"],\"include\":[],\"exclude\":[\"main.ts\"]}",
+        "main.ts": "const main: number = 1;\n",
+        "other.ts": "const other: number = \"bad\";\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "noEmit": true
+        },
+        "extends": "./base.json",
+        "files": null,
+        "include": [
+          "main.ts"
+        ],
+        "exclude": []
+      },
+      "nativeProjectRoot": "/Users/ephoton/git/blueice-bluets/target/program-roots-lifecycle-20261115/config-program-native-1/null/inherited-null-custom-include",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "other.ts",
+            "position": {
+              "line": 1,
+              "column": 7,
+              "length": 5
+            },
+            "relatedInformation": []
+          }
+        ]
+      },
+      "parsedRoots": [
+        "other.ts",
+        "main.ts"
+      ],
+      "shownFiles": [
+        "./other.ts",
+        "./main.ts"
+      ],
+      "actualCli": {
+        "exit": 2,
+        "stdoutSha256": "efe5bd8edd90a340721e277edd0d7c5bc297212f29cee7d620407b62c8f33e5f",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "id": "root-dir/import",
+      "files": {
+        "src/main.ts": "// 🧭\nimport { value } from \"../lib/value\";\nconst checked: number = value;\n",
+        "lib/value.ts": "export const value: number = 1;\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "module": "CommonJS",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "noEmit": true,
+          "rootDir": "src"
+        },
+        "files": [
+          "src/main.ts"
+        ]
+      },
+      "nativeProjectRoot": "/Users/ephoton/git/blueice-bluets/target/program-roots-lifecycle-20261115/config-program-native-1/root-dir/import",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 6059,
+            "message": "File '/Users/ephoton/git/blueice-bluets/target/program-roots-lifecycle-20261115/config-program-native-1/root-dir/import/lib/value.ts' is not under 'rootDir' '/Users/ephoton/git/blueice-bluets/target/program-roots-lifecycle-20261115/config-program-native-1/root-dir/import/src'. 'rootDir' is expected to contain all source files.",
+            "file": "src/main.ts",
+            "position": {
+              "line": 2,
+              "column": 23,
+              "length": 14
+            },
+            "relatedInformation": []
+          }
+        ]
+      },
+      "parsedRoots": [
+        "src/main.ts"
+      ],
+      "shownFiles": [
+        "./src/main.ts"
+      ],
+      "actualCli": {
+        "exit": 2,
+        "stdoutSha256": "7f69f8a02b9f4e5f8e15d04378fbc72afd1af50f3c5b24176f0a2ebee1bcfaab",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "id": "root-dir/transitive",
+      "files": {
+        "src/main.ts": "import { value } from \"./bridge\";\nconst checked: number = value;\n",
+        "src/bridge.ts": "export { value } from \"../lib/value\";\n",
+        "lib/value.ts": "export const value: number = 1;\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "module": "CommonJS",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "noEmit": true,
+          "rootDir": "src"
+        },
+        "files": [
+          "src/main.ts"
+        ]
+      },
+      "nativeProjectRoot": "/Users/ephoton/git/blueice-bluets/target/program-roots-lifecycle-20261115/config-program-native-1/root-dir/transitive",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 6059,
+            "message": "File '/Users/ephoton/git/blueice-bluets/target/program-roots-lifecycle-20261115/config-program-native-1/root-dir/transitive/lib/value.ts' is not under 'rootDir' '/Users/ephoton/git/blueice-bluets/target/program-roots-lifecycle-20261115/config-program-native-1/root-dir/transitive/src'. 'rootDir' is expected to contain all source files.",
+            "file": "src/bridge.ts",
+            "position": {
+              "line": 1,
+              "column": 23,
+              "length": 14
+            },
+            "relatedInformation": []
+          }
+        ]
+      },
+      "parsedRoots": [
+        "src/main.ts"
+      ],
+      "shownFiles": [
+        "./src/main.ts"
+      ],
+      "actualCli": {
+        "exit": 2,
+        "stdoutSha256": "7dca0fde3d593ac4c71c6b41c3ec420a83563da3cf112e6e5134526cdfa076a3",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "id": "root-dir/two-importers",
+      "files": {
+        "src/main.ts": "// 🧭\nimport { value } from \"../lib/value\";\nconst checked: number = value;\n",
+        "src/other.ts": "// 🧭\nimport { value } from \"../lib/value\";\nconst second: number = value;\n",
+        "lib/value.ts": "export const value: number = 1;\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "module": "CommonJS",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "noEmit": true,
+          "rootDir": "src"
+        },
+        "files": [
+          "src/other.ts",
+          "src/main.ts"
+        ]
+      },
+      "nativeProjectRoot": "/Users/ephoton/git/blueice-bluets/target/program-roots-lifecycle-20261115/config-program-native-1/root-dir/two-importers",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 6059,
+            "message": "File '/Users/ephoton/git/blueice-bluets/target/program-roots-lifecycle-20261115/config-program-native-1/root-dir/two-importers/lib/value.ts' is not under 'rootDir' '/Users/ephoton/git/blueice-bluets/target/program-roots-lifecycle-20261115/config-program-native-1/root-dir/two-importers/src'. 'rootDir' is expected to contain all source files.\n  The file is in the program because:\n    Imported via \"../lib/value\" from file '/Users/ephoton/git/blueice-bluets/target/program-roots-lifecycle-20261115/config-program-native-1/root-dir/two-importers/src/other.ts'\n    Imported via \"../lib/value\" from file '/Users/ephoton/git/blueice-bluets/target/program-roots-lifecycle-20261115/config-program-native-1/root-dir/two-importers/src/main.ts'",
+            "file": "src/other.ts",
+            "position": {
+              "line": 2,
+              "column": 23,
+              "length": 14
+            },
+            "relatedInformation": [
+              {
+                "code": 1399,
+                "message": "File is included via import here.",
+                "file": "src/main.ts",
+                "position": {
+                  "line": 2,
+                  "column": 23,
+                  "length": 14
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      },
+      "parsedRoots": [
+        "src/other.ts",
+        "src/main.ts"
+      ],
+      "shownFiles": [
+        "./src/other.ts",
+        "./src/main.ts"
+      ],
+      "actualCli": {
+        "exit": 2,
+        "stdoutSha256": "a222212a7cf7a49bc555d46635659356c1753f1f7a7474bcf94fb0951b57d77f",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "id": "root-dir/explicit-root",
+      "files": {
+        "src/main.ts": "export const main = 1;\n",
+        "lib/value.ts": "export const value: number = 1;\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "module": "CommonJS",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "noEmit": true,
+          "rootDir": "src"
+        },
+        "files": [
+          "src/main.ts",
+          "lib/value.ts"
+        ]
+      },
+      "nativeProjectRoot": "/Users/ephoton/git/blueice-bluets/target/program-roots-lifecycle-20261115/config-program-native-1/root-dir/explicit-root",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 6059,
+            "message": "File '/Users/ephoton/git/blueice-bluets/target/program-roots-lifecycle-20261115/config-program-native-1/root-dir/explicit-root/lib/value.ts' is not under 'rootDir' '/Users/ephoton/git/blueice-bluets/target/program-roots-lifecycle-20261115/config-program-native-1/root-dir/explicit-root/src'. 'rootDir' is expected to contain all source files.\n  The file is in the program because:\n    Part of 'files' list in tsconfig.json",
+            "file": null,
+            "position": null,
+            "relatedInformation": [
+              {
+                "code": 1410,
+                "message": "File is matched by 'files' list specified here.",
+                "file": "tsconfig.json",
+                "position": {
+                  "line": 14,
+                  "column": 5,
+                  "length": 14
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      },
+      "parsedRoots": [
+        "src/main.ts",
+        "lib/value.ts"
+      ],
+      "shownFiles": [
+        "./src/main.ts",
+        "./lib/value.ts"
+      ],
+      "actualCli": {
+        "exit": 2,
+        "stdoutSha256": "9fecdc831ac526f0bdf60887e19d4bb78410d04b7d46c36eaf7cd13b04444562",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "id": "root-dir/declaration",
+      "files": {
+        "src/main.ts": "// 🧭\nimport { value } from \"../lib/value\";\nconst checked: number = value;\n",
+        "lib/value.d.ts": "export declare const value: number;\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "module": "CommonJS",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "noEmit": true,
+          "rootDir": "src"
+        },
+        "files": [
+          "src/main.ts"
+        ]
+      },
+      "nativeProjectRoot": "/Users/ephoton/git/blueice-bluets/target/program-roots-lifecycle-20261115/config-program-native-1/root-dir/declaration",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      },
+      "parsedRoots": [
+        "src/main.ts"
+      ],
+      "shownFiles": [
+        "./src/main.ts"
+      ],
+      "actualCli": {
+        "exit": 0,
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "id": "root-dir/unset",
+      "files": {
+        "src/main.ts": "// 🧭\nimport { value } from \"../lib/value\";\nconst checked: number = value;\n",
+        "lib/value.ts": "export const value: number = 1;\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "module": "CommonJS",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "noEmit": true,
+          "rootDir": "."
+        },
+        "files": [
+          "src/main.ts"
+        ]
+      },
+      "nativeProjectRoot": "/Users/ephoton/git/blueice-bluets/target/program-roots-lifecycle-20261115/config-program-native-1/root-dir/unset",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      },
+      "parsedRoots": [
+        "src/main.ts"
+      ],
+      "shownFiles": [
+        "./src/main.ts"
+      ],
+      "actualCli": {
+        "exit": 0,
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ]
+}

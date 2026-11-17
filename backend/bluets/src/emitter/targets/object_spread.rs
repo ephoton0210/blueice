@@ -47,7 +47,14 @@ pub(super) fn lower(
             .map_or(tokens[open - 1].start, |token| token.end);
         let source_anchor = super::super::relocations::source_anchor(anchor_offset);
         let unmapped = super::super::relocations::unmapped();
-        let mut replacement = format!("{source_anchor}{{{source_anchor}}}");
+        let native_external =
+            external && options.javascript_layout == crate::JavaScriptLayout::TypeScript;
+        let inherited = super::super::relocations::inherited();
+        let mut replacement = if native_external {
+            format!("{inherited}{{}}")
+        } else {
+            format!("{source_anchor}{{{source_anchor}}}")
+        };
         let mut previous_end = anchor_offset;
         for (start, end) in properties {
             let spread = tokens[start].is("...");
@@ -78,9 +85,15 @@ pub(super) fn lower(
                     format!("{unmapped}({source}{unmapped})")
                 }
             } else {
-                format!("{previous_end_anchor}{{{source}{end_anchor}}}")
+                if native_external {
+                    format!("{inherited}{{{source}}}")
+                } else {
+                    format!("{previous_end_anchor}{{{source}{end_anchor}}}")
+                }
             };
-            replacement = if external {
+            replacement = if native_external {
+                format!("{inherited}{helper}({replacement}, {argument})")
+            } else if external {
                 format!("{source_anchor}{helper}{source_anchor}({replacement}{previous_end_anchor}, {argument}{end_anchor})")
             } else {
                 format!(
@@ -89,6 +102,11 @@ pub(super) fn lower(
             };
             previous_end = end_offset;
         }
+        let prefix = &emitted.javascript[..tokens[open].start];
+        let call_entry = (
+            prefix.bytes().filter(|byte| *byte == b'\n').count(),
+            prefix.rsplit('\n').next().unwrap().encode_utf16().count(),
+        );
         emitted = mapped_edits(
             emitted,
             vec![
@@ -111,6 +129,13 @@ pub(super) fn lower(
                 },
             ],
         );
+        if native_external {
+            // The replaced literal is a generated helper call. Its entry
+            // inherits the preceding binding endpoint without a new node.
+            emitted
+                .provenance
+                .retain(|point| (point.generated_line, point.generated_column) != call_entry);
+        }
     }
 }
 

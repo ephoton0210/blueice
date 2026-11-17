@@ -163,28 +163,51 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
 
     for (field, value) in [
         ("path", serde_json::json!("/tmp/other.ts")),
+        ("roots", serde_json::json!(["project:///outside.ts"])),
+        (
+            "program_roots",
+            serde_json::json!(["project:///outside.ts"]),
+        ),
+        (
+            "selected_roots",
+            serde_json::json!(["project:///outside.ts"]),
+        ),
+        ("entry_module", serde_json::json!("project:///outside.ts")),
+        ("loader", serde_json::json!({})),
+        ("source", serde_json::json!("const injected = 1;")),
+        (
+            "sources",
+            serde_json::json!({"outside.ts":"const injected = 1;"}),
+        ),
+        ("resolver", serde_json::json!({})),
         ("resolver_edges", serde_json::json!([])),
+        ("compiler_options", serde_json::json!({"target":"es2020"})),
         ("options", serde_json::json!({"target": "es2020"})),
+        ("output_root", serde_json::json!("/tmp/outside")),
+        ("output_path", serde_json::json!("/tmp/outside.js")),
+        ("write_capability", serde_json::json!(true)),
         ("plugins", serde_json::json!(["unsafe"])),
     ] {
-        let mut arguments = serde_json::json!({
-            "session_id": compiler_session.clone(),
-            "project_id": 1,
-        });
-        arguments[field] = value;
-        let refusal = client
-            .call_tool(
-                CallToolRequestParams::new("bluetsc_check")
-                    .with_arguments(arguments.as_object().unwrap().clone()),
-            )
-            .await;
-        assert!(
-            match &refusal {
-                Err(_) => true,
-                Ok(result) => result.is_error == Some(true),
-            },
-            "MCP accepted client-supplied {field}: {refusal:?}"
-        );
+        for tool in ["bluetsc_check", "bluetsc_describe_project"] {
+            let mut arguments = serde_json::json!({
+                "session_id": compiler_session.clone(),
+                "project_id": 1,
+            });
+            arguments[field] = value.clone();
+            let refusal = client
+                .call_tool(
+                    CallToolRequestParams::new(tool)
+                        .with_arguments(arguments.as_object().unwrap().clone()),
+                )
+                .await;
+            assert!(
+                match &refusal {
+                    Err(_) => true,
+                    Ok(result) => result.is_error == Some(true),
+                },
+                "MCP {tool} accepted client-supplied {field}: {refusal:?}"
+            );
+        }
     }
 
     let check_result = compiler_tool!("bluetsc_check", serde_json::json!({ "project_id": 1 }));
@@ -194,6 +217,10 @@ async fn compiler_mcp_tools_page_exact_metadata_from_one_real_core_process() {
     else {
         panic!("the sealed core profile must return an exact check generation")
     };
+    assert_eq!(
+        check.generation.sequence, 1,
+        "rejected argument injections must never reach core checking"
+    );
     assert_eq!(
         check.artifact_fingerprint.as_deref(),
         Some(check.project_fingerprint.as_str())

@@ -293,7 +293,14 @@ impl Projector<'_> {
         if let BindingPattern::Object(bindings) = &pattern.pattern {
             if let [binding] = bindings.as_slice() {
                 if inline && (pattern.rest.is_none() || stable) && binding.default.is_none() {
-                    let read = format!("{value}{}.{}", anchor(value_end), binding.key);
+                    // Only the original operand has a source endpoint. Further
+                    // projections extend the same generated access chain.
+                    let endpoint = if root {
+                        anchor(value_end)
+                    } else {
+                        String::new()
+                    };
+                    let read = format!("{value}{endpoint}.{}", binding.key);
                     self.binding(
                         &binding.name,
                         binding.nested.as_deref(),

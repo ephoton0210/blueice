@@ -308,8 +308,16 @@ pub(in crate::emitter) fn lower(
     module: &Module,
     options: &CompilerOptions,
     lexical: &crate::checker::LexicalEmission,
+    context: ClassContext,
 ) -> Result<EmittedJavaScript, Diagnostic> {
-    lower_module(emitted, module, options, lexical, options.module_kind)
+    lower_module(
+        emitted,
+        module,
+        options,
+        lexical,
+        options.module_kind,
+        context,
+    )
 }
 
 /// Generated decorator output retains its own syntax tree for code generation,
@@ -320,9 +328,10 @@ pub(in crate::emitter) fn lower_generated(
     origin_module: &Module,
     options: &CompilerOptions,
     lexical: &crate::checker::LexicalEmission,
+    context: ClassContext,
 ) -> Result<EmittedJavaScript, Diagnostic> {
     if std::ptr::eq(module, origin_module) {
-        return lower(emitted, module, options, lexical);
+        return lower(emitted, module, options, lexical, context);
     }
     lower_with_origins(
         emitted,
@@ -331,6 +340,7 @@ pub(in crate::emitter) fn lower_generated(
         options,
         lexical,
         options.module_kind,
+        context,
     )
 }
 
@@ -340,8 +350,9 @@ pub(in crate::emitter) fn lower_module(
     options: &CompilerOptions,
     lexical: &crate::checker::LexicalEmission,
     wrapper: crate::ModuleKind,
+    context: ClassContext,
 ) -> Result<EmittedJavaScript, Diagnostic> {
-    lower_with_origins(emitted, module, module, options, lexical, wrapper)
+    lower_with_origins(emitted, module, module, options, lexical, wrapper, context)
 }
 
 fn lower_with_origins(
@@ -351,6 +362,7 @@ fn lower_with_origins(
     options: &CompilerOptions,
     lexical: &crate::checker::LexicalEmission,
     wrapper: crate::ModuleKind,
+    context: ClassContext,
 ) -> Result<EmittedJavaScript, Diagnostic> {
     if options.target != crate::EcmaTarget::Es5 {
         return Ok(emitted);
@@ -359,7 +371,7 @@ fn lower_with_origins(
     emitted = templates::lower(emitted, module, options)?;
     emitted = patterns::lower(emitted, module, options)?;
     emitted = objects::lower(emitted, module, options)?;
-    emitted = classes::lower(emitted, module, origin_module, options, wrapper)?;
+    emitted = classes::lower(emitted, module, origin_module, options, wrapper, context)?;
     emitted = spreads::lower(emitted, module, options)?;
     emitted = iteration::lower(emitted, module, options)?;
     let tokens = crate::syntax::lex_with_limits(
@@ -391,7 +403,9 @@ fn unsupported(module: &Module, span: &SourceSpan, message: &str) -> Diagnostic 
     )
 }
 
+mod class_context;
 mod classes;
+pub(in crate::emitter) use class_context::ClassContext;
 pub(in crate::emitter) use classes::class_is_expression;
 mod iteration;
 mod loops;

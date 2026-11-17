@@ -1,0 +1,594 @@
+{
+  "typescript": "5.9.3",
+  "sourceFixture": "ge2_module_helpers/cases.json",
+  "sourceFixtureSha256": "6e945ec5249baa238a57680a9dbfab122c44ea418d61352c2a8c4ea4773dc1ef",
+  "calibrationReportSha256": "8c8124b8b341d49a0e931b4d163defbbddd9ec55acaa8ec607b4ea3c1f64766e",
+  "scope": "Unchanged private-accessor source under explicit/default class-field policies with noEmit; full Native diagnostics.",
+  "cases": [
+    {
+      "id": "private-accessor/ES5/absent/default",
+      "fieldPolicy": "default",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 18028,
+            "message": "Private identifiers are only available when targeting ECMAScript 2015 and higher.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 20,
+              "length": 6
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 70,
+              "length": 11
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES5/complete/default",
+      "fieldPolicy": "default",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 18028,
+            "message": "Private identifiers are only available when targeting ECMAScript 2015 and higher.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 20,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES5/absent/assign",
+      "fieldPolicy": "assign",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 18028,
+            "message": "Private identifiers are only available when targeting ECMAScript 2015 and higher.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 20,
+              "length": 6
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 70,
+              "length": 11
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES5/complete/assign",
+      "fieldPolicy": "assign",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 18028,
+            "message": "Private identifiers are only available when targeting ECMAScript 2015 and higher.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 20,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES5/absent/define",
+      "fieldPolicy": "define",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 18028,
+            "message": "Private identifiers are only available when targeting ECMAScript 2015 and higher.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 20,
+              "length": 6
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 70,
+              "length": 11
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES5/complete/define",
+      "fieldPolicy": "define",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 18028,
+            "message": "Private identifiers are only available when targeting ECMAScript 2015 and higher.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 20,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES2015/absent/default",
+      "fieldPolicy": "default",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 70,
+              "length": 11
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES2015/complete/default",
+      "fieldPolicy": "default",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "private-accessor/ES2015/absent/assign",
+      "fieldPolicy": "assign",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 70,
+              "length": 11
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES2015/complete/assign",
+      "fieldPolicy": "assign",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "private-accessor/ES2015/absent/define",
+      "fieldPolicy": "define",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 70,
+              "length": 11
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES2015/complete/define",
+      "fieldPolicy": "define",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "private-accessor/ES2017/absent/default",
+      "fieldPolicy": "default",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 70,
+              "length": 11
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES2017/complete/default",
+      "fieldPolicy": "default",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "private-accessor/ES2017/absent/assign",
+      "fieldPolicy": "assign",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 70,
+              "length": 11
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES2017/complete/assign",
+      "fieldPolicy": "assign",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "private-accessor/ES2017/absent/define",
+      "fieldPolicy": "define",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 70,
+              "length": 11
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES2017/complete/define",
+      "fieldPolicy": "define",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "private-accessor/ES2018/absent/default",
+      "fieldPolicy": "default",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 70,
+              "length": 11
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES2018/complete/default",
+      "fieldPolicy": "default",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "private-accessor/ES2018/absent/assign",
+      "fieldPolicy": "assign",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 70,
+              "length": 11
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES2018/complete/assign",
+      "fieldPolicy": "assign",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "private-accessor/ES2018/absent/define",
+      "fieldPolicy": "define",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 70,
+              "length": 11
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES2018/complete/define",
+      "fieldPolicy": "define",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "private-accessor/ES2022/absent/default",
+      "fieldPolicy": "default",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 70,
+              "length": 11
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES2022/complete/default",
+      "fieldPolicy": "default",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "private-accessor/ES2022/absent/assign",
+      "fieldPolicy": "assign",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 70,
+              "length": 11
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES2022/complete/assign",
+      "fieldPolicy": "assign",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "private-accessor/ES2022/absent/define",
+      "fieldPolicy": "define",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 70,
+              "length": 11
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES2022/complete/define",
+      "fieldPolicy": "define",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "private-accessor/ESNext/absent/default",
+      "fieldPolicy": "default",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "private-accessor/ESNext/complete/default",
+      "fieldPolicy": "default",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "private-accessor/ESNext/absent/assign",
+      "fieldPolicy": "assign",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 70,
+              "length": 11
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ESNext/complete/assign",
+      "fieldPolicy": "assign",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "private-accessor/ESNext/absent/define",
+      "fieldPolicy": "define",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "private-accessor/ESNext/complete/define",
+      "fieldPolicy": "define",
+      "noEmitHelpers": false,
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    }
+  ]
+}

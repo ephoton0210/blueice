@@ -81,11 +81,11 @@ function create(ts,native,actual,originals,{erasedImportComments=[]}={}) {
       if(nt&&at)compareGap(native,n.end,nt.start,actual,a.end,at.start,'complete original comment ending gap');
     }
     for(const view of [native,actual])for(const comment of view===native?nc:ac)if(!texts.has(comment.text)) {
-      const sourceClass=view===native&&comment.text==='/** @class */'&&classProofs.find(proof=>!proof.native.native&&proof.native.node.getStart(native.source)<=comment.start&&comment.end<=proof.native.factory.getStart(native.source));
+      const sourceClass=comment.text==='/** @class */'&&classProofs.find(proof=>{const side=view===native?proof.native:proof.actual;return !side.native&&side.node.getStart(view.source)<=comment.start&&comment.end<=side.factory.getStart(view.source);});
       if(sourceClass) {
         const owner=native.owner(sourceClass.native.factory.getStart(native.source));
-        for(let offset=comment.start;offset<comment.end;offset++)assert.deepEqual(native.owner(offset),owner,'Native class marker retains complete class wrapper role');
-        native.cover(comment.start,comment.end);native.roleEnds.set(comment.end,owner);
+        for(let offset=comment.start;offset<comment.end;offset++)assert.deepEqual(view.owner(offset),owner,'Native class marker retains complete class wrapper role');
+        view.cover(comment.start,comment.end);view.roleEnds.set(comment.end,owner);
       }else {
         const scanned=view.comments().find(item=>item.start===comment.start&&item.end===comment.end);
         const delegated=classProofs.some(proof=>proof.delegatedExpressions&&require('./ge5_class_field_holes.cjs').coversComment(proof.delegatedExpressions,view,scanned)

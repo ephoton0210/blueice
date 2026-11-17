@@ -1,0 +1,22 @@
+{
+  "conclusion": "complete-P0-H-delivery-independently-verified-within-frozen-scope",
+  "recordedAt": "2026-11-17T08:23:20.223561+00:00",
+  "sourceRevision": "backend-tree:37beae676a55482728b6aa8682240bd9588e7fdc",
+  "contractSha256": "0c8ec15e6a9f50887351f79bfe9bbd32c6d7e04e8669a18e7663b94d81364d5a",
+  "measurementSha256": "3d455c68f60412caf119e2af1ce7fd8ab9d9c386bfb716422c84467119294d08",
+  "artifactIndexSha256": "d2ae23d3877998d188598fb472a7f4caff69b2c3ddbc69509b620211bcce4a01",
+  "acceptanceDocumentSha256": "ad70cda971b234a574b201b64cde3f84e1efec4a2e567c66fca56583486915e6",
+  "publishedRegularMembersIndependentlyDecoded": 376681,
+  "publishedArtifacts": 12,
+  "allRuntimeProofPayloadsArchived": true,
+  "originalCaseObjectsPreserved": 43112,
+  "originalFrozenFilesPreserved": 86569,
+  "originalNativeCorrectionIdsPerBuild": 572,
+  "currentToolsVerified": 618,
+  "allExplicitFrozenRuntimeRequirementsVerified": true,
+  "allPublishedBytesVerified": true,
+  "broaderFeatureRowsOpen": 22,
+  "fullTypeScriptParity": false,
+  "todoCheckboxChanged": false,
+  "commitOrPushPerformed": false
+}

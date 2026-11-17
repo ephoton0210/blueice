@@ -7,6 +7,14 @@ const assert = require('node:assert/strict');
 const { stream } = require('./ge5_role_stream.cjs');
 const { mutate } = require('./ge5_role_mutations.cjs');
 const { compare } = require('./ge5_linear_roles.cjs');
+function actionKind(ts, statement, wanted) {
+  if (!ts.isReturnStatement(statement) || !statement.expression
+    || !ts.isObjectLiteralExpression(statement.expression)
+    || statement.expression.properties.length !== 1) return false;
+  const property = statement.expression.properties[0];
+  return ts.isPropertyAssignment(property) && property.name.getText() === 'kind'
+    && ts.isStringLiteral(property.initializer) && property.initializer.text === wanted;
+}
 function run(ts, native, actual, originals, proof) {
   const trace = proof.actual, start = node => node.getStart(actual.source);
   const unique = events => [...new Map(events.map(event => [event.statement, event])).values()];
@@ -24,8 +32,8 @@ function run(ts, native, actual, originals, proof) {
   const region = trace.regions[0], field = name => region.statement.expression.properties.find(property => property.name.getText() === name).initializer;
   const actions = [...trace.machine.states.values()].flat().filter(statement => ts.isReturnStatement(statement)
     && ts.isObjectLiteralExpression(statement.expression) && statement.expression.properties.length === 1);
-  const leave = actions.find(statement => statement.getText().includes('kind:"leave"'));
-  const finish = actions.find(statement => statement.getText().includes('kind:"finish"'));
+  const leave = actions.find(statement => actionKind(ts, statement, 'leave'));
+  const finish = actions.find(statement => actionKind(ts, statement, 'finish'));
   const helper = actual.source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === trace.machine.helper);
   const tests = [
     ['erase for initializer binding', start(stored.left) + 1, null],

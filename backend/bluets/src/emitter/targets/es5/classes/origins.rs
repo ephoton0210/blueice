@@ -14,6 +14,7 @@ enum LegacyPhase {
 
 #[derive(Clone, Copy)]
 pub(super) struct Original {
+    pub(super) implicit_constructor: bool,
     start: usize,
     end: usize,
     close: usize,
@@ -28,6 +29,7 @@ pub(super) struct Original {
     pub(super) generated_factory: bool,
     pub(super) standard_factory: bool,
     standard_class_decorated: bool,
+    standard_instance_decorated: bool,
     plain_public_static: bool,
 }
 
@@ -42,8 +44,22 @@ pub(super) fn implicit_constructor_close(
     let Some(original) = original.filter(|_| emitted.segment_limit.is_some()) else {
         return;
     };
-    point(emitted, module, close, Some(original.close));
-    point(emitted, module, close + 1, Some(original.end));
+    // Class/static decorators retain the original implicit constructor. Only
+    // instance-member decorators synthesize a separate initializer constructor
+    // whose ending has no original body, even when the class is also decorated.
+    let retained_close = !original.standard_instance_decorated;
+    point(
+        emitted,
+        module,
+        close,
+        retained_close.then_some(original.close),
+    );
+    point(
+        emitted,
+        module,
+        close + 1,
+        retained_close.then_some(original.end),
+    );
 }
 
 pub(super) fn original_span(
@@ -60,16 +76,7 @@ pub(super) fn original_span(
         .filter_map(|(declaration, _)| match declaration {
             Declaration::Class(class)
                 if &class.name == name
-                    || !options.experimental_decorators
-                        && !class.decorators.is_empty()
-                        && (class.extends_span.is_some()
-                            || !class.members.is_empty()
-                                && class.members.iter().all(|member| {
-                                    !member.decorators.is_empty()
-                                        && member.field.as_ref().is_some_and(|field| {
-                                            !field.accessor && !field.name.starts_with('#')
-                                        })
-                                })) =>
+                    || !options.experimental_decorators && !class.decorators.is_empty() =>
             {
                 Some(class)
             }
@@ -170,10 +177,39 @@ pub(super) fn original_span(
     } else {
         Vec::new()
     };
+    // Consult enclosing bindings only when the class has no surviving direct
+    // header/member identity. A containing decorated class must never compete
+    // with a nested class's exact original token positions.
+    let binding_match =
+        if matched.is_empty() && body_matches.is_empty() && !options.experimental_decorators {
+            (0..start).rev().find_map(|index| {
+                if !matches!(tokens[index].text.as_str(), "let" | "const" | "var")
+                    || !tokens.get(index + 2).is_some_and(|token| token.is("="))
+                    || !tokens.get(index + 3).is_some_and(|token| token.is("("))
+                    || exponentiation::matching_close(tokens, index + 3)
+                        .is_none_or(|end| start >= end)
+                {
+                    return None;
+                }
+                let position = origin(tokens[index].start)?;
+                let mut matching = candidates.iter().copied().filter(|class| {
+                    !class.decorators.is_empty()
+                        && tokens[index + 1].text == class.name
+                        && source_position(class.span.start) <= position
+                        && position <= source_position(class.name_span.start)
+                });
+                let class = matching.next()?;
+                matching.next().is_none().then_some(class)
+            })
+        } else {
+            None
+        };
     let selected = if matched.len() == 1 {
         Some(matched[0])
     } else if body_matches.len() == 1 {
         Some(body_matches[0])
+    } else if binding_match.is_some() {
+        binding_match
     } else if candidates.len() == 1
         && keyword_origin.is_some_and(|point| {
             source_position(candidates[0].span.start) <= point
@@ -223,6 +259,7 @@ pub(super) fn original_span(
             LegacyPhase::MemberOnly
         };
         Original {
+        implicit_constructor: !class.members.iter().any(|member| member.constructor.as_ref().is_some_and(|constructor| constructor.body.is_some())),
         start,
         legacy_phase,
         legacy_invocation: (options.experimental_decorators
@@ -251,6 +288,11 @@ pub(super) fn original_span(
         factory_end: module.class_expressions.values().find(|expression| expression.class.span == class.span && !expression.statement && expression.class.members.iter().any(|member|member.field.as_ref().is_some_and(|field|field.is_static&&!field.declared))).and_then(|expression|expression.class.extends_span.as_ref().map(|span|span.end)).or_else(||standard_factory.then_some(class.span.end)),
         standard_factory,
         standard_class_decorated: !options.experimental_decorators && !class.decorators.is_empty(),
+        standard_instance_decorated: !options.experimental_decorators
+            && class.members.iter().any(|member| !member.decorators.is_empty()
+                && (member.method.as_ref().is_some_and(|method| !method.is_static)
+                    || member.field.as_ref().is_some_and(|field| !field.is_static)
+                    || member.accessor.as_ref().is_some_and(|accessor| !accessor.is_static))),
         plain_public_static: class.decorators.is_empty()
             && (runtime_declarations(&module.declarations).into_iter().any(|(declaration, _)| matches!(declaration, Declaration::Class(original) if original.span == class.span))
                 || module.class_expressions.values().any(|expression| expression.statement && expression.class.span == class.span))

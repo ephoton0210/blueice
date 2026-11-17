@@ -39,6 +39,16 @@ pub(super) struct Context<'a> {
 }
 
 impl<'a> Context<'a> {
+    pub(super) fn is_global_script(&self) -> bool {
+        !self.project.is_external_module(self.module)
+    }
+
+    pub(super) fn hides_global_implementation(&self, start: usize) -> bool {
+        self.checked
+            .global_overload_implementations
+            .contains(&start)
+    }
+
     pub(super) fn take_map_origins(&mut self) -> BTreeMap<usize, Type> {
         std::mem::take(&mut self.map_origins)
     }
@@ -50,6 +60,7 @@ impl<'a> Context<'a> {
         options: &CompilerOptions,
     ) -> Result<Self, Diagnostic> {
         let module = &checked.module;
+        let script = !project.is_external_module(module);
         let mut context = Self {
             checked,
             output_options: options.clone(),
@@ -85,7 +96,8 @@ impl<'a> Context<'a> {
                 continue;
             };
             if variable.declared
-                || !(variable.exported
+                || !(script
+                    || variable.exported
                     || is_default_export_name(module, &variable.name)
                     || is_value_export_name(module, &variable.name))
             {
@@ -165,7 +177,7 @@ impl<'a> Context<'a> {
         // Value imports also appear in annotations, class heritage and signatures.
         for (declaration, _) in super::runtime_declarations(&module.declarations) {
             match declaration {
-                Declaration::TypeAlias(alias) if alias.exported => {
+                Declaration::TypeAlias(alias) if script || alias.exported => {
                     context.references(&Type::GenericFunction {
                         type_parameters: alias.type_parameters.clone(),
                         parameters: Vec::new(),
@@ -184,7 +196,8 @@ impl<'a> Context<'a> {
                     }
                 }
                 Declaration::Function(function)
-                    if function.exported
+                    if script
+                        || function.exported
                         || context.used_imports.contains(&function.name)
                         || is_default_export_name(module, &function.name)
                         || is_value_export_name(module, &function.name) =>
@@ -232,7 +245,9 @@ impl<'a> Context<'a> {
                     }
                 }
                 Declaration::Interface(interface)
-                    if interface.exported || context.used_imports.contains(&interface.name) =>
+                    if script
+                        || interface.exported
+                        || context.used_imports.contains(&interface.name) =>
                 {
                     for parent in &interface.heritage {
                         context.references(parent);
@@ -246,7 +261,8 @@ impl<'a> Context<'a> {
                         .insert(interface.span.start, fields);
                 }
                 Declaration::Class(class)
-                    if class.exported
+                    if script
+                        || class.exported
                         || is_default_export_name(module, &class.name)
                         || is_value_export_name(module, &class.name) =>
                 {
@@ -316,7 +332,7 @@ impl<'a> Context<'a> {
             }
         }
         for symbol in &checked.symbols {
-            if symbol.exported {
+            if script || symbol.exported {
                 if let Some(value) = &symbol.value_type {
                     context.references(value);
                 }

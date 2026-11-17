@@ -1,0 +1,5768 @@
+{
+  "scope": "Immutable Native-calibrated consumer inputs for four declaration-only import forms across 16 profiles and both polarities. BlueTS-produced declaration bytes are independently equal in the recorded actual legacy CLI candidate; no authority-control or package completion credit.",
+  "inputSha256": "89e2ef47b44b5f3cb116f7aaf4c25c3a3307c7be9478ea21640511d85f16583a",
+  "nativeReferenceSha256": "a70077e8f32cb2f90aec52a8b6e3ad106e2f8ba9d9c4bfae54200499743183a4",
+  "blueDeclarationReferenceSha256": "4d3198d107edc1c17d5fc23bd03740b7bbb23ac5e71c970e80789c07b97620e3",
+  "cases": [
+    {
+      "id": "es5-cjs-none/module-private-collisions-isolated/positive",
+      "files": {
+        "main.d.ts": "export {};\n",
+        "other.d.ts": "export {};\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: number = 1;\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-cjs-none/module-private-collisions-isolated/negative",
+      "files": {
+        "main.d.ts": "export {};\n",
+        "other.d.ts": "export {};\n",
+        "probe.ts": "import \"./main\"; const bad: Hidden = {};\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2304,
+            "message": "Cannot find name 'Hidden'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 29,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-cjs-none/exported-private-dependency/positive",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n",
+        "probe.ts": "import { read } from \"./main\"; const probe: number = read({ value: 1 });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-cjs-none/exported-private-dependency/negative",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n",
+        "probe.ts": "import { read } from \"./main\"; const bad: number = read({ value: \"x\" });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 59,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 2,
+                  "column": 5,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-cjs-none/external-module-global-augmentation/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; const probe: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-cjs-none/external-module-global-augmentation/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; const bad: Item = { value: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 38,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-cjs-none/two-module-global-augmentation-merge/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: Item = { value: 1, name: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-cjs-none/two-module-global-augmentation-merge/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const bad: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2741,
+            "message": "Property 'name' is missing in type '{ value: number; }' but required in type 'Item'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 42,
+              "length": 3
+            },
+            "relatedInformation": [
+              {
+                "code": 2728,
+                "message": "'name' is declared here.",
+                "file": "other.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 4
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-cjs-js/module-private-collisions-isolated/positive",
+      "files": {
+        "main.d.ts": "export {};\n",
+        "other.d.ts": "export {};\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: number = 1;\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-cjs-js/module-private-collisions-isolated/negative",
+      "files": {
+        "main.d.ts": "export {};\n",
+        "other.d.ts": "export {};\n",
+        "probe.ts": "import \"./main\"; const bad: Hidden = {};\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2304,
+            "message": "Cannot find name 'Hidden'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 29,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-cjs-js/exported-private-dependency/positive",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n",
+        "probe.ts": "import { read } from \"./main\"; const probe: number = read({ value: 1 });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-cjs-js/exported-private-dependency/negative",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n",
+        "probe.ts": "import { read } from \"./main\"; const bad: number = read({ value: \"x\" });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 59,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 2,
+                  "column": 5,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-cjs-js/external-module-global-augmentation/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; const probe: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-cjs-js/external-module-global-augmentation/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; const bad: Item = { value: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 38,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-cjs-js/two-module-global-augmentation-merge/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: Item = { value: 1, name: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-cjs-js/two-module-global-augmentation-merge/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const bad: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2741,
+            "message": "Property 'name' is missing in type '{ value: number; }' but required in type 'Item'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 42,
+              "length": 3
+            },
+            "relatedInformation": [
+              {
+                "code": 2728,
+                "message": "'name' is declared here.",
+                "file": "other.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 4
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-cjs-dts/module-private-collisions-isolated/positive",
+      "files": {
+        "main.d.ts": "export {};\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: number = 1;\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-cjs-dts/module-private-collisions-isolated/negative",
+      "files": {
+        "main.d.ts": "export {};\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; const bad: Hidden = {};\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2304,
+            "message": "Cannot find name 'Hidden'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 29,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-cjs-dts/exported-private-dependency/positive",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import { read } from \"./main\"; const probe: number = read({ value: 1 });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-cjs-dts/exported-private-dependency/negative",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import { read } from \"./main\"; const bad: number = read({ value: \"x\" });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 59,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 2,
+                  "column": 5,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-cjs-dts/external-module-global-augmentation/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import \"./main\"; const probe: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-cjs-dts/external-module-global-augmentation/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import \"./main\"; const bad: Item = { value: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 38,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-cjs-dts/two-module-global-augmentation-merge/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: Item = { value: 1, name: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-cjs-dts/two-module-global-augmentation-merge/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const bad: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2741,
+            "message": "Property 'name' is missing in type '{ value: number; }' but required in type 'Item'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 42,
+              "length": 3
+            },
+            "relatedInformation": [
+              {
+                "code": 2728,
+                "message": "'name' is declared here.",
+                "file": "other.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 4
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-cjs-both/module-private-collisions-isolated/positive",
+      "files": {
+        "main.d.ts": "export {};\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: number = 1;\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-cjs-both/module-private-collisions-isolated/negative",
+      "files": {
+        "main.d.ts": "export {};\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; const bad: Hidden = {};\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2304,
+            "message": "Cannot find name 'Hidden'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 29,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-cjs-both/exported-private-dependency/positive",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import { read } from \"./main\"; const probe: number = read({ value: 1 });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-cjs-both/exported-private-dependency/negative",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import { read } from \"./main\"; const bad: number = read({ value: \"x\" });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 59,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 2,
+                  "column": 5,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-cjs-both/external-module-global-augmentation/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import \"./main\"; const probe: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-cjs-both/external-module-global-augmentation/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import \"./main\"; const bad: Item = { value: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 38,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-cjs-both/two-module-global-augmentation-merge/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: Item = { value: 1, name: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-cjs-both/two-module-global-augmentation-merge/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const bad: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2741,
+            "message": "Property 'name' is missing in type '{ value: number; }' but required in type 'Item'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 42,
+              "length": 3
+            },
+            "relatedInformation": [
+              {
+                "code": 2728,
+                "message": "'name' is declared here.",
+                "file": "other.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 4
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-esm-none/module-private-collisions-isolated/positive",
+      "files": {
+        "main.d.ts": "export {};\n",
+        "other.d.ts": "export {};\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: number = 1;\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-esm-none/module-private-collisions-isolated/negative",
+      "files": {
+        "main.d.ts": "export {};\n",
+        "other.d.ts": "export {};\n",
+        "probe.ts": "import \"./main\"; const bad: Hidden = {};\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2304,
+            "message": "Cannot find name 'Hidden'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 29,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-esm-none/exported-private-dependency/positive",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n",
+        "probe.ts": "import { read } from \"./main\"; const probe: number = read({ value: 1 });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-esm-none/exported-private-dependency/negative",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n",
+        "probe.ts": "import { read } from \"./main\"; const bad: number = read({ value: \"x\" });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 59,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 2,
+                  "column": 5,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-esm-none/external-module-global-augmentation/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; const probe: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-esm-none/external-module-global-augmentation/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; const bad: Item = { value: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 38,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-esm-none/two-module-global-augmentation-merge/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: Item = { value: 1, name: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-esm-none/two-module-global-augmentation-merge/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const bad: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2741,
+            "message": "Property 'name' is missing in type '{ value: number; }' but required in type 'Item'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 42,
+              "length": 3
+            },
+            "relatedInformation": [
+              {
+                "code": 2728,
+                "message": "'name' is declared here.",
+                "file": "other.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 4
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-esm-js/module-private-collisions-isolated/positive",
+      "files": {
+        "main.d.ts": "export {};\n",
+        "other.d.ts": "export {};\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: number = 1;\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-esm-js/module-private-collisions-isolated/negative",
+      "files": {
+        "main.d.ts": "export {};\n",
+        "other.d.ts": "export {};\n",
+        "probe.ts": "import \"./main\"; const bad: Hidden = {};\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2304,
+            "message": "Cannot find name 'Hidden'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 29,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-esm-js/exported-private-dependency/positive",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n",
+        "probe.ts": "import { read } from \"./main\"; const probe: number = read({ value: 1 });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-esm-js/exported-private-dependency/negative",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n",
+        "probe.ts": "import { read } from \"./main\"; const bad: number = read({ value: \"x\" });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 59,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 2,
+                  "column": 5,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-esm-js/external-module-global-augmentation/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; const probe: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-esm-js/external-module-global-augmentation/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; const bad: Item = { value: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 38,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-esm-js/two-module-global-augmentation-merge/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: Item = { value: 1, name: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-esm-js/two-module-global-augmentation-merge/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const bad: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2741,
+            "message": "Property 'name' is missing in type '{ value: number; }' but required in type 'Item'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 42,
+              "length": 3
+            },
+            "relatedInformation": [
+              {
+                "code": 2728,
+                "message": "'name' is declared here.",
+                "file": "other.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 4
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-esm-dts/module-private-collisions-isolated/positive",
+      "files": {
+        "main.d.ts": "export {};\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: number = 1;\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-esm-dts/module-private-collisions-isolated/negative",
+      "files": {
+        "main.d.ts": "export {};\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; const bad: Hidden = {};\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2304,
+            "message": "Cannot find name 'Hidden'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 29,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-esm-dts/exported-private-dependency/positive",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import { read } from \"./main\"; const probe: number = read({ value: 1 });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-esm-dts/exported-private-dependency/negative",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import { read } from \"./main\"; const bad: number = read({ value: \"x\" });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 59,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 2,
+                  "column": 5,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-esm-dts/external-module-global-augmentation/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import \"./main\"; const probe: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-esm-dts/external-module-global-augmentation/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import \"./main\"; const bad: Item = { value: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 38,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-esm-dts/two-module-global-augmentation-merge/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: Item = { value: 1, name: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-esm-dts/two-module-global-augmentation-merge/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const bad: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2741,
+            "message": "Property 'name' is missing in type '{ value: number; }' but required in type 'Item'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 42,
+              "length": 3
+            },
+            "relatedInformation": [
+              {
+                "code": 2728,
+                "message": "'name' is declared here.",
+                "file": "other.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 4
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-esm-both/module-private-collisions-isolated/positive",
+      "files": {
+        "main.d.ts": "export {};\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: number = 1;\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-esm-both/module-private-collisions-isolated/negative",
+      "files": {
+        "main.d.ts": "export {};\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; const bad: Hidden = {};\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2304,
+            "message": "Cannot find name 'Hidden'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 29,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-esm-both/exported-private-dependency/positive",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import { read } from \"./main\"; const probe: number = read({ value: 1 });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-esm-both/exported-private-dependency/negative",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import { read } from \"./main\"; const bad: number = read({ value: \"x\" });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 59,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 2,
+                  "column": 5,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-esm-both/external-module-global-augmentation/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import \"./main\"; const probe: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-esm-both/external-module-global-augmentation/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import \"./main\"; const bad: Item = { value: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 38,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es5-esm-both/two-module-global-augmentation-merge/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: Item = { value: 1, name: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es5-esm-both/two-module-global-augmentation-merge/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const bad: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES5",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2741,
+            "message": "Property 'name' is missing in type '{ value: number; }' but required in type 'Item'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 42,
+              "length": 3
+            },
+            "relatedInformation": [
+              {
+                "code": 2728,
+                "message": "'name' is declared here.",
+                "file": "other.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 4
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-cjs-none/module-private-collisions-isolated/positive",
+      "files": {
+        "main.d.ts": "export {};\n",
+        "other.d.ts": "export {};\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: number = 1;\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-cjs-none/module-private-collisions-isolated/negative",
+      "files": {
+        "main.d.ts": "export {};\n",
+        "other.d.ts": "export {};\n",
+        "probe.ts": "import \"./main\"; const bad: Hidden = {};\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2304,
+            "message": "Cannot find name 'Hidden'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 29,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-cjs-none/exported-private-dependency/positive",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n",
+        "probe.ts": "import { read } from \"./main\"; const probe: number = read({ value: 1 });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-cjs-none/exported-private-dependency/negative",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n",
+        "probe.ts": "import { read } from \"./main\"; const bad: number = read({ value: \"x\" });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 59,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 2,
+                  "column": 5,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-cjs-none/external-module-global-augmentation/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; const probe: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-cjs-none/external-module-global-augmentation/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; const bad: Item = { value: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 38,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-cjs-none/two-module-global-augmentation-merge/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: Item = { value: 1, name: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-cjs-none/two-module-global-augmentation-merge/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const bad: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2741,
+            "message": "Property 'name' is missing in type '{ value: number; }' but required in type 'Item'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 42,
+              "length": 3
+            },
+            "relatedInformation": [
+              {
+                "code": 2728,
+                "message": "'name' is declared here.",
+                "file": "other.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 4
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-cjs-js/module-private-collisions-isolated/positive",
+      "files": {
+        "main.d.ts": "export {};\n",
+        "other.d.ts": "export {};\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: number = 1;\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-cjs-js/module-private-collisions-isolated/negative",
+      "files": {
+        "main.d.ts": "export {};\n",
+        "other.d.ts": "export {};\n",
+        "probe.ts": "import \"./main\"; const bad: Hidden = {};\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2304,
+            "message": "Cannot find name 'Hidden'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 29,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-cjs-js/exported-private-dependency/positive",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n",
+        "probe.ts": "import { read } from \"./main\"; const probe: number = read({ value: 1 });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-cjs-js/exported-private-dependency/negative",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n",
+        "probe.ts": "import { read } from \"./main\"; const bad: number = read({ value: \"x\" });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 59,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 2,
+                  "column": 5,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-cjs-js/external-module-global-augmentation/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; const probe: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-cjs-js/external-module-global-augmentation/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; const bad: Item = { value: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 38,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-cjs-js/two-module-global-augmentation-merge/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: Item = { value: 1, name: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-cjs-js/two-module-global-augmentation-merge/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const bad: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2741,
+            "message": "Property 'name' is missing in type '{ value: number; }' but required in type 'Item'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 42,
+              "length": 3
+            },
+            "relatedInformation": [
+              {
+                "code": 2728,
+                "message": "'name' is declared here.",
+                "file": "other.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 4
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-cjs-dts/module-private-collisions-isolated/positive",
+      "files": {
+        "main.d.ts": "export {};\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: number = 1;\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-cjs-dts/module-private-collisions-isolated/negative",
+      "files": {
+        "main.d.ts": "export {};\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; const bad: Hidden = {};\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2304,
+            "message": "Cannot find name 'Hidden'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 29,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-cjs-dts/exported-private-dependency/positive",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import { read } from \"./main\"; const probe: number = read({ value: 1 });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-cjs-dts/exported-private-dependency/negative",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import { read } from \"./main\"; const bad: number = read({ value: \"x\" });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 59,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 2,
+                  "column": 5,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-cjs-dts/external-module-global-augmentation/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import \"./main\"; const probe: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-cjs-dts/external-module-global-augmentation/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import \"./main\"; const bad: Item = { value: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 38,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-cjs-dts/two-module-global-augmentation-merge/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: Item = { value: 1, name: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-cjs-dts/two-module-global-augmentation-merge/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const bad: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2741,
+            "message": "Property 'name' is missing in type '{ value: number; }' but required in type 'Item'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 42,
+              "length": 3
+            },
+            "relatedInformation": [
+              {
+                "code": 2728,
+                "message": "'name' is declared here.",
+                "file": "other.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 4
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-cjs-both/module-private-collisions-isolated/positive",
+      "files": {
+        "main.d.ts": "export {};\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: number = 1;\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-cjs-both/module-private-collisions-isolated/negative",
+      "files": {
+        "main.d.ts": "export {};\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; const bad: Hidden = {};\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2304,
+            "message": "Cannot find name 'Hidden'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 29,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-cjs-both/exported-private-dependency/positive",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import { read } from \"./main\"; const probe: number = read({ value: 1 });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-cjs-both/exported-private-dependency/negative",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import { read } from \"./main\"; const bad: number = read({ value: \"x\" });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 59,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 2,
+                  "column": 5,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-cjs-both/external-module-global-augmentation/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import \"./main\"; const probe: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-cjs-both/external-module-global-augmentation/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import \"./main\"; const bad: Item = { value: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 38,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-cjs-both/two-module-global-augmentation-merge/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: Item = { value: 1, name: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-cjs-both/two-module-global-augmentation-merge/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const bad: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "CommonJS",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2741,
+            "message": "Property 'name' is missing in type '{ value: number; }' but required in type 'Item'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 42,
+              "length": 3
+            },
+            "relatedInformation": [
+              {
+                "code": 2728,
+                "message": "'name' is declared here.",
+                "file": "other.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 4
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-esm-none/module-private-collisions-isolated/positive",
+      "files": {
+        "main.d.ts": "export {};\n",
+        "other.d.ts": "export {};\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: number = 1;\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-esm-none/module-private-collisions-isolated/negative",
+      "files": {
+        "main.d.ts": "export {};\n",
+        "other.d.ts": "export {};\n",
+        "probe.ts": "import \"./main\"; const bad: Hidden = {};\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2304,
+            "message": "Cannot find name 'Hidden'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 29,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-esm-none/exported-private-dependency/positive",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n",
+        "probe.ts": "import { read } from \"./main\"; const probe: number = read({ value: 1 });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-esm-none/exported-private-dependency/negative",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n",
+        "probe.ts": "import { read } from \"./main\"; const bad: number = read({ value: \"x\" });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 59,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 2,
+                  "column": 5,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-esm-none/external-module-global-augmentation/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; const probe: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-esm-none/external-module-global-augmentation/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; const bad: Item = { value: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 38,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-esm-none/two-module-global-augmentation-merge/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: Item = { value: 1, name: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-esm-none/two-module-global-augmentation-merge/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const bad: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2741,
+            "message": "Property 'name' is missing in type '{ value: number; }' but required in type 'Item'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 42,
+              "length": 3
+            },
+            "relatedInformation": [
+              {
+                "code": 2728,
+                "message": "'name' is declared here.",
+                "file": "other.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 4
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-esm-js/module-private-collisions-isolated/positive",
+      "files": {
+        "main.d.ts": "export {};\n",
+        "other.d.ts": "export {};\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: number = 1;\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-esm-js/module-private-collisions-isolated/negative",
+      "files": {
+        "main.d.ts": "export {};\n",
+        "other.d.ts": "export {};\n",
+        "probe.ts": "import \"./main\"; const bad: Hidden = {};\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2304,
+            "message": "Cannot find name 'Hidden'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 29,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-esm-js/exported-private-dependency/positive",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n",
+        "probe.ts": "import { read } from \"./main\"; const probe: number = read({ value: 1 });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-esm-js/exported-private-dependency/negative",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n",
+        "probe.ts": "import { read } from \"./main\"; const bad: number = read({ value: \"x\" });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 59,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 2,
+                  "column": 5,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-esm-js/external-module-global-augmentation/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; const probe: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-esm-js/external-module-global-augmentation/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; const bad: Item = { value: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 38,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-esm-js/two-module-global-augmentation-merge/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: Item = { value: 1, name: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-esm-js/two-module-global-augmentation-merge/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n",
+        "probe.ts": "import \"./main\"; import \"./other\"; const bad: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": false,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2741,
+            "message": "Property 'name' is missing in type '{ value: number; }' but required in type 'Item'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 42,
+              "length": 3
+            },
+            "relatedInformation": [
+              {
+                "code": 2728,
+                "message": "'name' is declared here.",
+                "file": "other.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 4
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-esm-dts/module-private-collisions-isolated/positive",
+      "files": {
+        "main.d.ts": "export {};\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: number = 1;\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-esm-dts/module-private-collisions-isolated/negative",
+      "files": {
+        "main.d.ts": "export {};\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; const bad: Hidden = {};\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2304,
+            "message": "Cannot find name 'Hidden'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 29,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-esm-dts/exported-private-dependency/positive",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import { read } from \"./main\"; const probe: number = read({ value: 1 });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-esm-dts/exported-private-dependency/negative",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import { read } from \"./main\"; const bad: number = read({ value: \"x\" });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 59,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 2,
+                  "column": 5,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-esm-dts/external-module-global-augmentation/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import \"./main\"; const probe: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-esm-dts/external-module-global-augmentation/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import \"./main\"; const bad: Item = { value: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 38,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-esm-dts/two-module-global-augmentation-merge/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: Item = { value: 1, name: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-esm-dts/two-module-global-augmentation-merge/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const bad: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": false,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2741,
+            "message": "Property 'name' is missing in type '{ value: number; }' but required in type 'Item'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 42,
+              "length": 3
+            },
+            "relatedInformation": [
+              {
+                "code": 2728,
+                "message": "'name' is declared here.",
+                "file": "other.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 4
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-esm-both/module-private-collisions-isolated/positive",
+      "files": {
+        "main.d.ts": "export {};\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: number = 1;\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-esm-both/module-private-collisions-isolated/negative",
+      "files": {
+        "main.d.ts": "export {};\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; const bad: Hidden = {};\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2304,
+            "message": "Cannot find name 'Hidden'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 29,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-esm-both/exported-private-dependency/positive",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import { read } from \"./main\"; const probe: number = read({ value: 1 });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-esm-both/exported-private-dependency/negative",
+      "files": {
+        "consumer.d.ts": "export declare const check: number;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "interface Item {\n    value: number;\n}\nexport declare function read(value: Item): number;\nexport {};\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import { read } from \"./main\"; const bad: number = read({ value: \"x\" });\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 59,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 2,
+                  "column": 5,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-esm-both/external-module-global-augmentation/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import \"./main\"; const probe: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-esm-both/external-module-global-augmentation/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "probe.ts": "import \"./main\"; const bad: Item = { value: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2322,
+            "message": "Type 'string' is not assignable to type 'number'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 38,
+              "length": 5
+            },
+            "relatedInformation": [
+              {
+                "code": 6500,
+                "message": "The expected type comes from property 'value' which is declared here on type 'Item'",
+                "file": "main.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 5
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "es2022-esm-both/two-module-global-augmentation-merge/positive",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const probe: Item = { value: 1, name: \"x\" };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "es2022-esm-both/two-module-global-augmentation-merge/negative",
+      "files": {
+        "consumer.d.ts": "declare const check: Item;\n//# sourceMappingURL=consumer.d.ts.map",
+        "main.d.ts": "export {};\ndeclare global {\n    interface Item {\n        value: number;\n    }\n}\n//# sourceMappingURL=main.d.ts.map",
+        "other.d.ts": "export {};\ndeclare global {\n    interface Item {\n        name: string;\n    }\n}\n//# sourceMappingURL=other.d.ts.map",
+        "probe.ts": "import \"./main\"; import \"./other\"; const bad: Item = { value: 1 };\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "target": "ES2022",
+          "module": "ESNext",
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmit": true
+        },
+        "files": [
+          "consumer.d.ts",
+          "main.d.ts",
+          "other.d.ts",
+          "probe.ts"
+        ]
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2741,
+            "message": "Property 'name' is missing in type '{ value: number; }' but required in type 'Item'.",
+            "file": "probe.ts",
+            "position": {
+              "line": 1,
+              "column": 42,
+              "length": 3
+            },
+            "relatedInformation": [
+              {
+                "code": 2728,
+                "message": "'name' is declared here.",
+                "file": "other.d.ts",
+                "position": {
+                  "line": 4,
+                  "column": 9,
+                  "length": 4
+                },
+                "relatedInformation": []
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

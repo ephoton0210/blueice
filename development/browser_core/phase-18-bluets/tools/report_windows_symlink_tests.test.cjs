@@ -46,7 +46,7 @@ test('discovers the explicit Windows symlink feature without treating it as a pa
 
 test('the Windows report names every currently Unix-gated symlink case and why it is skipped', () => {
   const cases = skippedSymlinkCases();
-  assert.equal(cases.length, 26);
+  assert.equal(cases.length, 28);
   assert.equal(new Set(cases.map(({ name }) => name)).size, cases.length);
   assert(cases.some(({ name }) => name ===
     'project_build_invalidation::repointed-symlink pinned oracle row'));
@@ -58,18 +58,31 @@ test('the Windows report names every currently Unix-gated symlink case and why i
   }
 });
 
-test('keeps the frozen Windows matrix separate from the added Unix-only incremental boundary', () => {
+test('keeps the frozen Windows matrix separate from additional Unix-only boundaries', () => {
   const frozen = JSON.parse(fs.readFileSync(path.join(__dirname, '../GM3_FROZEN_MATRIX.json'), 'utf8'));
   const cases = skippedSymlinkCases();
   const frozenNames = new Set(frozen.cases.map(({ name }) => name));
   assert.equal(frozenNames.size, 25);
   assert.deepEqual(new Set(cases.filter(({ name }) => frozenNames.has(name)).map(({ name }) => name)), frozenNames);
   const added = cases.filter(({ name }) => !frozenNames.has(name));
-  assert.equal(added.length, 1);
-  assert.equal(added[0].name, 'gm2_incremental_options::state_and_parent_symlinks_cannot_publish_outside_owner');
-  assert.equal(added[0].source, 'backend/bluets/tests/gm2_incremental_options.rs');
-  assert(added[0].reason.includes('Unix-only symlink APIs'));
-  assert(!added[0].reason.includes('windows-symlink-tests'));
+  assert.deepEqual(added.map(({ name, source }) => ({ name, source })), [
+    {
+      name: 'gm2_incremental_options::state_and_parent_symlinks_cannot_publish_outside_owner',
+      source: 'backend/bluets/tests/gm2_incremental_options.rs',
+    },
+    {
+      name: 'program_root_publication::symlinked_retirement_targets_refuse_without_following_or_removing_them',
+      source: 'backend/bluets/tests/program_root_publication.rs',
+    },
+    {
+      name: 'program_roots_private_state::a_private_state_symlink_never_reaches_an_outside_directory',
+      source: 'backend/bluets/tests/program_roots_private_state.rs',
+    },
+  ]);
+  for (const entry of added) {
+    assert(entry.reason.includes('Unix-only symlink APIs'));
+    assert(!entry.reason.includes('windows-symlink-tests'));
+  }
   assert(renderReport(cases).includes('Rows using Unix-only APIs remain unavailable on Windows.'));
 });
 

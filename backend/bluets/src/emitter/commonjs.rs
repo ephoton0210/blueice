@@ -141,6 +141,8 @@ pub(super) fn lower_commonjs(
                         Replacement {
                             text: format!("exports.{local}"),
                             wrap_calls: !system_wrapper,
+                            anchor_call_target: options.javascript_layout
+                                == crate::JavaScriptLayout::TypeScript,
                             anchor_each_token: false,
                         },
                     );
@@ -185,6 +187,8 @@ pub(super) fn lower_commonjs(
                             Replacement {
                                 text: format!("{variable}.{}", binding.imported),
                                 wrap_calls: !system_wrapper,
+                                anchor_call_target: options.javascript_layout
+                                    == crate::JavaScriptLayout::TypeScript,
                                 anchor_each_token: false,
                             },
                         );
@@ -206,6 +210,8 @@ pub(super) fn lower_commonjs(
                             Replacement {
                                 text: format!("{variable}.default"),
                                 wrap_calls: !system_wrapper,
+                                anchor_call_target: options.javascript_layout
+                                    == crate::JavaScriptLayout::TypeScript,
                                 anchor_each_token: false,
                             },
                         );
@@ -432,8 +438,13 @@ pub(super) fn lower_commonjs(
                     )
                 } else {
                     format!(
-                        "{}exports.{}",
+                        "{}exports.{}{}",
                         super::relocations::source_anchor(name_token.start),
+                        if options.javascript_layout == crate::JavaScriptLayout::TypeScript {
+                            super::relocations::source_anchor(name_token.start)
+                        } else {
+                            String::new()
+                        },
                         variable.name
                     )
                 };
@@ -594,6 +605,7 @@ pub(super) fn lower_commonjs(
             Replacement {
                 text: format!("exports.{name}"),
                 wrap_calls: false,
+                anchor_call_target: false,
                 anchor_each_token: system_wrapper,
             },
         );
@@ -680,6 +692,18 @@ pub(super) fn lower_commonjs(
         }
     }
     if !header.is_empty() {
+        if options.javascript_layout == crate::JavaScriptLayout::TypeScript {
+            // The prelude ends before an original leading comment. Keep its
+            // endpoint and unmapped reset on opposite sides of the line break.
+            let end = header
+                .strip_suffix(super::relocations::unmapped())
+                .map_or(header.len(), str::len);
+            if end > 0 && header.as_bytes()[end - 1] == b' ' {
+                header.replace_range(end - 1..end, "\n");
+            } else if !header[..end].ends_with('\n') {
+                header.insert(end, '\n');
+            }
+        }
         edits.push(TextEdit {
             start: 0,
             end: 0,

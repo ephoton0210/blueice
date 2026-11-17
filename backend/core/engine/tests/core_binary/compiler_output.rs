@@ -36,6 +36,7 @@ fn real_core_output_socket_requires_a_separate_owner_grant_and_receipt() {
     let catalog = CompilerCatalogBootstrap {
         version: COMPILER_CATALOG_BOOTSTRAP_VERSION,
         projects: vec![CompilerCatalogProject {
+            program_roots: None,
             canonical_project_root: project_root.to_str().unwrap().into(),
             canonical_config_root: config.to_str().unwrap().into(),
             canonical_output_root: output_root.to_str().unwrap().into(),

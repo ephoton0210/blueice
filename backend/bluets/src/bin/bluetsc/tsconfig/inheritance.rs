@@ -193,7 +193,7 @@ impl Reader {
                 .then(|| directory.to_path_buf()),
             options,
             files: self.paths(object.get("files"), directory, "files")?,
-            files_supplied: object.contains_key("files"),
+            files_supplied: object.get("files").is_some_and(|value| !value.is_null()),
             local_empty_files: object
                 .get("files")
                 .and_then(Value::as_array)

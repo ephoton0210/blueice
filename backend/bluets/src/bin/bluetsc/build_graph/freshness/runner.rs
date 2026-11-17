@@ -71,9 +71,11 @@ pub(in super::super) fn run(
                 return ExitCode::FAILURE;
             }
         };
+        let mut invalid_producer_state = false;
         let mut state = match State::load(project) {
             Ok(LoadedState::Missing) => None,
             Ok(LoadedState::Invalid) => {
+                invalid_producer_state = true;
                 eprintln!(
                     "bluetsc: invalid or foreign .tsbuildinfo for {}; rebuilding project",
                     graph.display_path(project)
@@ -102,7 +104,9 @@ pub(in super::super) fn run(
             && state
                 .as_ref()
                 .is_some_and(|s| s.status.native_hash == native_hash);
-        if state.is_none() || !native_matches {
+        // Importing public build-info from an invalid producer cache would
+        // bypass an actual recheck and its output/ownership migrations.
+        if !invalid_producer_state && (state.is_none() || !native_matches) {
             match interop::import(graph, project, &fingerprint) {
                 Ok(Some(imported)) => state = Some(imported),
                 Ok(None) => {}
@@ -165,21 +169,23 @@ pub(in super::super) fn run(
             .is_some_and(|s| s.status.failed || s.status.pending_dependencies);
         // An ordinary publisher record must not survive a cache-only return.
         // A manifest tracked by this state's strict publisher remains valid.
-        let unexpected_metadata = inputs
-            .options
-            .get("outDir")
-            .and_then(Value::as_str)
-            .map(|out| Path::new(out).join("bluetsc.manifest.json"))
-            .filter(|path| fs::symlink_metadata(path).is_ok())
-            .is_some_and(|path| {
-                !state.as_ref().is_some_and(|state| {
-                    state.outputs.iter().any(|record| {
-                        safe_output(project, record).is_some_and(|recorded| {
-                            fs::canonicalize(recorded).ok() == fs::canonicalize(&path).ok()
+        let unexpected_metadata =
+            fs::symlink_metadata(project.with_extension("bluetsc.outputs.json")).is_ok()
+                || inputs
+                    .options
+                    .get("outDir")
+                    .and_then(Value::as_str)
+                    .map(|out| Path::new(out).join("bluetsc.manifest.json"))
+                    .filter(|path| fs::symlink_metadata(path).is_ok())
+                    .is_some_and(|path| {
+                        !state.as_ref().is_some_and(|state| {
+                            state.outputs.iter().any(|record| {
+                                safe_output(project, record).is_some_and(|recorded| {
+                                    fs::canonicalize(recorded).ok() == fs::canonicalize(&path).ok()
+                                })
+                            })
                         })
-                    })
-                })
-            });
+                    });
         let up_to_date = native_matches
             && !unexpected_metadata
             && !incomplete
@@ -215,9 +221,13 @@ pub(in super::super) fn run(
                     paths.push(interop_model::path(project, inputs));
                 }
                 for path in paths {
-                    if let Err(error) = fs::File::open(path).and_then(|file| {
-                        file.set_times(fs::FileTimes::new().set_modified(SystemTime::now()))
-                    }) {
+                    // Windows requires write access for File::set_times. Open
+                    // only the existing authorized output, without truncating.
+                    if let Err(error) =
+                        fs::File::options().write(true).open(path).and_then(|file| {
+                            file.set_times(fs::FileTimes::new().set_modified(SystemTime::now()))
+                        })
+                    {
                         eprintln!("bluetsc: cannot refresh output timestamps: {error}");
                         return ExitCode::FAILURE;
                     }
@@ -238,10 +248,7 @@ pub(in super::super) fn run(
         if verbose {
             println!("Building project: {}", graph.display_path(project));
         }
-        let mut emitted = Vec::new();
-        let mut observed_inputs = Vec::new();
-        let mut declarations = BTreeMap::new();
-        let mut runtimes = BTreeMap::new();
+        let mut observations = native_cli::BuildObservation::default();
         let mut references = BTreeMap::new();
         for reference in graph.references.get(project).into_iter().flatten() {
             references.extend(
@@ -261,14 +268,14 @@ pub(in super::super) fn run(
         if diagnostics_json {
             arguments.push("--diagnostics-json".into());
         }
-        let result = native_cli::run_build_project(
-            arguments,
-            &mut emitted,
-            &mut declarations,
-            &mut runtimes,
-            &references,
-            &mut observed_inputs,
-        );
+        let result = native_cli::run_build_project(arguments, &references, &mut observations);
+        let native_cli::BuildObservation {
+            emitted_outputs: emitted,
+            emitted_declarations: declarations,
+            emitted_runtimes: runtimes,
+            resolution_inputs: observed_inputs,
+            publication_refused,
+        } = observations;
         touched.insert(project.clone());
         if result != ExitCode::SUCCESS {
             failed.insert(project.clone(), false);
@@ -311,14 +318,24 @@ pub(in super::super) fn run(
             pending_dependencies: dependency_failed,
             native_hash: None,
         };
-        status.native_hash = match interop::publish(
-            graph,
-            project,
-            &fingerprint,
-            &declarations,
-            &observed_inputs,
-            &status,
-        ) {
+        let native_state = if publication_refused
+            || (result != ExitCode::SUCCESS
+                && inputs.options.get("noEmitOnError") == Some(&Value::Bool(true)))
+        {
+            // The private failure receipt forces another check. Keep the last
+            // complete public output generation, including its build-info file.
+            interop::current_hash(graph, project)
+        } else {
+            interop::publish(
+                graph,
+                project,
+                &fingerprint,
+                &declarations,
+                &observed_inputs,
+                &status,
+            )
+        };
+        status.native_hash = match native_state {
             Ok(hash) => hash,
             Err(error) => {
                 eprintln!("bluetsc: cannot publish native build state: {error}");

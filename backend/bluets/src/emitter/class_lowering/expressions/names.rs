@@ -219,3 +219,24 @@ pub(in crate::emitter) fn evaluation_prefix_origin(
     }
     None
 }
+
+pub(in crate::emitter) fn declaration_name_end_origin(
+    class: &ClassDeclaration,
+    tokens: &[Token],
+    es5: bool,
+) -> usize {
+    if es5 {
+        return class.span.start;
+    }
+    class
+        .extends_span
+        .as_ref()
+        .and_then(|span| {
+            tokens[..tokens.partition_point(|token| token.start < span.start)]
+                .iter()
+                .rev()
+                .find(|token| token.is("extends"))
+                .map(|token| token.start)
+        })
+        .unwrap_or(class.body_span.start)
+}

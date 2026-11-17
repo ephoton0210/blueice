@@ -35,6 +35,7 @@ pub(super) struct ProjectConfig {
     pub(super) fingerprint: String,
     pub(super) selectors: Map<String, Value>,
     pub(super) config_inputs: Vec<PathBuf>,
+    pub(super) config_sources: BTreeMap<PathBuf, String>,
 }
 
 impl ProjectConfig {
@@ -53,8 +54,9 @@ impl ProjectConfig {
 
     pub(super) fn show(&self) -> Value {
         let files = self
-            .files
+            .file_order
             .iter()
+            .filter(|file| self.show_file(file))
             .map(|file| format!("./{}", relative_text(&self.directory, file)))
             .collect::<Vec<_>>();
         let mut shown = json!({"compilerOptions": options::effective(&self.options, &self.directory), "files": files});
@@ -63,6 +65,29 @@ impl ProjectConfig {
             .expect("configuration object")
             .extend(self.selectors.clone());
         shown
+    }
+
+    // Native's configuration projection omits roots represented by its include
+    // patterns. This display choice must never change the compilation roots.
+    fn show_file(&self, file: &Path) -> bool {
+        let Some(include) = self.selectors.get("include").and_then(Value::as_array) else {
+            return true;
+        };
+        let matches = |pattern: &Value| {
+            pattern.as_str().is_some_and(|pattern| {
+                discovery::matches(&self.config_path.join(pattern), file, false)
+            })
+        };
+        let excluded = self
+            .selectors
+            .get("exclude")
+            .and_then(Value::as_array)
+            .is_some_and(|patterns| patterns.iter().any(matches));
+        if include.is_empty() && self.selectors.contains_key("exclude") {
+            excluded
+        } else {
+            !include.iter().any(matches) || excluded
+        }
     }
 }
 
@@ -301,9 +326,12 @@ pub(super) fn resolve(
     if let Some(path) = owner_path {
         config_inputs.push(path.to_path_buf());
     }
-    let mut file_order = document.files.clone().unwrap_or_default();
-    for file in &files {
-        if !file_order.contains(file) {
+    // Explicit roots retain their first occurrence; discovered roots follow in
+    // stable order. Declaration merging depends on this program order.
+    let mut file_order = Vec::with_capacity(files.len());
+    let mut remaining = files.iter().cloned().collect::<BTreeSet<_>>();
+    for file in document.files.iter().flatten().chain(&files) {
+        if remaining.remove(file) {
             file_order.push(file.clone());
         }
     }
@@ -324,6 +352,15 @@ pub(super) fn resolve(
         )?,
         selectors,
         config_inputs,
+        config_sources: reader
+            .inputs
+            .iter()
+            .filter_map(|(path, bytes)| {
+                std::str::from_utf8(bytes)
+                    .ok()
+                    .map(|source| (path.clone(), source.to_owned()))
+            })
+            .collect(),
         options: document.options.clone(),
         files: files.clone(),
         directory: directory.clone(),
@@ -338,7 +375,8 @@ pub(super) fn resolve(
             merged.insert(name.clone(), value.clone());
         }
     }
-    let entries = files
+    let entries = project
+        .file_order
         .iter()
         .map(|file| json!(relative_text(&root, file)))
         .collect::<Vec<_>>();
@@ -368,15 +406,6 @@ pub(super) fn prepare(invocation: &mut Invocation) -> Result<(), String> {
             format!("cannot read configured entry {}: {error}", entry.display())
         })?;
         ensure_within(&canonical, &invocation.root, "configured entry")?;
-        if project
-            .options
-            .get("rootDir")
-            .and_then(Value::as_str)
-            .is_some()
-            && !is_declaration_path(&canonical)
-        {
-            ensure_within(&canonical, &project.emit_root, "source outside rootDir")?;
-        }
         *entry = canonical;
     }
     let mut declarations = project.files.clone();

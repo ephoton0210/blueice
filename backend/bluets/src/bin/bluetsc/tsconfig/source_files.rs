@@ -69,6 +69,7 @@ pub(in super::super) fn resolve(
         fingerprint,
         selectors: Map::new(),
         config_inputs: Vec::new(),
+        config_sources: BTreeMap::new(),
     });
     Ok(invocation)
 }

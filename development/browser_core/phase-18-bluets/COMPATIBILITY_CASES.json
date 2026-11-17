@@ -1,9 +1,9 @@
 {
   "schema": 2,
   "typescript": "5.9.3",
-  "source_revision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
-  "source_graph_sha256": "519e50a7b4cb3aa4e04325faa5893c6d8ba5891939866ee2f8e51095c2a74767",
-  "measurement_sha256": "8cc9517963a48ef01c530dac552eeab779dbd99201d114b29223c46d6b89ae3b",
+  "source_revision": "backend-tree:37beae676a55482728b6aa8682240bd9588e7fdc",
+  "source_graph_sha256": "9dd266a077ac1c7d6bafcfaad68428d257cd59a5b3cd930e7216611ea9a62892",
+  "measurement_sha256": "84960bbbd56431ea6948990d2dc17fdd4e9109b230e086fffe0e0ad189b2d7ac",
   "measured_on": "darwin-arm64",
   "counts": {
     "listed": 43112,
@@ -33,7 +33,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "c546ca06785956e0cf9dfc7a35830f3ae65e146762499f8fa9d8c993207e1d65",
+      "log_sha256": "d274b60fce3a3a69b09fc80d6cff1d23fbd322115ee4f4b3c842893b5cf28fdf",
       "cases": [
         {
           "id": "backend/bluets-bluejs/tests/async_generator_targets.rs#const:SOURCE",
@@ -68,7 +68,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "e25e20ea82f44deecb20e5b3356df08af70bf8280bcf47ee2bb0c8f9373a0e4a",
+      "log_sha256": "2c1608532f8e711024fbf04f1035156aebf8c696f72a9dc0d366d5162bc29c18",
       "cases": [
         {
           "id": "backend/bluets-bluejs/tests/async_targets.rs#const:SOURCE",
@@ -101,7 +101,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "836902388d1c1184801389d33a90b8f66ebeffc373cdca3ad9f763638713a159",
+      "log_sha256": "ba3dc21b12ac7097bbc4e84b6ed171e90fc3a9476a0c3d41ceee96b1cf33e937",
       "cases": [
         {
           "id": "backend/bluets-bluejs/tests/decorators_direct.rs#array:::PROGRAMS/0",
@@ -807,7 +807,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "954737299dea1c9340905f99ca4e895ad6529f86851f16a8afee15729988962c",
+      "log_sha256": "2b2c09d13bbeca46e89f63daf1cd078bbc2eabfea8384b036af47439f5fc10a7",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/targets-reference.json#/cases/0",
@@ -9242,7 +9242,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "22f72d9f4bfc15ed3f0a15bac5ddd52fc780e487a57a08741f20a01efbaa806d",
+      "log_sha256": "8fdac3d07abd5a875ecab71701daafdf592ec098d529ee546212c6e16fa27b7d",
       "cases": [
         {
           "id": "backend/bluets-bluejs/tests/es5_scope_targets.rs#const:SOURCE",
@@ -9277,7 +9277,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "3fb78bf765a00e69db94beb2a9950b4e4ba16eea375f361a0d6b1f75d0948700",
+      "log_sha256": "9b846740402e8b132c88430bee931cd6dcfd326f22d7b235c81805a9868d10f5",
       "cases": [
         {
           "id": "backend/bluets-bluejs/tests/explicit_this_parameters.rs#const:SOURCE",
@@ -9312,7 +9312,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "a87e3567f19708ccb6adc1494b4a5a5f4c01967ef69824d595f4d41740a42c31",
+      "log_sha256": "74491df11e9a6be3c482914371ca257a4fc5ffd578f17ce452ea1d9c0ad36fe7",
       "cases": [
         {
           "id": "backend/bluets-bluejs/tests/exponentiation_targets.rs#const:SOURCE*backend/bluets-bluejs/tests/exponentiation_targets.rs#power_effects_match_pinned_typescript_and_native_exponentiation::for@0/0",
@@ -9359,7 +9359,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "855be99b33e009cb3a1fc78145fb8538b14955c6a7824440cc621cc1061348e7",
+      "log_sha256": "63153a11c1657418050265ac0e3b4bb8d6be9783687d9037a244c3bbecd309e7",
       "cases": [
         {
           "id": "backend/bluets-bluejs/tests/jsx_direct.rs#array:::BODIES/0",
@@ -9506,7 +9506,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "4a025e49d41ee725cbbee11412fe37b6c0607c28e3af03c0beb1a0966cbe5fa3",
+      "log_sha256": "f88fa0ce4d77a1db1874fdb53a190fe5a6b2ac2c7321cf598b3c3e90fdeb70a4",
       "cases": [
         {
           "id": "backend/bluets-bluejs/tests/logical_assignment_targets.rs#const:SOURCE",
@@ -9539,7 +9539,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "0befb725f3af5732826fb8c62489f48b445e9f72cbf474b5e409d6cf8a1eda7b",
+      "log_sha256": "0b9e9f2e63f2d0ffc1d0b60c939c32a35d8dc1d5a780ea9cb743ad8f2b99c821",
       "cases": [
         {
           "id": "backend/bluets-bluejs/tests/namespace_parity.rs#array:::PROGRAMS/0",
@@ -9658,7 +9658,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "0256a66cf15691d6cde3e97269bd5caf4a8fa306379d074fb394c18aa2cb8369",
+      "log_sha256": "d427d873640a7d3bdc43bb10bf6fd166d4fc6fbbb7eb95fdfb7cae94d0fab3cf",
       "cases": [
         {
           "id": "backend/bluets-bluejs/tests/optional_targets.rs#const:SOURCE",
@@ -9693,7 +9693,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "9a7cfb18a0bf8d228a7261fa4b59090e7539690895cb5e412c032ef6752a4c03",
+      "log_sha256": "f4f337ab64ff33c17bab520dd6d4daef6a3f4f12e3da6c38c7d8dec47c82724b",
       "cases": [
         {
           "id": "backend/bluets-bluejs/tests/rest_array_parameters.rs#const:SOURCE",
@@ -9728,7 +9728,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "62301e831aa630785b36a3760381b36f225c8fcbfdde497592befc9d5e09161b",
+      "log_sha256": "dd1d9a1024a5760b42982612882a5b443e445b2b3aa6f6cd5fe7e6903c86062c",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/target_syntax/edition-verdicts.tsv#line:1",
@@ -18219,7 +18219,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "aea0e36d800f6377b4e38c2ddb451db06b2bb52f4d786f965aeb06623c32f73b",
+      "log_sha256": "cd2988812d3e3829f395948986383b8edd63fedec578940220bd3538ca01abb9",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge1_downlevel/cases.json#/cases/444/files/main.ts",
@@ -18268,7 +18268,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "7935a7e45b2ea70a10f47b42bacd29514d3d65a980a740821541fb4986f451ac",
+      "log_sha256": "1320af279c6e4e61dfe28684e5dcb9bcf1faf6c136c67868f08aad9e89a3d2bd",
       "cases": [
         {
           "id": "backend/bluets-bluejs/tests/variable_patterns.rs#const:SOURCE",
@@ -18383,7 +18383,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "0fbbe6dced8906e6baab3319e6c6f806ac88d606c23c0a9cf9fb30a444b129ed",
+      "log_sha256": "61bab1a80604cd57a4bb5b0bbcb96f7ef3d155f92d2d1ae4b00738907e125990",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/ambient-reference.json#/cases/0",
@@ -19524,7 +19524,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "2dbd0525c12944ac7f8604b0b63262e69b3274420821b1c3934508235534812d",
+      "log_sha256": "19c2300ed9130eea3a4ffd91328d7376ab44e20e95a03f6e26e86204187fb13c",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/async-generator-context-reference.json#/cases/0",
@@ -19629,7 +19629,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "be3efdf0caee6c0f48d5ff3cfccad772262f12a7dddb18f9aca80ee25ef23d27",
+      "log_sha256": "0a98c6f62fbbea65ca0b8758b77992281286152635194eed1eefdb94150599d1",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/callable_utilities/reference.json#/cases/0",
@@ -21834,7 +21834,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "03a892be7483677703793c887380a95754082648b4c072f08bc6f217eda87e7b",
+      "log_sha256": "bdcbb73df1685858109660cec1dba3f2a192ecdf78b463f55a11534748cd3aee",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/catch-flow-context-reference.json#/cases/0",
@@ -22530,7 +22530,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "903b22e991320283657131becbf621549e76a03612acc28b915c0fcf8c12a8a8",
+      "log_sha256": "a0755f62bc36b085423c225a854e9a751d3c5cb9cf468dfbaffedc257b602874",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/class-checker-matrix.tsv#line:1",
@@ -29879,7 +29879,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "00ea18ee5fef58dc03b5a7434aaec38a1a1c4a988f144f5d1bb429dc843d7e0a",
+      "log_sha256": "3b136a0e70e18ce0f313296ba876e50576ade6ee8ab79feac34ee4a349636130",
       "cases": [
         {
           "id": "backend/bluets/tests/class_downlevel_oracle.rs#array:::FIXTURES/0*backend/bluets/tests/class_downlevel_oracle.rs#::MODES/0",
@@ -30480,7 +30480,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "9821727cd3363859e3e87543f1bfade65ee6c06efe846cc00577d4a1510ce8ca",
+      "log_sha256": "ea2995eff2fd817aa7b43592c5063ed5a62a303610b90af538492efa12ae373f",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/class-dynamic-reference.json#/cases/0",
@@ -32741,7 +32741,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "44d7ccf137534c7875bcdf6dbb421838e3c8c9d23984bb6f0340dc4c4f85312d",
+      "log_sha256": "b712418813c32abf14cd06cb25ec9a5155848d48b8e9ff41ca5d7c4b591ede8c",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/modifiers-constructor-carriers.json#/cases/0",
@@ -33025,7 +33025,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "08d1f31e81e2b5d3479aeb9188b56c664d7357f57cfddae84c82e8162543ef9d",
+      "log_sha256": "b2257ebb8db05c161b089a7c09a61e3db96e3e5c5916db458b6103800c8510a9",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/class-modifiers-reference.json#/cases/0",
@@ -34411,7 +34411,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "40ef61e8360c7e7d154d2dc3be164d70553c0fd8b66de5422a3304b266923ccd",
+      "log_sha256": "b6e148da62257c023561c14bfbf0430de4f88043a8b6ff208d38bc90bc7ea493",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/class-retirement-reference.json#/cases/0",
@@ -34922,7 +34922,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "81b900a061f6e3ad25dc5cfd6210dd77b0dc910a8da7cdf3420af2f7ddc7454a",
+      "log_sha256": "ad55d5980c346b75e79b54d08792d776de7b2caedf05b98467abd06df6b3010f",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/cli_surface/reference.json#/0",
@@ -35361,7 +35361,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "902510b1df4edb1354a113d81a04d904c4142d1730cf1ce67d82ad8a55c5e283",
+      "log_sha256": "ea976f2b696bc9749c5c2faa96663504943d1f74d3322b4ac9dc1319041174d6",
       "cases": [
         {
           "id": "backend/bluets/tests/commonjs_oracle.rs#array:::PROGRAMS/0",
@@ -35554,7 +35554,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "842b603edf7e3c740b54480a373dc07c08a31cfb09595a1efacac11e78d2a38d",
+      "log_sha256": "d146460d5073dfc4941ef0bedadc0f7f80bc96d97c836463529e67af82f1a886",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/compatibility-reference.json#/cases/0",
@@ -36807,7 +36807,7 @@
         "reference_only": 0,
         "boundary_controls": 12
       },
-      "log_sha256": "3719a4efd6472d824628431bd0e6afa8dd3748b83110b7d6c621c9dd1b12a4e0",
+      "log_sha256": "e41e6d84738f32ddd6e42347ed32731425f62c99f4caedb2138020297acf062d",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/conditional_inference/reference.json#/cases/0",
@@ -42382,7 +42382,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "bc89d8487768bcf676e6f49c4943b3d9aaf3556a14b096ca0978c477e29969a4",
+      "log_sha256": "ce48926d348f21f3f9a358fc22c5f7876358d32c2cf920a049c8e3222ac8d01c",
       "cases": [
         {
           "id": "backend/bluets/tests/contextual_type_imports.rs#array:contextual_type_default_and_equals_bindings_match_pinned_execution_and_declarations::for@0/0",
@@ -42459,7 +42459,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "977241a680aad3df256117db52b38ce2c48d8361e02d9d9df9cfb83b6de0efae",
+      "log_sha256": "300529f001af4b77191e37e8a882ba960c65d058e661900c17686733563df72d",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/declaration_inference/reference.json#/cases/0",
@@ -43656,7 +43656,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "23ceaaf6d7378743cbc537e2880b34814f06d45dd74a38e749782e1bc195129b",
+      "log_sha256": "8954f5de99e48db9ac0f7bdfd201d50ce981733bd73fdc0eae7c4cacfc2e5617",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/declaration_options/reference.json#/cases/0",
@@ -44349,7 +44349,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "fb9c1cc2984def35eb72e907ba75c6e1622a76bab05adeab93e1d0b882c2048b",
+      "log_sha256": "00aa1e4c51b60e44608c4ef45744a183c55c37d05c1dd3f8a4d49712570e1898",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/decorator_residuals/reference.json#/cases/0",
@@ -48066,7 +48066,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "982f5bdb99fceb97cb2b6b68cd66a1f4a4f459d4a4cb3c86a0c54eb2510094d5",
+      "log_sha256": "ad78e3907e98027b5d5a710f0412bd2fefb7ddd01dfa7d5d500459db17585f13",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/decorator_targets/reference.json#/cases/0",
@@ -60407,7 +60407,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "65a8a0f1a770dab9b9e5545498d93004d2ad59cd5eed30d8e4f0b28eb4272211",
+      "log_sha256": "ab9d8611f20ada4a3a76d22acd71b6cdcbd3b2b8d8bea155d44bc306306ca1d9",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/decorator_typing/reference.json#/cases/0",
@@ -61300,7 +61300,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "6306098881300e99c962f036ec45c3585ceb1d4946234687c6e4b3eae86a8dc8",
+      "log_sha256": "6649f081997257e89b02ba798405795fa3169ea25d0b0707c85a8e554f639639",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/decorators-checker-matrix.tsv#line:1",
@@ -61767,7 +61767,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "cb3ff2d8bb465c363722e93029b6fd64e7682578f7d19cb5f2b881d3c6675c51",
+      "log_sha256": "bb611b1d88a10f87bffd53aa338de1c8d1977308f18ba656271360314fcf2a95",
       "cases": [
         {
           "id": "backend/bluets/tests/decorators_oracle.rs#array:programs::for@0/0*backend/bluets/tests/decorators_oracle.rs#programs::for@1/0",
@@ -62110,7 +62110,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "cbc749eda28b0739113f11423500702c1dcc2ab5b1d6a75b32a614341079ada7",
+      "log_sha256": "f2edf6ccf3e05fbdc246790604cddc18d25981a15358a062141ae8d73a1a1e4c",
       "cases": [
         {
           "id": "backend/bluets/tests/default_generators.rs#generator*backend/bluets/tests/default_generators.rs#default_generators_match_pinned_execution_names_and_declarations::for@0/0*backend/bluets/tests/default_generators.rs#default_generators_match_pinned_execution_names_and_declarations::for@1/0*backend/bluets/tests/default_generators.rs#default_generators_match_pinned_execution_names_and_declarations::for@2/0",
@@ -62243,7 +62243,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "0b53c8bff394b66b5ca44ca7adbd882f280b6ad3aaeb355c305207605df3d5a0",
+      "log_sha256": "4a54aa34d597dfe57bce54caa3ae466d5ebece9eab688fce66f411633ccd267e",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/defu_prerequisites/reference.json#/cases/0",
@@ -62950,7 +62950,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "373cd5cd01300e8a3c0f975a54e5d04a0e7fe43214c51b1d10a863d6f6b32f9c",
+      "log_sha256": "f373d0cf52de923653141ea1e9e59ab217f1d774b1ef11700af5eee0e9f98416",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/diagnostics/source-families.json#/cases/0",
@@ -67448,7 +67448,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "b3e9a575a3ee9f64265db0d08365b9421d3854216a998c0d407bfcd45f6bd147",
+      "log_sha256": "89d2eac59684b0886be67ff4146162948f98bd9703a9717bb00a62c1f4907ef7",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/diagnostics/reference.json#/cases/0",
@@ -112018,7 +112018,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "4ef8ef0875d83623e7ba5a3f62c69a04e464ac5062073909d8e934d72270777a",
+      "log_sha256": "6f93dd3d49031c067aac93e0cac7a193518a7db442cb25ffd6112588deb1da6b",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/diagnostics/presentation-reference.json#/cases/0",
@@ -112347,7 +112347,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "0f3ace79036d61336c543435070ea617c89156dcdb5f06dc0c374a27bb8dd9ac",
+      "log_sha256": "00a9fc665597f6b600d7463f35fbc5cb4c62b8921f4471ed89ac957b270aa5df",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/diagnostics/project-positions.json#/cases/0",
@@ -124556,7 +124556,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "527f8ec7c32f3a0939d5bc70926dd3c02e6cfdd58085ede721f25fa20b0faa3e",
+      "log_sha256": "a9c3dcd813cc137d062b2f5b94ba21510916d117e2d5a3e6b6c7a35ba4b98d9c",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/enum-checker-matrix.tsv#line:1",
@@ -125377,7 +125377,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "23bdbeddbb55b1e80c51836349ad78c8b9c16b512fb2605c56992a0efe7d6778",
+      "log_sha256": "b32a03a7a98a355ff14a15225448aa00fe54bd88226ef77265445bde8256bf30",
       "cases": [
         {
           "id": "backend/bluets/tests/enum_oracle.rs#array:::FIXTURES/0*backend/bluets/tests/enum_oracle.rs#::MODES/0",
@@ -125566,7 +125566,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "7393f7006400be437c0da8cb1869976d29f0592496de229b1dd30317362dc6dc",
+      "log_sha256": "0c3aed722b486a68266da5a5d39897d1836f4a726fd5f5b4ad965d89d8609d04",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/explicit-this-context-reference.json#/cases/0",
@@ -125769,7 +125769,7 @@
         "reference_only": 0,
         "boundary_controls": 1
       },
-      "log_sha256": "98c7dd6cc71037cd36525f9c0cf58ffac10197c6669145abc8549c5f2ac8dd79",
+      "log_sha256": "fc1bbbca0a135849e44317737ccb523b45a52b5fe6015dc5e715402cac7d3bdf",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/gc1_explain/reference.json#/cases/0",
@@ -125861,7 +125861,7 @@
         "reference_only": 0,
         "boundary_controls": 3
       },
-      "log_sha256": "7fc3564f47ab004530401b0bcb1458bacc38495f0d531c046f8d473ed36f1f50",
+      "log_sha256": "7ca3a382b4cf832beec62670066b13080c2fb4b639acc813f00f6169f7bfb6f1",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/gc1_object_generic_methods/reference.json#/cases/0",
@@ -126670,7 +126670,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "4df1806eb948a07359f27e1a15c552dcf92d9398566c14b0f8ca95fbae16a910",
+      "log_sha256": "13d2bf3a26b7326b6bac28db181fa896f5d6dfcb3555c3e11452280c2902ec91",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/diagnostics/source-families.json#/cases/10",
@@ -127069,7 +127069,7 @@
         "reference_only": 0,
         "boundary_controls": 76
       },
-      "log_sha256": "136dd663b3269bfc74e40e1395e454cd6a24d297bb97f58a3da8e016292aadfe",
+      "log_sha256": "c1e1a416c48e87d4c71192b3e596db402b0f516dd23c9b034522c0cc9d8826f5",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/gc3_compositions/reference.json#/cases/0",
@@ -131308,7 +131308,7 @@
         "reference_only": 0,
         "boundary_controls": 12
       },
-      "log_sha256": "9ff7cb18bade74751aa5c678c777bb7a88a363b7c934c532e1e081155a09dceb",
+      "log_sha256": "0f95a16847116ca34464e0d0445c8c609eaccd740b526b5b30fe009285185d88",
       "cases": [
         {
           "id": "backend/bluets/tests/gc3_decorated_parameter_properties.rs#array:decorated_base_and_derived_constructors_initialize_parameter_properties::for@2/0*backend/bluets/tests/gc3_decorated_parameter_properties.rs#decorated_base_and_derived_constructors_initialize_parameter_properties::for@0/0*backend/bluets/tests/gc3_decorated_parameter_properties.rs#decorated_base_and_derived_constructors_initialize_parameter_properties::for@1/0",
@@ -131509,7 +131509,7 @@
         "reference_only": 0,
         "boundary_controls": 5
       },
-      "log_sha256": "fd1476d7f2f91586946826b67d6ef855e46acaac2c5c3d4fc3e24edf6c26bab8",
+      "log_sha256": "cd7b8581ccd7daccf74020b7e103c36444dc91a1a09ff83df1778c5b0c7d97bb",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/gd1_declarations/reference.json#/cases/0",
@@ -137429,7 +137429,7 @@
         "reference_only": 0,
         "boundary_controls": 6
       },
-      "log_sha256": "535f69babdadae42b1ddd0c77ffff3a30d7716d9da6eb11c425b3e8cd4f417db",
+      "log_sha256": "d4795b7af588005e148ce208e93e0569644cbe79540563985de1fb71f6b6c057",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/gd2_declaration_maps/reference.json#/cases/0",
@@ -143028,7 +143028,7 @@
         "reference_only": 0,
         "boundary_controls": 6
       },
-      "log_sha256": "544f4d5a9eda8850547e74a382dc4e87e8d98626fcb0c0557855ff59648fae7a",
+      "log_sha256": "053e0cd76b1250e8d977fdae992314ed10bdb39e2064a81ee7a9f1ef2fa82ff5",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge1_downlevel/reference.json#/cases/0",
@@ -151203,7 +151203,7 @@
         "reference_only": 18,
         "boundary_controls": 6
       },
-      "log_sha256": "ba53c486ebf9d245c40b0b8e376a8f2d71281ef327bc47c77361c1aa0de45b57",
+      "log_sha256": "cb79f75329401a831ddb58f9720a3bf85e0611217c0ef3bfc62d637a8eb2ed74",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge2_module_helpers/reference.json#/cases/0",
@@ -187788,7 +187788,7 @@
         "reference_only": 76,
         "boundary_controls": 6
       },
-      "log_sha256": "3924db0448f10762fdfb601b18e49ca759b23c35f1c0e79b15707b23474a5c19",
+      "log_sha256": "d408b22b4c2c86e5bf1ad871dd3a070d4c74cb9b7a4839ee578305894e86857d",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge3_decorator_compositions/reference.json#/cases/0",
@@ -201975,7 +201975,7 @@
         "reference_only": 0,
         "boundary_controls": 6
       },
-      "log_sha256": "8c948b8d1a1fd9c7a18151e859de158dcf76b4546f53b3562ef3b2b3a44f41e9",
+      "log_sha256": "62dd17609effff28b874217451bc04ebbb0f5d13e2df8a62cecaf533509afdcf",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge4_declaration_options/reference.json#/cases/0",
@@ -223590,7 +223590,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "265095eaa9b331d9ed5b13a3544d29192369f3f8c23bfef55d813b1028997d3d",
+      "log_sha256": "763a6b1ef7b1ce489d13c84f05ff100d2f4f834e1d059778e9eccd437cb3c9e2",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/736",
@@ -224016,7 +224016,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "ad576aa758cef947856284b88cdedd0c7927a6f459b6aa2b72188a5969a64519",
+      "log_sha256": "5989a70f9ca85303a274fc9670cdddf72584dba5eb028bb682d869271237d9c8",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/1360",
@@ -229482,7 +229482,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "41ad0164b91cb2d78a58bec0c248aec0dff5606862d8b38811087bd8d5aeb161",
+      "log_sha256": "052bf902040cb066e43747cb14e83e6ed910fcfba83c10429c58c28e174e7139",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/1360",
@@ -234948,7 +234948,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "588b51a53f087bc6df5986ceaca035170ca9e5b28e74b9eb434c9fc158edd5c8",
+      "log_sha256": "b335974d273839f197dc22105cd50846008b04f2c27a465caf7e7f8a5880b2d8",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/760",
@@ -235734,7 +235734,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "78220384f71f1e035918acdd242747ec3b800a6ebc0017cd6e097a98b3b4e2eb",
+      "log_sha256": "8844a2e982dc6fa184d6c69b57f0480fb0a74b20a127a07a564e9732b8cea376",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/928",
@@ -236160,7 +236160,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "5c149f1f5e72ffdd6d19009e95e12d07f21dc79432202be8ffefb74179c60643",
+      "log_sha256": "570db49dd351b082d35a1dce5d9be572776f38cb0f2579c201068f3ca2106068",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/2080",
@@ -242526,7 +242526,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "d428499a30993013cd1a3f523bbcb00df628e327c60b7f1245849f7705256279",
+      "log_sha256": "fa2e6fdf907c602c8f69d9aa9e0664a06461f0e6c84ccb38a42dd6a903f1f1eb",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/2080",
@@ -247992,7 +247992,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "3f40dcef42f67b9d331c4dced57103141fbbf1092e038e80b4ab5ede706e0c32",
+      "log_sha256": "8c95b3ee383df83378a026538c5f9d7cc6c517fbd484a4fecfda3dcbae56812f",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/928",
@@ -248418,7 +248418,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "5d1fa07e3985f23623a590ada96f4ad120118f43d461b33b792be33890f0ebbd",
+      "log_sha256": "5693cb123147322ddc12cd96213d60fad0155a9979474becd57dcacfd3a36582",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/928",
@@ -248844,7 +248844,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "246bba4a2e09a02a2923c70636d8b8bd8d2f06455529601c4832c5b6484648f7",
+      "log_sha256": "5fe2014e591496fc5879e1a48a98d508daee1f5a361e1b3d467c067fbd523ee5",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/808",
@@ -249270,7 +249270,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "8d8297e370dedd4cab3734c64b90c381666bff6e301da7175f5c534e672d692c",
+      "log_sha256": "b9135dcbb45715f646b71950f2c18fc166d2f7cb5e9412b9270e9559d37c887b",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/832",
@@ -250056,7 +250056,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "19ed2197fe33a254eda14646113c3dbad9fb55d694afd3497344ff364391cdbc",
+      "log_sha256": "53cd9e8c09b8b196b81e5510dc8c7f603f6aa0d122eae54aa8fdb77cec2900ce",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/544",
@@ -252303,7 +252303,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "dea569659537066477964b5f1e5adeb51932a0063327584da7555af3abd880db",
+      "log_sha256": "1c2cfcd9e3eaf5546d9527d77be4fc252bf384dc11a965bee20544926b18a88d",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/6390",
@@ -254284,7 +254284,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "e38a7acf010c8ca11daa48d166277602b8caee31c5c74a368a220e2bdda268a2",
+      "log_sha256": "1a0db85757c5c0dc0aef360eb75beaffbbd7325d58528160b6f2c7c6d921af42",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/264",
@@ -263559,7 +263559,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "cf06cce3e3667ffdab827eb84424c33d8dfa615d0aef856aa0f3d8aa65f502b9",
+      "log_sha256": "bab6c468d33e09182ee97d388471e53996739b9a431feea5ae01c36afcb00b53",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/408",
@@ -264182,7 +264182,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "b3e55701e53ba039a7a19ec5e49675f7c7dc82ee79be23206c2540a057ed43cf",
+      "log_sha256": "91890307dececf1858b3f019c8396fcfe378d7fbf4cf3fddc4fd25f15f218071",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/264",
@@ -279563,7 +279563,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "ecab7a473ddda0b329164e7723c20cd3fc92f4b9e35c25c9d0cad07b751553f9",
+      "log_sha256": "1fbb8ceacac6ccd28d95c9b97665bfdd9370592dac8657ab0e5b1cda3e384212",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/6182",
@@ -280109,7 +280109,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "9d73bf2d740c12c30024bdb0e72cc87519106df9beb9928881f2476d82036e1e",
+      "log_sha256": "78d9131f6a70f38528048dc5a8e496e59df5b41e5a8efc6f344f1bff55fb40fe",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/1720",
@@ -286475,7 +286475,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "46844e84aa5a572825719f6f97b5238f26fbef9be02b34d41f177dafbd4e5c13",
+      "log_sha256": "42085eb35ddcfb025d219424eff1a496a97bc4202a25f1d1d16f509ac090d23c",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/1720",
@@ -291941,7 +291941,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "f3d4803e5d6e64a2bbf5ed0ece3cff2ae4fc20f4b8cced3ed62a893a96fc9d7e",
+      "log_sha256": "b69d1f8df923026beb03b43caa60651b19cb416561ff71e940cccf683ca7f046",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/5572",
@@ -297407,7 +297407,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "82d1f6d6b1669de69bc3b5961e72e8db394ebc391fdfc35e242764ac13b3b0bb",
+      "log_sha256": "195bb80c94c43126628e670ba38e288af5de42430de5f488483c6e0d0fb64e64",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/5572",
@@ -302871,7 +302871,7 @@
         "reference_only": 0,
         "boundary_controls": 12
       },
-      "log_sha256": "8f1488c05842194c91ea47a03fba7089aa50f1f8f03a7a2f5dfc79d0a0740640",
+      "log_sha256": "d81e0c9b0ced90930c5d2ca4fd25050e1cda662e4353484563926ccde25469e0",
       "cases": [
         {
           "id": "backend/bluets/tests/ge5_helper_provider_globals.rs#function:private_ambient_and_imported_helpers_keep_their_own_bindings;module=CommonJS;emitted-shape=native;provider=private",
@@ -303072,7 +303072,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "0c3649bb0e9600024de23256e85126b6fe7ad43f4e59a7575ded0f801c40dc93",
+      "log_sha256": "ad6a5e70b2557305dcf258d9e7d99f3b449521c1f3dc69d57d82e50d44ec531f",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/4852",
@@ -308538,7 +308538,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "73e30f2e13a12a301e20428c960c0e661c4368377d24ffd80cb219c9b1e1a142",
+      "log_sha256": "0bf2887fda8d51f8cb03925fe4d8d584b07726ac608ac5232d907962e018716a",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/4852",
@@ -314004,7 +314004,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "6445212db456d2eeae13857fa321131464bcb7915f2fcdc1af7ac2528da259c5",
+      "log_sha256": "ab7ad5531195d9488c7e196a1dfcb10b5cad0f76636f2805eaafaa220d626556",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/2788",
@@ -318769,7 +318769,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "75c921eb4a2cc1f9e8ec8a581d03f6f555f5346cd5a4761d6b1ed98379a73e72",
+      "log_sha256": "a3c07e847dc472548d4b0c0a572b6678d025343bf7542d726b85ef0ab6ad816a",
       "cases": [
         {
           "id": "backend/bluets/tests/ge5_legacy_class_phase.rs#function:native_cycle_products_preserve_all_class_initialization_phases;class_decorated=false;define=false;module=CommonJS;variant=original;source_map=false",
@@ -319750,7 +319750,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "93b54c7518c0d51bab99c483027dd674c96c17b8984b53f2d8e7f8a31d7a0644",
+      "log_sha256": "e3f719aa5d82c5935023fc316d4e43487df47d3187e0d69223a81c1b491cdbd7",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/4492",
@@ -325216,7 +325216,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "32d5752da68dacd0ddda38e2cfbf0c2524ab5823150bdabc298b9b962f707099",
+      "log_sha256": "8e77c93394dc758fc6a02dbd6a4fcd9f5280200a20a843d4c1a2b694327e5822",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/688",
@@ -326002,7 +326002,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "54023b53013901002c5f5f6b87b98e6339ce8027a88dcef1db1e6fd63c52f123",
+      "log_sha256": "dedf43afa2ea4bb82934896ab206636297c3056e574e107f560f1c1401f528c6",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/688",
@@ -326788,7 +326788,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "9c5ebcb988ff18eabd29e750d855f16fd9710e1f7a1ac313be27812b82aacbf1",
+      "log_sha256": "b2fc8d1ece4162e96c7ac33e26c5467eedc21f846359ac49277d0cf9181ec92b",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/6118",
@@ -327814,7 +327814,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "6bc8de23c55f415aa7d717cf975c9f69913968a4d1ccc5f3fae3b9a520f44030",
+      "log_sha256": "4d611a6e5dc26ebbfab4d9eaaab642d2282a624a94fc6140391a5f04459bee81",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/6278",
@@ -328600,7 +328600,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "746631329e0f6696bc65bd51f85c68725a07f89095a3d4d96fc785b74f3fef59",
+      "log_sha256": "2c39a686a050f16aa69bb8e2f33691e3424de97a2ad260effc2bf0d147047f0a",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/6214",
@@ -329626,7 +329626,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "b043ee5ca3b1d75c523155b85b34b369ed76aad354871c0e38936654c5a02086",
+      "log_sha256": "8769958cb59838f2d9c413b71d0f9742bea373ce0b0db3cc778b081c3dc6802d",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/6054",
@@ -330652,7 +330652,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "32d97ebda7dc23dc946a6aef92f1baf3133bb2ddf5beb1dce4542259738daff9",
+      "log_sha256": "13a7df126c977785c1cc165c94487942d9630b54598e44e72281f5cefbe9a9c0",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/6326",
@@ -331678,7 +331678,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "8dd7ca8576392a3a64eeb4d4580a3180a6617f1a97ee795e67aefe728953c489",
+      "log_sha256": "13d6408b65b96d12609f7844bafdee6480233d4188aa0d86151f64f853df01a8",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/7310",
@@ -332314,7 +332314,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "7ec4b4c931169ee3871e640ffc11069b6da6ff70ffe6d4e8b4d8c7c08ad46604",
+      "log_sha256": "6c5d39d6f8e6b4714d4ebab86bd95a94fce2688064ff1f410419fbfded213b04",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/6958",
@@ -332950,7 +332950,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "e60556cd52fd3bbc4b9a846ef04942b46641b78a8af06fa9eac154c7a4848e74",
+      "log_sha256": "967504d511a76180fa4c8d271b25ca659580e532f81b92cc0e697116df3017d8",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/4492",
@@ -335519,7 +335519,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "4fff8a59a33571864bca6ff25801e0262f1ef0b8a087693bd57c852fe7014ff8",
+      "log_sha256": "b598b1d1f0aa19352b07fe84597460e0343dce5a39064ca5ffc6268b34e96ef6",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/7150",
@@ -336185,7 +336185,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "eba565b8deb1477f342961aea1576caa8febc3a3f383ce02e5773feaa1d29867",
+      "log_sha256": "b026b920678a82aedad9e03e3155291f0746b8ef78a0f4825388807e29267cf5",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/7190",
@@ -336851,7 +336851,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "60a12b68d044c69b79ed4896d61e5bf6406863ac771f822e6db4bc99bc8440ee",
+      "log_sha256": "89bcfd52edf662fb8ca5cd1888fd2287926a7c234074d18bb16e2f8595175a5c",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/7112",
@@ -337487,7 +337487,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "09173e25720763fc00440d7afb870dbd33cf524955845d49ded692953ada6cae",
+      "log_sha256": "428b05bf7278c148b78942dd26c9dbad12cc8a0d22b1531c595bb1ad863998ea",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/6996",
@@ -338153,7 +338153,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "64ae8d79261df59ceb0228ffb63d1c3ea53ead1fe047a4de184be2f45d70549e",
+      "log_sha256": "a78c5d62acc8e1c3e54048ccd246a66326104bf49338455480bb85f6d5122244",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/7388",
@@ -338819,7 +338819,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "a0adcac53b40ee0c2d0da249ed07f570083fbad93627d8c5501d1e7a498f41e8",
+      "log_sha256": "12d8225748caf59541a449d1251201b35adfccead36469c7a8151ae6320a4db8",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/7074",
@@ -339455,7 +339455,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "e930d2269528c0095969c450410bd96efb4cf46424df04f6233e3251d78654b0",
+      "log_sha256": "a07dc31dc17e2bf3b486c4fe4144bfdd96fcdb4bfae6f04094521f8626ae7cb4",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/7230",
@@ -340121,7 +340121,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "edbf3291bb4dad652a16e763d4efea2fe38c05ab4977678c645c373361edbbd8",
+      "log_sha256": "f6b1d2ec48f37874d197fe8aec63acfd29dc3ecc8b02475498743fd9087ab7f6",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/7036",
@@ -340757,7 +340757,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "01a7cc1b07e5aa58e9e9e9cbe281c9e27502b9e00d29390d2f76b56f500f7a2a",
+      "log_sha256": "699fb9ad2e2206bc6f839922e1dcb934c5bacbf0af15dcbcf9f3730616d54808",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/7348",
@@ -341423,7 +341423,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "0e3a6e7b269f1e4816007ca16878fe9bfa12ee1bea7ae362b1ceb2515192067b",
+      "log_sha256": "df5b2116c652911be0a6081c53d4f53e48067fcc0076fb073640d29b005fb6bf",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/7270",
@@ -342089,7 +342089,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "055bec54b3ebadef10e408db72d0a9765acbd108f843deeb5f55a18ba6baabd1",
+      "log_sha256": "17b91b4e99858d3ac21c312336d1f406bacffb39bc7269cf26cc69e49b3f1620",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/2440",
@@ -347024,7 +347024,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "3d442b2f42e9b45995c17297a9e30222e6907ce5a203792ef53347ff9fdda82d",
+      "log_sha256": "9af07e1c5f0bc1dc990a5c796ece1617217ce4e0ecbc9a1f4679a511c88b589d",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/3844",
@@ -351410,7 +351410,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "d7f5546ca396e5e873f192bc656124ac81849ac62d5c7eaf16334a6b0c2342ee",
+      "log_sha256": "cc98f937bf1cc5d39a9de4e8bb557d68cd9ecd25aee4857bd0c454f32818c377",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/6782",
@@ -351823,7 +351823,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "acd3541b6a3f0f8fb6b3ef7550e235bfb4b783db5566b53070ea52fb1125d2ce",
+      "log_sha256": "2d0c4ac96e386774cd70acaaacd9830e19b1b8949fc000a31f559f9a7a92765c",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/7428",
@@ -353224,7 +353224,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "d6c5fe9d4536fd25a6d67d0d4db4201ef17f7e8453ecfda62425dc36b23b1409",
+      "log_sha256": "9f8ef7430bc02ca1483d3ef9457bfae42032a8b70aede90f5f6348fd8cd6576a",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/0",
@@ -479350,7 +479350,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "2275ec698b3b2d7a67deb76923aa17bb614bc7bf6407c47f103f57a840138af0",
+      "log_sha256": "1259fc1d14cd5e7ccf2e95ccd2f981ab4607071e59c5e061e6e6ae80c2d9da3c",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/4132",
@@ -484816,7 +484816,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "3134d31eaa48aea14f2cbe83aa9bbacbb528d4bec2a46e66bfa764605130026c",
+      "log_sha256": "f3d0201d7daad2786b9bcd8b5fe8464f16eeb67360a4dfb1eae4c95ee538be67",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/6518",
@@ -489067,7 +489067,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "e20beedab5682cca918e8b966b4a621a1bf6647000e75ee31ab5be02b68eff7f",
+      "log_sha256": "bab8d047fb4605d5293b4c3e2c1882a059720ed052c2370178e0ebf412e2e4b5",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/ge5_source_maps/cases.json#/cases/6518",
@@ -493318,7 +493318,7 @@
         "reference_only": 0,
         "boundary_controls": 5
       },
-      "log_sha256": "9614d11a7391d20cc3db8d6bb760c825d2217ae648f8b1c10cdd7dd8acf97d55",
+      "log_sha256": "240a4531d7136a3f3bbfa5d738b9f10b38e861c175270496811d5348f5508532",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/gm1_resolver_compositions/reference.json#/cases/0",
@@ -495290,7 +495290,7 @@
         "reference_only": 0,
         "boundary_controls": 6
       },
-      "log_sha256": "2f46ba1e171ce287ca5a716bae4ebfa12abc991fd9a4b266c31ef9fc0fd7626e",
+      "log_sha256": "2a5ef209b6d50c6d316d7f59f75e8660299f8ad458ae30b2eafa51ed1f44f820",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/gm2_build_interop/reference.json#/cases/0",
@@ -499545,7 +499545,7 @@
         "reference_only": 0,
         "boundary_controls": 12
       },
-      "log_sha256": "b996c4de22a4aa5087064b307497454009725dd78dcb34dab7cb02ad3b785160",
+      "log_sha256": "1a309c29a2fdea587953c87e56fc7d030e29a9952d18c4a64f4b70e0bdb02149",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/gm2_incremental_options/reference.json#/cases/0",
@@ -499998,7 +499998,7 @@
         "reference_only": 0,
         "boundary_controls": 5
       },
-      "log_sha256": "78610a404cc686d2d7d98e52e2ffdc8f3d77f8b9e0bbc65ac8ed549545420d02",
+      "log_sha256": "46cf3d05058da07baf754b33775334b151408394d033fe8c05707b9deb45910c",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/gt10_import_types/reference.json#/cases/0",
@@ -501956,7 +501956,7 @@
         "reference_only": 33,
         "boundary_controls": 0
       },
-      "log_sha256": "5df30eee6cd1e60ef5bd175665c560df09cb9d38a11abeb471186d64c4f37ffa",
+      "log_sha256": "26bdc8b9d8ef412e7f8dcc9b029a33edc7fe8f187048f74c48d21bba27916482",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/gt1_declaration_order/reference.json#/cases/0",
@@ -503732,7 +503732,7 @@
         "reference_only": 0,
         "boundary_controls": 2
       },
-      "log_sha256": "5691ae32a81260cf8a27c03388608616d10c90158dee27a71c1dcda99772207f",
+      "log_sha256": "2e562faf443c275f2d468cf85d9d36cbfe883a2431f1bbd095730b51cd091403",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/gt1_flow/reference.json#/cases/0",
@@ -504413,7 +504413,7 @@
         "reference_only": 0,
         "boundary_controls": 3
       },
-      "log_sha256": "979756433acf46f086480ebd0296ad93217bcf7b1ac7c201879bda51ded759dd",
+      "log_sha256": "064639d5691d532c34ebbf29e34ce36a720de40f9c0d80564b60dc251aec4e3a",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/gt2_inference/reference.json#/cases/0",
@@ -505543,7 +505543,7 @@
         "reference_only": 22,
         "boundary_controls": 6
       },
-      "log_sha256": "b2b76ece4ce1ca55f9dd45e95b54a171406d15077c7d0d7a4d2782fdb9cb65d5",
+      "log_sha256": "e47ad042792559a0dc04073980215c80b7564ca6553d60ed56fa3ba4bbf0363c",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/gt3_operators/reference.json#/cases/0",
@@ -507048,7 +507048,7 @@
         "reference_only": 0,
         "boundary_controls": 4
       },
-      "log_sha256": "8f57d167ea1a56d616c0ed19c37963426c7eff1efd943d1b99b46c3b18b3d051",
+      "log_sha256": "7e5f0f02c9aca1bf485504631d9abecb5edc10c2dc1892c04f1890c3e5a59770",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/gt4_overload_chains/reference.json#/cases/0",
@@ -508557,7 +508557,7 @@
         "reference_only": 0,
         "boundary_controls": 5
       },
-      "log_sha256": "0122f9b0fbcad6ddaa466594dadafba8f92de58223a76d5594eedc1a58a6c101",
+      "log_sha256": "62acaabb27e17be2e917dbe0aed3a3ce975cd5cb235841b01563ff249dacf6ec",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/gt5_compositions/reference.json#/cases/0",
@@ -509857,7 +509857,7 @@
         "reference_only": 0,
         "boundary_controls": 2
       },
-      "log_sha256": "765536324d58618b7b8ac02dbc6c84c418a12054669f72e461d8d7f997119454",
+      "log_sha256": "bfff976a5dab1e369dc5524b1b2123bbd35b9b8ec76fe20a42e84ca7c4fb3701",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/gt6_structural/reference.json#/cases/0",
@@ -510700,7 +510700,7 @@
         "reference_only": 0,
         "boundary_controls": 5
       },
-      "log_sha256": "2140bb814a7f02da3e18d9ded2c2976d55fade416a04d433d0584c570686c4b5",
+      "log_sha256": "3ca9baac27ce88286d5bb42c929bd5e676c3b12a565b4477aa10ab10190d050f",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/gt7_library_manifest/reference.json#/cases/0",
@@ -517068,7 +517068,7 @@
         "reference_only": 0,
         "boundary_controls": 3
       },
-      "log_sha256": "31ff24f51d86bebb13a32117ed5417f25d8b5f5f746366235880687b1cf71e61",
+      "log_sha256": "983c4a46d14768a68155caaa2c86891d31d9edd9ac13a0be74941962b7b3d4a4",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/gt8_return_context/reference.json#/cases/0",
@@ -518254,7 +518254,7 @@
         "reference_only": 2,
         "boundary_controls": 5
       },
-      "log_sha256": "0f75783b5622f0a22ca528f0e34f868aef0ba5baed39729ba7830ca6634befa9",
+      "log_sha256": "6ab63eac6bbb8dcb934b17c56dfda85f3d96876cfd41d1445e1f5009d097cb57",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/gt9_classes/reference.json#/cases/0",
@@ -521955,7 +521955,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "1f4d1214a01e162a3fe26203fb4649b8a3c7dc6fedf1368d717af696fcf0c96c",
+      "log_sha256": "d4e996851728499eba862c21b6146d34a5b5f6ff2e9264aca885e0a25c21d47c",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/guards-reference.json#/cases/0",
@@ -523028,7 +523028,7 @@
         "reference_only": 0,
         "boundary_controls": 12
       },
-      "log_sha256": "ce66638da2ae7440a00ddd28addac4e591114832143244f4a4a482961eba72c2",
+      "log_sha256": "c7197650451745e153cc03a2bd16d370c1e1fdadcd3303e7972bf47b1e308b2d",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/higher_order_inference/reference.json#/cases/0",
@@ -528778,7 +528778,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "c70a65e32b5298834b1b9a9a87bc880343f139fd134f693098181317d20946da",
+      "log_sha256": "d7fb0bc987ee2e3621d9099fea5478cd7a8ade189883b3ef5a589e77a3487662",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/immutable-checker-matrix.tsv#line:1",
@@ -531316,7 +531316,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "403c008d8bb18f23606fb9308ad6ed2e7453197101d19e0580753d6baa8216bd",
+      "log_sha256": "1e45101e3ceb92ad1b1214f4bfe2d0a3296f1743b66fecd118a78ba6e65e2434",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/imported-type-checker-matrix.tsv#line:1",
@@ -532709,7 +532709,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "d4842c596b841aae7429470e65471c9c405412dfa5b3e5f30f50d4c7bf1f50ee",
+      "log_sha256": "de7f50b8ca27262cb4d33e1fda9e08b852536175176725bb6f68b0f141f67484",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/indexed-call-context-reference.json#/cases/0",
@@ -532888,7 +532888,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "bca8d309fee9a13648e49e2bc8ab1f4255f46e6ff8e86a0d51cfb8d065227043",
+      "log_sha256": "e71ab2640391294aff204e5475df3f9faca9f00849ef4ddc6f746b304c2cc917",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/inference-reference.json#/cases/0",
@@ -534066,7 +534066,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "08051be5e7978c3c3eb534bc709d3eecbc7b033032caacd055b1105552dd1bf4",
+      "log_sha256": "ea6348533768fdd99121b6a823f4cbc67c64c41240acd39607c8bff86152c0c7",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/infer-return-checker-matrix.tsv#line:1",
@@ -536143,7 +536143,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "bdd37cbf9d1318934dba28392bec3d528920de9085ff6f78172424eb51feb643",
+      "log_sha256": "4ec6b95a1b40a5d88a5e0d93a741cc9f83e9157fc2b29896f15a2324284b9c50",
       "cases": [
         {
           "id": "backend/bluets/tests/json_default_binding.rs#array:json_default_property_keeps_pinned_inference_execution_and_assignment_diagnostic::for@0/0",
@@ -536245,7 +536245,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "be63ae80b5eb8db4d2d50e999172a34bdea2e6ef21aeeb26535ffc5437786d25",
+      "log_sha256": "75250d1494f93e8aa040c94c61bc11b739f3b5e1039f7c2736929e7cab004953",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/jsx-checker-matrix.tsv#line:1",
@@ -537006,7 +537006,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "d2ae2d792e4f4988194739e14d76882bbf97767447fb146a789ccf803ff7afc2",
+      "log_sha256": "aa365a3b9bd4f221f93e7e888976d9c7d0cf8dfd0b1df1367789f492a33497b1",
       "cases": [
         {
           "id": "backend/bluets/tests/jsx_oracle.rs#array:programs::vec@0/0",
@@ -537195,7 +537195,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "275b97d3b695c9d4a3415f84e1d6b410b669b4d738513cedf9d51ea86071cd21",
+      "log_sha256": "8b2f0dc992ad8ab4eaa6a953462c18a75fba94345d8aaea5f8258e5b4e1a2093",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/jsx_runtime_namespace/reference.json#/cases/0",
@@ -537608,7 +537608,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "cbaae3828feadfda0dabee9df2d14ea8d64e1598fd7799ad85096cf49b3daded",
+      "log_sha256": "f06662b8879c5b26c3479b44d13b1743f7889ea2f3f33e660ab8799ee115f6cb",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/jsx_typing_extras/reference.json#/cases/0",
@@ -538488,7 +538488,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "bba984d388e7840bb5e250dbf0f0c4d2b6e0664ad52322e28c5e2d79917a620e",
+      "log_sha256": "34e59064ef06fe5cf2126792e0f326806538fb8ed29057211bb8a8dd7d2520d4",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/legacy-decorators-checker-matrix.tsv#line:1",
@@ -538773,7 +538773,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "9e72b0aad914b34bf2024d25eaf3a7e82afab9cf4078d3dc5e0a5cd9611ea843",
+      "log_sha256": "5bdf534dad7ec466da095c2ad7c1c6736d505029c0e8e660f2174274de07174f",
       "cases": [
         {
           "id": "backend/bluets/tests/legacy_decorators_oracle.rs#array:programs::for@0/0*backend/bluets/tests/legacy_decorators_oracle.rs#programs::for@1/0",
@@ -539046,7 +539046,7 @@
         "reference_only": 0,
         "boundary_controls": 12
       },
-      "log_sha256": "02a387df2ae070cc657232eb37bf67f16ed08441b2179987c8ef0c1a80e9ca83",
+      "log_sha256": "51069cca5b561a88c825070cdc4a5b9d7480807793c810fd7c17d8f8ec6bf613",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/mapped_inference/reference.json#/cases/0",
@@ -544977,7 +544977,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "f36a89f1741c68fe513e1c6a16cdc591b1d6b6d4bd408dfb7a9ddfe1fd0f70cc",
+      "log_sha256": "8e0ea44c9690faff5d85bd5c6dd9c23c465d917a3a1b3f5b1df1fb6db2708bfe",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/module-exports-reference.json#/cases/0",
@@ -546034,7 +546034,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "bd1c8f4f16118e4e3de9872b6e59ea1cd947282b1bc1d13cd69ca98e02189835",
+      "log_sha256": "1e3936425bb912b25dae81f17ff92642f735d155d4b19cc789a6724d50e97586",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/module_script_helpers/reference.json#/observations/0",
@@ -546223,7 +546223,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "18348f52478f6417973b9a1a1698fc875506df073acffd4407804282d55184ff",
+      "log_sha256": "112362b0d2574ceba8b8b9c322189b2f2823764062193888cbb53fb6bc811756",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/module_systems/reference.json#/cases/0",
@@ -547728,7 +547728,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "9373a2d17138cbb28a8b8c5d1f3c195ee9aa1714e3a626e8685e342b2d63faba",
+      "log_sha256": "d03721428a0006a5a86a539eb12a15e62a3e946f88d6363c85ba411f3a8a7cbf",
       "cases": [
         {
           "id": "backend/bluets/tests/module_type_resolution.rs#array:type_only_imports_and_reexports_select_distinct_conditions_for_the_same_specifier::for@0/0",
@@ -547863,7 +547863,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "d75105500bf87081089cec95f8cab129fb1b6029419c211534875c1089931500",
+      "log_sha256": "c2d113d91ec08d82fe554b6030a26a3edfb4a53e244f1873a21ba71f06f1705a",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/module-types-reference.json#/cases/0",
@@ -549188,7 +549188,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "8d8c4886ed22cb22123b25019062b073f33d9d0b8b01c0dea82f1549afb0f3ab",
+      "log_sha256": "b000ad7ae3e346816673cbac1f3a0617e2d9e9fce6efc7b13a93035563f0eca5",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/more_types-reference.json#/cases/0",
@@ -550677,7 +550677,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "aa4e77c94d168b1a1ea81d86a715c10e4c2255ef10c7fe2339b7afda35e1c1ae",
+      "log_sha256": "b818e976059571de0d373775927d43e2da23bc54b8541c6bdb1ac250331b49da",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/namespace-checker-matrix.tsv#line:1",
@@ -551762,7 +551762,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "f1bfb28bdf721b3bd67f920e66229b5ff270816e4f2c3ff0f94d13b1563a810d",
+      "log_sha256": "6146b1142859655d26821a52b62310e793e492619782bd05d0dff6b28782c000",
       "cases": [
         {
           "id": "backend/bluets/tests/namespace_declaration_oracle.rs#const:SOURCE",
@@ -551912,7 +551912,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "87781f17b92148a5b654190c1c146c8cc01632c97771a2c9bb1defd32a4d460c",
+      "log_sha256": "e5b60cf64ccca3d790d952d98e614ec6970721868d17fe032f896961fb84475e",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/namespace-checker-matrix.tsv#line:1*backend/bluets/tests/namespace_oracle.rs#::TARGETS/0",
@@ -553372,7 +553372,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "eaf962326909b548e99b5b906d4613803f9d7c35c22078d6743c587bcfbf697f",
+      "log_sha256": "d03002f1ad9917a22803189f5c8407ff28779c00a6149c336a942869461c08c9",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/narrowing-reference.json#/cases/0",
@@ -555115,7 +555115,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "b41215f403c248db783c3f9ad84c0087d3c30645b3054125d3b23594991f199b",
+      "log_sha256": "d8a78c95d14c8b6dabdccff4ffe5a2a1618960782e2f289542ee3f3bbac0c3fb",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/noinfer/reference.json#/cases/0",
@@ -559140,7 +559140,7 @@
         "reference_only": 0,
         "boundary_controls": 21
       },
-      "log_sha256": "4eca645b14165f0097ccac76799dba71d614ae12222a1c875c52af6ee1ea8593",
+      "log_sha256": "412845c72e68c94783207bd651e9790850aad97e788c1c9b0e377f6597ee0328",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/nonnullable_awaited/reference.json#/cases/0",
@@ -565104,7 +565104,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "38b4fcee1a52945b388823fb67fa33e4788e255f26f1d7c05a39bef6f8be2f58",
+      "log_sha256": "fd0516d4a595711f39e2c1fdf02ba7578ca47a7081f0c77e0f7b333a7178454c",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/object-method-context-reference.json#/cases/0",
@@ -565347,7 +565347,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "e9169179a3bae5d17fd12613a9725371d5b23a4ef724b01f6c3b0d401a94fe4e",
+      "log_sha256": "fa694ef965505cfb1ab6ad53759ad19c5f98d1ae511b5682c724dd9a36cb90bf",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/operators-reference.json#/cases/0",
@@ -566516,7 +566516,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "b2916f64eee00539be3759935a62b7da42feef2ee9b2b049e071e37ac54b66ac",
+      "log_sha256": "a1d59c4aaa9a3ecf85db7f767d1c6d641f079793acbff5355c2582eb7ae46cea",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/option_combinations/cases.json#/0",
@@ -577289,7 +577289,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "8b5f9bb8c2224273f39ac2a72d974cdbc049ab8d61665be1c59fb1ee34b4297f",
+      "log_sha256": "652c9e8af336fcbb78630eaaac059bab6a4eecce98812b324ec8d8b78bb28614",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/output_options/reference.json#/cases/0",
@@ -579774,7 +579774,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "3887cfc6d09f164121c8c1e7d01e612200b2f31d8b85622cb41437197992af08",
+      "log_sha256": "0094834ec71ac67f48a41324962bcc790e25afb2b5ef2ef96cd0556f5c29a2cc",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/output_validation/reference.json#/cases/0",
@@ -580121,7 +580121,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "68f11b2157e974307602d7d1c1bc0f70d9ec73d27b54c16e5aa33c252cc57153",
+      "log_sha256": "c7824494e8730ea70bfc45fbee39eaa9d0a350db6af2c4179ef046b24632769e",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/overloads-reference.json#/cases/0",
@@ -581178,7 +581178,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "8ffcd139b38ba2a5a27cba060d33e1b3c54e057fabdc889db156a54c8e828bd7",
+      "log_sha256": "fc5a9101afd7c6673e67a8e4f7357e79ae195f06805253fcbb12d6a636ce0f7d",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/package_extras/reference.json#/cases/0",
@@ -581955,7 +581955,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "9fbc8afd1930a4c44a1c31a82c11d9d6165c2a05cc0b26bef60fd8146646b52a",
+      "log_sha256": "c507d9d0c55f0a3a8bdd4a11cd7892c92eb9ef9b3403a1943a6a4c558ac7e917",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/path_extras/reference.json#/cases/0",
@@ -582620,7 +582620,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "e894dc9b61712feca3a81ace8fb1b3c771f988caf37472fd5727fc33d0d1350d",
+      "log_sha256": "15b4568e9162936020edacceed0ca20375d6de8d2442d06bb167db17521a828c",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/project_build_corrupt_state/build-corrupt-state-matrix.tsv#line:1",
@@ -582753,7 +582753,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "d3856e6dfbdf1cac2450630b12db58da4146e1f9395f9b32754cba76b7cb87a3",
+      "log_sha256": "e890b2481ace405d804e464337056bd53b942f35beb45d3037ef43b3738c603b",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/project_build_equivalence/build-equivalence-matrix.tsv#line:1",
@@ -583124,7 +583124,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "7ac61959abac5245fdf1f5fc0e32edc96b1a15021cfd27b3c994f737d89a57a1",
+      "log_sha256": "599bbf63f781c3450d5b7ed8c9c27b15f782cb281d4e151a315eb4277eaf9c57",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/project_build_errors/build-error-matrix.tsv#line:1",
@@ -583187,7 +583187,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "bebe840a272c95928443044eef61eab9726814683d3d97499c848913a25c6ccf",
+      "log_sha256": "0ed42c105916c3f80d025a53e2cd369d5642906f7756970afe647e709e0ff142",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/project_build_freshness/build-freshness-matrix.tsv#line:1",
@@ -583348,7 +583348,7 @@
         "reference_only": 2,
         "boundary_controls": 0
       },
-      "log_sha256": "d5617c63fdc3a7d82802ba2164062dd5d0c181a7cd46c6374cde89bdf4bdda39",
+      "log_sha256": "0063ab8ecaec2be91923e94510fbe149bbd456f45ba88a90639cfcbf70f8cff2",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/project_build_invalidation/build-invalidation-matrix.tsv#line:1",
@@ -583472,7 +583472,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "0ab6dad955e73a7c6a8bafa918a8721396df3c1ae8aa542b4692ae2e14b30d06",
+      "log_sha256": "5af3ac8c5a1bea4c3e58fffd3a4a05cb5e522b566cb32f7101345bbdee1cbcb5",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/project_build_order/build-order-cases.json#/cases/0",
@@ -583563,7 +583563,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "2549fc75e9defa20636d8cc3fbb8d1e09662e8f11113155f69885b394bfe594e",
+      "log_sha256": "d79ac3589156071db8943edcc1d8631033a39da1c08781eb27f940344c8a22ec",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/project_build_watch/build-watch-matrix.tsv#line:1",
@@ -583654,7 +583654,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "d55e6ccac8b28e6b0a614d3cd7413a168c574fa0b6a3f0ef9e617c3be900fbe3",
+      "log_sha256": "c296a33d50698d4fd27074802c00f3d84faa73d51a05b26d0bbbe85ef4dbe481",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/project_cache_key/cache-key-matrix.tsv#line:1",
@@ -583759,7 +583759,7 @@
         "reference_only": 0,
         "boundary_controls": 1
       },
-      "log_sha256": "3f38eca7be12e7b1649fecbe4bd7a222a904d65532411f408326b730354c675a",
+      "log_sha256": "621ac2d6db6d0f90bf7ac51f9c33b5b59dac6fb8ddfe33e5f48adf064e048970",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/project_config/config-checker-matrix.tsv#line:1",
@@ -584775,7 +584775,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "d5bc47f5eaa04b74d380b1fb3ba96c1e8297b2f5fe38833943c3fbbc3c6c76b9",
+      "log_sha256": "d5d8aec7daa220a862068eac348845a72f5f27cfb84b034eb665f5b784b972fd",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/project_reference_owner_gate/owner-gate-matrix.tsv#line:1",
@@ -584825,7 +584825,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "a57507d4d8d2ed22ad0f0fb541260fd2256ee8e5fd153a6006bbd296240fc94e",
+      "log_sha256": "6b4b88320644ea7a9e5ef4d70dd17693a290316804519d4c0dc89c480bb3bf38",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/project_referenced_declarations/rebuild-matrix.tsv#line:1",
@@ -584902,7 +584902,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "6a29c4085ddd23d29bc859c7f8b63c8936fd3ec2a2178df5379e5135c31fb507",
+      "log_sha256": "e07b060586b1e8e66c8885c4ecf36a258e7eace7139774b3af9b64975d70efe1",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/project_references/reference-graph-cases.json#/cases/0",
@@ -585049,7 +585049,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "b58bcde2b01a04ac706b9ec39ebbd132610b5960d8dd2c2f2b1c0f12a0349360",
+      "log_sha256": "4fdf71dc7396da91c8dcbc8160eeb83987caa8dde0a685c086a9fa0ec1c43442",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/receiver-parameter-boundaries-reference.json#/cases/0",
@@ -585154,7 +585154,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "89bc86e0e365fd8a7debdfdc8bfb647f1e3221c4d890bdb38d4ebdd3643eaebd",
+      "log_sha256": "514d3fa3267c1a6d15b7304296f222b56fe96e9a14b1ded927c277f7412abe04",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/receiver_utilities/reference.json#/cases/0",
@@ -588115,7 +588115,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "9b142c1b8228c4777843e63a1867d59ca7747c763dbd0c39a9e0f0da74215945",
+      "log_sha256": "becb0ba5f754e9bb62f08a18770adaebf59b353f3bf83699f1a583b0d2506ca5",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/rest-array-context-reference.json#/cases/0",
@@ -588248,7 +588248,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "69cccaf16188d0d1400a8d7da0c66508cf1de871067d2c7d727d575e2f7776c2",
+      "log_sha256": "deeaf1ef08d91bb32109aff9abbce3622b20023b9fa10db5925b83be4a0752c0",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/source_extras/reference.json#/cases/0",
@@ -588661,7 +588661,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "6b776b2736212aabfbdad1025317952d7fb723508a42331a1e63dcb9cfaa02e0",
+      "log_sha256": "2603834b9e7615797440687231509c1f7f7cadbc7ef0e1d45acd7f2ae380e88a",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/k11_source_maps/source-map-tokens-checker-matrix.tsv#line:2*backend/bluets/tests/source_map_publication.rs#external_and_inline_source_maps_match_public_typescript_output::for@1/0",
@@ -589298,7 +589298,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "58221f2530f8d69d5cf69f9677937f96dec02bb3dbe0fe7fc9c3075832f0a333",
+      "log_sha256": "9e44314db8a3369ac16320753c74dcf002d6792f9526f3400bf641dcd9f6bfcf",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/k11_source_maps/source-map-tokens-checker-matrix.tsv#line:2;inline_sources=false",
@@ -589750,7 +589750,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "2e403f3cd52913618c8d7c6a1c6a4879161c81c1703ff0a958d815ed7d760ec6",
+      "log_sha256": "d86d278d18fe0d6f32b00ae0699014ed5981d117f7d60a7ecc4de58f474c77c4",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/lib-checker-matrix.tsv#line:1",
@@ -591575,7 +591575,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "9f6797282016c22afd38f64f94daa1248d01e6dadd67fabc7d21c07b49fc48c3",
+      "log_sha256": "c467eccb362dbc2e668be9e9a92661d8581a163fb28e7bc6065598d0c19316bd",
       "cases": [
         {
           "id": "backend/bluets/tests/strictness_controls.rs#call:unused_checks_resolve_shadowing_exports_and_underscore_parameters::accepts/0",
@@ -592142,7 +592142,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "a4db7a93dd0477f1478e10f76a7d41b779b64d2f1dc9bef01e4761ec5912792f",
+      "log_sha256": "75a490e1cbf3fbc5d7c1a665b65c1452d13a4449ffd07b97866e02b3c609dd92",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/strictness/strictness-checker-matrix.tsv#line:1",
@@ -592639,7 +592639,7 @@
         "reference_only": 0,
         "boundary_controls": 20
       },
-      "log_sha256": "b79189b5cdac1a71fb60db566c7bad47ff1804af4c3e507e7467ea8e8751e5fc",
+      "log_sha256": "3eacb18aa0b040198e40026721c4dfa17246730f1e5d146a6f576bb61761a38b",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/string_intrinsics/reference.json#/cases/0",
@@ -606680,7 +606680,7 @@
         "reference_only": 0,
         "boundary_controls": 12
       },
-      "log_sha256": "fe7ee25a21aaccce92a2e1ab1cf89d7bab4dbaae45a902abf92d5942706e9185",
+      "log_sha256": "be562342764619a8e53c9865c9da26f830aeb534afd521f0f49a78258393bffa",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/symbolic_keys/reference.json#/cases/0",
@@ -610465,7 +610465,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "99e408b919fe5c10aca7939b086b61bffb8124aea47bab2a6c9873370a48b77e",
+      "log_sha256": "0f82d25663cba06b336c41e2d2252ae38159b7da40740326281a0cd4426844eb",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/target_library_options/reference.json#/cases/0",
@@ -610906,7 +610906,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "c786e9f9561a4609a3873d4f0d21c95102f364c1f397c3ad198639562df825cd",
+      "log_sha256": "e4f996d40d96e8bbb9863bb9c0346df0a692926f06d6598e1b03577155b30a01",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/target_protocols/reference.json#/cases/0",
@@ -611873,7 +611873,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "b5d66f7a3408dccb32d6b2ccd25bd5dede447055cfd1bca7f014f98a75f490a8",
+      "log_sha256": "f0f9eceae35ec17fdb0ced2ce3813fcecd10fd09e843f105424d7a66407cd90a",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/targets-reference.json#/cases/0",
@@ -620826,7 +620826,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "4d27a0ab18c00482e2aaaee4730dbccb6a564d16e7edf763199cebe9a8c776dc",
+      "log_sha256": "25c566571b0bfef3bafa3744b80bf714f4a24ddda00a32fefa1815c84fb6e36f",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/template-constant-context-reference.json#/cases/0",
@@ -621562,7 +621562,7 @@
         "reference_only": 480,
         "boundary_controls": 0
       },
-      "log_sha256": "84e4811f88e7181a4173fd4376dd3c7166621263cbb2b29ab5bf5f67d44d3d67",
+      "log_sha256": "7d5ca0c20f2254f80fdd8dbd0cf5f75ef7d76d2950ced38b12a4452b63a7a41a",
       "cases": [
         {
           "id": "backend/bluets/tests/typescript_oracle.rs#array:::CASES/0",
@@ -630403,7 +630403,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "e90474b065e6191a0fb340a0c5b17428201751005bf4d8acb5242f8e00932e38",
+      "log_sha256": "e2559c3d04ca2e7ae1b70cfbd414a4fd2c4d488c9e4219b0136957aa10af5594",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/typescript_oracle/unknown-name-checker-matrix.tsv#line:1",
@@ -631950,7 +631950,7 @@
         "reference_only": 0,
         "boundary_controls": 0
       },
-      "log_sha256": "d4f9177a433d19e7d590b343b9268b22f6d02a626c2faaff0a3256f4bc810f1b",
+      "log_sha256": "a1633e1ff33c400bb372071582a83954fd635004246597cae9857085c908b924",
       "cases": [
         {
           "id": "backend/bluets/tests/fixtures/variable-pattern-context-reference.json#/cases/0",

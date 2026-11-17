@@ -149,9 +149,9 @@ function compare(ts,native,actual,options,originalText,delegates={}) {
     }
   }
   if(options.target==='ES5') {
-    const kinds=[...helpers.values()],derived=runtimeClasses.filter(source=>source.heritageClauses?.length).length;
-    assert.equal(kinds.filter(kind=>kind==='__blueice_target_inherit_class').length,options.importHelpers?derived:options.noEmitHelpers?0:runtimeClasses.length,'complete inheritance helper group inventory');
-    assert.equal(kinds.filter(kind=>kind==='__blueice_target_call_base').length,options.importHelpers||options.noEmitHelpers?0:runtimeClasses.length,'complete constructor helper group inventory');
+    const kinds=[...helpers.values()],derived=runtimeClasses.filter(source=>source.heritageClauses?.length).length,stock=classes.nativeFactories(ts,actual,[original]).length;assert(stock<=runtimeClasses.length,'Native factory inventory is bounded by original runtime classes');const custom=runtimeClasses.length-stock;
+    assert.equal(kinds.filter(kind=>kind==='__blueice_target_inherit_class').length,options.importHelpers?derived:options.noEmitHelpers?0:custom,'complete inheritance helper group inventory');
+    assert.equal(kinds.filter(kind=>kind==='__blueice_target_call_base').length,options.importHelpers||options.noEmitHelpers?0:custom,'complete constructor helper group inventory');
   }
   for(const source of sources) {
     const nn=nodeFor(n,source.name.text),an=nodeFor(a,source.name.text);let relocated=null;

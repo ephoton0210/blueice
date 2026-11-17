@@ -453,9 +453,11 @@ impl Walk<'_> {
             .map(|token| (token.start, token.end));
         let assignment = if let Some((start, end)) = name_span {
             format!(
-                " {}{param}.{name}{} = {name}{};",
+                "{} {}{param}.{name}{} = {name}{};{}",
+                self.anchor(span.end),
                 self.anchor(start),
                 self.anchor(end),
+                self.anchor(span.end),
                 self.anchor(span.end)
             )
         } else {
@@ -500,6 +502,7 @@ impl Walk<'_> {
                     Replacement {
                         text: format!("{parent}.{name}"),
                         wrap_calls: false,
+                        anchor_call_target: false,
                         anchor_each_token: false,
                     },
                 )
@@ -552,6 +555,8 @@ pub(super) struct Replacement {
     /// A call `name(..)` becomes `(0, text)(..)`, as TypeScript writes a call
     /// of an imported function so it does not bind `this` to the module.
     pub(super) wrap_calls: bool,
+    /// The lowered call's module receiver still starts at the original callee.
+    pub(super) anchor_call_target: bool,
     /// A generated System export-object access represents one original
     /// binding token; its punctuation and property name share that site.
     pub(super) anchor_each_token: bool,
@@ -621,7 +626,12 @@ pub(super) fn scan(
         }
         let mut replacement = if target.wrap_calls && after == Some("(") && before != Some("new") {
             format!(
-                "(0, {}{})",
+                "(0, {}{}{})",
+                if target.anchor_call_target {
+                    super::relocations::source_anchor(start)
+                } else {
+                    String::new()
+                },
                 target.text,
                 super::relocations::source_anchor(base + token.end)
             )

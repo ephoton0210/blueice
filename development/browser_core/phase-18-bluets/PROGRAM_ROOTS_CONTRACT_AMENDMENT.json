@@ -1,0 +1,20 @@
+{
+  "reason": "The frozen Rust fixture used MapLoader, whose generic relative resolver does not resolve extensionless TypeScript names. Four Native-calibrated owner edges are now supplied by AuthorizedModuleLoader. Production loader/resolver semantics, source/configuration/root inputs and complete Native expectations remain unchanged.",
+  "scope": "Test owner adapter only; no Native or completion credit.",
+  "frozenContractSha256": "0c8ec15e6a9f50887351f79bfe9bbd32c6d7e04e8669a18e7663b94d81364d5a",
+  "changedFrozenFiles": [
+    "backend/bluets/tests/program_roots.rs"
+  ],
+  "libraryContractUnchanged": true,
+  "typescriptImplementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "nativeObservedInputs": 392,
+  "sourcePools": 50,
+  "explicitEdges": 4,
+  "sources": {
+    "backend/bluets/tests/program_roots.rs": "f6fab3f2f591c6937fbe945c9d084e31fda4e75944c8a2aa577e6d610a05da85",
+    "backend/bluets/tests/program_roots_support/mod.rs": "3370cee9d3f1ec91baea6f89f8e1027dfa0a118070b673e891ed56116d410f61",
+    "backend/bluets/tests/fixtures/program_roots/owner-resolutions.json": "1091776772180da1b6bebbef6fb56f2ed9c481e86fbfcdb9185ec07a70108027",
+    "target/program-roots-contract-20261115/author_owner_resolutions.cjs": "00108ba8ddb95e4ddec79be2b79d1b0d89f77e24a9b027a49541036133f8c94f"
+  },
+  "allAssertionsAndFixtureAccessUnchanged": true
+}

@@ -1,0 +1,16 @@
+{
+  "conclusion": "complete-windows-archive-independently-verified",
+  "observedAt": "2026-11-16T08:09:28.783129+00:00",
+  "verifierSha256": "563c12e8048fe3c455af5e4b2cfa0366d8a55bacc75e5a2cd68aa9a538300a16",
+  "sourceRevision": "backend-tree:37beae676a55482728b6aa8682240bd9588e7fdc",
+  "archiveSha256": "d27e6a5aa514636517c3d2a6faaf56730dc3fcebd15723e73d6130adbb94742e",
+  "archiveBytes": 62450964,
+  "verifiedSourceFiles": 14915,
+  "compilerSha256": "049a9532830d8b0004c1ca9b6ecb471ee712f7541491b8c39708abfbec889a3a",
+  "compilerMachine": 34404,
+  "completeCohorts": 71,
+  "coreOracles": 82,
+  "pathCases": 25,
+  "completionCredit": false,
+  "scope": "Preserved source59 Windows proof; complete Native/local/map/accounting delivery remains required."
+}

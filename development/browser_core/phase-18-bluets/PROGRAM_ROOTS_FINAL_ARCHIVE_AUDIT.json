@@ -1,0 +1,42 @@
+{
+  "conclusion": "all-final-supplement-archive-members-verified",
+  "recordedAt": "2026-11-17T08:22:53.789648+00:00",
+  "archives": [
+    {
+      "path": "PROGRAM_ROOTS_FINAL_01.tar.gz",
+      "members": 19607,
+      "sha256": "18924713380be20999f99fb67fc0550f814abc1aff8e88bed862dca640542079"
+    },
+    {
+      "path": "PROGRAM_ROOTS_FINAL_02.tar.gz",
+      "members": 4785,
+      "sha256": "9866bdb6fdbd5d8414b868d4ad485419ab56368875affdd385b4865d84f95b93"
+    },
+    {
+      "path": "PROGRAM_ROOTS_FINAL_03.tar.gz",
+      "members": 10342,
+      "sha256": "b7d394403f9fa4894153f4c2181b21cc60728d6670c1424088637732b95469ba"
+    },
+    {
+      "path": "PROGRAM_ROOTS_FINAL_04.tar.gz",
+      "members": 5770,
+      "sha256": "1ed2c972e27d830eb3a519e931cba536b948aaf1366e8d3ee0d43031ff242d67"
+    },
+    {
+      "path": "PROGRAM_ROOTS_FINAL_05.tar.gz",
+      "members": 7372,
+      "sha256": "475eebd8d33eda5251df82d763d0dfcd77de1c46d87269a8129aaa37cf9eba5d"
+    },
+    {
+      "path": "PROGRAM_ROOTS_FINAL_06.tar.gz",
+      "members": 1100,
+      "sha256": "fd3f135377e856b722d1455b181912183b3256d4056dcb4f4e04a5a3bb4b603a"
+    }
+  ],
+  "regularFiles": 48976,
+  "currentToolFilesVerified": 618,
+  "runtimeContractAuditSha256": "0617adc0d6c20e2e4288b9ff597fe0619abc88ba711e312696fcdcf9e1bc07f6",
+  "memberManifestSha256": "7535a127a1afaa732ed273f14e3b823c348f23ea5431fc72cf3cfa9af5169a11",
+  "completionCredit": false,
+  "scope": "Every final runtime supplement member independently decoded and hashed; current618 tool bytes, exact runtime-audit payload and both original actual CLI profiles verified. Final published-index verification still required."
+}

@@ -494,9 +494,12 @@ impl ModuleChecker<'_> {
         }
         let signatures = self.functions.get(&source.text)?.clone();
         let signature = signatures.first()?;
-        let value = Type::Function {
-            parameters: signature.parameters.clone(),
-            result: Box::new(signature.return_type.clone()),
+        let value = match scope.get(&source.text) {
+            Some(value @ Type::CallableRecord { .. }) => value.clone(),
+            _ => Type::Function {
+                parameters: signature.parameters.clone(),
+                result: Box::new(signature.return_type.clone()),
+            },
         };
         self.functions.insert(variable.name.clone(), signatures);
         Some(value)

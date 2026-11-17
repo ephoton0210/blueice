@@ -26,7 +26,8 @@ pub(super) fn declaration_module_diagnostics(
             });
         for declaration in &module.declarations {
             if let Declaration::ValueExport(export) = declaration {
-                if !is_declaration_module(module_id)
+                if !policy.no_emit
+                    && !is_declaration_module(module_id)
                     && export.specifier.as_ref().is_some_and(|specifier| {
                         project.ambient_resolutions.contains_key(&(
                             module_id.clone(),
@@ -48,7 +49,8 @@ pub(super) fn declaration_module_diagnostics(
                         .resolutions
                         .get(&(module_id.clone(), specifier.clone()))
                 }) {
-                    if !is_declaration_module(module_id)
+                    if !policy.no_emit
+                        && !is_declaration_module(module_id)
                         && is_declaration_module(resolved)
                         && !crate::compiler::is_external_library_module(resolved)
                     {
@@ -79,7 +81,8 @@ pub(super) fn declaration_module_diagnostics(
                 {
                     continue;
                 }
-                if !is_declaration_module(module_id)
+                if !policy.no_emit
+                    && !is_declaration_module(module_id)
                     && !import.is_type_only()
                     && project
                         .resolved_import(module_id, import)
@@ -112,7 +115,8 @@ pub(super) fn declaration_module_diagnostics(
                     );
                     continue;
                 }
-                if !is_declaration_module(module_id)
+                if !policy.no_emit
+                    && !is_declaration_module(module_id)
                     && !import.is_type_only()
                     && project
                         .resolved_import(module_id, import)

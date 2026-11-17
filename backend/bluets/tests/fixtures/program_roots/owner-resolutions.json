@@ -1,0 +1,2895 @@
+{
+  "scope": "Owner-only exact resolution edges calibrated by pinned Native over unchanged frozen sources/configurations. No producer source, root selection, expected diagnostic or declaration byte changes.",
+  "typescript": "5.9.3",
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "libraryContractSha256": "d1f57ae6297b00f1e1fc356fe547968add92b30ec72a762822ea1d4c584cb231",
+  "sourceSha256": "00108ba8ddb95e4ddec79be2b79d1b0d89f77e24a9b027a49541036133f8c94f",
+  "groups": [
+    {
+      "files": {
+        "main.ts": "const value: number = 1;\n",
+        "consumer.ts": "const check: number = value;\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "function identity<T>(value: T): T { return value; }\n",
+        "consumer.ts": "const check: string = identity(\"x\");\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "function identity<T>(value: T): T { return value; }\n",
+        "consumer.ts": "const check: number = identity(\"x\");\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "class Box<T> { constructor(public value: T) {} read(): T { return this.value; } }\n",
+        "consumer.ts": "const check: string = new Box(\"x\").read();\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "global.d.ts": "declare class Box { value: number; read(): number; }\n",
+        "main.ts": "const check: number = new Box().read();\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "global.d.ts": "declare namespace Library { const value: number; }\n",
+        "main.ts": "const check: number = Library.value;\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "function echo(value: string): string;\nfunction echo(value: number): number;\nfunction echo(value: string | number): string | number { return value; }\n",
+        "consumer.ts": "const text: string = echo(\"x\"); const count: number = echo(1);\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "function echo(value: string): string;\n",
+        "other.ts": "function echo(value: string): string { return value; }\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "function build(value: number): number { return value; }\nnamespace build { export const version = 1; }\n",
+        "consumer.ts": "const check: number = build(1) + build.version;\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "function build(value: number): number { return value; }\n",
+        "other.ts": "namespace build { export const version = 1; }\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "class Box { value: number = 1; }\n",
+        "other.ts": "namespace Box { export const version = 1; }\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "interface Item { value: number; }\n",
+        "other.ts": "interface Item { name: string; }\n",
+        "consumer.ts": "const item: Item = { value: 1, name: \"x\" };\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "interface Item { value: number; }\n",
+        "other.ts": "interface Item { value: string; }\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "const value: number = 1;\n",
+        "other.ts": "const value: number = 2;\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "var value: number = 1;\n",
+        "other.ts": "var value: number = 2;\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "var value: number = 1;\n",
+        "other.ts": "var value: string = \"x\";\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "class Box { value: number = 1; }\n",
+        "other.ts": "interface Box { read(): number; }\n",
+        "consumer.ts": "declare const box: Box; const check: number = box.read();\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "class Box { value: number = 1; }\n",
+        "other.ts": "class Box { value: string = \"x\"; }\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "interface Item { value: number; }\n",
+        "other.ts": "type Item = string;\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "namespace Library { export const first = 1; }\n",
+        "other.ts": "namespace Library { export const second = \"x\"; }\n",
+        "consumer.ts": "const count: number = Library.first; const text: string = Library.second;\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "class Hidden { value: number = 1; }\nexport {};\n",
+        "other.ts": "class Hidden { value: string = \"x\"; }\nexport {};\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "const secret: number = 1;\nexport {};\n",
+        "consumer.ts": "const check: number = secret;\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "interface Item { value: number; }\nexport function read(value: Item): number { return value.value; }\n",
+        "consumer.ts": "import { read } from \"./main\"; export const check: number = read({ value: 1 });\n"
+      },
+      "edges": [
+        {
+          "from": "consumer.ts",
+          "specifier": "./main",
+          "target": "main.ts"
+        }
+      ]
+    },
+    {
+      "files": {
+        "main.ts": "import \"./support\"; const secret: number = 1;\n",
+        "support.ts": "export {};\n",
+        "consumer.ts": "const check: number = secret;\n"
+      },
+      "edges": [
+        {
+          "from": "main.ts",
+          "specifier": "./support",
+          "target": "support.ts"
+        }
+      ]
+    },
+    {
+      "files": {
+        "main.ts": "interface Secret { value: number; }\nexport {};\n",
+        "consumer.ts": "const check: Secret = { value: 1 };\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "export {};\ndeclare global { interface Item { value: number; } }\n",
+        "consumer.ts": "const check: Item = { value: 1 };\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "export {};\ndeclare global { interface Item { value: number; } }\n",
+        "other.ts": "export {};\ndeclare global { interface Item { name: string; } }\n",
+        "consumer.ts": "const check: Item = { value: 1, name: \"x\" };\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "global.d.ts": "declare class Box { read(): number; }\n",
+        "other.d.ts": "declare namespace Library { const value: number; }\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "global.d.ts": "declare const value: number;\n",
+        "main.ts": "const check: string = value;\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "unselected.ts": "const secret: number = 1;\n",
+        "main.ts": "const check: number = secret;\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "function read(value: number): number { return value; }\n",
+        "consumer.ts": "const check: number = read(1);\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "/*😀 中文*/ const value: number = 1;\n",
+        "other.ts": "/*😀*/ const value: number = 2;\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "const value: number = 1;\nexport {};\n",
+        "consumer.ts": "const check: number = value;\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "const value: number = 1;\n",
+        "consumer.ts": "const check: number = value;\n",
+        "marker.ts": "export {};\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "import \"./marker\"; const value: number = 1;\n",
+        "consumer.ts": "const check: number = value;\n",
+        "marker.ts": "export {};\n"
+      },
+      "edges": [
+        {
+          "from": "main.ts",
+          "specifier": "./marker",
+          "target": "marker.ts"
+        }
+      ]
+    },
+    {
+      "files": {
+        "provider.ts": "function read(value: number): number { return value; }\n",
+        "main.ts": "const check: number = read(1);\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "global.d.ts": "declare class Box { read(): number; }\n",
+        "main.ts": "const check: number = new Box().read();\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "global.d.ts": "declare class Box { read(): string; }\n",
+        "main.ts": "const check: number = new Box().read();\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "const value: number = 1;\n",
+        "other.ts": "const value: number = 2;\n",
+        "consumer.ts": "const check: number = value;\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "/*😀 中文*/ const value: number = 1;\n",
+        "other.ts": "/*😀*/ const value: number = 2;\n",
+        "consumer.ts": "const check: number = value;\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "/*😀 中文*/ const value: number = 1;\n",
+        "other.ts": "const otherValue: number = 2;\n",
+        "consumer.ts": "const check: number = value;\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "interface Item { value: number; }\n",
+        "extra.ts": "interface Item { value: string; }\n",
+        "consumer.ts": "declare const item: Item; const check: number = item.value;\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "interface Item { value: number; }\n",
+        "extra.ts": "interface Item { name: string; }\n",
+        "consumer.ts": "declare const item: Item; const check: number = item.value;\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "namespace Library { export const first = 1; }\n",
+        "extra.ts": "namespace Library { export const second = \"x\"; }\n",
+        "consumer.ts": "const check: string = Library.second;\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "namespace Library { export const first = 1; }\n",
+        "extra.ts": "namespace Library { export const second = true; }\n",
+        "consumer.ts": "const check: string = Library.second;\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "function read<T extends { value: number }>(value: T): T { return value; }\n",
+        "consumer.ts": "const check: number = read({ value: 1 }).value;\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "function read<T extends { value: string }>(value: T): T { return value; }\n",
+        "consumer.ts": "const check: number = read({ value: 1 }).value;\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "function read<T extends { value: number }>(value: T): T { return value; }\nexport {};\n",
+        "consumer.ts": "const check: number = read({ value: 1 }).value;\n"
+      },
+      "edges": []
+    },
+    {
+      "files": {
+        "main.ts": "export function read<T extends { value: number }>(value: T): T { return value; }\n",
+        "consumer.ts": "import { read } from \"./main\"; export const check: number = read({ value: 1 }).value;\n"
+      },
+      "edges": [
+        {
+          "from": "consumer.ts",
+          "specifier": "./main",
+          "target": "main.ts"
+        }
+      ]
+    },
+    {
+      "files": {
+        "main.ts": "export function read<T extends { value: number }>(value: T): T { return value; }\n",
+        "consumer.ts": "const check: number = read({ value: 1 }).value;\n"
+      },
+      "edges": []
+    }
+  ],
+  "observations": [
+    {
+      "id": "es5-cjs-none/global-variable",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/global-variable/api",
+      "configSha256": "a3d53c07f398a38553753418cbfd4e9126f65d0c3f82d400852d2d6557a08da7",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/global-generic-function",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/global-generic-function/api",
+      "configSha256": "a3d53c07f398a38553753418cbfd4e9126f65d0c3f82d400852d2d6557a08da7",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/global-generic-function-wrong-result",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/global-generic-function-wrong-result/api",
+      "configSha256": "a3d53c07f398a38553753418cbfd4e9126f65d0c3f82d400852d2d6557a08da7",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/global-generic-class",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/global-generic-class/api",
+      "configSha256": "a3d53c07f398a38553753418cbfd4e9126f65d0c3f82d400852d2d6557a08da7",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/ambient-class-root",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/ambient-class-root/api",
+      "configSha256": "86adac2dff7c646858cd4c7b9fbfe3e268f66301e5efb2d8ff9802fa713a45bb",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/ambient-value-namespace-root",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/ambient-value-namespace-root/api",
+      "configSha256": "86adac2dff7c646858cd4c7b9fbfe3e268f66301e5efb2d8ff9802fa713a45bb",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/global-function-overloads",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/global-function-overloads/api",
+      "configSha256": "a3d53c07f398a38553753418cbfd4e9126f65d0c3f82d400852d2d6557a08da7",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/cross-file-nonambient-overload-implementation",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/cross-file-nonambient-overload-implementation/api",
+      "configSha256": "c4663bd2439c05c02d25d34f204cc62f8592ab1085a6b64de98fa5f4766f5487",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/same-file-function-namespace",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/same-file-function-namespace/api",
+      "configSha256": "a3d53c07f398a38553753418cbfd4e9126f65d0c3f82d400852d2d6557a08da7",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/cross-file-function-namespace",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/cross-file-function-namespace/api",
+      "configSha256": "c4663bd2439c05c02d25d34f204cc62f8592ab1085a6b64de98fa5f4766f5487",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/cross-file-class-namespace",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/cross-file-class-namespace/api",
+      "configSha256": "c4663bd2439c05c02d25d34f204cc62f8592ab1085a6b64de98fa5f4766f5487",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/cross-file-interface-merge",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/cross-file-interface-merge/api",
+      "configSha256": "e08191b437d6d21a16fa39480bf6a2356b1da2683417038a265ba74c3922ba5b",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/cross-file-incompatible-interface",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/cross-file-incompatible-interface/api",
+      "configSha256": "c4663bd2439c05c02d25d34f204cc62f8592ab1085a6b64de98fa5f4766f5487",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/cross-file-lexical-collision",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/cross-file-lexical-collision/api",
+      "configSha256": "c4663bd2439c05c02d25d34f204cc62f8592ab1085a6b64de98fa5f4766f5487",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/cross-file-compatible-var",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/cross-file-compatible-var/api",
+      "configSha256": "c4663bd2439c05c02d25d34f204cc62f8592ab1085a6b64de98fa5f4766f5487",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/cross-file-incompatible-var",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/cross-file-incompatible-var/api",
+      "configSha256": "c4663bd2439c05c02d25d34f204cc62f8592ab1085a6b64de98fa5f4766f5487",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/class-interface-merge",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/class-interface-merge/api",
+      "configSha256": "e08191b437d6d21a16fa39480bf6a2356b1da2683417038a265ba74c3922ba5b",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/cross-file-class-collision",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/cross-file-class-collision/api",
+      "configSha256": "c4663bd2439c05c02d25d34f204cc62f8592ab1085a6b64de98fa5f4766f5487",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/interface-alias-collision",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/interface-alias-collision/api",
+      "configSha256": "c4663bd2439c05c02d25d34f204cc62f8592ab1085a6b64de98fa5f4766f5487",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/cross-file-value-namespace-merge",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/cross-file-value-namespace-merge/api",
+      "configSha256": "e08191b437d6d21a16fa39480bf6a2356b1da2683417038a265ba74c3922ba5b",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/module-private-collisions-isolated",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/module-private-collisions-isolated/api",
+      "configSha256": "c4663bd2439c05c02d25d34f204cc62f8592ab1085a6b64de98fa5f4766f5487",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/module-private-name-hidden",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/module-private-name-hidden/api",
+      "configSha256": "a3d53c07f398a38553753418cbfd4e9126f65d0c3f82d400852d2d6557a08da7",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/exported-private-dependency",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/exported-private-dependency/api",
+      "configSha256": "a3d53c07f398a38553753418cbfd4e9126f65d0c3f82d400852d2d6557a08da7",
+      "edges": [
+        {
+          "from": "consumer.ts",
+          "specifier": "./main",
+          "target": "main.ts"
+        }
+      ]
+    },
+    {
+      "id": "es5-cjs-none/side-effect-import-marks-module",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/side-effect-import-marks-module/api",
+      "configSha256": "97166a814ac80f771cd9deee8ea92003e4f64342f1fd16743d465753bc399182",
+      "edges": [
+        {
+          "from": "main.ts",
+          "specifier": "./support",
+          "target": "support.ts"
+        }
+      ]
+    },
+    {
+      "id": "es5-cjs-none/empty-export-marks-module",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/empty-export-marks-module/api",
+      "configSha256": "a3d53c07f398a38553753418cbfd4e9126f65d0c3f82d400852d2d6557a08da7",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/external-module-global-augmentation",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/external-module-global-augmentation/api",
+      "configSha256": "a3d53c07f398a38553753418cbfd4e9126f65d0c3f82d400852d2d6557a08da7",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/two-module-global-augmentation-merge",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/two-module-global-augmentation-merge/api",
+      "configSha256": "e08191b437d6d21a16fa39480bf6a2356b1da2683417038a265ba74c3922ba5b",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/declaration-only-roots",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/declaration-only-roots/api",
+      "configSha256": "50fadf5c0e1dac131055853db7deaefb438e99d7b82700124845d8b3675f92cc",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/mixed-ambient-source-wrong-type",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/mixed-ambient-source-wrong-type/api",
+      "configSha256": "86adac2dff7c646858cd4c7b9fbfe3e268f66301e5efb2d8ff9802fa713a45bb",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/unselected-disk-root-hidden",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/unselected-disk-root-hidden/api",
+      "configSha256": "cb4932884ba9fa764334284a88528bdde7f8411d04f268fd279e55abaf3d1a1c",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/selected-root-reverse-order",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/selected-root-reverse-order/api",
+      "configSha256": "bb8d467a715b6981e7648a11c4630e2ac3fa0d39164207faa35834a2ea7e14be",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-none/unicode-cross-file-lexical-collision",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-cjs-none/unicode-cross-file-lexical-collision/api",
+      "configSha256": "c4663bd2439c05c02d25d34f204cc62f8592ab1085a6b64de98fa5f4766f5487",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/global-variable",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/global-variable/api",
+      "configSha256": "e04ccb4be859a0a644ea25ca5652928e21c2bac51197b15b6a67b36538d14bd9",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/global-generic-function",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/global-generic-function/api",
+      "configSha256": "e04ccb4be859a0a644ea25ca5652928e21c2bac51197b15b6a67b36538d14bd9",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/global-generic-function-wrong-result",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/global-generic-function-wrong-result/api",
+      "configSha256": "e04ccb4be859a0a644ea25ca5652928e21c2bac51197b15b6a67b36538d14bd9",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/global-generic-class",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/global-generic-class/api",
+      "configSha256": "e04ccb4be859a0a644ea25ca5652928e21c2bac51197b15b6a67b36538d14bd9",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/ambient-class-root",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/ambient-class-root/api",
+      "configSha256": "9f5a0e23673207356479d037d4e824a972f88639f7ecf45048eac8432e8dc23d",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/ambient-value-namespace-root",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/ambient-value-namespace-root/api",
+      "configSha256": "9f5a0e23673207356479d037d4e824a972f88639f7ecf45048eac8432e8dc23d",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/global-function-overloads",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/global-function-overloads/api",
+      "configSha256": "e04ccb4be859a0a644ea25ca5652928e21c2bac51197b15b6a67b36538d14bd9",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/cross-file-nonambient-overload-implementation",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/cross-file-nonambient-overload-implementation/api",
+      "configSha256": "3e95bb7b38c86efd025f791b5ee5f3b7cea0a87c09a2abec048dbe91d5aec0a7",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/same-file-function-namespace",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/same-file-function-namespace/api",
+      "configSha256": "e04ccb4be859a0a644ea25ca5652928e21c2bac51197b15b6a67b36538d14bd9",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/cross-file-function-namespace",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/cross-file-function-namespace/api",
+      "configSha256": "3e95bb7b38c86efd025f791b5ee5f3b7cea0a87c09a2abec048dbe91d5aec0a7",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/cross-file-class-namespace",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/cross-file-class-namespace/api",
+      "configSha256": "3e95bb7b38c86efd025f791b5ee5f3b7cea0a87c09a2abec048dbe91d5aec0a7",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/cross-file-interface-merge",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/cross-file-interface-merge/api",
+      "configSha256": "341c231199b752d0e6631d0a2453e1ed1598df9d30e4b57d907ec1992a1ba8bf",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/cross-file-incompatible-interface",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/cross-file-incompatible-interface/api",
+      "configSha256": "3e95bb7b38c86efd025f791b5ee5f3b7cea0a87c09a2abec048dbe91d5aec0a7",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/cross-file-lexical-collision",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/cross-file-lexical-collision/api",
+      "configSha256": "3e95bb7b38c86efd025f791b5ee5f3b7cea0a87c09a2abec048dbe91d5aec0a7",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/cross-file-compatible-var",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/cross-file-compatible-var/api",
+      "configSha256": "3e95bb7b38c86efd025f791b5ee5f3b7cea0a87c09a2abec048dbe91d5aec0a7",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/cross-file-incompatible-var",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/cross-file-incompatible-var/api",
+      "configSha256": "3e95bb7b38c86efd025f791b5ee5f3b7cea0a87c09a2abec048dbe91d5aec0a7",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/class-interface-merge",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/class-interface-merge/api",
+      "configSha256": "341c231199b752d0e6631d0a2453e1ed1598df9d30e4b57d907ec1992a1ba8bf",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/cross-file-class-collision",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/cross-file-class-collision/api",
+      "configSha256": "3e95bb7b38c86efd025f791b5ee5f3b7cea0a87c09a2abec048dbe91d5aec0a7",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/interface-alias-collision",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/interface-alias-collision/api",
+      "configSha256": "3e95bb7b38c86efd025f791b5ee5f3b7cea0a87c09a2abec048dbe91d5aec0a7",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/cross-file-value-namespace-merge",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/cross-file-value-namespace-merge/api",
+      "configSha256": "341c231199b752d0e6631d0a2453e1ed1598df9d30e4b57d907ec1992a1ba8bf",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/module-private-collisions-isolated",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/module-private-collisions-isolated/api",
+      "configSha256": "3e95bb7b38c86efd025f791b5ee5f3b7cea0a87c09a2abec048dbe91d5aec0a7",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/module-private-name-hidden",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/module-private-name-hidden/api",
+      "configSha256": "e04ccb4be859a0a644ea25ca5652928e21c2bac51197b15b6a67b36538d14bd9",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/exported-private-dependency",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/exported-private-dependency/api",
+      "configSha256": "e04ccb4be859a0a644ea25ca5652928e21c2bac51197b15b6a67b36538d14bd9",
+      "edges": [
+        {
+          "from": "consumer.ts",
+          "specifier": "./main",
+          "target": "main.ts"
+        }
+      ]
+    },
+    {
+      "id": "es5-esm-none/side-effect-import-marks-module",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/side-effect-import-marks-module/api",
+      "configSha256": "d897f5a1aab9265fd597b09beda947a8f761de16e0e0653fcda8a1876e1a47a3",
+      "edges": [
+        {
+          "from": "main.ts",
+          "specifier": "./support",
+          "target": "support.ts"
+        }
+      ]
+    },
+    {
+      "id": "es5-esm-none/empty-export-marks-module",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/empty-export-marks-module/api",
+      "configSha256": "e04ccb4be859a0a644ea25ca5652928e21c2bac51197b15b6a67b36538d14bd9",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/external-module-global-augmentation",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/external-module-global-augmentation/api",
+      "configSha256": "e04ccb4be859a0a644ea25ca5652928e21c2bac51197b15b6a67b36538d14bd9",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/two-module-global-augmentation-merge",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/two-module-global-augmentation-merge/api",
+      "configSha256": "341c231199b752d0e6631d0a2453e1ed1598df9d30e4b57d907ec1992a1ba8bf",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/declaration-only-roots",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/declaration-only-roots/api",
+      "configSha256": "8e43344f50747d9fac54c83c1b4add669a7e2dc6b5118d7929351ef065e5a6d1",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/mixed-ambient-source-wrong-type",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/mixed-ambient-source-wrong-type/api",
+      "configSha256": "9f5a0e23673207356479d037d4e824a972f88639f7ecf45048eac8432e8dc23d",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/unselected-disk-root-hidden",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/unselected-disk-root-hidden/api",
+      "configSha256": "4eb65c40ea39a6d7afa38793c29251c2ce9b8d9584b8e6aa22aa0e4426c22caa",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/selected-root-reverse-order",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/selected-root-reverse-order/api",
+      "configSha256": "4baeee787c0fd4f6e51e412427796977332e07f94f809d99df31fc69306ee7cf",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-none/unicode-cross-file-lexical-collision",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es5-esm-none/unicode-cross-file-lexical-collision/api",
+      "configSha256": "3e95bb7b38c86efd025f791b5ee5f3b7cea0a87c09a2abec048dbe91d5aec0a7",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/global-variable",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/global-variable/api",
+      "configSha256": "53cc16cbd97fcab64eda443e6210c43abfa6b2755d71b5850f498fb678990e7d",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/global-generic-function",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/global-generic-function/api",
+      "configSha256": "53cc16cbd97fcab64eda443e6210c43abfa6b2755d71b5850f498fb678990e7d",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/global-generic-function-wrong-result",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/global-generic-function-wrong-result/api",
+      "configSha256": "53cc16cbd97fcab64eda443e6210c43abfa6b2755d71b5850f498fb678990e7d",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/global-generic-class",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/global-generic-class/api",
+      "configSha256": "53cc16cbd97fcab64eda443e6210c43abfa6b2755d71b5850f498fb678990e7d",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/ambient-class-root",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/ambient-class-root/api",
+      "configSha256": "2015004b10f549898fbdacd32c3a116dc67440c088a74f36846516163afe3c75",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/ambient-value-namespace-root",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/ambient-value-namespace-root/api",
+      "configSha256": "2015004b10f549898fbdacd32c3a116dc67440c088a74f36846516163afe3c75",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/global-function-overloads",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/global-function-overloads/api",
+      "configSha256": "53cc16cbd97fcab64eda443e6210c43abfa6b2755d71b5850f498fb678990e7d",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/cross-file-nonambient-overload-implementation",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/cross-file-nonambient-overload-implementation/api",
+      "configSha256": "3d00fe1e696848c9643220bb06abbaa74edc1b5335c9378549a92a974de5e212",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/same-file-function-namespace",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/same-file-function-namespace/api",
+      "configSha256": "53cc16cbd97fcab64eda443e6210c43abfa6b2755d71b5850f498fb678990e7d",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/cross-file-function-namespace",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/cross-file-function-namespace/api",
+      "configSha256": "3d00fe1e696848c9643220bb06abbaa74edc1b5335c9378549a92a974de5e212",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/cross-file-class-namespace",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/cross-file-class-namespace/api",
+      "configSha256": "3d00fe1e696848c9643220bb06abbaa74edc1b5335c9378549a92a974de5e212",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/cross-file-interface-merge",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/cross-file-interface-merge/api",
+      "configSha256": "e5870938b394988f2d46dd1417156ed51d96830089c09eded9dcdc3078f47bab",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/cross-file-incompatible-interface",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/cross-file-incompatible-interface/api",
+      "configSha256": "3d00fe1e696848c9643220bb06abbaa74edc1b5335c9378549a92a974de5e212",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/cross-file-lexical-collision",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/cross-file-lexical-collision/api",
+      "configSha256": "3d00fe1e696848c9643220bb06abbaa74edc1b5335c9378549a92a974de5e212",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/cross-file-compatible-var",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/cross-file-compatible-var/api",
+      "configSha256": "3d00fe1e696848c9643220bb06abbaa74edc1b5335c9378549a92a974de5e212",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/cross-file-incompatible-var",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/cross-file-incompatible-var/api",
+      "configSha256": "3d00fe1e696848c9643220bb06abbaa74edc1b5335c9378549a92a974de5e212",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/class-interface-merge",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/class-interface-merge/api",
+      "configSha256": "e5870938b394988f2d46dd1417156ed51d96830089c09eded9dcdc3078f47bab",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/cross-file-class-collision",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/cross-file-class-collision/api",
+      "configSha256": "3d00fe1e696848c9643220bb06abbaa74edc1b5335c9378549a92a974de5e212",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/interface-alias-collision",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/interface-alias-collision/api",
+      "configSha256": "3d00fe1e696848c9643220bb06abbaa74edc1b5335c9378549a92a974de5e212",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/cross-file-value-namespace-merge",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/cross-file-value-namespace-merge/api",
+      "configSha256": "e5870938b394988f2d46dd1417156ed51d96830089c09eded9dcdc3078f47bab",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/module-private-collisions-isolated",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/module-private-collisions-isolated/api",
+      "configSha256": "3d00fe1e696848c9643220bb06abbaa74edc1b5335c9378549a92a974de5e212",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/module-private-name-hidden",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/module-private-name-hidden/api",
+      "configSha256": "53cc16cbd97fcab64eda443e6210c43abfa6b2755d71b5850f498fb678990e7d",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/exported-private-dependency",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/exported-private-dependency/api",
+      "configSha256": "53cc16cbd97fcab64eda443e6210c43abfa6b2755d71b5850f498fb678990e7d",
+      "edges": [
+        {
+          "from": "consumer.ts",
+          "specifier": "./main",
+          "target": "main.ts"
+        }
+      ]
+    },
+    {
+      "id": "es2022-cjs-none/side-effect-import-marks-module",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/side-effect-import-marks-module/api",
+      "configSha256": "01672ab705e7c3c8c13e6e8930a68cff9203a5b9e7b8e5641b1cea8ae5a673f1",
+      "edges": [
+        {
+          "from": "main.ts",
+          "specifier": "./support",
+          "target": "support.ts"
+        }
+      ]
+    },
+    {
+      "id": "es2022-cjs-none/empty-export-marks-module",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/empty-export-marks-module/api",
+      "configSha256": "53cc16cbd97fcab64eda443e6210c43abfa6b2755d71b5850f498fb678990e7d",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/external-module-global-augmentation",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/external-module-global-augmentation/api",
+      "configSha256": "53cc16cbd97fcab64eda443e6210c43abfa6b2755d71b5850f498fb678990e7d",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/two-module-global-augmentation-merge",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/two-module-global-augmentation-merge/api",
+      "configSha256": "e5870938b394988f2d46dd1417156ed51d96830089c09eded9dcdc3078f47bab",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/declaration-only-roots",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/declaration-only-roots/api",
+      "configSha256": "25a6ed28d78c60c67be18733ad64dbbe8acd7d0167f63652ea95203887186180",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/mixed-ambient-source-wrong-type",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/mixed-ambient-source-wrong-type/api",
+      "configSha256": "2015004b10f549898fbdacd32c3a116dc67440c088a74f36846516163afe3c75",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/unselected-disk-root-hidden",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/unselected-disk-root-hidden/api",
+      "configSha256": "8460a494e83ae6f2ae2d4fab672628caf6749fc1f59ca9bd2e1fa4ee38ba98cb",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/selected-root-reverse-order",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/selected-root-reverse-order/api",
+      "configSha256": "cbb13bfd5a236bd7e269b0b56ce70f35de66bb622da309297856f12533f7417a",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-none/unicode-cross-file-lexical-collision",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-cjs-none/unicode-cross-file-lexical-collision/api",
+      "configSha256": "3d00fe1e696848c9643220bb06abbaa74edc1b5335c9378549a92a974de5e212",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/global-variable",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/global-variable/api",
+      "configSha256": "8cab494d81b570b411876f56c06df774d9da006b7cb639cf9d3c62f309fb427c",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/global-generic-function",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/global-generic-function/api",
+      "configSha256": "8cab494d81b570b411876f56c06df774d9da006b7cb639cf9d3c62f309fb427c",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/global-generic-function-wrong-result",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/global-generic-function-wrong-result/api",
+      "configSha256": "8cab494d81b570b411876f56c06df774d9da006b7cb639cf9d3c62f309fb427c",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/global-generic-class",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/global-generic-class/api",
+      "configSha256": "8cab494d81b570b411876f56c06df774d9da006b7cb639cf9d3c62f309fb427c",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/ambient-class-root",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/ambient-class-root/api",
+      "configSha256": "7db35e4ecac6ab9282760ae908e0e4c5f36e19168bcb64e1fc3049aec5c3a20d",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/ambient-value-namespace-root",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/ambient-value-namespace-root/api",
+      "configSha256": "7db35e4ecac6ab9282760ae908e0e4c5f36e19168bcb64e1fc3049aec5c3a20d",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/global-function-overloads",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/global-function-overloads/api",
+      "configSha256": "8cab494d81b570b411876f56c06df774d9da006b7cb639cf9d3c62f309fb427c",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/cross-file-nonambient-overload-implementation",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/cross-file-nonambient-overload-implementation/api",
+      "configSha256": "db70fd1264b4fb0c570be0d4a5a8a7e95e598132743f4b6887fed9acb2226ea7",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/same-file-function-namespace",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/same-file-function-namespace/api",
+      "configSha256": "8cab494d81b570b411876f56c06df774d9da006b7cb639cf9d3c62f309fb427c",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/cross-file-function-namespace",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/cross-file-function-namespace/api",
+      "configSha256": "db70fd1264b4fb0c570be0d4a5a8a7e95e598132743f4b6887fed9acb2226ea7",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/cross-file-class-namespace",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/cross-file-class-namespace/api",
+      "configSha256": "db70fd1264b4fb0c570be0d4a5a8a7e95e598132743f4b6887fed9acb2226ea7",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/cross-file-interface-merge",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/cross-file-interface-merge/api",
+      "configSha256": "c3257a9e690578a3a7dce3596703c94c64ad75bf4b7b4fd6e465c1d1a55c72cf",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/cross-file-incompatible-interface",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/cross-file-incompatible-interface/api",
+      "configSha256": "db70fd1264b4fb0c570be0d4a5a8a7e95e598132743f4b6887fed9acb2226ea7",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/cross-file-lexical-collision",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/cross-file-lexical-collision/api",
+      "configSha256": "db70fd1264b4fb0c570be0d4a5a8a7e95e598132743f4b6887fed9acb2226ea7",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/cross-file-compatible-var",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/cross-file-compatible-var/api",
+      "configSha256": "db70fd1264b4fb0c570be0d4a5a8a7e95e598132743f4b6887fed9acb2226ea7",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/cross-file-incompatible-var",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/cross-file-incompatible-var/api",
+      "configSha256": "db70fd1264b4fb0c570be0d4a5a8a7e95e598132743f4b6887fed9acb2226ea7",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/class-interface-merge",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/class-interface-merge/api",
+      "configSha256": "c3257a9e690578a3a7dce3596703c94c64ad75bf4b7b4fd6e465c1d1a55c72cf",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/cross-file-class-collision",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/cross-file-class-collision/api",
+      "configSha256": "db70fd1264b4fb0c570be0d4a5a8a7e95e598132743f4b6887fed9acb2226ea7",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/interface-alias-collision",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/interface-alias-collision/api",
+      "configSha256": "db70fd1264b4fb0c570be0d4a5a8a7e95e598132743f4b6887fed9acb2226ea7",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/cross-file-value-namespace-merge",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/cross-file-value-namespace-merge/api",
+      "configSha256": "c3257a9e690578a3a7dce3596703c94c64ad75bf4b7b4fd6e465c1d1a55c72cf",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/module-private-collisions-isolated",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/module-private-collisions-isolated/api",
+      "configSha256": "db70fd1264b4fb0c570be0d4a5a8a7e95e598132743f4b6887fed9acb2226ea7",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/module-private-name-hidden",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/module-private-name-hidden/api",
+      "configSha256": "8cab494d81b570b411876f56c06df774d9da006b7cb639cf9d3c62f309fb427c",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/exported-private-dependency",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/exported-private-dependency/api",
+      "configSha256": "8cab494d81b570b411876f56c06df774d9da006b7cb639cf9d3c62f309fb427c",
+      "edges": [
+        {
+          "from": "consumer.ts",
+          "specifier": "./main",
+          "target": "main.ts"
+        }
+      ]
+    },
+    {
+      "id": "es2022-esm-none/side-effect-import-marks-module",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/side-effect-import-marks-module/api",
+      "configSha256": "ccf8bc17b0b0a44c01543bcfc039d8bbe08cacaffd7c5955d36b789b0e947693",
+      "edges": [
+        {
+          "from": "main.ts",
+          "specifier": "./support",
+          "target": "support.ts"
+        }
+      ]
+    },
+    {
+      "id": "es2022-esm-none/empty-export-marks-module",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/empty-export-marks-module/api",
+      "configSha256": "8cab494d81b570b411876f56c06df774d9da006b7cb639cf9d3c62f309fb427c",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/external-module-global-augmentation",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/external-module-global-augmentation/api",
+      "configSha256": "8cab494d81b570b411876f56c06df774d9da006b7cb639cf9d3c62f309fb427c",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/two-module-global-augmentation-merge",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/two-module-global-augmentation-merge/api",
+      "configSha256": "c3257a9e690578a3a7dce3596703c94c64ad75bf4b7b4fd6e465c1d1a55c72cf",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/declaration-only-roots",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/declaration-only-roots/api",
+      "configSha256": "61cced490a9f3382d447a24e5da0dab83a7defb339af587ffefd86b95e239c68",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/mixed-ambient-source-wrong-type",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/mixed-ambient-source-wrong-type/api",
+      "configSha256": "7db35e4ecac6ab9282760ae908e0e4c5f36e19168bcb64e1fc3049aec5c3a20d",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/unselected-disk-root-hidden",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/unselected-disk-root-hidden/api",
+      "configSha256": "74906791c1c059e09f17daea2766d8fb740d0ca0ed09f1ce0466dd4087eb165a",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/selected-root-reverse-order",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/selected-root-reverse-order/api",
+      "configSha256": "749545c505ce6105cc6a956d0700fb8581da297dda58ff3337b744c4b25b9dec",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-none/unicode-cross-file-lexical-collision",
+      "project": "target/program-roots-contract-20261115/full-2/primary/es2022-esm-none/unicode-cross-file-lexical-collision/api",
+      "configSha256": "db70fd1264b4fb0c570be0d4a5a8a7e95e598132743f4b6887fed9acb2226ea7",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/export-marker-transition/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/export-marker-transition/generation-00-cold/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/export-marker-transition/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/export-marker-transition/generation-01-warm/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/export-marker-transition/module",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/export-marker-transition/generation-02-module/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/export-marker-transition/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/export-marker-transition/generation-03-warm-failed/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/export-marker-transition/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/export-marker-transition/generation-04-restored/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/export-marker-transition/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/export-marker-transition/generation-05-clean/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/import-marker-transition/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/import-marker-transition/generation-00-cold/input",
+      "configSha256": "81563e8404ec568257950b58bb21f00dfc9a0b6ae0b1f7678f9ef066f81f5d3c",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/import-marker-transition/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/import-marker-transition/generation-01-warm/input",
+      "configSha256": "81563e8404ec568257950b58bb21f00dfc9a0b6ae0b1f7678f9ef066f81f5d3c",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/import-marker-transition/module",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/import-marker-transition/generation-02-module/input",
+      "configSha256": "81563e8404ec568257950b58bb21f00dfc9a0b6ae0b1f7678f9ef066f81f5d3c",
+      "edges": [
+        {
+          "from": "main.ts",
+          "specifier": "./marker",
+          "target": "marker.ts"
+        }
+      ]
+    },
+    {
+      "id": "es5-cjs-plain/import-marker-transition/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/import-marker-transition/generation-03-warm-failed/input",
+      "configSha256": "81563e8404ec568257950b58bb21f00dfc9a0b6ae0b1f7678f9ef066f81f5d3c",
+      "edges": [
+        {
+          "from": "main.ts",
+          "specifier": "./marker",
+          "target": "marker.ts"
+        }
+      ]
+    },
+    {
+      "id": "es5-cjs-plain/import-marker-transition/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/import-marker-transition/generation-04-restored/input",
+      "configSha256": "81563e8404ec568257950b58bb21f00dfc9a0b6ae0b1f7678f9ef066f81f5d3c",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/import-marker-transition/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/import-marker-transition/generation-05-clean/input",
+      "configSha256": "81563e8404ec568257950b58bb21f00dfc9a0b6ae0b1f7678f9ef066f81f5d3c",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/root-add-remove-reorder/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/root-add-remove-reorder/generation-00-cold/input",
+      "configSha256": "1e4411851cede9577b100aaadef4303e3f15ab443cd5f57a5340b2e4945b43db",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/root-add-remove-reorder/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/root-add-remove-reorder/generation-01-warm-failed/input",
+      "configSha256": "1e4411851cede9577b100aaadef4303e3f15ab443cd5f57a5340b2e4945b43db",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/root-add-remove-reorder/added",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/root-add-remove-reorder/generation-02-added/input",
+      "configSha256": "99194d3de3f258ae29cad00394233d29cb2dcf356148d4cb09214ab09e6b46fc",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/root-add-remove-reorder/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/root-add-remove-reorder/generation-03-warm/input",
+      "configSha256": "99194d3de3f258ae29cad00394233d29cb2dcf356148d4cb09214ab09e6b46fc",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/root-add-remove-reorder/reordered",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/root-add-remove-reorder/generation-04-reordered/input",
+      "configSha256": "b2ed44bf9ca81f41c61005dad9fb6354619016b21e34ed12c2adc04a809fa1eb",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/root-add-remove-reorder/removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/root-add-remove-reorder/generation-05-removed/input",
+      "configSha256": "1e4411851cede9577b100aaadef4303e3f15ab443cd5f57a5340b2e4945b43db",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/root-add-remove-reorder/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/root-add-remove-reorder/generation-06-restored/input",
+      "configSha256": "99194d3de3f258ae29cad00394233d29cb2dcf356148d4cb09214ab09e6b46fc",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/root-add-remove-reorder/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/root-add-remove-reorder/generation-07-clean/input",
+      "configSha256": "99194d3de3f258ae29cad00394233d29cb2dcf356148d4cb09214ab09e6b46fc",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/ambient-class-root/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/ambient-class-root/generation-00-cold/input",
+      "configSha256": "1e4411851cede9577b100aaadef4303e3f15ab443cd5f57a5340b2e4945b43db",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/ambient-class-root/added",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/ambient-class-root/generation-01-added/input",
+      "configSha256": "3410185de0da7ed306116d1085336698ad8e3a81ee91d9852f4c56704d49f397",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/ambient-class-root/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/ambient-class-root/generation-02-warm/input",
+      "configSha256": "3410185de0da7ed306116d1085336698ad8e3a81ee91d9852f4c56704d49f397",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/ambient-class-root/edited",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/ambient-class-root/generation-03-edited/input",
+      "configSha256": "3410185de0da7ed306116d1085336698ad8e3a81ee91d9852f4c56704d49f397",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/ambient-class-root/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/ambient-class-root/generation-04-warm-failed/input",
+      "configSha256": "3410185de0da7ed306116d1085336698ad8e3a81ee91d9852f4c56704d49f397",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/ambient-class-root/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/ambient-class-root/generation-05-restored/input",
+      "configSha256": "3410185de0da7ed306116d1085336698ad8e3a81ee91d9852f4c56704d49f397",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/ambient-class-root/removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/ambient-class-root/generation-06-removed/input",
+      "configSha256": "1e4411851cede9577b100aaadef4303e3f15ab443cd5f57a5340b2e4945b43db",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/ambient-class-root/restored-root",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/ambient-class-root/generation-07-restored-root/input",
+      "configSha256": "3410185de0da7ed306116d1085336698ad8e3a81ee91d9852f4c56704d49f397",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/ambient-class-root/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/ambient-class-root/generation-08-clean/input",
+      "configSha256": "3410185de0da7ed306116d1085336698ad8e3a81ee91d9852f4c56704d49f397",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/unicode-lexical-collision/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/unicode-lexical-collision/generation-00-cold/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/unicode-lexical-collision/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/unicode-lexical-collision/generation-01-warm/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/unicode-lexical-collision/collision",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/unicode-lexical-collision/generation-02-collision/input",
+      "configSha256": "dbd97273448fc12f57cd159a260f396b80aaf547ad26d71077842c5baa6b4f1e",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/unicode-lexical-collision/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/unicode-lexical-collision/generation-03-warm-failed/input",
+      "configSha256": "dbd97273448fc12f57cd159a260f396b80aaf547ad26d71077842c5baa6b4f1e",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/unicode-lexical-collision/unicode",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/unicode-lexical-collision/generation-04-unicode/input",
+      "configSha256": "dbd97273448fc12f57cd159a260f396b80aaf547ad26d71077842c5baa6b4f1e",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/unicode-lexical-collision/removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/unicode-lexical-collision/generation-05-removed/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/unicode-lexical-collision/repaired",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/unicode-lexical-collision/generation-06-repaired/input",
+      "configSha256": "dbd97273448fc12f57cd159a260f396b80aaf547ad26d71077842c5baa6b4f1e",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/unicode-lexical-collision/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/unicode-lexical-collision/generation-07-clean/input",
+      "configSha256": "dbd97273448fc12f57cd159a260f396b80aaf547ad26d71077842c5baa6b4f1e",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/interface-merge-identity/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/interface-merge-identity/generation-00-cold/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/interface-merge-identity/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/interface-merge-identity/generation-01-warm/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/interface-merge-identity/incompatible",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/interface-merge-identity/generation-02-incompatible/input",
+      "configSha256": "2da52e3440a3c845bb0aad21b9b7d16247f97bc7df6f72a8f114ec07f9b5d8d8",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/interface-merge-identity/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/interface-merge-identity/generation-03-warm-failed/input",
+      "configSha256": "2da52e3440a3c845bb0aad21b9b7d16247f97bc7df6f72a8f114ec07f9b5d8d8",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/interface-merge-identity/compatible",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/interface-merge-identity/generation-04-compatible/input",
+      "configSha256": "2da52e3440a3c845bb0aad21b9b7d16247f97bc7df6f72a8f114ec07f9b5d8d8",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/interface-merge-identity/removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/interface-merge-identity/generation-05-removed/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/interface-merge-identity/restored-compatible",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/interface-merge-identity/generation-06-restored-compatible/input",
+      "configSha256": "2da52e3440a3c845bb0aad21b9b7d16247f97bc7df6f72a8f114ec07f9b5d8d8",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/interface-merge-identity/restored-incompatible",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/interface-merge-identity/generation-07-restored-incompatible/input",
+      "configSha256": "2da52e3440a3c845bb0aad21b9b7d16247f97bc7df6f72a8f114ec07f9b5d8d8",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/interface-merge-identity/repaired",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/interface-merge-identity/generation-08-repaired/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/interface-merge-identity/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/interface-merge-identity/generation-09-clean/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/namespace-member-retirement/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/namespace-member-retirement/generation-00-cold/input",
+      "configSha256": "2da52e3440a3c845bb0aad21b9b7d16247f97bc7df6f72a8f114ec07f9b5d8d8",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/namespace-member-retirement/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/namespace-member-retirement/generation-01-warm/input",
+      "configSha256": "2da52e3440a3c845bb0aad21b9b7d16247f97bc7df6f72a8f114ec07f9b5d8d8",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/namespace-member-retirement/removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/namespace-member-retirement/generation-02-removed/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/namespace-member-retirement/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/namespace-member-retirement/generation-03-warm-failed/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/namespace-member-retirement/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/namespace-member-retirement/generation-04-restored/input",
+      "configSha256": "2da52e3440a3c845bb0aad21b9b7d16247f97bc7df6f72a8f114ec07f9b5d8d8",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/namespace-member-retirement/edited",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/namespace-member-retirement/generation-05-edited/input",
+      "configSha256": "2da52e3440a3c845bb0aad21b9b7d16247f97bc7df6f72a8f114ec07f9b5d8d8",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/namespace-member-retirement/repaired",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/namespace-member-retirement/generation-06-repaired/input",
+      "configSha256": "2da52e3440a3c845bb0aad21b9b7d16247f97bc7df6f72a8f114ec07f9b5d8d8",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/namespace-member-retirement/reordered",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/namespace-member-retirement/generation-07-reordered/input",
+      "configSha256": "bad103df962511bed2b996991cbb30c2563c78e1fbd5c5b08a89884a263512a8",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/namespace-member-retirement/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/namespace-member-retirement/generation-08-clean/input",
+      "configSha256": "bad103df962511bed2b996991cbb30c2563c78e1fbd5c5b08a89884a263512a8",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/generic-global-module-identity/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/generic-global-module-identity/generation-00-cold/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/generic-global-module-identity/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/generic-global-module-identity/generation-01-warm/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/generic-global-module-identity/constraint-edited",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/generic-global-module-identity/generation-02-constraint-edited/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/generic-global-module-identity/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/generic-global-module-identity/generation-03-restored/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/generic-global-module-identity/module-hidden",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/generic-global-module-identity/generation-04-module-hidden/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/generic-global-module-identity/module-exported",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/generic-global-module-identity/generation-05-module-exported/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": [
+        {
+          "from": "consumer.ts",
+          "specifier": "./main",
+          "target": "main.ts"
+        }
+      ]
+    },
+    {
+      "id": "es5-cjs-plain/generic-global-module-identity/warm-module",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/generic-global-module-identity/generation-06-warm-module/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": [
+        {
+          "from": "consumer.ts",
+          "specifier": "./main",
+          "target": "main.ts"
+        }
+      ]
+    },
+    {
+      "id": "es5-cjs-plain/generic-global-module-identity/consumer-import-removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/generic-global-module-identity/generation-07-consumer-import-removed/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/generic-global-module-identity/restored-global",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/generic-global-module-identity/generation-08-restored-global/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-cjs-plain/generic-global-module-identity/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-cjs-plain/generic-global-module-identity/generation-09-clean/input",
+      "configSha256": "4cfbd1eb0455541926b8ff07c8f18a99b80307a09b21690fd3d366da8d6742c1",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/export-marker-transition/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/export-marker-transition/generation-00-cold/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/export-marker-transition/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/export-marker-transition/generation-01-warm/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/export-marker-transition/module",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/export-marker-transition/generation-02-module/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/export-marker-transition/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/export-marker-transition/generation-03-warm-failed/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/export-marker-transition/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/export-marker-transition/generation-04-restored/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/export-marker-transition/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/export-marker-transition/generation-05-clean/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/import-marker-transition/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/import-marker-transition/generation-00-cold/input",
+      "configSha256": "955d6c875ff86b69ef8c949be4efcde785523d02179a9373afc783848870d69f",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/import-marker-transition/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/import-marker-transition/generation-01-warm/input",
+      "configSha256": "955d6c875ff86b69ef8c949be4efcde785523d02179a9373afc783848870d69f",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/import-marker-transition/module",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/import-marker-transition/generation-02-module/input",
+      "configSha256": "955d6c875ff86b69ef8c949be4efcde785523d02179a9373afc783848870d69f",
+      "edges": [
+        {
+          "from": "main.ts",
+          "specifier": "./marker",
+          "target": "marker.ts"
+        }
+      ]
+    },
+    {
+      "id": "es5-esm-plain/import-marker-transition/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/import-marker-transition/generation-03-warm-failed/input",
+      "configSha256": "955d6c875ff86b69ef8c949be4efcde785523d02179a9373afc783848870d69f",
+      "edges": [
+        {
+          "from": "main.ts",
+          "specifier": "./marker",
+          "target": "marker.ts"
+        }
+      ]
+    },
+    {
+      "id": "es5-esm-plain/import-marker-transition/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/import-marker-transition/generation-04-restored/input",
+      "configSha256": "955d6c875ff86b69ef8c949be4efcde785523d02179a9373afc783848870d69f",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/import-marker-transition/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/import-marker-transition/generation-05-clean/input",
+      "configSha256": "955d6c875ff86b69ef8c949be4efcde785523d02179a9373afc783848870d69f",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/root-add-remove-reorder/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/root-add-remove-reorder/generation-00-cold/input",
+      "configSha256": "90a9bfbc0903d7f2fe8ea3805425020cd9e17087839d5595a7a09b920c50ab4e",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/root-add-remove-reorder/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/root-add-remove-reorder/generation-01-warm-failed/input",
+      "configSha256": "90a9bfbc0903d7f2fe8ea3805425020cd9e17087839d5595a7a09b920c50ab4e",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/root-add-remove-reorder/added",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/root-add-remove-reorder/generation-02-added/input",
+      "configSha256": "fe4bd580f2ab1546944f22cec6a64b253cce63b4ca0dd8b8bf1ec96f9ff09d7c",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/root-add-remove-reorder/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/root-add-remove-reorder/generation-03-warm/input",
+      "configSha256": "fe4bd580f2ab1546944f22cec6a64b253cce63b4ca0dd8b8bf1ec96f9ff09d7c",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/root-add-remove-reorder/reordered",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/root-add-remove-reorder/generation-04-reordered/input",
+      "configSha256": "7396118db2169872df8fc58650c68acb1e0f71ec4e3dfa15abb5b8318779cded",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/root-add-remove-reorder/removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/root-add-remove-reorder/generation-05-removed/input",
+      "configSha256": "90a9bfbc0903d7f2fe8ea3805425020cd9e17087839d5595a7a09b920c50ab4e",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/root-add-remove-reorder/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/root-add-remove-reorder/generation-06-restored/input",
+      "configSha256": "fe4bd580f2ab1546944f22cec6a64b253cce63b4ca0dd8b8bf1ec96f9ff09d7c",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/root-add-remove-reorder/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/root-add-remove-reorder/generation-07-clean/input",
+      "configSha256": "fe4bd580f2ab1546944f22cec6a64b253cce63b4ca0dd8b8bf1ec96f9ff09d7c",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/ambient-class-root/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/ambient-class-root/generation-00-cold/input",
+      "configSha256": "90a9bfbc0903d7f2fe8ea3805425020cd9e17087839d5595a7a09b920c50ab4e",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/ambient-class-root/added",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/ambient-class-root/generation-01-added/input",
+      "configSha256": "a7799ca25cf58cb6d802109a5390e38627c145be97c674ecab8a59c9d0cd8d28",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/ambient-class-root/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/ambient-class-root/generation-02-warm/input",
+      "configSha256": "a7799ca25cf58cb6d802109a5390e38627c145be97c674ecab8a59c9d0cd8d28",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/ambient-class-root/edited",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/ambient-class-root/generation-03-edited/input",
+      "configSha256": "a7799ca25cf58cb6d802109a5390e38627c145be97c674ecab8a59c9d0cd8d28",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/ambient-class-root/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/ambient-class-root/generation-04-warm-failed/input",
+      "configSha256": "a7799ca25cf58cb6d802109a5390e38627c145be97c674ecab8a59c9d0cd8d28",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/ambient-class-root/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/ambient-class-root/generation-05-restored/input",
+      "configSha256": "a7799ca25cf58cb6d802109a5390e38627c145be97c674ecab8a59c9d0cd8d28",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/ambient-class-root/removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/ambient-class-root/generation-06-removed/input",
+      "configSha256": "90a9bfbc0903d7f2fe8ea3805425020cd9e17087839d5595a7a09b920c50ab4e",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/ambient-class-root/restored-root",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/ambient-class-root/generation-07-restored-root/input",
+      "configSha256": "a7799ca25cf58cb6d802109a5390e38627c145be97c674ecab8a59c9d0cd8d28",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/ambient-class-root/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/ambient-class-root/generation-08-clean/input",
+      "configSha256": "a7799ca25cf58cb6d802109a5390e38627c145be97c674ecab8a59c9d0cd8d28",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/unicode-lexical-collision/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/unicode-lexical-collision/generation-00-cold/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/unicode-lexical-collision/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/unicode-lexical-collision/generation-01-warm/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/unicode-lexical-collision/collision",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/unicode-lexical-collision/generation-02-collision/input",
+      "configSha256": "ee1427924eef858738436a6a8ddf750d4df38655b34d400c5c19ea7ed8e70f31",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/unicode-lexical-collision/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/unicode-lexical-collision/generation-03-warm-failed/input",
+      "configSha256": "ee1427924eef858738436a6a8ddf750d4df38655b34d400c5c19ea7ed8e70f31",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/unicode-lexical-collision/unicode",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/unicode-lexical-collision/generation-04-unicode/input",
+      "configSha256": "ee1427924eef858738436a6a8ddf750d4df38655b34d400c5c19ea7ed8e70f31",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/unicode-lexical-collision/removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/unicode-lexical-collision/generation-05-removed/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/unicode-lexical-collision/repaired",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/unicode-lexical-collision/generation-06-repaired/input",
+      "configSha256": "ee1427924eef858738436a6a8ddf750d4df38655b34d400c5c19ea7ed8e70f31",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/unicode-lexical-collision/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/unicode-lexical-collision/generation-07-clean/input",
+      "configSha256": "ee1427924eef858738436a6a8ddf750d4df38655b34d400c5c19ea7ed8e70f31",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/interface-merge-identity/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/interface-merge-identity/generation-00-cold/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/interface-merge-identity/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/interface-merge-identity/generation-01-warm/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/interface-merge-identity/incompatible",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/interface-merge-identity/generation-02-incompatible/input",
+      "configSha256": "5308ad862e4b425253be8667131604138257fec6df065415fa84e08a3fc5ae9e",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/interface-merge-identity/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/interface-merge-identity/generation-03-warm-failed/input",
+      "configSha256": "5308ad862e4b425253be8667131604138257fec6df065415fa84e08a3fc5ae9e",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/interface-merge-identity/compatible",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/interface-merge-identity/generation-04-compatible/input",
+      "configSha256": "5308ad862e4b425253be8667131604138257fec6df065415fa84e08a3fc5ae9e",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/interface-merge-identity/removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/interface-merge-identity/generation-05-removed/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/interface-merge-identity/restored-compatible",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/interface-merge-identity/generation-06-restored-compatible/input",
+      "configSha256": "5308ad862e4b425253be8667131604138257fec6df065415fa84e08a3fc5ae9e",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/interface-merge-identity/restored-incompatible",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/interface-merge-identity/generation-07-restored-incompatible/input",
+      "configSha256": "5308ad862e4b425253be8667131604138257fec6df065415fa84e08a3fc5ae9e",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/interface-merge-identity/repaired",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/interface-merge-identity/generation-08-repaired/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/interface-merge-identity/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/interface-merge-identity/generation-09-clean/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/namespace-member-retirement/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/namespace-member-retirement/generation-00-cold/input",
+      "configSha256": "5308ad862e4b425253be8667131604138257fec6df065415fa84e08a3fc5ae9e",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/namespace-member-retirement/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/namespace-member-retirement/generation-01-warm/input",
+      "configSha256": "5308ad862e4b425253be8667131604138257fec6df065415fa84e08a3fc5ae9e",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/namespace-member-retirement/removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/namespace-member-retirement/generation-02-removed/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/namespace-member-retirement/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/namespace-member-retirement/generation-03-warm-failed/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/namespace-member-retirement/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/namespace-member-retirement/generation-04-restored/input",
+      "configSha256": "5308ad862e4b425253be8667131604138257fec6df065415fa84e08a3fc5ae9e",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/namespace-member-retirement/edited",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/namespace-member-retirement/generation-05-edited/input",
+      "configSha256": "5308ad862e4b425253be8667131604138257fec6df065415fa84e08a3fc5ae9e",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/namespace-member-retirement/repaired",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/namespace-member-retirement/generation-06-repaired/input",
+      "configSha256": "5308ad862e4b425253be8667131604138257fec6df065415fa84e08a3fc5ae9e",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/namespace-member-retirement/reordered",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/namespace-member-retirement/generation-07-reordered/input",
+      "configSha256": "de6fb0036a83b8495d7b05583450c591df11f267cdf2627a554f230d8a83ad62",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/namespace-member-retirement/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/namespace-member-retirement/generation-08-clean/input",
+      "configSha256": "de6fb0036a83b8495d7b05583450c591df11f267cdf2627a554f230d8a83ad62",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/generic-global-module-identity/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/generic-global-module-identity/generation-00-cold/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/generic-global-module-identity/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/generic-global-module-identity/generation-01-warm/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/generic-global-module-identity/constraint-edited",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/generic-global-module-identity/generation-02-constraint-edited/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/generic-global-module-identity/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/generic-global-module-identity/generation-03-restored/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/generic-global-module-identity/module-hidden",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/generic-global-module-identity/generation-04-module-hidden/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/generic-global-module-identity/module-exported",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/generic-global-module-identity/generation-05-module-exported/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": [
+        {
+          "from": "consumer.ts",
+          "specifier": "./main",
+          "target": "main.ts"
+        }
+      ]
+    },
+    {
+      "id": "es5-esm-plain/generic-global-module-identity/warm-module",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/generic-global-module-identity/generation-06-warm-module/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": [
+        {
+          "from": "consumer.ts",
+          "specifier": "./main",
+          "target": "main.ts"
+        }
+      ]
+    },
+    {
+      "id": "es5-esm-plain/generic-global-module-identity/consumer-import-removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/generic-global-module-identity/generation-07-consumer-import-removed/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/generic-global-module-identity/restored-global",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/generic-global-module-identity/generation-08-restored-global/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es5-esm-plain/generic-global-module-identity/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es5-esm-plain/generic-global-module-identity/generation-09-clean/input",
+      "configSha256": "9447e5854cacbf23fd3091971a20942efc36ae0bb686ed6864b1c2b968f5e200",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/export-marker-transition/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/export-marker-transition/generation-00-cold/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/export-marker-transition/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/export-marker-transition/generation-01-warm/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/export-marker-transition/module",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/export-marker-transition/generation-02-module/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/export-marker-transition/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/export-marker-transition/generation-03-warm-failed/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/export-marker-transition/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/export-marker-transition/generation-04-restored/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/export-marker-transition/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/export-marker-transition/generation-05-clean/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/import-marker-transition/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/import-marker-transition/generation-00-cold/input",
+      "configSha256": "0417c643697560ef105a1fece33e06ef1db7ad1e313be5b57a48a3c2bb6f857a",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/import-marker-transition/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/import-marker-transition/generation-01-warm/input",
+      "configSha256": "0417c643697560ef105a1fece33e06ef1db7ad1e313be5b57a48a3c2bb6f857a",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/import-marker-transition/module",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/import-marker-transition/generation-02-module/input",
+      "configSha256": "0417c643697560ef105a1fece33e06ef1db7ad1e313be5b57a48a3c2bb6f857a",
+      "edges": [
+        {
+          "from": "main.ts",
+          "specifier": "./marker",
+          "target": "marker.ts"
+        }
+      ]
+    },
+    {
+      "id": "es2022-cjs-plain/import-marker-transition/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/import-marker-transition/generation-03-warm-failed/input",
+      "configSha256": "0417c643697560ef105a1fece33e06ef1db7ad1e313be5b57a48a3c2bb6f857a",
+      "edges": [
+        {
+          "from": "main.ts",
+          "specifier": "./marker",
+          "target": "marker.ts"
+        }
+      ]
+    },
+    {
+      "id": "es2022-cjs-plain/import-marker-transition/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/import-marker-transition/generation-04-restored/input",
+      "configSha256": "0417c643697560ef105a1fece33e06ef1db7ad1e313be5b57a48a3c2bb6f857a",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/import-marker-transition/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/import-marker-transition/generation-05-clean/input",
+      "configSha256": "0417c643697560ef105a1fece33e06ef1db7ad1e313be5b57a48a3c2bb6f857a",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/root-add-remove-reorder/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/root-add-remove-reorder/generation-00-cold/input",
+      "configSha256": "9e8711929ee503e41c03bb5c7d70071f0239c3d4f3a658a67f4cbe6ab38bad01",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/root-add-remove-reorder/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/root-add-remove-reorder/generation-01-warm-failed/input",
+      "configSha256": "9e8711929ee503e41c03bb5c7d70071f0239c3d4f3a658a67f4cbe6ab38bad01",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/root-add-remove-reorder/added",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/root-add-remove-reorder/generation-02-added/input",
+      "configSha256": "9173e2dd29359cf8541e1857a63de5118ff0f0fc069cecd7db4a9c9d6d54eb6c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/root-add-remove-reorder/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/root-add-remove-reorder/generation-03-warm/input",
+      "configSha256": "9173e2dd29359cf8541e1857a63de5118ff0f0fc069cecd7db4a9c9d6d54eb6c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/root-add-remove-reorder/reordered",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/root-add-remove-reorder/generation-04-reordered/input",
+      "configSha256": "b656d05118be4aca1642b427552fbeed5d2d06113102ff78c93167b943560910",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/root-add-remove-reorder/removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/root-add-remove-reorder/generation-05-removed/input",
+      "configSha256": "9e8711929ee503e41c03bb5c7d70071f0239c3d4f3a658a67f4cbe6ab38bad01",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/root-add-remove-reorder/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/root-add-remove-reorder/generation-06-restored/input",
+      "configSha256": "9173e2dd29359cf8541e1857a63de5118ff0f0fc069cecd7db4a9c9d6d54eb6c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/root-add-remove-reorder/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/root-add-remove-reorder/generation-07-clean/input",
+      "configSha256": "9173e2dd29359cf8541e1857a63de5118ff0f0fc069cecd7db4a9c9d6d54eb6c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/ambient-class-root/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/ambient-class-root/generation-00-cold/input",
+      "configSha256": "9e8711929ee503e41c03bb5c7d70071f0239c3d4f3a658a67f4cbe6ab38bad01",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/ambient-class-root/added",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/ambient-class-root/generation-01-added/input",
+      "configSha256": "a378bdc824acc3481c0ea9ffea52141e74c50855bc307b6a7e02683060a24071",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/ambient-class-root/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/ambient-class-root/generation-02-warm/input",
+      "configSha256": "a378bdc824acc3481c0ea9ffea52141e74c50855bc307b6a7e02683060a24071",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/ambient-class-root/edited",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/ambient-class-root/generation-03-edited/input",
+      "configSha256": "a378bdc824acc3481c0ea9ffea52141e74c50855bc307b6a7e02683060a24071",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/ambient-class-root/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/ambient-class-root/generation-04-warm-failed/input",
+      "configSha256": "a378bdc824acc3481c0ea9ffea52141e74c50855bc307b6a7e02683060a24071",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/ambient-class-root/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/ambient-class-root/generation-05-restored/input",
+      "configSha256": "a378bdc824acc3481c0ea9ffea52141e74c50855bc307b6a7e02683060a24071",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/ambient-class-root/removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/ambient-class-root/generation-06-removed/input",
+      "configSha256": "9e8711929ee503e41c03bb5c7d70071f0239c3d4f3a658a67f4cbe6ab38bad01",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/ambient-class-root/restored-root",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/ambient-class-root/generation-07-restored-root/input",
+      "configSha256": "a378bdc824acc3481c0ea9ffea52141e74c50855bc307b6a7e02683060a24071",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/ambient-class-root/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/ambient-class-root/generation-08-clean/input",
+      "configSha256": "a378bdc824acc3481c0ea9ffea52141e74c50855bc307b6a7e02683060a24071",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/unicode-lexical-collision/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/unicode-lexical-collision/generation-00-cold/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/unicode-lexical-collision/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/unicode-lexical-collision/generation-01-warm/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/unicode-lexical-collision/collision",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/unicode-lexical-collision/generation-02-collision/input",
+      "configSha256": "17f6d3776f37e18c8583a56f793e57042715e9482828415439da3c432d4105ed",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/unicode-lexical-collision/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/unicode-lexical-collision/generation-03-warm-failed/input",
+      "configSha256": "17f6d3776f37e18c8583a56f793e57042715e9482828415439da3c432d4105ed",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/unicode-lexical-collision/unicode",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/unicode-lexical-collision/generation-04-unicode/input",
+      "configSha256": "17f6d3776f37e18c8583a56f793e57042715e9482828415439da3c432d4105ed",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/unicode-lexical-collision/removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/unicode-lexical-collision/generation-05-removed/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/unicode-lexical-collision/repaired",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/unicode-lexical-collision/generation-06-repaired/input",
+      "configSha256": "17f6d3776f37e18c8583a56f793e57042715e9482828415439da3c432d4105ed",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/unicode-lexical-collision/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/unicode-lexical-collision/generation-07-clean/input",
+      "configSha256": "17f6d3776f37e18c8583a56f793e57042715e9482828415439da3c432d4105ed",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/interface-merge-identity/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/interface-merge-identity/generation-00-cold/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/interface-merge-identity/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/interface-merge-identity/generation-01-warm/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/interface-merge-identity/incompatible",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/interface-merge-identity/generation-02-incompatible/input",
+      "configSha256": "fab123432a43fb25b14ebea477152f989a045cad6ea511027ed208efe8b8dd0b",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/interface-merge-identity/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/interface-merge-identity/generation-03-warm-failed/input",
+      "configSha256": "fab123432a43fb25b14ebea477152f989a045cad6ea511027ed208efe8b8dd0b",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/interface-merge-identity/compatible",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/interface-merge-identity/generation-04-compatible/input",
+      "configSha256": "fab123432a43fb25b14ebea477152f989a045cad6ea511027ed208efe8b8dd0b",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/interface-merge-identity/removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/interface-merge-identity/generation-05-removed/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/interface-merge-identity/restored-compatible",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/interface-merge-identity/generation-06-restored-compatible/input",
+      "configSha256": "fab123432a43fb25b14ebea477152f989a045cad6ea511027ed208efe8b8dd0b",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/interface-merge-identity/restored-incompatible",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/interface-merge-identity/generation-07-restored-incompatible/input",
+      "configSha256": "fab123432a43fb25b14ebea477152f989a045cad6ea511027ed208efe8b8dd0b",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/interface-merge-identity/repaired",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/interface-merge-identity/generation-08-repaired/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/interface-merge-identity/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/interface-merge-identity/generation-09-clean/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/namespace-member-retirement/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/namespace-member-retirement/generation-00-cold/input",
+      "configSha256": "fab123432a43fb25b14ebea477152f989a045cad6ea511027ed208efe8b8dd0b",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/namespace-member-retirement/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/namespace-member-retirement/generation-01-warm/input",
+      "configSha256": "fab123432a43fb25b14ebea477152f989a045cad6ea511027ed208efe8b8dd0b",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/namespace-member-retirement/removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/namespace-member-retirement/generation-02-removed/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/namespace-member-retirement/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/namespace-member-retirement/generation-03-warm-failed/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/namespace-member-retirement/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/namespace-member-retirement/generation-04-restored/input",
+      "configSha256": "fab123432a43fb25b14ebea477152f989a045cad6ea511027ed208efe8b8dd0b",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/namespace-member-retirement/edited",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/namespace-member-retirement/generation-05-edited/input",
+      "configSha256": "fab123432a43fb25b14ebea477152f989a045cad6ea511027ed208efe8b8dd0b",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/namespace-member-retirement/repaired",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/namespace-member-retirement/generation-06-repaired/input",
+      "configSha256": "fab123432a43fb25b14ebea477152f989a045cad6ea511027ed208efe8b8dd0b",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/namespace-member-retirement/reordered",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/namespace-member-retirement/generation-07-reordered/input",
+      "configSha256": "ae35a7ea513338ee9cc2eb7a373099d9377e23f8481cd82df63b9f280b6a592f",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/namespace-member-retirement/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/namespace-member-retirement/generation-08-clean/input",
+      "configSha256": "ae35a7ea513338ee9cc2eb7a373099d9377e23f8481cd82df63b9f280b6a592f",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/generic-global-module-identity/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/generic-global-module-identity/generation-00-cold/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/generic-global-module-identity/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/generic-global-module-identity/generation-01-warm/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/generic-global-module-identity/constraint-edited",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/generic-global-module-identity/generation-02-constraint-edited/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/generic-global-module-identity/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/generic-global-module-identity/generation-03-restored/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/generic-global-module-identity/module-hidden",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/generic-global-module-identity/generation-04-module-hidden/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/generic-global-module-identity/module-exported",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/generic-global-module-identity/generation-05-module-exported/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": [
+        {
+          "from": "consumer.ts",
+          "specifier": "./main",
+          "target": "main.ts"
+        }
+      ]
+    },
+    {
+      "id": "es2022-cjs-plain/generic-global-module-identity/warm-module",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/generic-global-module-identity/generation-06-warm-module/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": [
+        {
+          "from": "consumer.ts",
+          "specifier": "./main",
+          "target": "main.ts"
+        }
+      ]
+    },
+    {
+      "id": "es2022-cjs-plain/generic-global-module-identity/consumer-import-removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/generic-global-module-identity/generation-07-consumer-import-removed/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/generic-global-module-identity/restored-global",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/generic-global-module-identity/generation-08-restored-global/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-cjs-plain/generic-global-module-identity/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-cjs-plain/generic-global-module-identity/generation-09-clean/input",
+      "configSha256": "a4d5c9442d44d613c1ddbd168cdda069ef3a07f398e2e69a920da2fea9fdd03c",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/export-marker-transition/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/export-marker-transition/generation-00-cold/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/export-marker-transition/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/export-marker-transition/generation-01-warm/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/export-marker-transition/module",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/export-marker-transition/generation-02-module/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/export-marker-transition/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/export-marker-transition/generation-03-warm-failed/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/export-marker-transition/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/export-marker-transition/generation-04-restored/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/export-marker-transition/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/export-marker-transition/generation-05-clean/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/import-marker-transition/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/import-marker-transition/generation-00-cold/input",
+      "configSha256": "307e81c5adacc51452cbdab6bc29be55aa68b35b0a68eeb1355458dbb7b3860e",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/import-marker-transition/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/import-marker-transition/generation-01-warm/input",
+      "configSha256": "307e81c5adacc51452cbdab6bc29be55aa68b35b0a68eeb1355458dbb7b3860e",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/import-marker-transition/module",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/import-marker-transition/generation-02-module/input",
+      "configSha256": "307e81c5adacc51452cbdab6bc29be55aa68b35b0a68eeb1355458dbb7b3860e",
+      "edges": [
+        {
+          "from": "main.ts",
+          "specifier": "./marker",
+          "target": "marker.ts"
+        }
+      ]
+    },
+    {
+      "id": "es2022-esm-plain/import-marker-transition/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/import-marker-transition/generation-03-warm-failed/input",
+      "configSha256": "307e81c5adacc51452cbdab6bc29be55aa68b35b0a68eeb1355458dbb7b3860e",
+      "edges": [
+        {
+          "from": "main.ts",
+          "specifier": "./marker",
+          "target": "marker.ts"
+        }
+      ]
+    },
+    {
+      "id": "es2022-esm-plain/import-marker-transition/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/import-marker-transition/generation-04-restored/input",
+      "configSha256": "307e81c5adacc51452cbdab6bc29be55aa68b35b0a68eeb1355458dbb7b3860e",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/import-marker-transition/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/import-marker-transition/generation-05-clean/input",
+      "configSha256": "307e81c5adacc51452cbdab6bc29be55aa68b35b0a68eeb1355458dbb7b3860e",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/root-add-remove-reorder/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/root-add-remove-reorder/generation-00-cold/input",
+      "configSha256": "3aaccc4c99226d1b32ca3b48a376ce47810b01f33b4cd332ff443fd120effa17",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/root-add-remove-reorder/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/root-add-remove-reorder/generation-01-warm-failed/input",
+      "configSha256": "3aaccc4c99226d1b32ca3b48a376ce47810b01f33b4cd332ff443fd120effa17",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/root-add-remove-reorder/added",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/root-add-remove-reorder/generation-02-added/input",
+      "configSha256": "07e193d73a7fe6f41589f8924023d56efcb898da25e17162a1f92c87fe09b2f1",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/root-add-remove-reorder/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/root-add-remove-reorder/generation-03-warm/input",
+      "configSha256": "07e193d73a7fe6f41589f8924023d56efcb898da25e17162a1f92c87fe09b2f1",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/root-add-remove-reorder/reordered",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/root-add-remove-reorder/generation-04-reordered/input",
+      "configSha256": "d2ff8c0a6cbba46ce4cde93c9c75f189fca4dd4201936b448cecb87f6284a7b6",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/root-add-remove-reorder/removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/root-add-remove-reorder/generation-05-removed/input",
+      "configSha256": "3aaccc4c99226d1b32ca3b48a376ce47810b01f33b4cd332ff443fd120effa17",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/root-add-remove-reorder/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/root-add-remove-reorder/generation-06-restored/input",
+      "configSha256": "07e193d73a7fe6f41589f8924023d56efcb898da25e17162a1f92c87fe09b2f1",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/root-add-remove-reorder/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/root-add-remove-reorder/generation-07-clean/input",
+      "configSha256": "07e193d73a7fe6f41589f8924023d56efcb898da25e17162a1f92c87fe09b2f1",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/ambient-class-root/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/ambient-class-root/generation-00-cold/input",
+      "configSha256": "3aaccc4c99226d1b32ca3b48a376ce47810b01f33b4cd332ff443fd120effa17",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/ambient-class-root/added",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/ambient-class-root/generation-01-added/input",
+      "configSha256": "432afa5ed883cb4be66f710d7736aa3cec4fca7bb438728f35b87bd23d7e25c8",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/ambient-class-root/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/ambient-class-root/generation-02-warm/input",
+      "configSha256": "432afa5ed883cb4be66f710d7736aa3cec4fca7bb438728f35b87bd23d7e25c8",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/ambient-class-root/edited",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/ambient-class-root/generation-03-edited/input",
+      "configSha256": "432afa5ed883cb4be66f710d7736aa3cec4fca7bb438728f35b87bd23d7e25c8",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/ambient-class-root/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/ambient-class-root/generation-04-warm-failed/input",
+      "configSha256": "432afa5ed883cb4be66f710d7736aa3cec4fca7bb438728f35b87bd23d7e25c8",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/ambient-class-root/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/ambient-class-root/generation-05-restored/input",
+      "configSha256": "432afa5ed883cb4be66f710d7736aa3cec4fca7bb438728f35b87bd23d7e25c8",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/ambient-class-root/removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/ambient-class-root/generation-06-removed/input",
+      "configSha256": "3aaccc4c99226d1b32ca3b48a376ce47810b01f33b4cd332ff443fd120effa17",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/ambient-class-root/restored-root",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/ambient-class-root/generation-07-restored-root/input",
+      "configSha256": "432afa5ed883cb4be66f710d7736aa3cec4fca7bb438728f35b87bd23d7e25c8",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/ambient-class-root/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/ambient-class-root/generation-08-clean/input",
+      "configSha256": "432afa5ed883cb4be66f710d7736aa3cec4fca7bb438728f35b87bd23d7e25c8",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/unicode-lexical-collision/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/unicode-lexical-collision/generation-00-cold/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/unicode-lexical-collision/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/unicode-lexical-collision/generation-01-warm/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/unicode-lexical-collision/collision",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/unicode-lexical-collision/generation-02-collision/input",
+      "configSha256": "eb953655c0b33fd8190da56418c484b5abea0b00034a0b9d2035369862097fe0",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/unicode-lexical-collision/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/unicode-lexical-collision/generation-03-warm-failed/input",
+      "configSha256": "eb953655c0b33fd8190da56418c484b5abea0b00034a0b9d2035369862097fe0",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/unicode-lexical-collision/unicode",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/unicode-lexical-collision/generation-04-unicode/input",
+      "configSha256": "eb953655c0b33fd8190da56418c484b5abea0b00034a0b9d2035369862097fe0",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/unicode-lexical-collision/removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/unicode-lexical-collision/generation-05-removed/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/unicode-lexical-collision/repaired",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/unicode-lexical-collision/generation-06-repaired/input",
+      "configSha256": "eb953655c0b33fd8190da56418c484b5abea0b00034a0b9d2035369862097fe0",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/unicode-lexical-collision/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/unicode-lexical-collision/generation-07-clean/input",
+      "configSha256": "eb953655c0b33fd8190da56418c484b5abea0b00034a0b9d2035369862097fe0",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/interface-merge-identity/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/interface-merge-identity/generation-00-cold/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/interface-merge-identity/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/interface-merge-identity/generation-01-warm/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/interface-merge-identity/incompatible",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/interface-merge-identity/generation-02-incompatible/input",
+      "configSha256": "eacc7e0bfa76bea8992b7fa9f0aad8e32a1faab9338da9ed7ba5a5555bc32f02",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/interface-merge-identity/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/interface-merge-identity/generation-03-warm-failed/input",
+      "configSha256": "eacc7e0bfa76bea8992b7fa9f0aad8e32a1faab9338da9ed7ba5a5555bc32f02",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/interface-merge-identity/compatible",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/interface-merge-identity/generation-04-compatible/input",
+      "configSha256": "eacc7e0bfa76bea8992b7fa9f0aad8e32a1faab9338da9ed7ba5a5555bc32f02",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/interface-merge-identity/removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/interface-merge-identity/generation-05-removed/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/interface-merge-identity/restored-compatible",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/interface-merge-identity/generation-06-restored-compatible/input",
+      "configSha256": "eacc7e0bfa76bea8992b7fa9f0aad8e32a1faab9338da9ed7ba5a5555bc32f02",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/interface-merge-identity/restored-incompatible",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/interface-merge-identity/generation-07-restored-incompatible/input",
+      "configSha256": "eacc7e0bfa76bea8992b7fa9f0aad8e32a1faab9338da9ed7ba5a5555bc32f02",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/interface-merge-identity/repaired",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/interface-merge-identity/generation-08-repaired/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/interface-merge-identity/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/interface-merge-identity/generation-09-clean/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/namespace-member-retirement/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/namespace-member-retirement/generation-00-cold/input",
+      "configSha256": "eacc7e0bfa76bea8992b7fa9f0aad8e32a1faab9338da9ed7ba5a5555bc32f02",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/namespace-member-retirement/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/namespace-member-retirement/generation-01-warm/input",
+      "configSha256": "eacc7e0bfa76bea8992b7fa9f0aad8e32a1faab9338da9ed7ba5a5555bc32f02",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/namespace-member-retirement/removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/namespace-member-retirement/generation-02-removed/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/namespace-member-retirement/warm-failed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/namespace-member-retirement/generation-03-warm-failed/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/namespace-member-retirement/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/namespace-member-retirement/generation-04-restored/input",
+      "configSha256": "eacc7e0bfa76bea8992b7fa9f0aad8e32a1faab9338da9ed7ba5a5555bc32f02",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/namespace-member-retirement/edited",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/namespace-member-retirement/generation-05-edited/input",
+      "configSha256": "eacc7e0bfa76bea8992b7fa9f0aad8e32a1faab9338da9ed7ba5a5555bc32f02",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/namespace-member-retirement/repaired",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/namespace-member-retirement/generation-06-repaired/input",
+      "configSha256": "eacc7e0bfa76bea8992b7fa9f0aad8e32a1faab9338da9ed7ba5a5555bc32f02",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/namespace-member-retirement/reordered",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/namespace-member-retirement/generation-07-reordered/input",
+      "configSha256": "fb5c6df78910ed60893a89eef1b91bcb9b82711b168c5f66912e286647c0b50f",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/namespace-member-retirement/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/namespace-member-retirement/generation-08-clean/input",
+      "configSha256": "fb5c6df78910ed60893a89eef1b91bcb9b82711b168c5f66912e286647c0b50f",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/generic-global-module-identity/cold",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/generic-global-module-identity/generation-00-cold/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/generic-global-module-identity/warm",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/generic-global-module-identity/generation-01-warm/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/generic-global-module-identity/constraint-edited",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/generic-global-module-identity/generation-02-constraint-edited/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/generic-global-module-identity/restored",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/generic-global-module-identity/generation-03-restored/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/generic-global-module-identity/module-hidden",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/generic-global-module-identity/generation-04-module-hidden/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/generic-global-module-identity/module-exported",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/generic-global-module-identity/generation-05-module-exported/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": [
+        {
+          "from": "consumer.ts",
+          "specifier": "./main",
+          "target": "main.ts"
+        }
+      ]
+    },
+    {
+      "id": "es2022-esm-plain/generic-global-module-identity/warm-module",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/generic-global-module-identity/generation-06-warm-module/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": [
+        {
+          "from": "consumer.ts",
+          "specifier": "./main",
+          "target": "main.ts"
+        }
+      ]
+    },
+    {
+      "id": "es2022-esm-plain/generic-global-module-identity/consumer-import-removed",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/generic-global-module-identity/generation-07-consumer-import-removed/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/generic-global-module-identity/restored-global",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/generic-global-module-identity/generation-08-restored-global/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    },
+    {
+      "id": "es2022-esm-plain/generic-global-module-identity/clean",
+      "project": "target/program-roots-lifecycle-20261115/full-2/es2022-esm-plain/generic-global-module-identity/generation-09-clean/input",
+      "configSha256": "b763349646b265d4dea68405b215b615fdd47fae9b7c62fdd640397d90267ff5",
+      "edges": []
+    }
+  ]
+}

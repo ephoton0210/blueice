@@ -19,9 +19,21 @@ pub(super) fn lower(
     origin_module: &Module,
     options: &CompilerOptions,
     wrapper: crate::ModuleKind,
+    context: ClassContext,
 ) -> Result<EmittedJavaScript, Diagnostic> {
     let mut origin_options = options.clone();
     origin_options.module_kind = wrapper;
+    let has_inheritance = context.inheritance;
+    let has_lowered_callables = runtime_declarations(&origin_module.declarations)
+        .into_iter()
+        .any(|(declaration, _)| matches!(declaration, Declaration::Function(function) if function.async_function || function.generator))
+        || origin_module.nested_functions.values().any(|function| {
+            function.async_function || function.generator
+                || function.kind == crate::parser::NestedFunctionKind::Arrow
+        })
+        || origin_module.classes().any(|class| class.members.iter().any(|member| {
+            member.method.as_ref().is_some_and(|method| method.async_function || method.generator)
+        }));
     let names = runtime_declarations(&module.declarations)
         .into_iter()
         .filter_map(|(declaration, _)| {
@@ -178,9 +190,19 @@ pub(super) fn lower(
             };
             let parameter_end = relocations::source_anchor(parameter_origin);
             let first_body = tokens[body + 1].start;
+            let gap = &emitted.javascript[tokens[body].end..first_body];
+            // Copied bodies keep a distinct header endpoint before their first
+            // original statement, including when the source wrote no trivia.
+            let gap = if gap.is_empty()
+                && first_body < tokens[end].start
+                && async_functions::source_offset(&emitted, origin_module, first_body).is_some()
+            {
+                format!("{parameter_end} ")
+            } else {
+                gap.to_string()
+            };
             let text = format!(
-                "{parameter_end}{{{}{}",
-                &emitted.javascript[tokens[body].end..first_body],
+                "{parameter_end}{{{gap}{}",
                 relocations::relocated_verbatim(first_body, tokens[end].end)
             );
             if tokens[property].is("constructor") && !is_static && !accessor {
@@ -274,7 +296,15 @@ pub(super) fn lower(
                     {
                         format!("[{key}]")
                     } else {
-                        format!(".{key_origin}{}{operation_origin}", tokens[property].text)
+                        format!(
+                            ".{}{}{operation_origin}",
+                            if options.javascript_layout == crate::JavaScriptLayout::TypeScript {
+                                ""
+                            } else {
+                                &key_origin
+                            },
+                            tokens[property].text
+                        )
                     };
                     members.push_str(&format!("{member_origin}{owner}{access}{operation_origin} = {signature}function ({arguments}{parameter_end}) {text}{completed};\n"));
                 } else {
@@ -301,6 +331,12 @@ pub(super) fn lower(
         };
         let factory_origin = if original_span.is_some_and(|original| original.generated_factory) {
             relocations::unmapped().to_string()
+        } else if options.javascript_layout == crate::JavaScriptLayout::TypeScript
+            && !class_is_expression(&tokens, start)
+        {
+            // The declaration's binding already owns this generated factory
+            // header. It is not another original class or function node.
+            String::new()
         } else {
             class_origin.clone()
         };
@@ -312,7 +348,9 @@ pub(super) fn lower(
             class_origin.clone()
         };
         let generated = relocations::unmapped();
-        let implicit_constructor = constructor.is_none();
+        let implicit_constructor = constructor.is_none()
+            || options.javascript_layout == crate::JavaScriptLayout::TypeScript
+                && original_span.is_some_and(|original| original.implicit_constructor);
         let implicit_origin = if origins::implicit_header_is_generated(original_span) {
             relocations::unmapped().to_string()
         } else {
@@ -344,10 +382,27 @@ pub(super) fn lower(
             "{factory_origin}(function ({}) {{\n{constructor}{inheritance}",
             if extends { base.as_str() } else { "" },
         );
-        let expression = format!(
-            "{factory_head}{members}{inside}{class_close}return {name}{class_end};\n{class_close}}}{invocation_origin})({argument}{})",
+        // Class expressions and inheritance graphs retain the established
+        // grouped callee ABI. Pure declarations use Native's factory spelling.
+        let native_factory = options.javascript_layout == crate::JavaScriptLayout::TypeScript
+            && !options.experimental_decorators
+            && !has_inheritance
+            && !has_lowered_callables
+            && !spreads::has_constructor_spread(&tokens)
+            && method_signatures.is_empty()
+            && !class_is_expression(&tokens, start);
+        let marker = if native_factory { "/** @class */ " } else { "" };
+        let expression = if native_factory {
+            format!(
+                "{marker}{factory_head}{members}{inside}{class_close}return {name}{class_end};\n{class_close}}}{class_end} {invocation_origin}({argument}{}))",
+                if extends { relocations::source_anchor(tokens[start + 3].end) } else { invocation_origin.clone() }
+            )
+        } else {
+            format!(
+            "{marker}{factory_head}{members}{inside}{class_close}return {name}{class_end};\n{class_close}}}{invocation_origin})({argument}{})",
             if extends { relocations::source_anchor(tokens[start + 3].end) } else { invocation_origin.clone() }
-        );
+        )
+        };
         let default_export =
             start >= 2 && tokens[start - 1].is("default") && tokens[start - 2].is("export");
         let mut replacement = if default_export {
@@ -374,6 +429,8 @@ pub(super) fn lower(
         };
         replacement.push_str(&tail.after);
         let insertion = directive_end(&tokens);
+        // Keep complete compatibility groups for original inheritance graphs;
+        // a pure declaration program does not need unused inheritance helpers.
         let helper = if options.import_helpers {
             if !extends {
                 String::new()
@@ -386,7 +443,7 @@ pub(super) fn lower(
                     )
                 )
             }
-        } else if options.no_emit_helpers {
+        } else if options.no_emit_helpers || (!extends && native_factory) {
             String::new()
         } else {
             include_str!("../class_helpers.v1.js")
@@ -401,7 +458,11 @@ pub(super) fn lower(
             start
         }]
         .start;
-        let helper = format!("\n{helper}\n");
+        let helper = if helper.is_empty() {
+            helper
+        } else {
+            format!("\n{helper}\n")
+        };
         let edits = vec![
             TextEdit {
                 start: insertion,
@@ -471,7 +532,7 @@ pub(super) fn lower(
             + 1;
         let signature_points = method_signatures.positions(
             &replacement,
-            expression_start + factory_head.len(),
+            expression_start + factory_head.len() + marker.len(),
             destination,
             &emitted.javascript,
             &edits,
@@ -697,8 +758,10 @@ fn derived_body(
         cursor,
         tokens[close].start,
     ));
+    // Keep the original final statement endpoint separate from the generated
+    // return's reset, even when the source statement directly precedes `}`.
     output.push_str(&format!(
-        "{}\nreturn {receiver};\n",
+        " {}\nreturn {receiver};\n",
         relocations::unmapped()
     ));
     output.push_str(&relocations::relocated_verbatim(

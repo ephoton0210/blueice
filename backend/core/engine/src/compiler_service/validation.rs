@@ -36,6 +36,39 @@ pub(super) fn validate_registration(
     Ok(())
 }
 
+pub(super) fn validate_program_roots(
+    registration: &RegisteredProjectRegistration,
+    roots: &[String],
+) -> Result<(), CompilerServiceError> {
+    let mut seen = BTreeSet::new();
+    if roots.is_empty()
+        || roots.len() > registration.compiler_options.limits.max_modules
+        || roots.first() != Some(&registration.entry_module)
+        || roots
+            .iter()
+            .any(|root| root.is_empty() || root.contains('\0') || !seen.insert(root.as_str()))
+    {
+        return Err(CompilerServiceError::InvalidRegistration {
+            field: "program_roots",
+        });
+    }
+    let authorized = registration
+        .loader
+        .authorized_modules()
+        .map(|(module, _)| module)
+        .collect::<BTreeSet<_>>();
+    if roots
+        .iter()
+        .skip(1)
+        .any(|root| !authorized.contains(root.as_str()))
+    {
+        return Err(CompilerServiceError::InvalidRegistration {
+            field: "program_roots",
+        });
+    }
+    Ok(())
+}
+
 pub(super) fn same_registration(
     left: &RegisteredProjectRegistration,
     right: &RegisteredProjectRegistration,

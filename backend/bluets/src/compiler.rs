@@ -17,6 +17,7 @@ mod isolated_declarations;
 mod json;
 mod native_emit;
 mod node_modules;
+mod program_roots;
 mod project_builder;
 mod resolutions;
 mod targets;
@@ -135,6 +136,23 @@ pub enum RuntimePolicy {
     StrictRuntime,
 }
 
+/// Owner-selected JavaScript formatting; independent of diagnostic selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum JavaScriptLayout {
+    #[default]
+    PreserveSource,
+    TypeScript,
+}
+
+impl JavaScriptLayout {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::PreserveSource => "preserve-source",
+            Self::TypeScript => "typescript",
+        }
+    }
+}
+
 /// An owner-selected source crossing for the first emitted strict-runtime
 /// profile. The source span must match a named exported function exactly.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -180,6 +198,9 @@ pub struct CompilerOptions {
     /// Independent diagnostic selection. `None` retains the legacy checking
     /// surface; explicit options never select JavaScript emit or runtime grants.
     pub checking: Option<crate::CheckingOptions>,
+    pub javascript_layout: JavaScriptLayout,
+    /// Emit a script strict directive; checking strictness is selected separately.
+    pub always_strict: bool,
     pub target: EcmaTarget,
     /// Explicit whole ECMAScript library profiles. `None` follows `target`;
     /// an empty list selects no library. Typings never supply runtime authority.
@@ -240,6 +261,9 @@ pub struct CompilerOptions {
     /// `jsxImportSource` (automatic mode): defaults to `react`.
     pub jsx_import_source: Option<String>,
     pub runtime_policy: RuntimePolicy,
+    /// Check the closed program without producing artifacts or authorizing
+    /// executable declaration imports. This mode has a distinct cache identity.
+    pub no_emit: bool,
     pub source_map: bool,
     pub declaration: bool,
     /// Publish a map for declaration output within the measured mapping surface.
@@ -314,6 +338,8 @@ impl Default for CompilerOptions {
             import_helpers: false,
             no_emit_helpers: false,
             checking: None,
+            javascript_layout: JavaScriptLayout::PreserveSource,
+            always_strict: false,
             use_define_for_class_fields: None,
             preserve_const_enums: false,
             isolated_modules: false,
@@ -331,6 +357,7 @@ impl Default for CompilerOptions {
             jsx_fragment_factory: None,
             jsx_import_source: None,
             runtime_policy: RuntimePolicy::Checked,
+            no_emit: false,
             source_map: false,
             declaration: false,
             declaration_map: false,
@@ -537,6 +564,9 @@ pub fn is_external_library_module(module_id: &str) -> bool {
 pub struct Project {
     pub(crate) has_import_types: bool,
     pub entry: String,
+    /// Ordered roots explicitly selected by the owner. Other authorized
+    /// records enter the program only through its closed dependency graph.
+    pub program_roots: Vec<String>,
     pub modules: BTreeMap<String, Module>,
     pub(crate) module_kinds: BTreeMap<String, ModuleKind>,
     pub(crate) resolutions: BTreeMap<(String, String), String>,
@@ -628,14 +658,14 @@ pub struct IncrementalResult {
     pub reused_checked_modules: BTreeSet<String>,
 }
 
-/// A single-entry, dependency-aware compiler session for development hosts.
+/// An owner-selected, dependency-aware compiler session for development hosts.
 ///
 /// The session has no I/O or runtime authority: every invocation still asks
 /// its caller-supplied [`ModuleLoader`] for the closed module graph. It reuses
 /// parsing for byte-identical modules and rechecks only changed modules and
 /// their reverse dependencies. A cache entry is replaced only after a
-/// successful compilation, and an entry is never reused when the entry ID or
-/// any [`CompilerOptions`] differ.
+/// successful compilation. Ordered program roots and [`CompilerOptions`]
+/// must match before a previous compilation can supply reusable work.
 #[derive(Debug, Default)]
 pub struct IncrementalCompiler {
     cached: Option<CachedCompilation>,
@@ -643,7 +673,7 @@ pub struct IncrementalCompiler {
 
 #[derive(Debug, Clone)]
 struct CachedCompilation {
-    entry: String,
+    program_roots: Vec<String>,
     options: CompilerOptions,
     compilation: Compilation,
 }
@@ -662,14 +692,25 @@ impl IncrementalCompiler {
         loader: &dyn ModuleLoader,
         options: CompilerOptions,
     ) -> IncrementalResult {
+        self.compile_program(&[entry.to_string()], loader, options)
+    }
+
+    /// Compiles exactly the ordered owner-selected roots as one program.
+    /// Failed or refused selections preserve the last successful cache.
+    pub fn compile_program(
+        &mut self,
+        roots: &[String],
+        loader: &dyn ModuleLoader,
+        options: CompilerOptions,
+    ) -> IncrementalResult {
         let cached = self
             .cached
             .as_ref()
-            .filter(|cached| cached.entry == entry && cached.options == options);
-        let result = compile_with_cache(entry, loader, options.clone(), cached);
+            .filter(|cached| cached.program_roots == roots && cached.options == options);
+        let result = compile_with_cache(roots, loader, options.clone(), cached);
         if !result.compilation.has_errors() {
             self.cached = Some(CachedCompilation {
-                entry: entry.to_string(),
+                program_roots: roots.to_vec(),
                 options,
                 compilation: result.compilation.clone(),
             });
@@ -683,6 +724,7 @@ impl Project {
         Self {
             has_import_types: false,
             entry: entry.into(),
+            program_roots: Vec::new(),
             modules: BTreeMap::new(),
             module_kinds: BTreeMap::new(),
             resolutions: BTreeMap::new(),
@@ -705,22 +747,40 @@ impl Project {
 /// A failure at any stage leaves `output` absent, providing the library half of
 /// BlueTSC's no-emit-on-error guarantee.
 pub fn compile(entry: &str, loader: &dyn ModuleLoader, options: CompilerOptions) -> Compilation {
-    compile_with_cache(entry, loader, options, None).compilation
+    compile_program(&[entry.to_string()], loader, options)
+}
+
+/// Parses, binds, checks and emits the ordered roots of one closed program.
+/// Selection grants no loader, resolver, runtime or output authority. Empty,
+/// malformed, duplicate and over-budget selections fail before source loading.
+pub fn compile_program(
+    roots: &[String],
+    loader: &dyn ModuleLoader,
+    options: CompilerOptions,
+) -> Compilation {
+    compile_with_cache(roots, loader, options, None).compilation
 }
 
 fn compile_with_cache(
-    entry: &str,
+    roots: &[String],
     loader: &dyn ModuleLoader,
     options: CompilerOptions,
     cached: Option<&CachedCompilation>,
 ) -> IncrementalResult {
+    if let Some(refusal) = program_roots::refuse_invalid(roots, &options) {
+        return refusal;
+    }
+    let entry = roots[0].as_str();
     let performance = crate::performance::Session::new();
     let graph_started = std::time::Instant::now();
     let previous_project = cached.map(|cached| &cached.compilation.project);
     let mut builder = ProjectBuilder::new(loader, previous_project, options.limits.clone());
     builder.resolve_json_module = options.resolve_json_module;
     builder.module_kind = options.module_kind;
-    builder.visit(entry, 0);
+    builder.project.program_roots = roots.to_vec();
+    for root in roots {
+        builder.visit(root, 0);
+    }
     for declaration in &options.declaration_roots {
         if is_declaration_module(declaration) {
             builder.visit(declaration, 0);
@@ -792,6 +852,7 @@ fn compile_with_cache(
     let (checked, checker_diagnostics) = checker::check_incremental(
         &project,
         checker::CheckerPolicy {
+            no_emit: options.no_emit,
             verbatim_module_syntax: options.verbatim_module_syntax,
             target: options.target,
             library_mode: match &options.libraries {
@@ -837,7 +898,8 @@ fn compile_with_cache(
     }
     let check_time = check_started.elapsed();
     diagnostics.extend(strict_boundaries::validate_descriptors(&project, &options));
-    if options.source_map && !options.emit_declaration_only {
+    diagnostics.extend(emitter::validate_static_semantics(&project, &options));
+    if options.source_map && !options.emit_declaration_only && !options.no_emit {
         diagnostics.extend(emitter::validate_source_map_limits(&checked, &options));
     }
     diagnostics.sort_by(|left, right| {
@@ -847,11 +909,18 @@ fn compile_with_cache(
             right.code.to_string(),
         ))
     });
+    if options.no_emit
+        && !diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.severity == crate::diagnostic::Severity::Error)
+    {
+        diagnostics.extend(emitter::validate_no_emit_admission(&project));
+    }
     let has_errors = diagnostics
         .iter()
         .any(|diagnostic| diagnostic.severity == crate::diagnostic::Severity::Error);
     let emit_started = std::time::Instant::now();
-    let output = if has_errors {
+    let output = if has_errors || options.no_emit {
         None
     } else {
         match emitter::emit(&checked, &project, &options) {
@@ -866,9 +935,8 @@ fn compile_with_cache(
     crate::diagnostic::positions::attach(&project, &mut diagnostics);
     crate::diagnostic::rendered::attach(&project, &mut diagnostics);
     crate::diagnostic::related::attach(&project, &mut diagnostics);
-    let debug_info = output
-        .as_ref()
-        .map(|_| debug_info::build(&checked, &options));
+    let debug_info = (!has_errors && (options.no_emit || output.is_some()))
+        .then(|| debug_info::build(&checked, &options));
     let performance =
         performance.finish(&project, Some(&checked), graph_time, check_time, emit_time);
     IncrementalResult {
@@ -1002,10 +1070,7 @@ fn affected_modules(
     if affected.iter().any(|id| {
         [previous, current].iter().any(|project| {
             project.modules.get(id).is_some_and(|module| {
-                augments_global(&module.declarations)
-                    || ((project.referenced_declaration_modules.contains(id)
-                        || is_declaration_module(id))
-                        && !crate::parser::has_module_syntax(&module.declarations))
+                augments_global(&module.declarations) || !project.is_external_module(module)
             })
         })
     }) {

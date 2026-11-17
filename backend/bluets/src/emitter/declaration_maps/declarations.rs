@@ -18,6 +18,10 @@ fn identity(item: &Declaration) -> Option<(u8, &str)> {
         Declaration::ValueExport(_) => (8, "export"),
         Declaration::TypeExport(_) => (9, "type-export"),
         Declaration::Enum(e) => (10, &e.name),
+        Declaration::Ambient(a) => match &a.specifier {
+            Some(specifier) => (11, specifier),
+            None => (12, "global"),
+        },
         _ => return None,
     })
 }
@@ -58,6 +62,13 @@ impl Mapper<'_> {
                         continue;
                     }
                     self.point(g.span.start, s.span.start);
+                    if let Some((g, s)) = gt
+                        .iter()
+                        .find(|token| token.is("declare"))
+                        .zip(st.iter().find(|token| token.is("declare")))
+                    {
+                        self.pair(g, s);
+                    }
                     for kind in ["const", "let", "var"] {
                         if let Some((g, s)) = gt
                             .iter()
@@ -149,6 +160,20 @@ impl Mapper<'_> {
                             end: s.name_span.end,
                         },
                     );
+                    if let Some((g, s)) = gt
+                        .iter()
+                        .find(|t| t.is("{"))
+                        .zip(st.iter().find(|t| t.is("{")))
+                    {
+                        self.point(g.start, s.start);
+                    }
+                    self.declarations(&s.body, &g.body)?;
+                }
+                (Declaration::Ambient(g), Declaration::Ambient(s)) => {
+                    self.range(&g.span, &s.span);
+                    self.range(&g.specifier_span, &s.specifier_span);
+                    let header_end = gt.iter().position(|t| t.is("{")).unwrap_or(gt.len());
+                    self.modifiers(&gt[..header_end], &st);
                     if let Some((g, s)) = gt
                         .iter()
                         .find(|t| t.is("{"))

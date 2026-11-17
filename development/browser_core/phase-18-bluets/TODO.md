@@ -8,7 +8,7 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-11-14).**
+**Current BlueTS / BlueTSC compatibility status (2026-11-17).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
 Pinned compiler: **TypeScript 5.9.3**. **N = 43,112 suite-qualified
@@ -23,7 +23,7 @@ case assertions**, not unique programs or a percentage of the TypeScript languag
 | Suite labels | 187 scoped closed, 1 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
-| Source refusal sites | 230 in 11 areas; condition-specific locations, not extra failing cases |
+| Source refusal sites | 231 in 11 areas; condition-specific locations, not extra failing cases |
 
 All 43,112 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
@@ -33,8 +33,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb`.
-Input graph SHA-256: `519e50a7b4cb3aa4e04325faa5893c6d8ba5891939866ee2f8e51095c2a74767`.
+Compiler/oracle source: `backend-tree:37beae676a55482728b6aa8682240bd9588e7fdc`.
+Input graph SHA-256: `9dd266a077ac1c7d6bafcfaad68428d257cd59a5b3cd930e7216611ea9a62892`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -96,7 +96,7 @@ alone do not establish arbitrary TypeScript compatibility.
 | G-T8 | Return/context inference: nested/imported/recursive returns, async/generator/getter results, flow and operator/library compositions. | P0 |
 | G-T9 | Classes: recursive/imported getters and merges, computed generic calls, constructor contexts and decorated class expressions. | P3 |
 | G-T10 | Module types: declaration merging, import queries/attributes/resolution modes, private/generic/ambient compositions and metadata import retention. | P1 |
-| G-E1 | Target lowering: unmeasured target/library/field/suspension compositions, including async super writes. | P3 |
+| G-E1 | Target lowering: unfinished target/library/field/suspension compositions, including ES5 anonymous instance-field class expressions and async super writes. | P3 |
 | G-E2 | Module/helper emission: module/Node format, target, library, helper-provider ABI and option compositions. | P2 |
 | G-E3 | Decorator emission: suspended logical super writes, private parameter-initializer super, legacy computed auto-accessors and metadata boundaries. | P3 |
 | G-E4 | Emit options: nested/inferred declaration members, isolatedDeclarations, stripInternal and target/field/option interactions. | P1 |
@@ -214,6 +214,35 @@ complete source-bound acceptance within their frozen contracts.
   source-bound and independently verified. All 42,716 old IDs/classes remain;
   396 additions yield N=43,112. [Acceptance](HIGHER_ORDER_INFERENCE_ACCEPTANCE.md)
   · [measurement](HIGHER_ORDER_INFERENCE_MEASUREMENT.json). Broader rows remain open.
+
+- [x] **P0-H — Selected program roots, script declarations and generation ownership (2026-11-17).**
+  Selected roots compile as one authorized program; legal script globals share
+  identities while module locals retain privacy. Ordered roots bind complete
+  incremental generations, work sets and exact prior output ownership. Core
+  registration is immutable; compiler IPC/MCP retain opaque handles and
+  owner-only root/source/resolver/option/output authority.
+  Source: `backend-tree:37beae676a55482728b6aa8682240bd9588e7fdc`.
+
+  **Acceptance:** all six [frozen requirements](PROGRAM_ROOTS_CONTRACT.json),
+  with the explicit [owner-adapter amendment](PROGRAM_ROOTS_CONTRACT_AMENDMENT.json),
+  pass the [independent delivery audit](PROGRAM_ROOTS_ACCEPTANCE_AUDIT.json).
+  Native: **191 suites /1,088 functions**. Complete ordinary workspace:
+  **8,054 passed /0 failed /400 ignored /0 filtered**; all736 built executables ran.
+  Both original compiler profiles cover **all55 map families /298 original names**;
+  standalone separately records297 direct passes and one previously complete,
+  byte-identical8,407-configuration function. All572 Native map corrections pass
+  452 configurations times two builds on all three actual compiler builds.
+  Windows x86_64: **82 core oracles,71 complete cohorts /456 tests and25 paths**.
+  Tooling: **304 Node tests /zero skips**, Python/accounting/status, format and
+  workspace/all-target warnings-denied Clippy pass. All583 production modules
+  remain below1,500 lines (maximum1,333).
+
+  [Acceptance and scope](PROGRAM_ROOTS_ACCEPTANCE.md) ·
+  [Measurements](PROGRAM_ROOTS_MEASUREMENT.json) ·
+  [Complete artifact index](PROGRAM_ROOTS_ARTIFACTS.json) ·
+  [Historical measurements](PROGRAM_ROOTS_FOLLOWUP.md).
+  All43,112 original case objects,12,201 fixtures and618 tool names are retained;
+  all22 broader feature rows remain open and full TypeScript parity stays OFF.
 
 Each package needs frozen authored inputs and Native expectations before
 production changes, complete primary/related diagnostics and UTF-16 positions,

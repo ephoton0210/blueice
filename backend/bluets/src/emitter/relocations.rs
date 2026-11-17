@@ -10,6 +10,7 @@ use crate::syntax::{lex, TokenKind};
 pub(super) enum Part {
     Generated(String),
     Anchor(usize),
+    Inherited,
     Unmapped,
     Relocated {
         text: String,
@@ -24,13 +25,18 @@ impl Part {
     pub(super) fn text(&self) -> &str {
         match self {
             Self::Generated(text) | Self::Relocated { text, .. } => text,
-            Self::Anchor(_) | Self::Unmapped => "",
+            Self::Anchor(_) | Self::Inherited | Self::Unmapped => "",
         }
     }
 }
 
 pub(super) fn unmapped() -> &'static str {
     "\u{0}U\u{0}"
+}
+
+/// Generated continuation text inherits the current state without a new event.
+pub(super) fn inherited() -> &'static str {
+    "\u{0}I\u{0}"
 }
 
 pub(super) fn source_anchor(offset: usize) -> String {
@@ -66,6 +72,10 @@ pub(super) fn expand(replacement: &str, source: &str, edits: &[TextEdit]) -> Vec
         }
         if marker == "U" {
             parts.push(Part::Unmapped);
+            continue;
+        }
+        if marker == "I" {
+            parts.push(Part::Inherited);
             continue;
         }
         let Some((range, compact)) = marker

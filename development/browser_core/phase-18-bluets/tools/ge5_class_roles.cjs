@@ -329,4 +329,17 @@ function compareClass(ts,native,nativeNode,actual,actualNode,original,options={}
   constructionEndpoint();
   return {native:n,actual:a,generated,declarationChain,rest:restProof,delegatedExpressions:holes,delegatedCallables:callables};
 }
-module.exports={readClass,compareClass,unwrap};
+// A Native-style bare factory call has no custom inheritance/helper ABI.
+// Its named constructor and returned binding still belong to an original class.
+function nativeFactories(ts,view,originals){
+  const names=new Set();
+  function source(node){if(ts.isInterfaceDeclaration(node)||ts.isTypeAliasDeclaration(node)||node.modifiers?.some(modifier=>modifier.kind===ts.SyntaxKind.DeclareKeyword))return;if(ts.isClassDeclaration(node)&&node.name&&!node.heritageClauses?.length)names.add(node.name.text);ts.forEachChild(node,source);}
+  for(const original of originals)if(!original.isDeclarationFile)source(original);
+  const factories=[];
+  function emitted(node){if(ts.isCallExpression(node)&&ts.isFunctionExpression(node.expression)){
+    const fn=node.expression,constructors=fn.body.statements.filter(ts.isFunctionDeclaration),returned=fn.body.statements.at(-1);
+    if(!fn.name&&!fn.asteriskToken&&fn.parameters.length===0&&node.arguments.length===0&&constructors.length===1&&names.has(constructors[0].name?.text)&&returned&&ts.isReturnStatement(returned)&&returned.expression&&ts.isIdentifier(returned.expression)&&returned.expression.text===constructors[0].name.text)factories.push(node);
+  }ts.forEachChild(node,emitted);}
+  emitted(view.source);return factories;
+}
+module.exports={readClass,compareClass,unwrap,nativeFactories};

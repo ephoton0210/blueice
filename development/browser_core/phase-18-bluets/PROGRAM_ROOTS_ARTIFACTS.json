@@ -1,0 +1,150 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:37beae676a55482728b6aa8682240bd9588e7fdc",
+  "artifacts": [
+    {
+      "path": "PROGRAM_ROOTS_COMPONENTS_01.tar.gz",
+      "bytes": 35837889,
+      "sha256": "5a8aef27b8699966946a78a06ec2b7ce99d136d775da6b5fb41f2018342f494c",
+      "kind": "components",
+      "members": 11252,
+      "memberManifest": "PROGRAM_ROOTS_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "PROGRAM_ROOTS_COMPONENTS_02.tar.gz",
+      "bytes": 41701542,
+      "sha256": "05b494062297da4272d66e5a9e10e287d393c6140469e9c01e374d211d5cd13f",
+      "kind": "components",
+      "members": 76193,
+      "memberManifest": "PROGRAM_ROOTS_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "PROGRAM_ROOTS_COMPONENTS_03.tar.gz",
+      "bytes": 37092175,
+      "sha256": "26cc5071b69fdf9ade2167da36e4fb860bd103032f35534c152fb481842bf242",
+      "kind": "components",
+      "members": 234584,
+      "memberManifest": "PROGRAM_ROOTS_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "PROGRAM_ROOTS_COMPONENTS_04.tar.gz",
+      "bytes": 21200690,
+      "sha256": "01009ce391febedb50cd35d0f109ea4585a52c21b24cf9326d8f17f75ec0c8e3",
+      "kind": "components",
+      "members": 2838,
+      "memberManifest": "PROGRAM_ROOTS_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "PROGRAM_ROOTS_COMPONENTS_05.tar.gz",
+      "bytes": 21200750,
+      "sha256": "0c513dc44adbe3b4f0f93e824264b67869a28b555395af49d45f2948c5fe928c",
+      "kind": "components",
+      "members": 2838,
+      "memberManifest": "PROGRAM_ROOTS_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "PROGRAM_ROOTS_FINAL_01.tar.gz",
+      "bytes": 16602892,
+      "sha256": "18924713380be20999f99fb67fc0550f814abc1aff8e88bed862dca640542079",
+      "kind": "final",
+      "members": 19607,
+      "memberManifest": "PROGRAM_ROOTS_FINAL_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "PROGRAM_ROOTS_FINAL_02.tar.gz",
+      "bytes": 32640957,
+      "sha256": "9866bdb6fdbd5d8414b868d4ad485419ab56368875affdd385b4865d84f95b93",
+      "kind": "final",
+      "members": 4785,
+      "memberManifest": "PROGRAM_ROOTS_FINAL_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "PROGRAM_ROOTS_FINAL_03.tar.gz",
+      "bytes": 32039870,
+      "sha256": "b7d394403f9fa4894153f4c2181b21cc60728d6670c1424088637732b95469ba",
+      "kind": "final",
+      "members": 10342,
+      "memberManifest": "PROGRAM_ROOTS_FINAL_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "PROGRAM_ROOTS_FINAL_04.tar.gz",
+      "bytes": 32703695,
+      "sha256": "1ed2c972e27d830eb3a519e931cba536b948aaf1366e8d3ee0d43031ff242d67",
+      "kind": "final",
+      "members": 5770,
+      "memberManifest": "PROGRAM_ROOTS_FINAL_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "PROGRAM_ROOTS_FINAL_05.tar.gz",
+      "bytes": 20582181,
+      "sha256": "475eebd8d33eda5251df82d763d0dfcd77de1c46d87269a8129aaa37cf9eba5d",
+      "kind": "final",
+      "members": 7372,
+      "memberManifest": "PROGRAM_ROOTS_FINAL_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "PROGRAM_ROOTS_FINAL_06.tar.gz",
+      "bytes": 22720075,
+      "sha256": "fd3f135377e856b722d1455b181912183b3256d4056dcb4f4e04a5a3bb4b603a",
+      "kind": "final",
+      "members": 1100,
+      "memberManifest": "PROGRAM_ROOTS_FINAL_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "PROGRAM_ROOTS_WINDOWS_AUDIT.tar.gz",
+      "bytes": 62450964,
+      "sha256": "d27e6a5aa514636517c3d2a6faaf56730dc3fcebd15723e73d6130adbb94742e",
+      "kind": "windows",
+      "scope": "Previously independently decoded complete Windows evidence; unchanged archive bytes."
+    }
+  ],
+  "supportingArtifacts": [
+    {
+      "path": "PROGRAM_ROOTS_COMPONENT_MEMBERS.jsonl.gz",
+      "bytes": 10550078,
+      "sha256": "5ce5b1a2613d6219d844fab7d591209762366305c9eae82c1028006d2b8d3bc7",
+      "kind": "regular-member-manifest",
+      "format": "jsonl+gzip",
+      "members": 327705
+    },
+    {
+      "path": "PROGRAM_ROOTS_SYMLINKS.json",
+      "bytes": 10943,
+      "sha256": "9aeffdde5850a3f55d0733861d87ada945fcbe629ef686a45b3b5b0ce0c2962c",
+      "kind": "symlink-identities-only"
+    },
+    {
+      "path": "PROGRAM_ROOTS_COMPONENTS_ARCHIVE_AUDIT.json",
+      "bytes": 1480,
+      "sha256": "cece18109c5045aa7a4d4f85afe107ba6a53f24b8f90be159c6e536758e59f28",
+      "kind": "independent-member-audit"
+    },
+    {
+      "path": "PROGRAM_ROOTS_FINAL_MEMBERS.jsonl.gz",
+      "bytes": 4244665,
+      "sha256": "7535a127a1afaa732ed273f14e3b823c348f23ea5431fc72cf3cfa9af5169a11",
+      "kind": "regular-member-manifest",
+      "format": "jsonl+gzip",
+      "members": 48976
+    },
+    {
+      "path": "PROGRAM_ROOTS_FINAL_SYMLINKS.json",
+      "bytes": 3447,
+      "sha256": "74e4cd8a851b47615fb3d96ab0492cd822647177feb614b001483adf5c9835f4",
+      "kind": "symlink-identities-only"
+    },
+    {
+      "path": "PROGRAM_ROOTS_FINAL_ARCHIVE_AUDIT.json",
+      "bytes": 1657,
+      "sha256": "215dd5d0576e4ad8ac4636e089d2268731b1eb381ed85a712b9e52d24694640f",
+      "kind": "independent-member-audit"
+    },
+    {
+      "path": "PROGRAM_ROOTS_WINDOWS_ARCHIVE_AUDIT.json",
+      "bytes": 756,
+      "sha256": "4335bce21d192b1b07609827a3e6342187eea64119da30aa9f435def2477b5ba",
+      "kind": "independent-windows-audit"
+    }
+  ],
+  "scope": "Complete runtime evidence plus frozen original/red evidence; symlinks are metadata only. Final published-byte/contract verification is still required."
+}

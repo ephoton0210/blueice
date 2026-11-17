@@ -10,11 +10,16 @@ pub(in super::super) fn apply_output_flags(
     invocation: &mut Invocation,
     flags: Map<String, Value>,
 ) -> Result<(), String> {
-    let directory = env::current_dir().map_err(|error| error.to_string())?;
+    // Match the canonical owner identity, including Windows verbatim prefixes,
+    // before validating command-line paths against that owner.
+    let directory = env::current_dir()
+        .and_then(fs::canonicalize)
+        .map_err(|error| error.to_string())?;
     let reader = Reader::new(invocation.root.clone(), Vec::new());
     let flags = options::validate(&Value::Object(flags), &directory, &reader)?;
     let options = &mut invocation.options;
     for (name, field) in [
+        ("noEmit", &mut options.no_emit),
         ("removeComments", &mut options.remove_comments),
         ("emitBOM", &mut options.emit_bom),
         ("inlineSources", &mut options.inline_sources),

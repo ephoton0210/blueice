@@ -272,19 +272,9 @@ pub(super) fn lower(
                 crate::emitter::relocations::source_anchor(class.span.start),
                 crate::emitter::relocations::source_anchor(class.name_span.start),
                 class.name,
-                crate::emitter::relocations::source_anchor(
-                    class
-                        .extends_span
-                        .as_ref()
-                        .and_then(|span| {
-                            tokens[..tokens.partition_point(|token| token.start < span.start)]
-                                .iter()
-                                .rev()
-                                .find(|token| token.is("extends"))
-                                .map(|token| token.start)
-                        })
-                        .unwrap_or(class.body_span.start)
-                )
+                crate::emitter::relocations::source_anchor(names::declaration_name_end_origin(
+                    &class, &tokens, false,
+                ))
             );
             captured_origin = crate::emitter::relocations::source_anchor(class.span.start);
             finished = format!(

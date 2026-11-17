@@ -6,7 +6,7 @@
 use super::*;
 use crate::parser::{NestedFunction, NestedFunctionBody, NestedFunctionKind};
 
-fn block_open(tokens: &[crate::Token], function: &NestedFunction) -> Option<usize> {
+pub(super) fn block_open(tokens: &[crate::Token], function: &NestedFunction) -> Option<usize> {
     if let NestedFunctionBody::Expression(body) = &function.body {
         return body.first().map(|token| token.start);
     }
@@ -35,7 +35,7 @@ fn header<'a>(
         ..tokens.partition_point(|token| token.start < body)]
 }
 
-fn arrow(module: &Module, tokens: &[crate::Token]) -> Option<usize> {
+pub(super) fn arrow(module: &Module, tokens: &[crate::Token]) -> Option<usize> {
     let last = tokens.last()?;
     if last.is("=>") {
         return Some(last.start);
@@ -338,7 +338,6 @@ pub(super) fn anchors(
         if retains_arrow(function, options) {
             if let Some(arrow) = arrow(module, head) {
                 anchors.insert(arrow, Some(arrow));
-                anchors.insert(arrow + 1, Some(arrow));
                 if matches!(function.body, NestedFunctionBody::Block { .. }) {
                     anchors.insert(body, Some(arrow + 2));
                 }

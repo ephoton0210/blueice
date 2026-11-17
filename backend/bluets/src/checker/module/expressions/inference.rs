@@ -598,6 +598,9 @@ impl<'a> ModuleChecker<'a> {
                 // A value in scope (a parameter, a local, a catch binding)
                 // shadows a module function of the same name.
                 if tokens.len() == 1 {
+                    if let Some(value @ Type::CallableRecord { .. }) = scope.get(&first.text) {
+                        return self.finish_copied_type(value.clone());
+                    }
                     if let Some(value @ Type::Intersection(parts)) = scope.get(&first.text) {
                         if parts.iter().any(|part| matches!(part, Type::Record(_))) {
                             return value.clone();

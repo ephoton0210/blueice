@@ -16,9 +16,9 @@ use std::fmt;
 use std::io::{self, Read, Write};
 use std::path::Path;
 
-/// Version two adds explicit, default-denied per-project compiler visibility.
-/// Version one is rejected rather than silently changing its public inventory.
-pub const COMPILER_CATALOG_BOOTSTRAP_VERSION: u32 = 2;
+/// Version three adds owner-selected program roots. Earlier versions are
+/// rejected; project visibility and output grants remain independently denied.
+pub const COMPILER_CATALOG_BOOTSTRAP_VERSION: u32 = 3;
 pub const MAX_COMPILER_CATALOG_FRAME_BYTES: usize = 16 * 1_024 * 1_024;
 pub const MAX_COMPILER_CATALOG_PROJECTS: usize = 128;
 pub const MAX_COMPILER_CATALOG_MODULES_PER_PROJECT: usize = 256;
@@ -53,6 +53,10 @@ pub struct CompilerCatalogProject {
     pub canonical_config_root: String,
     pub canonical_output_root: String,
     pub entry_module: String,
+    /// An ordered, closed subset of `modules`, chosen before listener startup.
+    /// Omission preserves the single entry; an explicitly empty list is invalid.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub program_roots: Option<Vec<String>>,
     pub modules: Vec<CompilerCatalogModule>,
     /// Public compiler/MCP visibility is owner-selected and default-denied.
     /// Registration and visibility are separate: an unexposed project still
@@ -207,6 +211,31 @@ impl CompilerCatalogBootstrap {
             }
             if !module_ids.contains(project.entry_module.as_str()) {
                 return Err(invalid("compiler catalog entry module is missing"));
+            }
+            if let Some(roots) = &project.program_roots {
+                if roots.is_empty() || roots.len() > MAX_COMPILER_CATALOG_MODULES_PER_PROJECT {
+                    return Err(invalid(
+                        "compiler catalog root count exceeds its fixed bounds",
+                    ));
+                }
+                if roots.first() != Some(&project.entry_module) {
+                    return Err(invalid(
+                        "compiler catalog entry must be its first program root",
+                    ));
+                }
+                let mut selected = BTreeSet::new();
+                for root in roots {
+                    validate_identity(root, &mut decoded_bytes)?;
+                    validate_path_identity(root)?;
+                    if !is_descendant(root, &project.canonical_project_root)
+                        || !module_ids.contains(root.as_str())
+                        || !selected.insert(root.as_str())
+                    {
+                        return Err(invalid(
+                            "compiler catalog program roots must be a unique authorized subset",
+                        ));
+                    }
+                }
             }
             let mut ambient_ids = BTreeSet::new();
             for module in &project.options.ambient_declaration_modules {
@@ -534,6 +563,7 @@ mod tests {
         CompilerCatalogBootstrap {
             version: COMPILER_CATALOG_BOOTSTRAP_VERSION,
             projects: vec![CompilerCatalogProject {
+                program_roots: None,
                 canonical_project_root: "project:///app".to_string(),
                 canonical_config_root: "project:///app/blue-ts.json".to_string(),
                 canonical_output_root: "project:///dist".to_string(),

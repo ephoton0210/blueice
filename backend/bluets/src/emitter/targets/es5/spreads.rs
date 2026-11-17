@@ -197,57 +197,71 @@ pub(super) fn lower(
 type Candidate = (usize, usize, Vec<(usize, usize, bool)>, bool);
 
 fn candidate(tokens: &[Token]) -> Option<Candidate> {
-    for open in (1..tokens.len()).rev() {
-        let call = tokens[open].is("(")
-            && (tokens[open - 1].kind == TokenKind::Identifier
-                || matches!(tokens[open - 1].text.as_str(), ")" | "]")
-                || open >= 2 && tokens[open - 2].is("."));
-        let array = tokens[open].is("[")
-            && matches!(
-                tokens[open - 1].text.as_str(),
-                "=" | "(" | "[" | "," | ":" | "return" | "=>"
-            );
-        if !(call || array)
-            || call && open >= 2 && matches!(tokens[open - 2].text.as_str(), "function" | "*")
-        {
+    (1..tokens.len())
+        .rev()
+        .find_map(|open| candidate_at(tokens, open))
+}
+
+/// A lowered construction uses the established complete class helper ABI.
+/// Share the exact spread operand analysis with the lowering pass.
+pub(super) fn has_constructor_spread(tokens: &[Token]) -> bool {
+    (1..tokens.len()).any(|open| {
+        candidate_at(tokens, open).is_some_and(|(_, _, _, call)| {
+            call && exponentiation::operand_start(tokens, open)
+                .is_some_and(|start| tokens[start].is("new"))
+        })
+    })
+}
+
+fn candidate_at(tokens: &[Token], open: usize) -> Option<Candidate> {
+    let call = tokens[open].is("(")
+        && (tokens[open - 1].kind == TokenKind::Identifier
+            || matches!(tokens[open - 1].text.as_str(), ")" | "]")
+            || open >= 2 && tokens[open - 2].is("."));
+    let array = tokens[open].is("[")
+        && matches!(
+            tokens[open - 1].text.as_str(),
+            "=" | "(" | "[" | "," | ":" | "return" | "=>"
+        );
+    if !(call || array)
+        || call && open >= 2 && matches!(tokens[open - 2].text.as_str(), "function" | "*")
+    {
+        return None;
+    }
+    let close = exponentiation::matching_close(tokens, open)?;
+    let mut parts = Vec::new();
+    let mut start = open + 1;
+    let mut index = start;
+    while index < close {
+        if matches!(tokens[index].text.as_str(), "(" | "[" | "{") {
+            index = exponentiation::matching_close(tokens, index)? + 1;
             continue;
         }
-        let close = exponentiation::matching_close(tokens, open)?;
-        let mut parts = Vec::new();
-        let mut start = open + 1;
-        let mut index = start;
-        while index < close {
-            if matches!(tokens[index].text.as_str(), "(" | "[" | "{") {
-                index = exponentiation::matching_close(tokens, index)? + 1;
+        if tokens[index].is(",") {
+            parts.push((start, index));
+            start = index + 1;
+        }
+        index += 1;
+    }
+    if start < close {
+        parts.push((start, close));
+    }
+    if !parts
+        .iter()
+        .any(|&(first, end)| first < end && tokens[first].is("..."))
+    {
+        return None;
+    }
+    let mut groups: Vec<(usize, usize, bool)> = Vec::new();
+    for (first, end) in parts {
+        let spread = first < end && tokens[first].is("...");
+        if !spread {
+            if let Some(previous) = groups.last_mut().filter(|group| !group.2) {
+                previous.1 = end;
                 continue;
             }
-            if tokens[index].is(",") {
-                parts.push((start, index));
-                start = index + 1;
-            }
-            index += 1;
         }
-        if start < close {
-            parts.push((start, close));
-        }
-        if !parts
-            .iter()
-            .any(|&(first, end)| first < end && tokens[first].is("..."))
-        {
-            continue;
-        }
-        let mut groups: Vec<(usize, usize, bool)> = Vec::new();
-        for (first, end) in parts {
-            let spread = first < end && tokens[first].is("...");
-            if !spread {
-                if let Some(previous) = groups.last_mut().filter(|group| !group.2) {
-                    previous.1 = end;
-                    continue;
-                }
-            }
-            groups.push((first, end, spread));
-        }
-        return Some((open, close, groups, call));
+        groups.push((first, end, spread));
     }
-    None
+    Some((open, close, groups, call))
 }

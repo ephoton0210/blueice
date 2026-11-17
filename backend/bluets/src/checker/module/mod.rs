@@ -18,6 +18,7 @@ enum RecordSpreadFailure {
 /// Per-project checking policy shared by every module checker.
 #[derive(Clone)]
 pub(crate) struct CheckerPolicy {
+    pub(crate) no_emit: bool,
     pub(crate) verbatim_module_syntax: bool,
     pub(crate) checking: Option<crate::CheckingOptions>,
     pub(crate) target: crate::compiler::EcmaTarget,
@@ -46,6 +47,7 @@ pub(crate) struct CheckerPolicy {
 }
 
 pub(super) struct ModuleChecker<'a> {
+    no_emit: bool,
     verbatim_module_syntax: bool,
     runtime_imports: Option<BTreeSet<String>>,
     checking: crate::CheckingOptions,

@@ -10,6 +10,8 @@
 use super::visibility::member_field_name;
 use super::*;
 use crate::parser::ClassAccessor;
+#[path = "accessors/legacy_decorators.rs"]
+mod legacy_decorators;
 
 /// The accessors sharing one name and placement.
 struct AccessorGroup<'a> {
@@ -108,6 +110,10 @@ impl ModuleChecker<'_> {
         &mut self,
         class: &ClassDeclaration,
     ) {
+        if self.experimental_decorators {
+            self.diagnostics
+                .extend(legacy_decorators::validate(class, &self.module.source));
+        }
         let mut placed: Vec<(bool, String, bool)> = Vec::new();
         for accessor in class
             .members

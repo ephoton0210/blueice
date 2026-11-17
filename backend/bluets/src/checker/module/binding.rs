@@ -66,6 +66,7 @@ impl<'a> ModuleChecker<'a> {
                 .no_implicit_any = false;
         }
         Self {
+            no_emit: policy.no_emit,
             verbatim_module_syntax: policy.verbatim_module_syntax,
             runtime_imports: None,
             checking: policy
@@ -142,6 +143,7 @@ impl<'a> ModuleChecker<'a> {
 
     pub(crate) fn bind(&mut self) {
         self.bind_declarations();
+        self.bind_owned_ambient_namespaces();
         self.bind_ambient_declarations();
         self.bind_import_types();
         self.bind_standard_library();
@@ -308,6 +310,34 @@ impl<'a> ModuleChecker<'a> {
         }
     }
 
+    fn bind_owned_ambient_namespaces(&mut self) {
+        if !self
+            .project
+            .ambient_declaration_modules
+            .contains(&self.module.id)
+        {
+            return;
+        }
+        // Injected providers are checked without a consumer's ambient table.
+        // Bind their own global namespace bodies here so metadata belongs to
+        // the declaring source, rather than being copied into each consumer.
+        for body in crate::checker::global_declarations::bodies(self.project) {
+            for declaration in body {
+                let Declaration::Namespace(namespace) = declaration else {
+                    continue;
+                };
+                if namespace.span.module != self.module.id
+                    || self.module.declarations.iter().any(|declaration| {
+                        matches!(declaration, Declaration::Namespace(local) if local.span == namespace.span)
+                    })
+                {
+                    continue;
+                }
+                self.bind_namespace(namespace);
+            }
+        }
+    }
+
     fn bind_ambient_declarations(&mut self) {
         let Some(ambient) = self.ambient else {
             return;
@@ -331,11 +361,29 @@ impl<'a> ModuleChecker<'a> {
             }
         }
         for (name, signatures) in &ambient.functions {
-            if !local_values.contains(name) && !local_functions.contains(name) {
+            let shared_overloads = self.namespace_path.is_empty()
+                && !self.project.is_external_module(self.module)
+                && ambient
+                    .function_groups
+                    .get(name)
+                    .is_some_and(|group| group.has_overloads);
+            if shared_overloads || (!local_values.contains(name) && !local_functions.contains(name))
+            {
                 self.functions.insert(name.clone(), signatures.clone());
             }
         }
+        for (name, class) in &ambient.classes {
+            if !local_types.contains(name) && !local_values.contains(name) {
+                self.class_constructors
+                    .insert(name.clone(), class.constructor_binding.clone());
+            }
+        }
         for namespace in &ambient.type_namespaces {
+            if self.module.declarations.iter().any(|declaration| {
+                matches!(declaration,Declaration::Namespace(local) if local.span == namespace.span)
+            }) {
+                continue;
+            }
             if self.project.is_external_module(self.module)
                 && local_namespaces.contains(&namespace.name)
             {
@@ -367,11 +415,21 @@ impl<'a> ModuleChecker<'a> {
                             && !function.overload
                             && !function.declared =>
                     {
-                        Some(function)
+                        Some(global_declarations::implementation(function))
                     }
                     _ => None,
                 })
                 .collect::<Vec<_>>();
+            let implementations = if self.namespace_path.is_empty()
+                && !self.project.is_external_module(self.module)
+            {
+                self.ambient
+                    .and_then(|ambient| ambient.function_groups.get(&overload.name))
+                    .map(|group| group.implementations.clone())
+                    .unwrap_or(implementations)
+            } else {
+                implementations
+            };
             let Some(implementation) = implementations.first() else {
                 if !is_declaration_module(&self.module.id) {
                     self.type_error(
@@ -387,7 +445,7 @@ impl<'a> ModuleChecker<'a> {
             };
             match overload_is_compatible_with_implementation(
                 overload,
-                implementation,
+                &implementation.signature,
                 &self.types,
                 self.max_type_expansions,
             ) {

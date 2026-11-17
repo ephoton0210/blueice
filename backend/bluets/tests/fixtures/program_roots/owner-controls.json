@@ -1,0 +1,363 @@
+{
+  "scope": "Separately authored BlueTS ownership controls, zero Native inventory credit. Native calibrates semantic verdict/diagnostics/artifacts only; retirement, tamper, refusal and state identity are separate policy requirements.",
+  "options": {
+    "lib": [
+      "ES5"
+    ],
+    "strict": true,
+    "declaration": true,
+    "noEmitOnError": true,
+    "rootDir": ".",
+    "outDir": "dist"
+  },
+  "profiles": [
+    {
+      "id": "es5-cjs",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "sourceMap": true,
+        "declarationMap": true
+      }
+    },
+    {
+      "id": "es5-esm",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "ESNext",
+        "sourceMap": true,
+        "declarationMap": true
+      }
+    },
+    {
+      "id": "es2022-cjs",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "sourceMap": true,
+        "declarationMap": true
+      }
+    },
+    {
+      "id": "es2022-esm",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "sourceMap": true,
+        "declarationMap": true
+      }
+    }
+  ],
+  "cliModes": [
+    "legacy",
+    "native",
+    "incremental"
+  ],
+  "states": [
+    {
+      "id": "cold",
+      "files": {
+        "main.ts": "export const value: number = 1;\n",
+        "removed.ts": "export const extra: number = 2;\n"
+      },
+      "roots": [
+        "main.ts",
+        "removed.ts"
+      ],
+      "authoredAccepts": true,
+      "clean": false,
+      "expectedCurrentArtifacts": [
+        "main.js",
+        "main.js.map",
+        "main.d.ts",
+        "main.d.ts.map",
+        "removed.js",
+        "removed.js.map",
+        "removed.d.ts",
+        "removed.d.ts.map"
+      ],
+      "publicationPolicy": "Publish only this current root program, retire prior exact owned outputs for removed roots, preserve all unrelated files."
+    },
+    {
+      "id": "warm",
+      "files": {
+        "main.ts": "export const value: number = 1;\n",
+        "removed.ts": "export const extra: number = 2;\n"
+      },
+      "roots": [
+        "main.ts",
+        "removed.ts"
+      ],
+      "authoredAccepts": true,
+      "clean": false,
+      "expectedCurrentArtifacts": [
+        "main.js",
+        "main.js.map",
+        "main.d.ts",
+        "main.d.ts.map",
+        "removed.js",
+        "removed.js.map",
+        "removed.d.ts",
+        "removed.d.ts.map"
+      ],
+      "publicationPolicy": "Publish only this current root program, retire prior exact owned outputs for removed roots, preserve all unrelated files."
+    },
+    {
+      "id": "remove-root",
+      "files": {
+        "main.ts": "export const value: number = 1;\n",
+        "removed.ts": "export const extra: number = 2;\n"
+      },
+      "roots": [
+        "main.ts"
+      ],
+      "authoredAccepts": true,
+      "clean": false,
+      "expectedCurrentArtifacts": [
+        "main.js",
+        "main.js.map",
+        "main.d.ts",
+        "main.d.ts.map"
+      ],
+      "publicationPolicy": "Publish only this current root program, retire prior exact owned outputs for removed roots, preserve all unrelated files."
+    },
+    {
+      "id": "warm-removed",
+      "files": {
+        "main.ts": "export const value: number = 1;\n",
+        "removed.ts": "export const extra: number = 2;\n"
+      },
+      "roots": [
+        "main.ts"
+      ],
+      "authoredAccepts": true,
+      "clean": false,
+      "expectedCurrentArtifacts": [
+        "main.js",
+        "main.js.map",
+        "main.d.ts",
+        "main.d.ts.map"
+      ],
+      "publicationPolicy": "Publish only this current root program, retire prior exact owned outputs for removed roots, preserve all unrelated files."
+    },
+    {
+      "id": "restore-root",
+      "files": {
+        "main.ts": "export const value: number = 1;\n",
+        "removed.ts": "export const extra: number = 2;\n"
+      },
+      "roots": [
+        "main.ts",
+        "removed.ts"
+      ],
+      "authoredAccepts": true,
+      "clean": false,
+      "expectedCurrentArtifacts": [
+        "main.js",
+        "main.js.map",
+        "main.d.ts",
+        "main.d.ts.map",
+        "removed.js",
+        "removed.js.map",
+        "removed.d.ts",
+        "removed.d.ts.map"
+      ],
+      "publicationPolicy": "Publish only this current root program, retire prior exact owned outputs for removed roots, preserve all unrelated files."
+    },
+    {
+      "id": "reorder",
+      "files": {
+        "main.ts": "export const value: number = 1;\n",
+        "removed.ts": "export const extra: number = 2;\n"
+      },
+      "roots": [
+        "removed.ts",
+        "main.ts"
+      ],
+      "authoredAccepts": true,
+      "clean": false,
+      "expectedCurrentArtifacts": [
+        "main.js",
+        "main.js.map",
+        "main.d.ts",
+        "main.d.ts.map",
+        "removed.js",
+        "removed.js.map",
+        "removed.d.ts",
+        "removed.d.ts.map"
+      ],
+      "publicationPolicy": "Publish only this current root program, retire prior exact owned outputs for removed roots, preserve all unrelated files."
+    },
+    {
+      "id": "rejected",
+      "files": {
+        "main.ts": "export const value: number = 'wrong';\n",
+        "removed.ts": "export const extra: number = 2;\n"
+      },
+      "roots": [
+        "removed.ts",
+        "main.ts"
+      ],
+      "authoredAccepts": false,
+      "clean": false,
+      "expectedCurrentArtifacts": null,
+      "publicationPolicy": "On compiler rejection preserve the complete last successful owned generation and create no new artifacts."
+    },
+    {
+      "id": "restored",
+      "files": {
+        "main.ts": "export const value: number = 1;\n",
+        "removed.ts": "export const extra: number = 2;\n"
+      },
+      "roots": [
+        "main.ts",
+        "removed.ts"
+      ],
+      "authoredAccepts": true,
+      "clean": false,
+      "expectedCurrentArtifacts": [
+        "main.js",
+        "main.js.map",
+        "main.d.ts",
+        "main.d.ts.map",
+        "removed.js",
+        "removed.js.map",
+        "removed.d.ts",
+        "removed.d.ts.map"
+      ],
+      "publicationPolicy": "Publish only this current root program, retire prior exact owned outputs for removed roots, preserve all unrelated files."
+    },
+    {
+      "id": "clean",
+      "files": {
+        "main.ts": "export const value: number = 1;\n",
+        "removed.ts": "export const extra: number = 2;\n"
+      },
+      "roots": [
+        "main.ts",
+        "removed.ts"
+      ],
+      "authoredAccepts": true,
+      "clean": true,
+      "expectedCurrentArtifacts": [
+        "main.js",
+        "main.js.map",
+        "main.d.ts",
+        "main.d.ts.map",
+        "removed.js",
+        "removed.js.map",
+        "removed.d.ts",
+        "removed.d.ts.map"
+      ],
+      "publicationPolicy": "Publish only this current root program, retire prior exact owned outputs for removed roots, preserve all unrelated files."
+    }
+  ],
+  "sentinels": {
+    "dist/user-owned.js": "// user-owned sentinel; never generated by the compiler\n"
+  },
+  "ownerPolicyControls": [
+    {
+      "id": "retire-only-exact-prior-ownership",
+      "mutation": {
+        "afterState": "warm",
+        "beforeState": "remove-root"
+      },
+      "expected": "All four removed-root outputs disappear; active files and unrelated sentinel remain byte-valid."
+    },
+    {
+      "id": "tampered-retirement-refuses-before-publish",
+      "mutation": {
+        "afterState": "warm",
+        "beforeState": "remove-root",
+        "replace": "dist/removed.js",
+        "text": "// externally replaced sentinel\n"
+      },
+      "expected": "Refuse publication before mutating any existing output; all prior bytes including the replacement remain unchanged."
+    },
+    {
+      "id": "symlink-retirement-refuses-before-publish",
+      "mutation": {
+        "afterState": "warm",
+        "beforeState": "remove-root",
+        "symlink": "dist/removed.js",
+        "target": "outside-sentinel.js",
+        "outsideText": "// outside sentinel\n"
+      },
+      "expected": "Refuse publication; never follow or remove the link or change outside/prior output bytes."
+    },
+    {
+      "id": "failed-generation-keeps-prior-owned-output",
+      "state": "rejected",
+      "expected": "No new artifact or successful state receipt; last successful physical inventory and bytes remain intact."
+    },
+    {
+      "id": "ordered-roots-bind-persistent-identity",
+      "states": [
+        "restore-root",
+        "reorder"
+      ],
+      "expected": "Same module membership and sources, distinct current-program fingerprints; no cache hit reported for the old ordered program."
+    },
+    {
+      "id": "clean-rebuild-matches-current-program",
+      "states": [
+        "restored",
+        "clean"
+      ],
+      "expected": "Fresh isolated project build equals current generated artifact bytes; unrelated sentinel retained only in the original owner directory."
+    },
+    {
+      "id": "bounded-root-preflight",
+      "rootSelections": [
+        [],
+        [
+          ""
+        ],
+        [
+          "program:///bad\u0000.ts"
+        ],
+        [
+          "program:///main.ts",
+          "program:///main.ts"
+        ]
+      ],
+      "expected": "Reject all selections before any loader or resolver call; no artifacts."
+    },
+    {
+      "id": "root-count-preflight",
+      "limits": {
+        "max_modules": 1
+      },
+      "roots": [
+        "program:///a.ts",
+        "program:///b.ts"
+      ],
+      "expected": "ResourceLimit before any loader or resolver call; no artifacts."
+    },
+    {
+      "id": "core-roots-closed-immutable",
+      "test": "backend/core/engine/tests/compiler_program_roots.rs",
+      "expected": "Unauthorized roots consume no project ID; owner mutations after registration cannot affect checks, builds, metadata or work sets."
+    },
+    {
+      "id": "physical-bootstrap-canonical-root",
+      "test": "backend/ipc/tests/compiler_catalog_program_roots.rs",
+      "expected": "Canonical selected physical roots pass; selected symlink aliases reject before listener binding or output access."
+    },
+    {
+      "id": "remote-query-authority-injection",
+      "tests": [
+        "backend/ipc/tests/compiler_program_roots_authority.rs",
+        "backend/mcp-server/tests/core_process/compiler_round_trip.rs"
+      ],
+      "expected": "Extra root/source/resolver/option/output fields reject; opaque handles cannot acquire authority; valid following frames remain readable; malformed MCP checks do not advance the core generation."
+    },
+    {
+      "id": "compilation-does-not-execute-global-calls",
+      "source": "declare function acquireAuthority(): never; acquireAuthority();",
+      "expected": "Static compilation succeeds with the call present in output and acquires no executable binding."
+    }
+  ],
+  "priorAuthoredInputSha256": "e0f3b9d49cbe4023796b77f109dea65ded16ead82e74e605869e9cc8cae32fb3",
+  "extension": "Adds the native --project publication surface; producer sources, roots, profile options and all 36 calibrated Native expectations are unchanged."
+}

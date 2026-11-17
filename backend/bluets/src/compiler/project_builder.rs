@@ -62,6 +62,16 @@ impl<'a> ProjectBuilder<'a> {
     }
 
     pub(super) fn visit(&mut self, module_id: &str, depth: usize) {
+        let depth = if self
+            .project
+            .program_roots
+            .iter()
+            .any(|root| root == module_id)
+        {
+            0
+        } else {
+            depth
+        };
         if self.project.entry.is_empty() {
             self.project.entry = module_id.to_string();
         }

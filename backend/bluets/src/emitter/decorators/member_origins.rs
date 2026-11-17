@@ -58,6 +58,15 @@ pub(in crate::emitter) fn retained_legacy_completion(
     class: &ClassDeclaration,
     options: &CompilerOptions,
 ) -> String {
+    if options.module_kind == crate::ModuleKind::CommonJs
+        && class.exported
+        && options.target >= crate::EcmaTarget::Es2015
+    {
+        // The preceding publication already ends at the original class end.
+        // Do not erase it by resetting the first generated separator. System
+        // publications remain unmapped: inheritance never grants a new owner.
+        return super::super::relocations::inherited().into();
+    }
     if options.module_kind != crate::ModuleKind::Esm
         || options.target < crate::EcmaTarget::Es2015
         || class.members.iter().any(|member| {

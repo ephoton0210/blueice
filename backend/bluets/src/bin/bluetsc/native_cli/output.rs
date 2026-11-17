@@ -5,7 +5,7 @@
 //! Native emission replaces individual artifacts and preserves project inputs.
 
 use super::*;
-use std::io::Write;
+use crate::publication_ownership::{self, OwnedOutputs};
 
 pub(super) struct Published {
     pub(super) paths: Vec<PathBuf>,
@@ -18,6 +18,7 @@ pub(super) fn publish(
     summary: &CompileSummary,
     loader: &FileLoader,
     source_files: &[PathBuf],
+    retirement: publication_ownership::RetirementPolicy,
 ) -> io::Result<Published> {
     let metadata = build_metadata(invocation, summary, package_manifest(invocation, loader));
     let project = invocation.project_config.as_ref().expect("native project");
@@ -119,7 +120,13 @@ pub(super) fn publish(
                     blueice_bluets::NewLine::Lf => "\n",
                     blueice_bluets::NewLine::CrLf => "\r\n",
                 };
-                javascript.push_str(&format!("{newline}//# sourceMappingURL={url}{newline}"));
+                if invocation.options.javascript_layout
+                    == blueice_bluets::JavaScriptLayout::TypeScript
+                {
+                    javascript.push_str(&format!("//# sourceMappingURL={url}"));
+                } else {
+                    javascript.push_str(&format!("{newline}//# sourceMappingURL={url}{newline}"));
+                }
                 if !invocation.inline_source_map {
                     insert(
                         &mut writes,
@@ -183,11 +190,39 @@ pub(super) fn publish(
         }
     }
     let paths = writes.keys().cloned().collect();
-    if !writes.is_empty() {
-        retire_legacy_manifest(invocation, source_files, &metadata)?;
+    let receipt = publication_ownership::PrivateState::new(&invocation.root, &project.config_path)?;
+    let mut previous = receipt.read()?;
+    // Migrate the earlier project-local receipt in the same public file plan.
+    // Its bytes must still prove ownership before it can be retired.
+    let legacy_receipt = project.config_path.with_extension("bluetsc.outputs.json");
+    authorize(&legacy_receipt, &invocation.root)?;
+    if fs::symlink_metadata(&legacy_receipt).is_ok() {
+        let legacy = OwnedOutputs::read(&invocation.root, &legacy_receipt)?;
+        previous.extend_rebased(&legacy, &invocation.root, &invocation.root)?;
+        previous.insert_existing(&invocation.root, &legacy_receipt)?;
     }
-    for (path, contents) in writes {
-        atomic_write(&path, &contents, &invocation.root)?;
+    if let Some(manifest) = legacy_manifest_to_retire(invocation, source_files, &metadata)? {
+        let out = manifest.parent().expect("legacy manifest parent");
+        previous.extend_rebased(&OwnedOutputs::legacy(out)?, out, &invocation.root)?;
+        previous.insert_existing(&invocation.root, &manifest)?;
+    }
+    let owned = OwnedOutputs::from_writes(&invocation.root, &writes)?;
+    let retired = previous.retired_with_policy(&invocation.root, &owned, retirement)?;
+    for path in &retired {
+        let canonical = fs::canonicalize(path).ok();
+        if source_files
+            .iter()
+            .chain(project.config_inputs.iter())
+            .chain(project.files.iter())
+            .any(|input| input == path || canonical.as_ref() == Some(input))
+        {
+            return Err(io::Error::other(
+                "output retirement would replace a project input",
+            ));
+        }
+    }
+    if !writes.is_empty() || !retired.is_empty() || receipt.exists() {
+        publication_ownership::publish(&invocation.root, writes, retired, &receipt, &owned)?;
     }
     Ok(Published {
         paths,
@@ -196,18 +231,18 @@ pub(super) fn publish(
     })
 }
 
-fn retire_legacy_manifest(
+fn legacy_manifest_to_retire(
     invocation: &Invocation,
     source_files: &[PathBuf],
     metadata: &BuildMetadata,
-) -> io::Result<()> {
+) -> io::Result<Option<PathBuf>> {
     let Some(out) = &invocation.out_dir else {
-        return Ok(());
+        return Ok(None);
     };
     let path = out.join("bluetsc.manifest.json");
     let information = match fs::symlink_metadata(&path) {
         Ok(information) => information,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error),
     };
     if information.file_type().is_symlink() {
@@ -216,16 +251,16 @@ fn retire_legacy_manifest(
         ));
     }
     if !information.is_file() || information.len() > 8 * 1024 * 1024 {
-        return Ok(());
+        return Ok(None);
     }
     authorize(&path, &invocation.root)?;
     let contents = match fs::read(&path) {
         Ok(contents) => contents,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error),
     };
     let Ok(value) = serde_json::from_slice::<serde_json::Value>(&contents) else {
-        return Ok(());
+        return Ok(None);
     };
     let owned = value["languageVersion"] == metadata.language_version
         && value["classHelperVersion"] == metadata.class_helper_version
@@ -238,7 +273,7 @@ fn retire_legacy_manifest(
                 })
         });
     if !owned {
-        return Ok(());
+        return Ok(None);
     }
     let project = invocation.project_config.as_ref().expect("native project");
     let canonical = fs::canonicalize(&path)?;
@@ -250,11 +285,7 @@ fn retire_legacy_manifest(
     {
         return Err(io::Error::other("publication metadata is a project input"));
     }
-    match fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error),
-    }
+    Ok(Some(path))
 }
 fn insert(
     writes: &mut BTreeMap<PathBuf, Vec<u8>>,
@@ -293,31 +324,6 @@ fn authorize(path: &Path, root: &Path) -> io::Result<()> {
         }
     }
 }
-fn atomic_write(path: &Path, contents: &[u8], root: &Path) -> io::Result<()> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| io::Error::other("output has no parent"))?;
-    fs::create_dir_all(parent)?;
-    authorize(path, root)?;
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let stage = parent.join(format!(".bluetsc-write-{}-{nonce}", std::process::id()));
-    let result = (|| {
-        let mut file = fs::OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&stage)?;
-        file.write_all(contents)?;
-        fs::rename(&stage, path)
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(stage);
-    }
-    result
-}
-
 fn declaration_map_path(declaration: &Path) -> PathBuf {
     let mut path = declaration.as_os_str().to_os_string();
     path.push(".map");

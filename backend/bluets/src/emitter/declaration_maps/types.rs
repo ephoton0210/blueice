@@ -15,7 +15,10 @@ impl Mapper<'_> {
         for (index, token) in g.iter().enumerate() {
             // A function type's parameter-list close is not a separate
             // declaration-map node; its parameters and result carry owners.
-            if token.is(")") && g.get(index + 1).is_some_and(|next| next.is("=>")) {
+            if token.is(")")
+                && g.get(index + 1)
+                    .is_some_and(|next| next.is("=>") || next.is(":"))
+            {
                 continue;
             }
             if token.is(";") {

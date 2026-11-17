@@ -12,6 +12,8 @@ mod modules;
 pub(super) use modules::{seed_module_types, seed_module_values};
 mod augmentations;
 pub(super) use augmentations::merge_module_types;
+mod classes;
+mod variables;
 
 pub(super) fn insert_body(
     project: &Project,
@@ -64,7 +66,10 @@ pub(super) fn insert_body(
         .collect::<Vec<_>>();
     for (declaration, definition) in declarations.iter().zip(definitions) {
         match declaration {
-            Declaration::Namespace(namespace) if namespace_is_type_only(&namespace.body) => {
+            Declaration::Class(class) => {
+                classes::insert_class(project, ambient, diagnostics, class)
+            }
+            Declaration::Namespace(namespace) => {
                 ambient.type_namespaces.push(namespace.clone());
             }
             Declaration::TypeAlias(alias) => insert_ambient_type(
@@ -91,13 +96,13 @@ pub(super) fn insert_body(
                 },
                 &interface.span,
             ),
-            Declaration::Variable(variable) if variable.declared => {
-                insert_ambient_value(
+            Declaration::Variable(variable) => {
+                variables::insert_variable(
+                    project,
                     ambient,
                     diagnostics,
-                    &variable.name,
+                    variable,
                     definition.expect("variables have a contextual annotation"),
-                    &variable.span,
                 );
                 if variable.kind == crate::parser::VariableKind::Const {
                     ambient
@@ -105,7 +110,7 @@ pub(super) fn insert_body(
                         .insert(variable.name.clone(), scopes::BindingKind::Const);
                 }
             }
-            Declaration::Function(function) if function.declared || function.overload => {
+            Declaration::Function(function) => {
                 insert_ambient_function(ambient, diagnostics, function);
                 ambient
                     .binding_kinds
@@ -122,10 +127,6 @@ pub(crate) fn namespace_is_type_only(declarations: &[Declaration]) -> bool {
         Declaration::Namespace(namespace) => namespace_is_type_only(&namespace.body),
         _ => false,
     })
-}
-
-pub(super) fn has_module_syntax(declarations: &[Declaration]) -> bool {
-    crate::parser::has_module_syntax(declarations)
 }
 
 pub(super) fn collect_augmentations(

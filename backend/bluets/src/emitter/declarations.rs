@@ -12,6 +12,7 @@ pub(super) fn emit_declaration(
     inferred: Option<&inferred_declarations::Context<'_>>,
     options: &CompilerOptions,
 ) -> Result<String, Diagnostic> {
+    let script = inferred.is_some_and(|context| context.is_global_script());
     let header = output_options::declaration_header(module);
     let mut output = if options.remove_comments {
         output_options::detached_header(module)
@@ -63,7 +64,8 @@ pub(super) fn emit_declaration(
                 }
             }
             Declaration::TypeAlias(alias)
-                if alias.exported
+                if script
+                    || alias.exported
                     || inferred
                         .and_then(|context| context.private_alias(&alias.name))
                         .is_some() =>
@@ -94,7 +96,8 @@ pub(super) fn emit_declaration(
                 output.push_str(";\n");
             }
             Declaration::Interface(interface)
-                if interface.exported
+                if script
+                    || interface.exported
                     || inferred.is_some_and(|context| context.retained(&interface.name)) =>
             {
                 private_alias |=
@@ -134,10 +137,12 @@ pub(super) fn emit_declaration(
                 output.push('\n');
             }
             Declaration::Variable(variable)
-                if (!variable.declared
+                if (script
+                    || !variable.declared
                     || variable.exported
                     || inferred.is_some_and(|context| context.retained(&variable.name)))
-                    && (variable.exported
+                    && (script
+                        || variable.exported
                         || is_default_export_name(module, &variable.name)
                         || is_value_export_name(module, &variable.name)
                         || computed_key_dependencies.contains(&variable.name)
@@ -209,7 +214,10 @@ pub(super) fn emit_declaration(
                 output.push_str(";\n");
             }
             Declaration::Function(function)
-                if (function.exported
+                if !inferred.is_some_and(|context| {
+                    context.hides_global_implementation(function.span.start)
+                }) && (script
+                    || function.exported
                     || inferred.is_some_and(|context| context.retained(&function.name))
                     || is_default_export_name(module, &function.name)
                     || is_value_export_name(module, &function.name))
@@ -291,7 +299,9 @@ pub(super) fn emit_declaration(
                 output.push_str(";\n");
             }
             Declaration::Enum(declaration)
-                if declaration.exported || is_value_export_name(module, &declaration.name) =>
+                if script
+                    || declaration.exported
+                    || is_value_export_name(module, &declaration.name) =>
             {
                 let evaluation = enum_evaluations
                     .get(enum_index)
@@ -304,7 +314,9 @@ pub(super) fn emit_declaration(
                 ));
             }
             Declaration::Namespace(namespace)
-                if namespace.exported || is_value_export_name(module, &namespace.name) =>
+                if script
+                    || namespace.exported
+                    || is_value_export_name(module, &namespace.name) =>
             {
                 let prefix = if namespace.exported {
                     "export declare "
@@ -316,7 +328,8 @@ pub(super) fn emit_declaration(
                 )?);
             }
             Declaration::Class(class)
-                if class.exported
+                if script
+                    || class.exported
                     || is_default_export_name(module, &class.name)
                     || is_value_export_name(module, &class.name)
                     || computed_key_dependencies.contains(&class.name)
@@ -437,7 +450,7 @@ pub(super) fn emit_declaration(
             );
         }
     }
-    if private_alias
+    if !script && private_alias
         || (output.is_empty()
             && module.declarations.iter().any(|declaration| {
                 matches!(

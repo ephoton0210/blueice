@@ -8,6 +8,14 @@ const { stream } = require('./ge5_role_stream.cjs');
 const { mutate } = require('./ge5_role_mutations.cjs');
 const { compare } = require('./ge5_linear_roles.cjs');
 const options = { delegation: true, exceptions: 'delegate-finally' };
+function actionKind(ts, statement, wanted) {
+  if (!ts.isReturnStatement(statement) || !statement.expression
+    || !ts.isObjectLiteralExpression(statement.expression)
+    || statement.expression.properties.length !== 1) return false;
+  const property = statement.expression.properties[0];
+  return ts.isPropertyAssignment(property) && property.name.getText() === 'kind'
+    && ts.isStringLiteral(property.initializer) && property.initializer.text === wanted;
+}
 function run(ts, native, actual, originals, proof) {
   assert.deepEqual(Object.keys(proof.functions), ['child', 'sequence']);
   const controls = [], start = node => node.getStart(actual.source);
@@ -63,7 +71,7 @@ function run(ts, native, actual, originals, proof) {
     for (const [state, statements] of trace.machine.states) if (!trace.visited.has(state)) {
       mapMutation(name + ' grant dead state ' + state + ' source', start(statements[0]), true);
     }
-    const finish = [...trace.machine.states.values()].flat().find(statement => statement.getText() === 'return {kind:"finish"};');
+    const finish = [...trace.machine.states.values()].flat().find(statement => actionKind(ts, statement, 'finish'));
     assert(finish);
     codeMutation(name + ' replace finalizer finish with leave', finish.expression.properties[0].initializer, '"leave"');
     const extra = stream(ts, actual.code.slice(0, region.statement.end) + '0;' + actual.code.slice(region.statement.end), actual.raw);

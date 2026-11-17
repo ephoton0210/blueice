@@ -15,6 +15,7 @@ mod mutations;
 pub(crate) const HELPER_SOURCE: &str = include_str!("system_helpers.v1.js");
 
 pub(super) fn validate(module: &Module, options: &CompilerOptions) -> Result<(), Diagnostic> {
+    validate_semantics(module)?;
     for declaration in &module.declarations {
         if let Declaration::Variable(variable) = declaration {
             if module.is_external_module()
@@ -39,6 +40,12 @@ pub(super) fn validate(module: &Module, options: &CompilerOptions) -> Result<(),
                 ));
             }
         }
+    }
+    Ok(())
+}
+
+pub(super) fn validate_semantics(module: &Module) -> Result<(), Diagnostic> {
+    for declaration in &module.declarations {
         if let Declaration::ValueExport(export) = declaration {
             if export.export_assignment {
                 return Err(Diagnostic::error(

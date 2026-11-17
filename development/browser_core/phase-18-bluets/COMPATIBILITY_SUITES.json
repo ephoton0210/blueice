@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "typescript": "5.9.3",
-  "source_revision": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
-  "source_graph_sha256": "519e50a7b4cb3aa4e04325faa5893c6d8ba5891939866ee2f8e51095c2a74767",
+  "source_revision": "backend-tree:37beae676a55482728b6aa8682240bd9588e7fdc",
+  "source_graph_sha256": "9dd266a077ac1c7d6bafcfaad68428d257cd59a5b3cd930e7216611ea9a62892",
   "fixture_directories": 3392,
   "diagnostic_programs": 3182,
   "diagnostic_templates": 221,
@@ -453,7 +453,7 @@
         "backend/bluets/tests/fixtures/diagnostics/diagnostics-checker-matrix.tsv": "d2cd8fe99130e49e85cf2112c86f58f0d936513c",
         "backend/bluets/tests/fixtures/diagnostics/no-typescript-counterpart.json": "45b12d4b77017292f74bf55f056ea7539fc6defc",
         "backend/bluets/tests/fixtures/diagnostics/reference.json": "0ca742b45ade9b379a9d35148b2cb3a57898ef53",
-        "backend/bluets/tests/oracle_support/diagnostic_import_paths.rs": "dc119600a1cbe0deff246bbfe311aec1309a315d"
+        "backend/bluets/tests/oracle_support/diagnostic_import_paths.rs": "5cd6c4f6fa54e007d4a4748bc8154d89497ea5da"
       }
     },
     {
@@ -1830,7 +1830,7 @@
         "backend/bluets/tests/fixtures/typescript_oracle/module-exports-checker-matrix.tsv": "443acd28dd78653a3362c43629b725878b7f344a",
         "backend/bluets/tests/fixtures/typescript_oracle/module-exports-reference.json": "4366d594aee2ba18283e727d4405a3d12ed90ced",
         "backend/bluets/tests/module_exports_checker_matrix.rs": "c9c289cd0479dbc5b45e2f9114874edd8012320c",
-        "backend/bluets/tests/oracle_support/diagnostic_import_paths.rs": "dc119600a1cbe0deff246bbfe311aec1309a315d"
+        "backend/bluets/tests/oracle_support/diagnostic_import_paths.rs": "5cd6c4f6fa54e007d4a4748bc8154d89497ea5da"
       }
     },
     {

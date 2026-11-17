@@ -66,12 +66,22 @@ impl CompilerServiceIpcAdapter {
         registration: RegisteredProjectRegistration,
         exposed: bool,
     ) -> Result<CompilerProject, CompilerServiceError> {
+        let roots = vec![registration.entry_module.clone()];
+        self.register_core_program_with_visibility(registration, roots, exposed)
+    }
+
+    pub(super) fn register_core_program_with_visibility(
+        &mut self,
+        registration: RegisteredProjectRegistration,
+        roots: Vec<String>,
+        exposed: bool,
+    ) -> Result<CompilerProject, CompilerServiceError> {
         if self.service.registered_project_ids().count() >= COMPILER_MAX_PROJECT_INVENTORY {
             return Err(CompilerServiceError::ProjectLimit {
                 limit: COMPILER_MAX_PROJECT_INVENTORY,
             });
         }
-        let project = project_to_wire(self.service.register(registration)?);
+        let project = project_to_wire(self.service.register_program(registration, roots)?);
         if exposed {
             self.registered_projects.insert(project.id);
         }

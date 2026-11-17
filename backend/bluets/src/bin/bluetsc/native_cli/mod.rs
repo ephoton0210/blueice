@@ -11,13 +11,30 @@ mod args;
 mod declaration_diagnostics;
 mod explanations;
 mod output;
+mod program;
+use program::compile_project;
 pub(crate) mod presentation;
 mod source_maps;
 mod statistics;
 use args::Args;
 
+#[derive(Default)]
+pub(super) struct BuildObservation {
+    pub(super) emitted_outputs: Vec<PathBuf>,
+    pub(super) emitted_declarations: BTreeMap<PathBuf, PathBuf>,
+    pub(super) emitted_runtimes: BTreeMap<PathBuf, PathBuf>,
+    pub(super) resolution_inputs: Vec<PathBuf>,
+    pub(super) publication_refused: bool,
+}
+
+fn refuse_publication(observations: &mut Option<&mut BuildObservation>) {
+    if let Some(observation) = observations.as_deref_mut() {
+        observation.publication_refused = true;
+    }
+}
+
 pub(super) fn run(arguments: Vec<String>) -> ExitCode {
-    run_with_mode(arguments, false, None, None, None, &BTreeMap::new(), None)
+    run_with_mode(arguments, false, &BTreeMap::new(), None)
 }
 
 pub(super) fn show_build_config(project: &Path, diagnostics_json: bool) -> ExitCode {
@@ -29,36 +46,22 @@ pub(super) fn show_build_config(project: &Path, diagnostics_json: bool) -> ExitC
     if diagnostics_json {
         arguments.push("--diagnostics-json".into());
     }
-    run_with_mode(arguments, true, None, None, None, &BTreeMap::new(), None)
+    run_with_mode(arguments, true, &BTreeMap::new(), None)
 }
 
 pub(super) fn run_build_project(
     arguments: Vec<String>,
-    emitted: &mut Vec<PathBuf>,
-    declarations: &mut BTreeMap<PathBuf, PathBuf>,
-    runtimes: &mut BTreeMap<PathBuf, PathBuf>,
     references: &BTreeMap<PathBuf, file_loader::ReferencedOutput>,
-    resolution_inputs: &mut Vec<PathBuf>,
+    observations: &mut BuildObservation,
 ) -> ExitCode {
-    run_with_mode(
-        arguments,
-        true,
-        Some(emitted),
-        Some(declarations),
-        Some(runtimes),
-        references,
-        Some(resolution_inputs),
-    )
+    run_with_mode(arguments, true, references, Some(observations))
 }
 
 fn run_with_mode(
     arguments: Vec<String>,
     allow_references: bool,
-    emitted_outputs: Option<&mut Vec<PathBuf>>,
-    emitted_declarations: Option<&mut BTreeMap<PathBuf, PathBuf>>,
-    emitted_runtimes: Option<&mut BTreeMap<PathBuf, PathBuf>>,
     references: &BTreeMap<PathBuf, file_loader::ReferencedOutput>,
-    resolution_inputs: Option<&mut Vec<PathBuf>>,
+    mut observations: Option<&mut BuildObservation>,
 ) -> ExitCode {
     let started = std::time::Instant::now();
     let empty_command = arguments.is_empty();
@@ -199,6 +202,21 @@ fn run_with_mode(
             missing.push(diagnostic);false
         });
     }
+    if source_mode && invocation.entries.is_empty() && !missing.is_empty() {
+        // No program was selected. Preserve Native's missing-root diagnostics
+        // and exit status without compiling an empty root set or publishing.
+        if diagnostics_json {
+            for diagnostic in &missing {
+                eprintln!("{}", diagnostic.to_json());
+            }
+        } else {
+            print!(
+                "{}",
+                presentation::format(&missing, &BTreeMap::new(), pretty)
+            );
+        }
+        return ExitCode::from(if no_emit_on_error && !no_emit { 1 } else { 2 });
+    }
     if let Err(error) = tsconfig::prepare(&mut invocation) {
         let source = project_path
             .file_name()
@@ -248,7 +266,8 @@ fn run_with_mode(
             .map_or((&diagnostic.span, u32::MAX), |ts| (&ts.span, ts.code));
         (span.module.clone(), span.start, span.end, code)
     });
-    if let Some(inputs) = resolution_inputs {
+    if let Some(observation) = observations.as_deref_mut() {
+        let inputs = &mut observation.resolution_inputs;
         inputs.extend(files.iter().cloned());
         inputs.extend(loader.relative.observed_paths());
         if let Some(packages) = &loader.packages {
@@ -283,6 +302,9 @@ fn run_with_mode(
     if explain_files {
         print!("{explanations}");
     }
+    if emit_blocked {
+        refuse_publication(&mut observations);
+    }
     if summary.has_errors && ((!no_emit && no_emit_on_error) || emit_blocked) {
         if show_diagnostics {
             print!("{}", statistics.display(started.elapsed()));
@@ -290,6 +312,7 @@ fn run_with_mode(
         return ExitCode::from(1);
     }
     if let Err(error) = tsconfig::prepare_output(&mut invocation, &mut summary) {
+        refuse_publication(&mut observations);
         return fail(&error, pretty);
     }
     if no_emit {
@@ -301,28 +324,41 @@ fn run_with_mode(
     if invocation.options.runtime_policy == RuntimePolicy::StrictRuntime
         && invocation.options.strict_runtime_boundaries.is_empty()
     {
+        refuse_publication(&mut observations);
         return fail(
             "strict-runtime build requires owner-selected strictBoundaries in config",
             pretty,
         );
     }
+    // Ordinary graph builds retain their established conservative cleanup.
+    // Only this internal call path may release modified obsolete regular files;
+    // explicit incremental, direct project and owner publications remain strict.
+    let retirement = if observations.is_some()
+        && invocation
+            .project_config
+            .as_ref()
+            .is_some_and(|project| project.options.get("incremental") != Some(&Value::Bool(true)))
+    {
+        publication_ownership::RetirementPolicy::PreserveModified
+    } else {
+        publication_ownership::RetirementPolicy::Strict
+    };
     let write_started = std::time::Instant::now();
     let output::Published {
         paths: emitted,
         declarations,
         runtimes,
-    } = match output::publish(&invocation, &summary, &loader, &files) {
+    } = match output::publish(&invocation, &summary, &loader, &files, retirement) {
         Ok(emitted) => emitted,
-        Err(error) => return fail(&error.to_string(), pretty),
+        Err(error) => {
+            refuse_publication(&mut observations);
+            return fail(&error.to_string(), pretty);
+        }
     };
-    if let Some(outputs) = emitted_outputs {
-        outputs.extend(emitted.iter().cloned());
-    }
-    if let Some(outputs) = emitted_declarations {
-        outputs.extend(declarations);
-    }
-    if let Some(outputs) = emitted_runtimes {
-        outputs.extend(runtimes);
+    if let Some(observation) = observations {
+        observation.emitted_outputs.extend(emitted.iter().cloned());
+        observation.emitted_declarations.extend(declarations);
+        observation.emitted_runtimes.extend(runtimes);
     }
     statistics.written(write_started.elapsed());
     if list_emitted {
@@ -415,129 +451,6 @@ struct CompiledProject {
     emit_blocked: bool,
     statistics: statistics::Statistics,
     explanations: String,
-}
-fn compile_project(
-    invocation: &Invocation,
-    loader: &FileLoader,
-    emit_errors: bool,
-) -> CompiledProject {
-    let mut artifacts = BTreeMap::new();
-    let mut declaration_modules = BTreeMap::new();
-    let mut assets = BTreeMap::new();
-    let mut seen = BTreeSet::new();
-    let mut source_ids = Vec::new();
-    let mut fingerprints = Vec::new();
-    let mut diagnostics = Vec::new();
-    let mut has_errors = false;
-    let mut sources = BTreeMap::new();
-    let mut emit_blocked = false;
-    let mut statistics = statistics::Statistics::default();
-    let mut explanations = explanations::Explanations::default();
-    let explain_files = invocation
-        .project_config
-        .as_ref()
-        .is_some_and(|config| config.options.get("explainFiles") == Some(&Value::Bool(true)));
-    let has_runtime_entries = invocation
-        .entries
-        .iter()
-        .any(|entry| !is_declaration_path(entry));
-    for entry in &invocation.entries {
-        let module = loader
-            .module_id(entry)
-            .expect("entry has an authorized identity");
-        let mut options = invocation.options.clone();
-        options
-            .ambient_declaration_modules
-            .retain(|source| source.id != module);
-        if is_declaration_path(entry) {
-            if options.runtime_policy == RuntimePolicy::StrictRuntime {
-                options.runtime_policy = RuntimePolicy::Checked;
-            }
-            options.strict_runtime_boundaries.clear();
-        }
-        let mut result = compile(&module, loader, options.clone());
-        if explain_files {
-            explanations.collect(&result.project, invocation, loader);
-        }
-        statistics.add(&result);
-        if emit_errors && result.has_errors() && result.output.is_none() {
-            let emit_started = std::time::Instant::now();
-            match result.emit_for_native_cli(&options) {
-                Ok(Some(output)) => result.output = Some(output),
-                Ok(None) => emit_blocked = true,
-                Err(diagnostic) => {
-                    result.diagnostics.push(diagnostic);
-                    emit_blocked = true;
-                }
-            }
-            statistics.extra_emit(emit_started.elapsed());
-        }
-        for (id, module) in &result.project.modules {
-            sources
-                .entry(id.clone())
-                .or_insert_with(|| module.source.clone());
-        }
-        for diagnostic in &result.diagnostics {
-            if let Some(source) = result.project.source(&diagnostic.span.module) {
-                sources
-                    .entry(diagnostic.span.module.clone())
-                    .or_insert_with(|| source.into());
-            }
-        }
-        has_errors |= result.has_errors();
-        declaration_diagnostics::qualify(&mut result.diagnostics, &result.project, loader);
-        diagnostics.extend(result.diagnostics);
-        ordered_sources(
-            &result.project.entry,
-            &result.project,
-            &mut seen,
-            &mut source_ids,
-        );
-        if let Some(output) = result.output {
-            assets.extend(output.assets);
-            if !has_runtime_entries || !is_declaration_path(entry) {
-                fingerprints.push(output.fingerprint);
-            }
-            for (module, artifact) in output.artifacts {
-                artifacts.entry(module).or_insert(artifact);
-            }
-            for (module, source) in output.declaration_modules {
-                declaration_modules.entry(module).or_insert(source);
-            }
-        }
-    }
-    fingerprints.sort();
-    if fingerprints.is_empty() {
-        fingerprints.extend([
-            blueice_bluets::LANGUAGE_VERSION.to_string(),
-            blueice_bluets::standard_library::VERSION.to_string(),
-            invocation.options.resolver_fingerprint.clone(),
-        ]);
-    }
-    let files = source_ids
-        .iter()
-        .filter_map(|module| loader.source_path(module).ok())
-        .collect::<Vec<_>>();
-    CompiledProject {
-        summary: CompileSummary {
-            artifacts,
-            declaration_modules,
-            assets,
-            fingerprint: fingerprint_entries(&fingerprints),
-            module_count: seen.len(),
-            has_errors,
-        },
-        files,
-        diagnostics,
-        sources,
-        emit_blocked,
-        statistics,
-        explanations: if explain_files {
-            explanations.render(invocation, loader)
-        } else {
-            String::new()
-        },
-    }
 }
 fn ordered_sources(
     module_id: &str,

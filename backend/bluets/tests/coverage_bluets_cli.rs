@@ -400,10 +400,13 @@ fn build_creates_missing_output_parents_and_replaces_an_existing_output_atomical
     scratch.run(&args).assert_success();
     assert!(scratch.path("deep/er/dist/main.js").is_file());
 
-    // A stale file in the previous output does not survive a rebuild.
+    // Files added outside the compiler's prior ownership survive a rebuild.
     scratch.write("deep/er/dist/stale.js", "old");
     scratch.run(&args).assert_success();
-    assert!(!scratch.path("deep/er/dist/stale.js").exists());
+    assert_eq!(scratch.read("deep/er/dist/stale.js"), "old");
+    let manifest: serde_json::Value =
+        serde_json::from_str(&scratch.read("deep/er/dist/bluetsc.manifest.json")).unwrap();
+    assert!(manifest["outputOwnership"]["files"]["stale.js"].is_null());
     assert!(scratch.path("deep/er/dist/main.js").is_file());
     let leftovers: Vec<_> = fs::read_dir(scratch.path("deep/er"))
         .unwrap()
@@ -540,10 +543,24 @@ fn config_project_root_relocates_entries_and_output() {
         serde_json::from_str(&scratch.read("src/out/js/bluetsc.manifest.json")).unwrap();
     assert_eq!(
         manifest["entries"],
-        serde_json::json!(["lib.js", "main.js"])
+        serde_json::json!(["main.js", "lib.js"])
     );
     assert_eq!(manifest["target"], "es2022");
     assert_eq!(manifest["runtimePolicy"], "checked");
+    scratch.write(
+        "bluetsc.json",
+        r#"{"entries": ["lib.ts", "main.ts", "lib.ts"], "projectRoot": "src", "outDir": "out/js"}"#,
+    );
+    scratch
+        .run(&["build", "--config", "bluetsc.json"])
+        .assert_success();
+    let reordered: serde_json::Value =
+        serde_json::from_str(&scratch.read("src/out/js/bluetsc.manifest.json")).unwrap();
+    assert_eq!(
+        reordered["entries"],
+        serde_json::json!(["lib.js", "main.js"])
+    );
+    assert_ne!(reordered["fingerprint"], manifest["fingerprint"]);
 }
 
 #[test]

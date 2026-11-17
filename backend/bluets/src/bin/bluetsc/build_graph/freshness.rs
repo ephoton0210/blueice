@@ -19,8 +19,9 @@ mod resolution_inputs;
 mod runner;
 pub(super) use runner::run;
 
-// G-M2 adds failure state and native interchange provenance.
-const STATE_VERSION: u8 = 73;
+// Ordinary build cleanup now preserves changed obsolete regular outputs while
+// explicit incremental publication keeps complete-generation refusal.
+const STATE_VERSION: u8 = 124;
 const STATE_PRODUCER: &str = "bluetsc";
 const MAX_STATE_BYTES: u64 = 8 * 1024 * 1024;
 
@@ -269,7 +270,11 @@ impl State {
             if selected_files.contains(&path) {
                 continue;
             }
-            let bytes = fs::read(&path)?;
+            let bytes = match fs::read(&path) {
+                Ok(bytes) => bytes,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(error),
+            };
             if sha256_label(&bytes) == *expected_hash {
                 fs::remove_file(path)?;
             }

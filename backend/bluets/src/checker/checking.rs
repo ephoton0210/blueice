@@ -157,6 +157,26 @@ pub(crate) fn check_incremental(
         let inferred_parameters = checker.inferred_parameter_types();
         let inferred_fields = checker.inferred_field_types();
         let class_expression_surfaces = checker.class_expression_surfaces();
+        let global_overload_implementations = if project.is_external_module(module) {
+            BTreeSet::new()
+        } else {
+            module
+                .declarations
+                .iter()
+                .filter_map(|declaration| {
+                    let Declaration::Function(function) = declaration else {
+                        return None;
+                    };
+                    (!function.overload
+                        && !function.declared
+                        && ambient
+                            .function_groups
+                            .get(&function.name)
+                            .is_some_and(|group| group.has_overloads))
+                    .then_some(function.span.start)
+                })
+                .collect()
+        };
         diagnostics.extend(checker.diagnostics);
         let symbols = checker.symbols;
         namespace_exports.insert(module_id.clone(), exported_namespaces.clone());
@@ -179,6 +199,7 @@ pub(crate) fn check_incremental(
                 inferred_fields,
                 fresh_variables,
                 class_expression_surfaces,
+                global_overload_implementations,
                 namespace_exports: exported_namespaces,
                 value_exports,
             },
@@ -194,7 +215,7 @@ pub(crate) fn check_incremental(
 
 /// The modules of a project with every module after the ones it imports (a
 /// cycle is broken where it is first entered).
-fn dependency_order(project: &Project) -> Vec<String> {
+pub(super) fn dependency_order(project: &Project) -> Vec<String> {
     fn visit(project: &Project, id: &str, seen: &mut BTreeSet<String>, order: &mut Vec<String>) {
         if !project.modules.contains_key(id) || !seen.insert(id.to_string()) {
             return;
@@ -208,7 +229,7 @@ fn dependency_order(project: &Project) -> Vec<String> {
     }
     let mut order = Vec::new();
     let mut seen = BTreeSet::new();
-    for id in project.modules.keys() {
+    for id in project.program_roots.iter().chain(project.modules.keys()) {
         visit(project, id, &mut seen, &mut order);
     }
     order

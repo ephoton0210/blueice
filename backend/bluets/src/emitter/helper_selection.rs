@@ -12,6 +12,15 @@ use std::collections::{BTreeMap, BTreeSet};
 pub(crate) const VERSION: &str = "bluets-helper-selection/2";
 const PREFIX: &str = "__blueice_abi_";
 mod fixed;
+mod requirements;
+
+pub(super) fn validate_static(
+    module: &Module,
+    project: &Project,
+    options: &CompilerOptions,
+) -> Vec<Diagnostic> {
+    requirements::validate(module, project, options)
+}
 
 pub(super) fn external(options: &CompilerOptions) -> bool {
     options.import_helpers || options.no_emit_helpers
@@ -67,25 +76,15 @@ pub(super) fn lower(
             },
         });
     }
+    if options.javascript_layout == crate::JavaScriptLayout::TypeScript {
+        // Resolving an already-generated ABI name changes its spelling. It
+        // does not create original syntax at either end of that name.
+        emitted = super::native_layout::project_trivia(emitted, std::mem::take(&mut edits));
+    }
     if options.import_helpers && !references.is_empty() {
         for helper in references.values().collect::<BTreeSet<_>>() {
             let span = helper_span(module, helper);
-            let Some(target) = project.resolved_module(&module.id, "tslib") else {
-                return Err(Diagnostic::error(
-                    DiagnosticCode::ModuleNotFound,
-                    span,
-                    "imported helper provider cannot be resolved",
-                )
-                .with_typescript(2354, vec!["tslib".into()]));
-            };
-            if !exports_helper(project, target, helper) {
-                return Err(Diagnostic::error(
-                    DiagnosticCode::UnsupportedSyntax,
-                    span,
-                    format!("helper provider does not export {helper}"),
-                )
-                .with_typescript(2343, vec!["tslib".into(), helper.clone()]));
-            }
+            validate_provider(module, project, helper, span)?;
         }
         let prefix = if options.module_kind == ModuleKind::CommonJs {
             format!("\nvar {provider} = require('tslib');\n")
@@ -102,6 +101,31 @@ pub(super) fn lower(
     emitted = super::targets::mapped_edits(emitted, edits);
     validate(&emitted, module, options)?;
     Ok(emitted)
+}
+
+fn validate_provider(
+    module: &Module,
+    project: &Project,
+    helper: &str,
+    span: SourceSpan,
+) -> Result<(), Diagnostic> {
+    let Some(target) = project.resolved_module(&module.id, "tslib") else {
+        return Err(Diagnostic::error(
+            DiagnosticCode::ModuleNotFound,
+            span,
+            "imported helper provider cannot be resolved",
+        )
+        .with_typescript(2354, vec!["tslib".into()]));
+    };
+    if !exports_helper(project, target, helper) {
+        return Err(Diagnostic::error(
+            DiagnosticCode::UnsupportedSyntax,
+            span,
+            format!("helper provider does not export {helper}"),
+        )
+        .with_typescript(2343, vec!["tslib".into(), helper.into()]));
+    }
+    Ok(())
 }
 
 fn exports_helper(project: &Project, id: &str, helper: &str) -> bool {

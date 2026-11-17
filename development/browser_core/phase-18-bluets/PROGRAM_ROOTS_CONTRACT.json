@@ -1,0 +1,202 @@
+{
+  "status": "frozen-before-production",
+  "scope": "P0-H complete selected-root program, global declarations and generation ownership; all 22 broader rows remain open.",
+  "acceptedParent": "de959de5ffe9b47173216cfd17ac3819e54b351e",
+  "parentCompilerSource": "backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb",
+  "acceptedCompilerSha256": "75a003f1e5447f9fea3272e55c19bbc9b8b6ce73428af69d9722b1eaf0d716d0",
+  "inventoryCredit": 0,
+  "requirements": {
+    "originalProducers": 60,
+    "originalConsumers": 160,
+    "originalCrossFileObservations": 32,
+    "primaryObservationsPerCliSurface": 512,
+    "lifecycleStates": 528,
+    "nativeActualExecutions": 112,
+    "publicationStates": 108,
+    "publicationTamperControls": 24,
+    "publicLibraryPrimaryRegressions": 128,
+    "publicLibraryLifecycleRegressions": 264,
+    "existingAssertionIdsAndClassesPreserved": 43112,
+    "fullExternalMatrixRemainsMandatory": true,
+    "productionRustAndDeclarationLineLimitExclusive": 1500
+  },
+  "publicApi": {
+    "library": "compile_program(&[String], &dyn ModuleLoader, CompilerOptions) -> Compilation; IncrementalCompiler::compile_program uses the same ordered roots.",
+    "legacyLibrary": "compile(entry, ...) delegates to a one-root program with identical observable behavior.",
+    "core": "register_program(RegisteredProjectRegistration, Vec<String>) validates and copies the ordered closed root subset before consuming a project ID. entry_module equals roots[0]. Registration remains immutable.",
+    "ownerBootstrap": "Versioned owner-only program_roots: Option<Vec<String>>; omission retains the single entry, explicit empty/duplicate/unauthorized/over-budget selections reject. Keep query and output grants separate.",
+    "remote": "No new registration, mutation, source-read, runtime or root-selection operation on compiler IPC/MCP. Project/generation handles stay opaque.",
+    "cliSurfaces": [
+      "build --config",
+      "--project",
+      "--build incremental"
+    ]
+  },
+  "policy": [
+    {
+      "id": "retire-only-exact-prior-ownership",
+      "mutation": {
+        "afterState": "warm",
+        "beforeState": "remove-root"
+      },
+      "expected": "All four removed-root outputs disappear; active files and unrelated sentinel remain byte-valid."
+    },
+    {
+      "id": "tampered-retirement-refuses-before-publish",
+      "mutation": {
+        "afterState": "warm",
+        "beforeState": "remove-root",
+        "replace": "dist/removed.js",
+        "text": "// externally replaced sentinel\n"
+      },
+      "expected": "Refuse publication before mutating any existing output; all prior bytes including the replacement remain unchanged."
+    },
+    {
+      "id": "symlink-retirement-refuses-before-publish",
+      "mutation": {
+        "afterState": "warm",
+        "beforeState": "remove-root",
+        "symlink": "dist/removed.js",
+        "target": "outside-sentinel.js",
+        "outsideText": "// outside sentinel\n"
+      },
+      "expected": "Refuse publication; never follow or remove the link or change outside/prior output bytes."
+    },
+    {
+      "id": "failed-generation-keeps-prior-owned-output",
+      "state": "rejected",
+      "expected": "No new artifact or successful state receipt; last successful physical inventory and bytes remain intact."
+    },
+    {
+      "id": "ordered-roots-bind-persistent-identity",
+      "states": [
+        "restore-root",
+        "reorder"
+      ],
+      "expected": "Same module membership and sources, distinct current-program fingerprints; no cache hit reported for the old ordered program."
+    },
+    {
+      "id": "clean-rebuild-matches-current-program",
+      "states": [
+        "restored",
+        "clean"
+      ],
+      "expected": "Fresh isolated project build equals current generated artifact bytes; unrelated sentinel retained only in the original owner directory."
+    },
+    {
+      "id": "bounded-root-preflight",
+      "rootSelections": [
+        [],
+        [
+          ""
+        ],
+        [
+          "program:///bad\u0000.ts"
+        ],
+        [
+          "program:///main.ts",
+          "program:///main.ts"
+        ]
+      ],
+      "expected": "Reject all selections before any loader or resolver call; no artifacts."
+    },
+    {
+      "id": "root-count-preflight",
+      "limits": {
+        "max_modules": 1
+      },
+      "roots": [
+        "program:///a.ts",
+        "program:///b.ts"
+      ],
+      "expected": "ResourceLimit before any loader or resolver call; no artifacts."
+    },
+    {
+      "id": "core-roots-closed-immutable",
+      "test": "backend/core/engine/tests/compiler_program_roots.rs",
+      "expected": "Unauthorized roots consume no project ID; owner mutations after registration cannot affect checks, builds, metadata or work sets."
+    },
+    {
+      "id": "physical-bootstrap-canonical-root",
+      "test": "backend/ipc/tests/compiler_catalog_program_roots.rs",
+      "expected": "Canonical selected physical roots pass; selected symlink aliases reject before listener binding or output access."
+    },
+    {
+      "id": "remote-query-authority-injection",
+      "tests": [
+        "backend/ipc/tests/compiler_program_roots_authority.rs",
+        "backend/mcp-server/tests/core_process/compiler_round_trip.rs"
+      ],
+      "expected": "Extra root/source/resolver/option/output fields reject; opaque handles cannot acquire authority; valid following frames remain readable; malformed MCP checks do not advance the core generation."
+    },
+    {
+      "id": "compilation-does-not-execute-global-calls",
+      "source": "declare function acquireAuthority(): never; acquireAuthority();",
+      "expected": "Static compilation succeeds with the call present in output and acquires no executable binding."
+    }
+  ],
+  "authoredFiles": {
+    "target/program-roots-contract-20261115/authored-inputs-v3.json": "89e2ef47b44b5f3cb116f7aaf4c25c3a3307c7be9478ea21640511d85f16583a",
+    "target/program-roots-contract-20261115/runtime-inputs-v1.json": "92832b1017445aa9bd05f1b75a39559654f946d6596991f4dec6d782bd317591",
+    "target/program-roots-lifecycle-20261115/authored-sequences-v2.json": "49bb21aac58debd5e8e0c1fa29addcd36e01998cc19e61421cc6b116a4c18b0f",
+    "target/program-roots-owner-controls-20261115/authored-controls-v2.json": "950a79baf3e402cf1c1f2dadcf8f19370c5da4b110a505232f4d1e08f3a0e995",
+    "backend/bluets/tests/program_roots.rs": "7e9f45137f9a257c87af83730c86266ec5712b4e459e51da137822fae40423aa",
+    "backend/bluets/tests/program_root_publication.rs": "31272a02150d490d158735ee968e1271b03f57f4e8c3e131078e0a067a953cbc",
+    "backend/bluets/tests/fixtures/program_roots/library-contract.json": "d1f57ae6297b00f1e1fc356fe547968add92b30ec72a762822ea1d4c584cb231",
+    "backend/bluets/tests/fixtures/program_roots/owner-controls.json": "950a79baf3e402cf1c1f2dadcf8f19370c5da4b110a505232f4d1e08f3a0e995",
+    "backend/core/engine/tests/compiler_program_roots.rs": "da01127a8af37e8a1d060011a24d3828a814a1bf85b7ced2e38c796a46af21c0",
+    "backend/ipc/tests/compiler_program_roots_authority.rs": "f65d2d9f789890fcae49287113cb75508c43322b5fea051c778d8a1d957f7b41",
+    "backend/ipc/tests/compiler_catalog_program_roots.rs": "f6d3133f163417dbac58cfb3ce745d452503d47760488f392189d87af0396146",
+    "backend/mcp-server/tests/core_process/compiler_round_trip.rs": "e799db48634040d6d80c3912a8cc08398b2a4af37b3ef545848b86dede6b7cd6"
+  },
+  "terminalReports": {
+    "target/program-roots-contract-20261115/full-2/report.json": {
+      "sha256": "a70077e8f32cb2f90aec52a8b6e3ad106e2f8ba9d9c4bfae54200499743183a4",
+      "conclusion": "native-calibrated-draft"
+    },
+    "target/program-roots-contract-20261115/runtime-2/report.json": {
+      "sha256": "5ec4410226091988902f0cb5305700bc57b562cfdf86bb7f52a9f3c902df7647",
+      "conclusion": "native-execution-controls-calibrated"
+    },
+    "target/program-roots-contract-20261115/blue-baseline-1/report.json": {
+      "sha256": "ab6b169738881fdfba62564a0c273c20c875dfbde56eb093ec30c1bffd331954",
+      "conclusion": "measured-preimplementation-differences"
+    },
+    "target/program-roots-contract-20261115/blue-baseline-native-1/report.json": {
+      "sha256": "caf9350c115412177ecdcdb934f97a723c68c199cfe4f642ed4238c83d71de79",
+      "conclusion": "measured-preimplementation-differences"
+    },
+    "target/program-roots-contract-20261115/legacy-consumers-baseline-1/report.json": {
+      "sha256": "d7d8a0f2b3dc463b501952d33d51767846e42c5dd913887e561302a7e4b00fb6",
+      "conclusion": "measured-preimplementation-differences"
+    },
+    "target/program-roots-contract-20261115/legacy-consumers-native-baseline-1/report.json": {
+      "sha256": "be4d8e580b1bf71520c18e82d3b8838d3688f580d3e535e13d2a285331dcc53d",
+      "conclusion": "measured-preimplementation-differences"
+    },
+    "target/program-roots-lifecycle-20261115/full-2/report.json": {
+      "sha256": "3b2ae07664af1798aca3a7d2d565e1863606530e2a42a152591b3f6e799251e3",
+      "conclusion": "native-lifecycle-calibrated-draft"
+    },
+    "target/program-roots-lifecycle-20261115/blue-baseline-2/report.json": {
+      "sha256": "60ae0c6891acbb203207196deecf95f41f14c60920b57475bdcb2127dde24736",
+      "conclusion": "measured-preimplementation-differences"
+    },
+    "target/program-roots-owner-controls-20261115/native-1/report.json": {
+      "sha256": "6512b284ac0754248cbd84ddc8786ac598c5a6d1bccbcaa4886bfb0075259074",
+      "conclusion": "native-policy-control-semantics-calibrated"
+    },
+    "target/program-roots-owner-controls-20261115/blue-baseline-4/report.json": {
+      "sha256": "d369e66a12a28e9538b1afe929115661f74d0f2dfce902de174f9d19dea46644",
+      "conclusion": "measured-preimplementation-policy-differences"
+    }
+  },
+  "preservedEvidence": {
+    "manifest": "target/program-roots-contract-20261115/frozen-contract-1/evidence-files.json",
+    "sha256": "eec9cea5014b8e16cccfbac4b2a6422ca2a9c250f389b660ceff0b59b0577f5f",
+    "regularFiles": 86569,
+    "symlinks": 13
+  },
+  "redEvidenceScope": "Missing-API compilation failures prove API absence only. Actual semantic red results and physical publication regression failures are retained separately. Passing IPC/MCP controls do not close owner/core/publication requirements.",
+  "delivery": "All six PROGRAM_ROOTS_FOLLOWUP.md requirements, complete same-source Native/local/Windows/map/project/tooling acceptance and independent artifact verification remain mandatory before checking P0-H, committing implementation plus matching evidence, and pushing."
+}

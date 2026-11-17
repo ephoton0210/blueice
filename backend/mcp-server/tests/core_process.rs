@@ -37,6 +37,8 @@ mod compiler_failures;
 mod compiler_output;
 #[path = "core_process/compiler_round_trip.rs"]
 mod compiler_round_trip;
+#[path = "core_process/program_roots.rs"]
+mod program_roots;
 
 #[derive(Debug, Clone, Default)]
 struct CompilerMcpClient;
@@ -455,6 +457,7 @@ async fn owner_private_compiler_projects_never_enter_real_mcp_client_inventories
         let root = format!("project:///{name}");
         let entry = format!("{root}/main.ts");
         CompilerCatalogProject {
+            program_roots: None,
             canonical_project_root: root.clone(),
             canonical_config_root: format!("{root}/blue-ts.json"),
             canonical_output_root: format!("project:///{name}-dist"),

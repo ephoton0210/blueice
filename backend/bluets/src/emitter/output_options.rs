@@ -195,8 +195,10 @@ pub(super) fn erase_elided_import_comments(
 pub(super) fn format_javascript(
     mut emitted: EmittedJavaScript,
     module: &Module,
+    project: &Project,
     options: &CompilerOptions,
 ) -> Result<EmittedJavaScript, Diagnostic> {
+    let native = options.javascript_layout == crate::JavaScriptLayout::TypeScript;
     if options.remove_comments {
         let header = detached_header(module);
         let mut retained: Vec<String> = comment_ranges(module, &emitted.javascript)?
@@ -214,14 +216,18 @@ pub(super) fn format_javascript(
             }
         }
         if !missing.is_empty() {
-            emitted = targets::mapped_edits(
-                emitted,
-                vec![TextEdit {
-                    start: 0,
-                    end: 0,
-                    replacement: missing,
-                }],
-            );
+            emitted = if native {
+                native_layout::prefix_trivia(emitted, &missing)
+            } else {
+                targets::mapped_edits(
+                    emitted,
+                    vec![TextEdit {
+                        start: 0,
+                        end: 0,
+                        replacement: missing,
+                    }],
+                )
+            };
         }
         let edits = comment_ranges(module, &emitted.javascript)?
             .into_iter()
@@ -239,7 +245,12 @@ pub(super) fn format_javascript(
             })
             .collect::<Vec<_>>();
         if !edits.is_empty() {
-            emitted = targets::mapped_edits(emitted, edits);
+            emitted = trivia_edits(emitted, edits, native);
+        }
+        if native {
+            // Removing a comment joins its surrounding trivia. Print that
+            // actual token gap again before applying newline/BOM policy.
+            emitted = native_layout::format(emitted, module, project, options)?;
         }
     }
     let tokens = lex(&module.id, &emitted.javascript).map_err(|errors| errors[0].clone())?;
@@ -295,8 +306,16 @@ pub(super) fn format_javascript(
     let mut emitted = if edits.is_empty() {
         emitted
     } else {
-        targets::mapped_edits(emitted, edits)
+        trivia_edits(emitted, edits, native)
     };
+    if native && options.emit_bom {
+        // Native positions count the first line's code without the BOM.
+        for point in &mut emitted.provenance {
+            if point.generated_line == 0 {
+                point.generated_column = point.generated_column.saturating_sub(1);
+            }
+        }
+    }
     // A final line ending has no source location. Appending it must not
     // reproject previously unmapped module wrappers or generated helpers.
     if !emitted.javascript.is_empty() && !emitted.javascript.ends_with(['\r', '\n']) {
@@ -306,6 +325,18 @@ pub(super) fn format_javascript(
         });
     }
     Ok(emitted)
+}
+
+fn trivia_edits(
+    emitted: EmittedJavaScript,
+    edits: Vec<TextEdit>,
+    native: bool,
+) -> EmittedJavaScript {
+    if native {
+        native_layout::project_trivia(emitted, edits)
+    } else {
+        targets::mapped_edits(emitted, edits)
+    }
 }
 
 pub(super) fn format_text(text: String, options: &CompilerOptions) -> String {

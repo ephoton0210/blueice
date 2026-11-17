@@ -52,9 +52,7 @@ fn referenced_source_only_error_is_not_checked_in_dependent() {
             runtime: Some(root.join("dep/value.js")),
         },
     );
-    let mut emitted = Vec::new();
-    let mut declarations = BTreeMap::new();
-    let mut runtimes = BTreeMap::new();
+    let mut observations = native_cli::BuildObservation::default();
     let result = native_cli::run_build_project(
         vec![
             "--project".into(),
@@ -62,14 +60,13 @@ fn referenced_source_only_error_is_not_checked_in_dependent() {
             "--pretty".into(),
             "false".into(),
         ],
-        &mut emitted,
-        &mut declarations,
-        &mut runtimes,
         &references,
-        &mut Vec::new(),
+        &mut observations,
     );
     assert_eq!(result, ExitCode::SUCCESS);
-    assert!(emitted.contains(&root.join("main.d.ts")));
+    assert!(observations
+        .emitted_outputs
+        .contains(&root.join("main.d.ts")));
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -315,6 +312,7 @@ fn configured_strict_boundary_is_confined_and_keeps_exact_source_span() {
 
 fn test_metadata() -> BuildMetadata {
     BuildMetadata {
+        javascript_layout: "preserve-source",
         downlevel_iteration: false,
         import_helpers: false,
         no_emit_helpers: false,
@@ -403,7 +401,28 @@ fn publishing_replaces_a_complete_output_directory_only_after_staging() {
     let output = temporary.join("output");
     fs::create_dir_all(&root).unwrap();
     fs::create_dir_all(&output).unwrap();
-    fs::write(output.join("obsolete.js"), "old output").unwrap();
+    let obsolete = root.join("obsolete.ts");
+    publish_build(
+        &root,
+        &output,
+        &BTreeMap::from([(
+            path_id(&obsolete),
+            BuildArtifact {
+                module_id: path_id(&obsolete),
+                javascript: "old output".into(),
+                source_map: None,
+                declaration: None,
+                declaration_map: None,
+                fingerprint: "prior-owned-output".into(),
+                strict_runtime: None,
+            },
+        )]),
+        &BTreeMap::new(),
+        &BTreeMap::new(),
+        &test_metadata(),
+    )
+    .unwrap();
+    fs::write(output.join("user-owned.js"), "// preserve user bytes\n").unwrap();
     let module = root.join("src/main.ts");
     let artifacts = BTreeMap::from([(
         path_id(&module),
@@ -448,6 +467,10 @@ fn publishing_replaces_a_complete_output_directory_only_after_staging() {
     assert!(!manifest.contains("\"strictArtifacts\""));
     assert!(!manifest.contains(&root.to_string_lossy().into_owned()));
     assert!(!output.join("obsolete.js").exists());
+    assert_eq!(
+        fs::read_to_string(output.join("user-owned.js")).unwrap(),
+        "// preserve user bytes\n"
+    );
     fs::remove_dir_all(temporary).unwrap();
 }
 

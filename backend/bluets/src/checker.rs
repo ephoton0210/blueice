@@ -100,6 +100,9 @@ pub struct CheckedModule {
     /// mutable declaration unions just as literal initializers do.
     pub(crate) fresh_variables: BTreeSet<usize>,
     pub(crate) class_expression_surfaces: BTreeMap<String, ClassExpressionSurface>,
+    /// Implementations whose public overloads belong to the same global symbol
+    /// in another source file. Their own declaration file is still emitted.
+    pub(crate) global_overload_implementations: BTreeSet<usize>,
     /// The namespaces the module exports, as an importer binds them.
     pub(crate) namespace_exports: BTreeMap<String, NamespaceExport>,
     /// Checked runtime bindings, retained for incremental importers.
@@ -226,6 +229,10 @@ struct AmbientDeclarations {
     type_namespaces: Vec<crate::parser::NamespaceDeclaration>,
     values: BTreeMap<String, Type>,
     functions: BTreeMap<String, Vec<FunctionSignature>>,
+    classes: BTreeMap<String, ExportedClass>,
+    function_groups: BTreeMap<String, global_declarations::FunctionGroup>,
+    conflicting_names: BTreeSet<String>,
+    variable_declarations: BTreeMap<String, (crate::VariableKind, SourceSpan)>,
     binding_kinds: BTreeMap<String, scopes::BindingKind>,
 }
 
@@ -237,9 +244,11 @@ fn ambient_declarations(
 ) -> (AmbientDeclarations, Vec<Diagnostic>) {
     let mut ambient = AmbientDeclarations {
         enforce_types,
+        function_groups: global_declarations::function_groups(project),
         ..AmbientDeclarations::default()
     };
-    let mut diagnostics = Vec::new();
+    let (conflicting_names, mut diagnostics) = global_declarations::diagnose(project);
+    ambient.conflicting_names = conflicting_names;
     ambient::collect_contexts(
         project,
         exports,
@@ -252,14 +261,9 @@ fn ambient_declarations(
             ambient.module_types.insert(target.clone(), types.clone());
         }
     }
-    for (module_id, module) in &project.modules {
-        if !is_declaration_module(module_id)
-            && !project.ambient_declaration_modules.contains(module_id)
-            && !project.referenced_declaration_modules.contains(module_id)
-        {
-            continue;
-        }
-        if ambient::has_module_syntax(&module.declarations) {
+    for id in checking::dependency_order(project) {
+        let module = &project.modules[&id];
+        if project.is_external_module(module) {
             continue;
         }
         ambient::insert_body(
@@ -269,7 +273,8 @@ fn ambient_declarations(
             &mut diagnostics,
         );
     }
-    for module in project.modules.values() {
+    for id in checking::dependency_order(project) {
+        let module = &project.modules[&id];
         ambient::collect_augmentations(
             project,
             &module.declarations,
@@ -289,6 +294,23 @@ fn insert_ambient_type(
     definition: TypeDefinition,
     span: &SourceSpan,
 ) {
+    if let Some(existing) = ambient.types.get_mut(name) {
+        if matches!(
+            (existing.kind, definition.kind),
+            (TypeDefinitionKind::Class, TypeDefinitionKind::Interface)
+                | (TypeDefinitionKind::Interface, TypeDefinitionKind::Class)
+        ) {
+            let merged = merge_interface_values(&existing.value, &definition.value);
+            if definition.kind == TypeDefinitionKind::Class {
+                *existing = definition;
+            }
+            existing.value = merged;
+            return;
+        }
+        if ambient.conflicting_names.contains(name) {
+            return;
+        }
+    }
     if definition.kind == TypeDefinitionKind::Interface {
         if let Some(existing) = ambient
             .types
@@ -323,6 +345,9 @@ fn insert_ambient_value(
     value: Type,
     span: &SourceSpan,
 ) {
+    if ambient.conflicting_names.contains(name) && ambient.values.contains_key(name) {
+        return;
+    }
     if ambient.values.insert(name.to_string(), value).is_some() {
         diagnostics.push(Diagnostic::error(
             DiagnosticCode::DuplicateDeclaration,
@@ -337,6 +362,15 @@ fn insert_ambient_function(
     diagnostics: &mut Vec<Diagnostic>,
     function: &FunctionDeclaration,
 ) {
+    if !function.overload
+        && !function.declared
+        && ambient
+            .function_groups
+            .get(&function.name)
+            .is_some_and(|group| group.has_overloads)
+    {
+        return;
+    }
     let signature = FunctionSignature {
         parameters: function.parameters.clone(),
         type_parameters: function.type_parameters.clone(),
@@ -370,6 +404,7 @@ pub(crate) use module::NamespaceExport;
 /// What each module exports as a namespace, by module and exported name.
 type NamespaceExports = BTreeMap<String, BTreeMap<String, NamespaceExport>>;
 mod ambient;
+mod global_declarations;
 mod project;
 
 fn interface_value(interface: &InterfaceDeclaration) -> Type {
@@ -523,7 +558,7 @@ fn function_signature_matches_in_context(
 
 fn overload_is_compatible_with_implementation(
     overload: &FunctionDeclaration,
-    implementation: &FunctionDeclaration,
+    implementation: &FunctionSignature,
     aliases: &BTreeMap<String, TypeDefinition>,
     max_type_expansions: usize,
 ) -> Result<bool, ()> {
@@ -570,11 +605,7 @@ fn overload_is_compatible_with_implementation(
         .as_ref()
         .map(|value| substitute_type(value, &overload_substitutions))
         .unwrap_or(Type::Unknown);
-    let expected = implementation
-        .return_type
-        .as_ref()
-        .map(|value| substitute_type(value, &implementation_substitutions))
-        .unwrap_or(Type::Unknown);
+    let expected = substitute_type(&implementation.return_type, &implementation_substitutions);
     let compatible = is_assignable(
         &actual,
         &expected,

@@ -1,0 +1,6248 @@
+{
+  "typescript": "5.9.3",
+  "nativeImplementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "authoredSha256": "82c15bc47b6afe7539afe7833dc9f3e91186b1084555c220f9d211fc1754ac75",
+  "nativeApiAndActualCliAgreed": true,
+  "cases": [
+    {
+      "id": "script/0",
+      "files": {
+        "main.ts": "class Box<T> { constructor(public value: T) {} read(): T { return this.value; } }\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "module": "ESNext",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "newLine": "LF",
+          "emitBOM": false,
+          "removeComments": false
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "javascript": {
+        "main.js": "\"use strict\";\nvar Box = /** @class */ (function () {\n    function Box(value) {\n        this.value = value;\n    }\n    Box.prototype.read = function () { return this.value; };\n    return Box;\n}());\n//# sourceMappingURL=main.js.map"
+      },
+      "declarations": {
+        "main.d.ts": "declare class Box<T> {\n    value: T;\n    constructor(value: T);\n    read(): T;\n}\n//# sourceMappingURL=main.d.ts.map"
+      },
+      "maps": {
+        "main.d.ts.map": {
+          "kind": "declaration",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.d.ts",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                14,
+                0,
+                0,
+                6
+              ],
+              [
+                0,
+                17,
+                0,
+                0,
+                9
+              ],
+              [
+                0,
+                18,
+                0,
+                0,
+                10
+              ],
+              [
+                0,
+                19,
+                0,
+                0,
+                11
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                34
+              ],
+              [
+                1,
+                9,
+                0,
+                0,
+                39
+              ],
+              [
+                1,
+                11,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                12,
+                0,
+                0,
+                42
+              ],
+              [
+                2,
+                16,
+                0,
+                0,
+                34
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                39
+              ],
+              [
+                2,
+                23,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                24,
+                0,
+                0,
+                42
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                47
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                51
+              ],
+              [
+                3,
+                12,
+                0,
+                0,
+                55
+              ],
+              [
+                3,
+                13,
+                0,
+                0,
+                56
+              ],
+              [
+                4,
+                1,
+                0,
+                0,
+                81
+              ]
+            ]
+          }
+        },
+        "main.js.map": {
+          "kind": "javascript",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.js",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                1,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                4,
+                0,
+                0,
+                15
+              ],
+              [
+                2,
+                17,
+                0,
+                0,
+                34
+              ],
+              [
+                2,
+                22,
+                0,
+                0,
+                42
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                34
+              ],
+              [
+                3,
+                18,
+                0,
+                0,
+                39
+              ],
+              [
+                3,
+                21,
+                0,
+                0,
+                34
+              ],
+              [
+                3,
+                26,
+                0,
+                0,
+                39
+              ],
+              [
+                3,
+                27,
+                0,
+                0,
+                42
+              ],
+              [
+                4,
+                4,
+                0,
+                0,
+                45
+              ],
+              [
+                4,
+                5,
+                0,
+                0,
+                46
+              ],
+              [
+                5,
+                4,
+                0,
+                0,
+                47
+              ],
+              [
+                5,
+                22,
+                0,
+                0,
+                51
+              ],
+              [
+                5,
+                25,
+                0,
+                0,
+                47
+              ],
+              [
+                5,
+                39,
+                0,
+                0,
+                59
+              ],
+              [
+                5,
+                46,
+                0,
+                0,
+                66
+              ],
+              [
+                5,
+                50,
+                0,
+                0,
+                70
+              ],
+              [
+                5,
+                51,
+                0,
+                0,
+                71
+              ],
+              [
+                5,
+                56,
+                0,
+                0,
+                76
+              ],
+              [
+                5,
+                57,
+                0,
+                0,
+                77
+              ],
+              [
+                5,
+                58,
+                0,
+                0,
+                78
+              ],
+              [
+                5,
+                59,
+                0,
+                0,
+                79
+              ],
+              [
+                6,
+                4,
+                0,
+                0,
+                80
+              ],
+              [
+                6,
+                14,
+                0,
+                0,
+                81
+              ],
+              [
+                7,
+                0,
+                0,
+                0,
+                80
+              ],
+              [
+                7,
+                1,
+                0,
+                0,
+                81
+              ],
+              [
+                7,
+                1,
+                0,
+                0,
+                0
+              ],
+              [
+                7,
+                5,
+                0,
+                0,
+                81
+              ]
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "script/1",
+      "files": {
+        "main.ts": "class Box<T> { constructor(public value: T) {} read(): T { return this.value; } }\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "module": "ESNext",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "newLine": "CRLF",
+          "emitBOM": false,
+          "removeComments": false
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "javascript": {
+        "main.js": "\"use strict\";\r\nvar Box = /** @class */ (function () {\r\n    function Box(value) {\r\n        this.value = value;\r\n    }\r\n    Box.prototype.read = function () { return this.value; };\r\n    return Box;\r\n}());\r\n//# sourceMappingURL=main.js.map"
+      },
+      "declarations": {
+        "main.d.ts": "declare class Box<T> {\r\n    value: T;\r\n    constructor(value: T);\r\n    read(): T;\r\n}\r\n//# sourceMappingURL=main.d.ts.map"
+      },
+      "maps": {
+        "main.d.ts.map": {
+          "kind": "declaration",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.d.ts",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                14,
+                0,
+                0,
+                6
+              ],
+              [
+                0,
+                17,
+                0,
+                0,
+                9
+              ],
+              [
+                0,
+                18,
+                0,
+                0,
+                10
+              ],
+              [
+                0,
+                19,
+                0,
+                0,
+                11
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                34
+              ],
+              [
+                1,
+                9,
+                0,
+                0,
+                39
+              ],
+              [
+                1,
+                11,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                12,
+                0,
+                0,
+                42
+              ],
+              [
+                2,
+                16,
+                0,
+                0,
+                34
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                39
+              ],
+              [
+                2,
+                23,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                24,
+                0,
+                0,
+                42
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                47
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                51
+              ],
+              [
+                3,
+                12,
+                0,
+                0,
+                55
+              ],
+              [
+                3,
+                13,
+                0,
+                0,
+                56
+              ],
+              [
+                4,
+                1,
+                0,
+                0,
+                81
+              ]
+            ]
+          }
+        },
+        "main.js.map": {
+          "kind": "javascript",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.js",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                1,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                4,
+                0,
+                0,
+                15
+              ],
+              [
+                2,
+                17,
+                0,
+                0,
+                34
+              ],
+              [
+                2,
+                22,
+                0,
+                0,
+                42
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                34
+              ],
+              [
+                3,
+                18,
+                0,
+                0,
+                39
+              ],
+              [
+                3,
+                21,
+                0,
+                0,
+                34
+              ],
+              [
+                3,
+                26,
+                0,
+                0,
+                39
+              ],
+              [
+                3,
+                27,
+                0,
+                0,
+                42
+              ],
+              [
+                4,
+                4,
+                0,
+                0,
+                45
+              ],
+              [
+                4,
+                5,
+                0,
+                0,
+                46
+              ],
+              [
+                5,
+                4,
+                0,
+                0,
+                47
+              ],
+              [
+                5,
+                22,
+                0,
+                0,
+                51
+              ],
+              [
+                5,
+                25,
+                0,
+                0,
+                47
+              ],
+              [
+                5,
+                39,
+                0,
+                0,
+                59
+              ],
+              [
+                5,
+                46,
+                0,
+                0,
+                66
+              ],
+              [
+                5,
+                50,
+                0,
+                0,
+                70
+              ],
+              [
+                5,
+                51,
+                0,
+                0,
+                71
+              ],
+              [
+                5,
+                56,
+                0,
+                0,
+                76
+              ],
+              [
+                5,
+                57,
+                0,
+                0,
+                77
+              ],
+              [
+                5,
+                58,
+                0,
+                0,
+                78
+              ],
+              [
+                5,
+                59,
+                0,
+                0,
+                79
+              ],
+              [
+                6,
+                4,
+                0,
+                0,
+                80
+              ],
+              [
+                6,
+                14,
+                0,
+                0,
+                81
+              ],
+              [
+                7,
+                0,
+                0,
+                0,
+                80
+              ],
+              [
+                7,
+                1,
+                0,
+                0,
+                81
+              ],
+              [
+                7,
+                1,
+                0,
+                0,
+                0
+              ],
+              [
+                7,
+                5,
+                0,
+                0,
+                81
+              ]
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "script/2",
+      "files": {
+        "main.ts": "class Box<T> { constructor(public value: T) {} read(): T { return this.value; } }\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "module": "ESNext",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "newLine": "LF",
+          "emitBOM": true,
+          "removeComments": false
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "javascript": {
+        "main.js": "﻿\"use strict\";\nvar Box = /** @class */ (function () {\n    function Box(value) {\n        this.value = value;\n    }\n    Box.prototype.read = function () { return this.value; };\n    return Box;\n}());\n//# sourceMappingURL=main.js.map"
+      },
+      "declarations": {
+        "main.d.ts": "﻿declare class Box<T> {\n    value: T;\n    constructor(value: T);\n    read(): T;\n}\n//# sourceMappingURL=main.d.ts.map"
+      },
+      "maps": {
+        "main.d.ts.map": {
+          "kind": "declaration",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.d.ts",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                14,
+                0,
+                0,
+                6
+              ],
+              [
+                0,
+                17,
+                0,
+                0,
+                9
+              ],
+              [
+                0,
+                18,
+                0,
+                0,
+                10
+              ],
+              [
+                0,
+                19,
+                0,
+                0,
+                11
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                34
+              ],
+              [
+                1,
+                9,
+                0,
+                0,
+                39
+              ],
+              [
+                1,
+                11,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                12,
+                0,
+                0,
+                42
+              ],
+              [
+                2,
+                16,
+                0,
+                0,
+                34
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                39
+              ],
+              [
+                2,
+                23,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                24,
+                0,
+                0,
+                42
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                47
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                51
+              ],
+              [
+                3,
+                12,
+                0,
+                0,
+                55
+              ],
+              [
+                3,
+                13,
+                0,
+                0,
+                56
+              ],
+              [
+                4,
+                1,
+                0,
+                0,
+                81
+              ]
+            ]
+          }
+        },
+        "main.js.map": {
+          "kind": "javascript",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.js",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                1,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                4,
+                0,
+                0,
+                15
+              ],
+              [
+                2,
+                17,
+                0,
+                0,
+                34
+              ],
+              [
+                2,
+                22,
+                0,
+                0,
+                42
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                34
+              ],
+              [
+                3,
+                18,
+                0,
+                0,
+                39
+              ],
+              [
+                3,
+                21,
+                0,
+                0,
+                34
+              ],
+              [
+                3,
+                26,
+                0,
+                0,
+                39
+              ],
+              [
+                3,
+                27,
+                0,
+                0,
+                42
+              ],
+              [
+                4,
+                4,
+                0,
+                0,
+                45
+              ],
+              [
+                4,
+                5,
+                0,
+                0,
+                46
+              ],
+              [
+                5,
+                4,
+                0,
+                0,
+                47
+              ],
+              [
+                5,
+                22,
+                0,
+                0,
+                51
+              ],
+              [
+                5,
+                25,
+                0,
+                0,
+                47
+              ],
+              [
+                5,
+                39,
+                0,
+                0,
+                59
+              ],
+              [
+                5,
+                46,
+                0,
+                0,
+                66
+              ],
+              [
+                5,
+                50,
+                0,
+                0,
+                70
+              ],
+              [
+                5,
+                51,
+                0,
+                0,
+                71
+              ],
+              [
+                5,
+                56,
+                0,
+                0,
+                76
+              ],
+              [
+                5,
+                57,
+                0,
+                0,
+                77
+              ],
+              [
+                5,
+                58,
+                0,
+                0,
+                78
+              ],
+              [
+                5,
+                59,
+                0,
+                0,
+                79
+              ],
+              [
+                6,
+                4,
+                0,
+                0,
+                80
+              ],
+              [
+                6,
+                14,
+                0,
+                0,
+                81
+              ],
+              [
+                7,
+                0,
+                0,
+                0,
+                80
+              ],
+              [
+                7,
+                1,
+                0,
+                0,
+                81
+              ],
+              [
+                7,
+                1,
+                0,
+                0,
+                0
+              ],
+              [
+                7,
+                5,
+                0,
+                0,
+                81
+              ]
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "script/3",
+      "files": {
+        "main.ts": "class Box<T> { constructor(public value: T) {} read(): T { return this.value; } }\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "module": "ESNext",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "newLine": "CRLF",
+          "emitBOM": true,
+          "removeComments": false
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "javascript": {
+        "main.js": "﻿\"use strict\";\r\nvar Box = /** @class */ (function () {\r\n    function Box(value) {\r\n        this.value = value;\r\n    }\r\n    Box.prototype.read = function () { return this.value; };\r\n    return Box;\r\n}());\r\n//# sourceMappingURL=main.js.map"
+      },
+      "declarations": {
+        "main.d.ts": "﻿declare class Box<T> {\r\n    value: T;\r\n    constructor(value: T);\r\n    read(): T;\r\n}\r\n//# sourceMappingURL=main.d.ts.map"
+      },
+      "maps": {
+        "main.d.ts.map": {
+          "kind": "declaration",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.d.ts",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                14,
+                0,
+                0,
+                6
+              ],
+              [
+                0,
+                17,
+                0,
+                0,
+                9
+              ],
+              [
+                0,
+                18,
+                0,
+                0,
+                10
+              ],
+              [
+                0,
+                19,
+                0,
+                0,
+                11
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                34
+              ],
+              [
+                1,
+                9,
+                0,
+                0,
+                39
+              ],
+              [
+                1,
+                11,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                12,
+                0,
+                0,
+                42
+              ],
+              [
+                2,
+                16,
+                0,
+                0,
+                34
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                39
+              ],
+              [
+                2,
+                23,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                24,
+                0,
+                0,
+                42
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                47
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                51
+              ],
+              [
+                3,
+                12,
+                0,
+                0,
+                55
+              ],
+              [
+                3,
+                13,
+                0,
+                0,
+                56
+              ],
+              [
+                4,
+                1,
+                0,
+                0,
+                81
+              ]
+            ]
+          }
+        },
+        "main.js.map": {
+          "kind": "javascript",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.js",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                1,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                4,
+                0,
+                0,
+                15
+              ],
+              [
+                2,
+                17,
+                0,
+                0,
+                34
+              ],
+              [
+                2,
+                22,
+                0,
+                0,
+                42
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                34
+              ],
+              [
+                3,
+                18,
+                0,
+                0,
+                39
+              ],
+              [
+                3,
+                21,
+                0,
+                0,
+                34
+              ],
+              [
+                3,
+                26,
+                0,
+                0,
+                39
+              ],
+              [
+                3,
+                27,
+                0,
+                0,
+                42
+              ],
+              [
+                4,
+                4,
+                0,
+                0,
+                45
+              ],
+              [
+                4,
+                5,
+                0,
+                0,
+                46
+              ],
+              [
+                5,
+                4,
+                0,
+                0,
+                47
+              ],
+              [
+                5,
+                22,
+                0,
+                0,
+                51
+              ],
+              [
+                5,
+                25,
+                0,
+                0,
+                47
+              ],
+              [
+                5,
+                39,
+                0,
+                0,
+                59
+              ],
+              [
+                5,
+                46,
+                0,
+                0,
+                66
+              ],
+              [
+                5,
+                50,
+                0,
+                0,
+                70
+              ],
+              [
+                5,
+                51,
+                0,
+                0,
+                71
+              ],
+              [
+                5,
+                56,
+                0,
+                0,
+                76
+              ],
+              [
+                5,
+                57,
+                0,
+                0,
+                77
+              ],
+              [
+                5,
+                58,
+                0,
+                0,
+                78
+              ],
+              [
+                5,
+                59,
+                0,
+                0,
+                79
+              ],
+              [
+                6,
+                4,
+                0,
+                0,
+                80
+              ],
+              [
+                6,
+                14,
+                0,
+                0,
+                81
+              ],
+              [
+                7,
+                0,
+                0,
+                0,
+                80
+              ],
+              [
+                7,
+                1,
+                0,
+                0,
+                81
+              ],
+              [
+                7,
+                1,
+                0,
+                0,
+                0
+              ],
+              [
+                7,
+                5,
+                0,
+                0,
+                81
+              ]
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "script/4",
+      "files": {
+        "main.ts": "class Box<T> { constructor(public value: T) {} read(): T { return this.value; } }\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "module": "ESNext",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "newLine": "LF",
+          "emitBOM": false,
+          "removeComments": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "javascript": {
+        "main.js": "\"use strict\";\nvar Box = (function () {\n    function Box(value) {\n        this.value = value;\n    }\n    Box.prototype.read = function () { return this.value; };\n    return Box;\n}());\n//# sourceMappingURL=main.js.map"
+      },
+      "declarations": {
+        "main.d.ts": "declare class Box<T> {\n    value: T;\n    constructor(value: T);\n    read(): T;\n}\n//# sourceMappingURL=main.d.ts.map"
+      },
+      "maps": {
+        "main.d.ts.map": {
+          "kind": "declaration",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.d.ts",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                14,
+                0,
+                0,
+                6
+              ],
+              [
+                0,
+                17,
+                0,
+                0,
+                9
+              ],
+              [
+                0,
+                18,
+                0,
+                0,
+                10
+              ],
+              [
+                0,
+                19,
+                0,
+                0,
+                11
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                34
+              ],
+              [
+                1,
+                9,
+                0,
+                0,
+                39
+              ],
+              [
+                1,
+                11,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                12,
+                0,
+                0,
+                42
+              ],
+              [
+                2,
+                16,
+                0,
+                0,
+                34
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                39
+              ],
+              [
+                2,
+                23,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                24,
+                0,
+                0,
+                42
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                47
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                51
+              ],
+              [
+                3,
+                12,
+                0,
+                0,
+                55
+              ],
+              [
+                3,
+                13,
+                0,
+                0,
+                56
+              ],
+              [
+                4,
+                1,
+                0,
+                0,
+                81
+              ]
+            ]
+          }
+        },
+        "main.js.map": {
+          "kind": "javascript",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.js",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                1,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                4,
+                0,
+                0,
+                15
+              ],
+              [
+                2,
+                17,
+                0,
+                0,
+                34
+              ],
+              [
+                2,
+                22,
+                0,
+                0,
+                42
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                34
+              ],
+              [
+                3,
+                18,
+                0,
+                0,
+                39
+              ],
+              [
+                3,
+                21,
+                0,
+                0,
+                34
+              ],
+              [
+                3,
+                26,
+                0,
+                0,
+                39
+              ],
+              [
+                3,
+                27,
+                0,
+                0,
+                42
+              ],
+              [
+                4,
+                4,
+                0,
+                0,
+                45
+              ],
+              [
+                4,
+                5,
+                0,
+                0,
+                46
+              ],
+              [
+                5,
+                4,
+                0,
+                0,
+                47
+              ],
+              [
+                5,
+                22,
+                0,
+                0,
+                51
+              ],
+              [
+                5,
+                25,
+                0,
+                0,
+                47
+              ],
+              [
+                5,
+                39,
+                0,
+                0,
+                59
+              ],
+              [
+                5,
+                46,
+                0,
+                0,
+                66
+              ],
+              [
+                5,
+                50,
+                0,
+                0,
+                70
+              ],
+              [
+                5,
+                51,
+                0,
+                0,
+                71
+              ],
+              [
+                5,
+                56,
+                0,
+                0,
+                76
+              ],
+              [
+                5,
+                57,
+                0,
+                0,
+                77
+              ],
+              [
+                5,
+                58,
+                0,
+                0,
+                78
+              ],
+              [
+                5,
+                59,
+                0,
+                0,
+                79
+              ],
+              [
+                6,
+                4,
+                0,
+                0,
+                80
+              ],
+              [
+                6,
+                14,
+                0,
+                0,
+                81
+              ],
+              [
+                7,
+                0,
+                0,
+                0,
+                80
+              ],
+              [
+                7,
+                1,
+                0,
+                0,
+                81
+              ],
+              [
+                7,
+                1,
+                0,
+                0,
+                0
+              ],
+              [
+                7,
+                5,
+                0,
+                0,
+                81
+              ]
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "script/5",
+      "files": {
+        "main.ts": "class Box<T> { constructor(public value: T) {} read(): T { return this.value; } }\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "module": "ESNext",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "newLine": "CRLF",
+          "emitBOM": false,
+          "removeComments": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "javascript": {
+        "main.js": "\"use strict\";\r\nvar Box = (function () {\r\n    function Box(value) {\r\n        this.value = value;\r\n    }\r\n    Box.prototype.read = function () { return this.value; };\r\n    return Box;\r\n}());\r\n//# sourceMappingURL=main.js.map"
+      },
+      "declarations": {
+        "main.d.ts": "declare class Box<T> {\r\n    value: T;\r\n    constructor(value: T);\r\n    read(): T;\r\n}\r\n//# sourceMappingURL=main.d.ts.map"
+      },
+      "maps": {
+        "main.d.ts.map": {
+          "kind": "declaration",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.d.ts",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                14,
+                0,
+                0,
+                6
+              ],
+              [
+                0,
+                17,
+                0,
+                0,
+                9
+              ],
+              [
+                0,
+                18,
+                0,
+                0,
+                10
+              ],
+              [
+                0,
+                19,
+                0,
+                0,
+                11
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                34
+              ],
+              [
+                1,
+                9,
+                0,
+                0,
+                39
+              ],
+              [
+                1,
+                11,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                12,
+                0,
+                0,
+                42
+              ],
+              [
+                2,
+                16,
+                0,
+                0,
+                34
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                39
+              ],
+              [
+                2,
+                23,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                24,
+                0,
+                0,
+                42
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                47
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                51
+              ],
+              [
+                3,
+                12,
+                0,
+                0,
+                55
+              ],
+              [
+                3,
+                13,
+                0,
+                0,
+                56
+              ],
+              [
+                4,
+                1,
+                0,
+                0,
+                81
+              ]
+            ]
+          }
+        },
+        "main.js.map": {
+          "kind": "javascript",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.js",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                1,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                4,
+                0,
+                0,
+                15
+              ],
+              [
+                2,
+                17,
+                0,
+                0,
+                34
+              ],
+              [
+                2,
+                22,
+                0,
+                0,
+                42
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                34
+              ],
+              [
+                3,
+                18,
+                0,
+                0,
+                39
+              ],
+              [
+                3,
+                21,
+                0,
+                0,
+                34
+              ],
+              [
+                3,
+                26,
+                0,
+                0,
+                39
+              ],
+              [
+                3,
+                27,
+                0,
+                0,
+                42
+              ],
+              [
+                4,
+                4,
+                0,
+                0,
+                45
+              ],
+              [
+                4,
+                5,
+                0,
+                0,
+                46
+              ],
+              [
+                5,
+                4,
+                0,
+                0,
+                47
+              ],
+              [
+                5,
+                22,
+                0,
+                0,
+                51
+              ],
+              [
+                5,
+                25,
+                0,
+                0,
+                47
+              ],
+              [
+                5,
+                39,
+                0,
+                0,
+                59
+              ],
+              [
+                5,
+                46,
+                0,
+                0,
+                66
+              ],
+              [
+                5,
+                50,
+                0,
+                0,
+                70
+              ],
+              [
+                5,
+                51,
+                0,
+                0,
+                71
+              ],
+              [
+                5,
+                56,
+                0,
+                0,
+                76
+              ],
+              [
+                5,
+                57,
+                0,
+                0,
+                77
+              ],
+              [
+                5,
+                58,
+                0,
+                0,
+                78
+              ],
+              [
+                5,
+                59,
+                0,
+                0,
+                79
+              ],
+              [
+                6,
+                4,
+                0,
+                0,
+                80
+              ],
+              [
+                6,
+                14,
+                0,
+                0,
+                81
+              ],
+              [
+                7,
+                0,
+                0,
+                0,
+                80
+              ],
+              [
+                7,
+                1,
+                0,
+                0,
+                81
+              ],
+              [
+                7,
+                1,
+                0,
+                0,
+                0
+              ],
+              [
+                7,
+                5,
+                0,
+                0,
+                81
+              ]
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "script/6",
+      "files": {
+        "main.ts": "class Box<T> { constructor(public value: T) {} read(): T { return this.value; } }\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "module": "ESNext",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "newLine": "LF",
+          "emitBOM": true,
+          "removeComments": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "javascript": {
+        "main.js": "﻿\"use strict\";\nvar Box = (function () {\n    function Box(value) {\n        this.value = value;\n    }\n    Box.prototype.read = function () { return this.value; };\n    return Box;\n}());\n//# sourceMappingURL=main.js.map"
+      },
+      "declarations": {
+        "main.d.ts": "﻿declare class Box<T> {\n    value: T;\n    constructor(value: T);\n    read(): T;\n}\n//# sourceMappingURL=main.d.ts.map"
+      },
+      "maps": {
+        "main.d.ts.map": {
+          "kind": "declaration",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.d.ts",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                14,
+                0,
+                0,
+                6
+              ],
+              [
+                0,
+                17,
+                0,
+                0,
+                9
+              ],
+              [
+                0,
+                18,
+                0,
+                0,
+                10
+              ],
+              [
+                0,
+                19,
+                0,
+                0,
+                11
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                34
+              ],
+              [
+                1,
+                9,
+                0,
+                0,
+                39
+              ],
+              [
+                1,
+                11,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                12,
+                0,
+                0,
+                42
+              ],
+              [
+                2,
+                16,
+                0,
+                0,
+                34
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                39
+              ],
+              [
+                2,
+                23,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                24,
+                0,
+                0,
+                42
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                47
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                51
+              ],
+              [
+                3,
+                12,
+                0,
+                0,
+                55
+              ],
+              [
+                3,
+                13,
+                0,
+                0,
+                56
+              ],
+              [
+                4,
+                1,
+                0,
+                0,
+                81
+              ]
+            ]
+          }
+        },
+        "main.js.map": {
+          "kind": "javascript",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.js",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                1,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                4,
+                0,
+                0,
+                15
+              ],
+              [
+                2,
+                17,
+                0,
+                0,
+                34
+              ],
+              [
+                2,
+                22,
+                0,
+                0,
+                42
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                34
+              ],
+              [
+                3,
+                18,
+                0,
+                0,
+                39
+              ],
+              [
+                3,
+                21,
+                0,
+                0,
+                34
+              ],
+              [
+                3,
+                26,
+                0,
+                0,
+                39
+              ],
+              [
+                3,
+                27,
+                0,
+                0,
+                42
+              ],
+              [
+                4,
+                4,
+                0,
+                0,
+                45
+              ],
+              [
+                4,
+                5,
+                0,
+                0,
+                46
+              ],
+              [
+                5,
+                4,
+                0,
+                0,
+                47
+              ],
+              [
+                5,
+                22,
+                0,
+                0,
+                51
+              ],
+              [
+                5,
+                25,
+                0,
+                0,
+                47
+              ],
+              [
+                5,
+                39,
+                0,
+                0,
+                59
+              ],
+              [
+                5,
+                46,
+                0,
+                0,
+                66
+              ],
+              [
+                5,
+                50,
+                0,
+                0,
+                70
+              ],
+              [
+                5,
+                51,
+                0,
+                0,
+                71
+              ],
+              [
+                5,
+                56,
+                0,
+                0,
+                76
+              ],
+              [
+                5,
+                57,
+                0,
+                0,
+                77
+              ],
+              [
+                5,
+                58,
+                0,
+                0,
+                78
+              ],
+              [
+                5,
+                59,
+                0,
+                0,
+                79
+              ],
+              [
+                6,
+                4,
+                0,
+                0,
+                80
+              ],
+              [
+                6,
+                14,
+                0,
+                0,
+                81
+              ],
+              [
+                7,
+                0,
+                0,
+                0,
+                80
+              ],
+              [
+                7,
+                1,
+                0,
+                0,
+                81
+              ],
+              [
+                7,
+                1,
+                0,
+                0,
+                0
+              ],
+              [
+                7,
+                5,
+                0,
+                0,
+                81
+              ]
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "script/7",
+      "files": {
+        "main.ts": "class Box<T> { constructor(public value: T) {} read(): T { return this.value; } }\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "module": "ESNext",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "newLine": "CRLF",
+          "emitBOM": true,
+          "removeComments": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "javascript": {
+        "main.js": "﻿\"use strict\";\r\nvar Box = (function () {\r\n    function Box(value) {\r\n        this.value = value;\r\n    }\r\n    Box.prototype.read = function () { return this.value; };\r\n    return Box;\r\n}());\r\n//# sourceMappingURL=main.js.map"
+      },
+      "declarations": {
+        "main.d.ts": "﻿declare class Box<T> {\r\n    value: T;\r\n    constructor(value: T);\r\n    read(): T;\r\n}\r\n//# sourceMappingURL=main.d.ts.map"
+      },
+      "maps": {
+        "main.d.ts.map": {
+          "kind": "declaration",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.d.ts",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                14,
+                0,
+                0,
+                6
+              ],
+              [
+                0,
+                17,
+                0,
+                0,
+                9
+              ],
+              [
+                0,
+                18,
+                0,
+                0,
+                10
+              ],
+              [
+                0,
+                19,
+                0,
+                0,
+                11
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                34
+              ],
+              [
+                1,
+                9,
+                0,
+                0,
+                39
+              ],
+              [
+                1,
+                11,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                12,
+                0,
+                0,
+                42
+              ],
+              [
+                2,
+                16,
+                0,
+                0,
+                34
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                39
+              ],
+              [
+                2,
+                23,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                24,
+                0,
+                0,
+                42
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                47
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                51
+              ],
+              [
+                3,
+                12,
+                0,
+                0,
+                55
+              ],
+              [
+                3,
+                13,
+                0,
+                0,
+                56
+              ],
+              [
+                4,
+                1,
+                0,
+                0,
+                81
+              ]
+            ]
+          }
+        },
+        "main.js.map": {
+          "kind": "javascript",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.js",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                1,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                4,
+                0,
+                0,
+                15
+              ],
+              [
+                2,
+                17,
+                0,
+                0,
+                34
+              ],
+              [
+                2,
+                22,
+                0,
+                0,
+                42
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                34
+              ],
+              [
+                3,
+                18,
+                0,
+                0,
+                39
+              ],
+              [
+                3,
+                21,
+                0,
+                0,
+                34
+              ],
+              [
+                3,
+                26,
+                0,
+                0,
+                39
+              ],
+              [
+                3,
+                27,
+                0,
+                0,
+                42
+              ],
+              [
+                4,
+                4,
+                0,
+                0,
+                45
+              ],
+              [
+                4,
+                5,
+                0,
+                0,
+                46
+              ],
+              [
+                5,
+                4,
+                0,
+                0,
+                47
+              ],
+              [
+                5,
+                22,
+                0,
+                0,
+                51
+              ],
+              [
+                5,
+                25,
+                0,
+                0,
+                47
+              ],
+              [
+                5,
+                39,
+                0,
+                0,
+                59
+              ],
+              [
+                5,
+                46,
+                0,
+                0,
+                66
+              ],
+              [
+                5,
+                50,
+                0,
+                0,
+                70
+              ],
+              [
+                5,
+                51,
+                0,
+                0,
+                71
+              ],
+              [
+                5,
+                56,
+                0,
+                0,
+                76
+              ],
+              [
+                5,
+                57,
+                0,
+                0,
+                77
+              ],
+              [
+                5,
+                58,
+                0,
+                0,
+                78
+              ],
+              [
+                5,
+                59,
+                0,
+                0,
+                79
+              ],
+              [
+                6,
+                4,
+                0,
+                0,
+                80
+              ],
+              [
+                6,
+                14,
+                0,
+                0,
+                81
+              ],
+              [
+                7,
+                0,
+                0,
+                0,
+                80
+              ],
+              [
+                7,
+                1,
+                0,
+                0,
+                81
+              ],
+              [
+                7,
+                1,
+                0,
+                0,
+                0
+              ],
+              [
+                7,
+                5,
+                0,
+                0,
+                81
+              ]
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "module/0",
+      "files": {
+        "main.ts": "export class Box<T> { constructor(public value: T) {} read(): T { return this.value; } }\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "module": "ESNext",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "newLine": "LF",
+          "emitBOM": false,
+          "removeComments": false
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "javascript": {
+        "main.js": "var Box = /** @class */ (function () {\n    function Box(value) {\n        this.value = value;\n    }\n    Box.prototype.read = function () { return this.value; };\n    return Box;\n}());\nexport { Box };\n//# sourceMappingURL=main.js.map"
+      },
+      "declarations": {
+        "main.d.ts": "export declare class Box<T> {\n    value: T;\n    constructor(value: T);\n    read(): T;\n}\n//# sourceMappingURL=main.d.ts.map"
+      },
+      "maps": {
+        "main.d.ts.map": {
+          "kind": "declaration",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.d.ts",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                21,
+                0,
+                0,
+                13
+              ],
+              [
+                0,
+                24,
+                0,
+                0,
+                16
+              ],
+              [
+                0,
+                25,
+                0,
+                0,
+                17
+              ],
+              [
+                0,
+                26,
+                0,
+                0,
+                18
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                9,
+                0,
+                0,
+                46
+              ],
+              [
+                1,
+                11,
+                0,
+                0,
+                48
+              ],
+              [
+                1,
+                12,
+                0,
+                0,
+                49
+              ],
+              [
+                2,
+                16,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                23,
+                0,
+                0,
+                48
+              ],
+              [
+                2,
+                24,
+                0,
+                0,
+                49
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                54
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                58
+              ],
+              [
+                3,
+                12,
+                0,
+                0,
+                62
+              ],
+              [
+                3,
+                13,
+                0,
+                0,
+                63
+              ],
+              [
+                4,
+                1,
+                0,
+                0,
+                88
+              ]
+            ]
+          }
+        },
+        "main.js.map": {
+          "kind": "javascript",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.js",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                22
+              ],
+              [
+                1,
+                17,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                22,
+                0,
+                0,
+                49
+              ],
+              [
+                2,
+                8,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                18,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                26,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                27,
+                0,
+                0,
+                49
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                52
+              ],
+              [
+                3,
+                5,
+                0,
+                0,
+                53
+              ],
+              [
+                4,
+                4,
+                0,
+                0,
+                54
+              ],
+              [
+                4,
+                22,
+                0,
+                0,
+                58
+              ],
+              [
+                4,
+                25,
+                0,
+                0,
+                54
+              ],
+              [
+                4,
+                39,
+                0,
+                0,
+                66
+              ],
+              [
+                4,
+                46,
+                0,
+                0,
+                73
+              ],
+              [
+                4,
+                50,
+                0,
+                0,
+                77
+              ],
+              [
+                4,
+                51,
+                0,
+                0,
+                78
+              ],
+              [
+                4,
+                56,
+                0,
+                0,
+                83
+              ],
+              [
+                4,
+                57,
+                0,
+                0,
+                84
+              ],
+              [
+                4,
+                58,
+                0,
+                0,
+                85
+              ],
+              [
+                4,
+                59,
+                0,
+                0,
+                86
+              ],
+              [
+                5,
+                4,
+                0,
+                0,
+                87
+              ],
+              [
+                5,
+                14,
+                0,
+                0,
+                88
+              ],
+              [
+                6,
+                0,
+                0,
+                0,
+                87
+              ],
+              [
+                6,
+                1,
+                0,
+                0,
+                88
+              ],
+              [
+                6,
+                1,
+                0,
+                0,
+                0
+              ],
+              [
+                6,
+                5,
+                0,
+                0,
+                88
+              ]
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "module/1",
+      "files": {
+        "main.ts": "export class Box<T> { constructor(public value: T) {} read(): T { return this.value; } }\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "module": "ESNext",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "newLine": "CRLF",
+          "emitBOM": false,
+          "removeComments": false
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "javascript": {
+        "main.js": "var Box = /** @class */ (function () {\r\n    function Box(value) {\r\n        this.value = value;\r\n    }\r\n    Box.prototype.read = function () { return this.value; };\r\n    return Box;\r\n}());\r\nexport { Box };\r\n//# sourceMappingURL=main.js.map"
+      },
+      "declarations": {
+        "main.d.ts": "export declare class Box<T> {\r\n    value: T;\r\n    constructor(value: T);\r\n    read(): T;\r\n}\r\n//# sourceMappingURL=main.d.ts.map"
+      },
+      "maps": {
+        "main.d.ts.map": {
+          "kind": "declaration",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.d.ts",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                21,
+                0,
+                0,
+                13
+              ],
+              [
+                0,
+                24,
+                0,
+                0,
+                16
+              ],
+              [
+                0,
+                25,
+                0,
+                0,
+                17
+              ],
+              [
+                0,
+                26,
+                0,
+                0,
+                18
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                9,
+                0,
+                0,
+                46
+              ],
+              [
+                1,
+                11,
+                0,
+                0,
+                48
+              ],
+              [
+                1,
+                12,
+                0,
+                0,
+                49
+              ],
+              [
+                2,
+                16,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                23,
+                0,
+                0,
+                48
+              ],
+              [
+                2,
+                24,
+                0,
+                0,
+                49
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                54
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                58
+              ],
+              [
+                3,
+                12,
+                0,
+                0,
+                62
+              ],
+              [
+                3,
+                13,
+                0,
+                0,
+                63
+              ],
+              [
+                4,
+                1,
+                0,
+                0,
+                88
+              ]
+            ]
+          }
+        },
+        "main.js.map": {
+          "kind": "javascript",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.js",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                22
+              ],
+              [
+                1,
+                17,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                22,
+                0,
+                0,
+                49
+              ],
+              [
+                2,
+                8,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                18,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                26,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                27,
+                0,
+                0,
+                49
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                52
+              ],
+              [
+                3,
+                5,
+                0,
+                0,
+                53
+              ],
+              [
+                4,
+                4,
+                0,
+                0,
+                54
+              ],
+              [
+                4,
+                22,
+                0,
+                0,
+                58
+              ],
+              [
+                4,
+                25,
+                0,
+                0,
+                54
+              ],
+              [
+                4,
+                39,
+                0,
+                0,
+                66
+              ],
+              [
+                4,
+                46,
+                0,
+                0,
+                73
+              ],
+              [
+                4,
+                50,
+                0,
+                0,
+                77
+              ],
+              [
+                4,
+                51,
+                0,
+                0,
+                78
+              ],
+              [
+                4,
+                56,
+                0,
+                0,
+                83
+              ],
+              [
+                4,
+                57,
+                0,
+                0,
+                84
+              ],
+              [
+                4,
+                58,
+                0,
+                0,
+                85
+              ],
+              [
+                4,
+                59,
+                0,
+                0,
+                86
+              ],
+              [
+                5,
+                4,
+                0,
+                0,
+                87
+              ],
+              [
+                5,
+                14,
+                0,
+                0,
+                88
+              ],
+              [
+                6,
+                0,
+                0,
+                0,
+                87
+              ],
+              [
+                6,
+                1,
+                0,
+                0,
+                88
+              ],
+              [
+                6,
+                1,
+                0,
+                0,
+                0
+              ],
+              [
+                6,
+                5,
+                0,
+                0,
+                88
+              ]
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "module/2",
+      "files": {
+        "main.ts": "export class Box<T> { constructor(public value: T) {} read(): T { return this.value; } }\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "module": "ESNext",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "newLine": "LF",
+          "emitBOM": true,
+          "removeComments": false
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "javascript": {
+        "main.js": "﻿var Box = /** @class */ (function () {\n    function Box(value) {\n        this.value = value;\n    }\n    Box.prototype.read = function () { return this.value; };\n    return Box;\n}());\nexport { Box };\n//# sourceMappingURL=main.js.map"
+      },
+      "declarations": {
+        "main.d.ts": "﻿export declare class Box<T> {\n    value: T;\n    constructor(value: T);\n    read(): T;\n}\n//# sourceMappingURL=main.d.ts.map"
+      },
+      "maps": {
+        "main.d.ts.map": {
+          "kind": "declaration",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.d.ts",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                21,
+                0,
+                0,
+                13
+              ],
+              [
+                0,
+                24,
+                0,
+                0,
+                16
+              ],
+              [
+                0,
+                25,
+                0,
+                0,
+                17
+              ],
+              [
+                0,
+                26,
+                0,
+                0,
+                18
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                9,
+                0,
+                0,
+                46
+              ],
+              [
+                1,
+                11,
+                0,
+                0,
+                48
+              ],
+              [
+                1,
+                12,
+                0,
+                0,
+                49
+              ],
+              [
+                2,
+                16,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                23,
+                0,
+                0,
+                48
+              ],
+              [
+                2,
+                24,
+                0,
+                0,
+                49
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                54
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                58
+              ],
+              [
+                3,
+                12,
+                0,
+                0,
+                62
+              ],
+              [
+                3,
+                13,
+                0,
+                0,
+                63
+              ],
+              [
+                4,
+                1,
+                0,
+                0,
+                88
+              ]
+            ]
+          }
+        },
+        "main.js.map": {
+          "kind": "javascript",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.js",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                22
+              ],
+              [
+                1,
+                17,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                22,
+                0,
+                0,
+                49
+              ],
+              [
+                2,
+                8,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                18,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                26,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                27,
+                0,
+                0,
+                49
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                52
+              ],
+              [
+                3,
+                5,
+                0,
+                0,
+                53
+              ],
+              [
+                4,
+                4,
+                0,
+                0,
+                54
+              ],
+              [
+                4,
+                22,
+                0,
+                0,
+                58
+              ],
+              [
+                4,
+                25,
+                0,
+                0,
+                54
+              ],
+              [
+                4,
+                39,
+                0,
+                0,
+                66
+              ],
+              [
+                4,
+                46,
+                0,
+                0,
+                73
+              ],
+              [
+                4,
+                50,
+                0,
+                0,
+                77
+              ],
+              [
+                4,
+                51,
+                0,
+                0,
+                78
+              ],
+              [
+                4,
+                56,
+                0,
+                0,
+                83
+              ],
+              [
+                4,
+                57,
+                0,
+                0,
+                84
+              ],
+              [
+                4,
+                58,
+                0,
+                0,
+                85
+              ],
+              [
+                4,
+                59,
+                0,
+                0,
+                86
+              ],
+              [
+                5,
+                4,
+                0,
+                0,
+                87
+              ],
+              [
+                5,
+                14,
+                0,
+                0,
+                88
+              ],
+              [
+                6,
+                0,
+                0,
+                0,
+                87
+              ],
+              [
+                6,
+                1,
+                0,
+                0,
+                88
+              ],
+              [
+                6,
+                1,
+                0,
+                0,
+                0
+              ],
+              [
+                6,
+                5,
+                0,
+                0,
+                88
+              ]
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "module/3",
+      "files": {
+        "main.ts": "export class Box<T> { constructor(public value: T) {} read(): T { return this.value; } }\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "module": "ESNext",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "newLine": "CRLF",
+          "emitBOM": true,
+          "removeComments": false
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "javascript": {
+        "main.js": "﻿var Box = /** @class */ (function () {\r\n    function Box(value) {\r\n        this.value = value;\r\n    }\r\n    Box.prototype.read = function () { return this.value; };\r\n    return Box;\r\n}());\r\nexport { Box };\r\n//# sourceMappingURL=main.js.map"
+      },
+      "declarations": {
+        "main.d.ts": "﻿export declare class Box<T> {\r\n    value: T;\r\n    constructor(value: T);\r\n    read(): T;\r\n}\r\n//# sourceMappingURL=main.d.ts.map"
+      },
+      "maps": {
+        "main.d.ts.map": {
+          "kind": "declaration",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.d.ts",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                21,
+                0,
+                0,
+                13
+              ],
+              [
+                0,
+                24,
+                0,
+                0,
+                16
+              ],
+              [
+                0,
+                25,
+                0,
+                0,
+                17
+              ],
+              [
+                0,
+                26,
+                0,
+                0,
+                18
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                9,
+                0,
+                0,
+                46
+              ],
+              [
+                1,
+                11,
+                0,
+                0,
+                48
+              ],
+              [
+                1,
+                12,
+                0,
+                0,
+                49
+              ],
+              [
+                2,
+                16,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                23,
+                0,
+                0,
+                48
+              ],
+              [
+                2,
+                24,
+                0,
+                0,
+                49
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                54
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                58
+              ],
+              [
+                3,
+                12,
+                0,
+                0,
+                62
+              ],
+              [
+                3,
+                13,
+                0,
+                0,
+                63
+              ],
+              [
+                4,
+                1,
+                0,
+                0,
+                88
+              ]
+            ]
+          }
+        },
+        "main.js.map": {
+          "kind": "javascript",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.js",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                22
+              ],
+              [
+                1,
+                17,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                22,
+                0,
+                0,
+                49
+              ],
+              [
+                2,
+                8,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                18,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                26,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                27,
+                0,
+                0,
+                49
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                52
+              ],
+              [
+                3,
+                5,
+                0,
+                0,
+                53
+              ],
+              [
+                4,
+                4,
+                0,
+                0,
+                54
+              ],
+              [
+                4,
+                22,
+                0,
+                0,
+                58
+              ],
+              [
+                4,
+                25,
+                0,
+                0,
+                54
+              ],
+              [
+                4,
+                39,
+                0,
+                0,
+                66
+              ],
+              [
+                4,
+                46,
+                0,
+                0,
+                73
+              ],
+              [
+                4,
+                50,
+                0,
+                0,
+                77
+              ],
+              [
+                4,
+                51,
+                0,
+                0,
+                78
+              ],
+              [
+                4,
+                56,
+                0,
+                0,
+                83
+              ],
+              [
+                4,
+                57,
+                0,
+                0,
+                84
+              ],
+              [
+                4,
+                58,
+                0,
+                0,
+                85
+              ],
+              [
+                4,
+                59,
+                0,
+                0,
+                86
+              ],
+              [
+                5,
+                4,
+                0,
+                0,
+                87
+              ],
+              [
+                5,
+                14,
+                0,
+                0,
+                88
+              ],
+              [
+                6,
+                0,
+                0,
+                0,
+                87
+              ],
+              [
+                6,
+                1,
+                0,
+                0,
+                88
+              ],
+              [
+                6,
+                1,
+                0,
+                0,
+                0
+              ],
+              [
+                6,
+                5,
+                0,
+                0,
+                88
+              ]
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "module/4",
+      "files": {
+        "main.ts": "export class Box<T> { constructor(public value: T) {} read(): T { return this.value; } }\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "module": "ESNext",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "newLine": "LF",
+          "emitBOM": false,
+          "removeComments": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "javascript": {
+        "main.js": "var Box = (function () {\n    function Box(value) {\n        this.value = value;\n    }\n    Box.prototype.read = function () { return this.value; };\n    return Box;\n}());\nexport { Box };\n//# sourceMappingURL=main.js.map"
+      },
+      "declarations": {
+        "main.d.ts": "export declare class Box<T> {\n    value: T;\n    constructor(value: T);\n    read(): T;\n}\n//# sourceMappingURL=main.d.ts.map"
+      },
+      "maps": {
+        "main.d.ts.map": {
+          "kind": "declaration",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.d.ts",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                21,
+                0,
+                0,
+                13
+              ],
+              [
+                0,
+                24,
+                0,
+                0,
+                16
+              ],
+              [
+                0,
+                25,
+                0,
+                0,
+                17
+              ],
+              [
+                0,
+                26,
+                0,
+                0,
+                18
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                9,
+                0,
+                0,
+                46
+              ],
+              [
+                1,
+                11,
+                0,
+                0,
+                48
+              ],
+              [
+                1,
+                12,
+                0,
+                0,
+                49
+              ],
+              [
+                2,
+                16,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                23,
+                0,
+                0,
+                48
+              ],
+              [
+                2,
+                24,
+                0,
+                0,
+                49
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                54
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                58
+              ],
+              [
+                3,
+                12,
+                0,
+                0,
+                62
+              ],
+              [
+                3,
+                13,
+                0,
+                0,
+                63
+              ],
+              [
+                4,
+                1,
+                0,
+                0,
+                88
+              ]
+            ]
+          }
+        },
+        "main.js.map": {
+          "kind": "javascript",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.js",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                22
+              ],
+              [
+                1,
+                17,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                22,
+                0,
+                0,
+                49
+              ],
+              [
+                2,
+                8,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                18,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                26,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                27,
+                0,
+                0,
+                49
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                52
+              ],
+              [
+                3,
+                5,
+                0,
+                0,
+                53
+              ],
+              [
+                4,
+                4,
+                0,
+                0,
+                54
+              ],
+              [
+                4,
+                22,
+                0,
+                0,
+                58
+              ],
+              [
+                4,
+                25,
+                0,
+                0,
+                54
+              ],
+              [
+                4,
+                39,
+                0,
+                0,
+                66
+              ],
+              [
+                4,
+                46,
+                0,
+                0,
+                73
+              ],
+              [
+                4,
+                50,
+                0,
+                0,
+                77
+              ],
+              [
+                4,
+                51,
+                0,
+                0,
+                78
+              ],
+              [
+                4,
+                56,
+                0,
+                0,
+                83
+              ],
+              [
+                4,
+                57,
+                0,
+                0,
+                84
+              ],
+              [
+                4,
+                58,
+                0,
+                0,
+                85
+              ],
+              [
+                4,
+                59,
+                0,
+                0,
+                86
+              ],
+              [
+                5,
+                4,
+                0,
+                0,
+                87
+              ],
+              [
+                5,
+                14,
+                0,
+                0,
+                88
+              ],
+              [
+                6,
+                0,
+                0,
+                0,
+                87
+              ],
+              [
+                6,
+                1,
+                0,
+                0,
+                88
+              ],
+              [
+                6,
+                1,
+                0,
+                0,
+                0
+              ],
+              [
+                6,
+                5,
+                0,
+                0,
+                88
+              ]
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "module/5",
+      "files": {
+        "main.ts": "export class Box<T> { constructor(public value: T) {} read(): T { return this.value; } }\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "module": "ESNext",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "newLine": "CRLF",
+          "emitBOM": false,
+          "removeComments": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "javascript": {
+        "main.js": "var Box = (function () {\r\n    function Box(value) {\r\n        this.value = value;\r\n    }\r\n    Box.prototype.read = function () { return this.value; };\r\n    return Box;\r\n}());\r\nexport { Box };\r\n//# sourceMappingURL=main.js.map"
+      },
+      "declarations": {
+        "main.d.ts": "export declare class Box<T> {\r\n    value: T;\r\n    constructor(value: T);\r\n    read(): T;\r\n}\r\n//# sourceMappingURL=main.d.ts.map"
+      },
+      "maps": {
+        "main.d.ts.map": {
+          "kind": "declaration",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.d.ts",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                21,
+                0,
+                0,
+                13
+              ],
+              [
+                0,
+                24,
+                0,
+                0,
+                16
+              ],
+              [
+                0,
+                25,
+                0,
+                0,
+                17
+              ],
+              [
+                0,
+                26,
+                0,
+                0,
+                18
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                9,
+                0,
+                0,
+                46
+              ],
+              [
+                1,
+                11,
+                0,
+                0,
+                48
+              ],
+              [
+                1,
+                12,
+                0,
+                0,
+                49
+              ],
+              [
+                2,
+                16,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                23,
+                0,
+                0,
+                48
+              ],
+              [
+                2,
+                24,
+                0,
+                0,
+                49
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                54
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                58
+              ],
+              [
+                3,
+                12,
+                0,
+                0,
+                62
+              ],
+              [
+                3,
+                13,
+                0,
+                0,
+                63
+              ],
+              [
+                4,
+                1,
+                0,
+                0,
+                88
+              ]
+            ]
+          }
+        },
+        "main.js.map": {
+          "kind": "javascript",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.js",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                22
+              ],
+              [
+                1,
+                17,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                22,
+                0,
+                0,
+                49
+              ],
+              [
+                2,
+                8,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                18,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                26,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                27,
+                0,
+                0,
+                49
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                52
+              ],
+              [
+                3,
+                5,
+                0,
+                0,
+                53
+              ],
+              [
+                4,
+                4,
+                0,
+                0,
+                54
+              ],
+              [
+                4,
+                22,
+                0,
+                0,
+                58
+              ],
+              [
+                4,
+                25,
+                0,
+                0,
+                54
+              ],
+              [
+                4,
+                39,
+                0,
+                0,
+                66
+              ],
+              [
+                4,
+                46,
+                0,
+                0,
+                73
+              ],
+              [
+                4,
+                50,
+                0,
+                0,
+                77
+              ],
+              [
+                4,
+                51,
+                0,
+                0,
+                78
+              ],
+              [
+                4,
+                56,
+                0,
+                0,
+                83
+              ],
+              [
+                4,
+                57,
+                0,
+                0,
+                84
+              ],
+              [
+                4,
+                58,
+                0,
+                0,
+                85
+              ],
+              [
+                4,
+                59,
+                0,
+                0,
+                86
+              ],
+              [
+                5,
+                4,
+                0,
+                0,
+                87
+              ],
+              [
+                5,
+                14,
+                0,
+                0,
+                88
+              ],
+              [
+                6,
+                0,
+                0,
+                0,
+                87
+              ],
+              [
+                6,
+                1,
+                0,
+                0,
+                88
+              ],
+              [
+                6,
+                1,
+                0,
+                0,
+                0
+              ],
+              [
+                6,
+                5,
+                0,
+                0,
+                88
+              ]
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "module/6",
+      "files": {
+        "main.ts": "export class Box<T> { constructor(public value: T) {} read(): T { return this.value; } }\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "module": "ESNext",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "newLine": "LF",
+          "emitBOM": true,
+          "removeComments": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "javascript": {
+        "main.js": "﻿var Box = (function () {\n    function Box(value) {\n        this.value = value;\n    }\n    Box.prototype.read = function () { return this.value; };\n    return Box;\n}());\nexport { Box };\n//# sourceMappingURL=main.js.map"
+      },
+      "declarations": {
+        "main.d.ts": "﻿export declare class Box<T> {\n    value: T;\n    constructor(value: T);\n    read(): T;\n}\n//# sourceMappingURL=main.d.ts.map"
+      },
+      "maps": {
+        "main.d.ts.map": {
+          "kind": "declaration",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.d.ts",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                21,
+                0,
+                0,
+                13
+              ],
+              [
+                0,
+                24,
+                0,
+                0,
+                16
+              ],
+              [
+                0,
+                25,
+                0,
+                0,
+                17
+              ],
+              [
+                0,
+                26,
+                0,
+                0,
+                18
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                9,
+                0,
+                0,
+                46
+              ],
+              [
+                1,
+                11,
+                0,
+                0,
+                48
+              ],
+              [
+                1,
+                12,
+                0,
+                0,
+                49
+              ],
+              [
+                2,
+                16,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                23,
+                0,
+                0,
+                48
+              ],
+              [
+                2,
+                24,
+                0,
+                0,
+                49
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                54
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                58
+              ],
+              [
+                3,
+                12,
+                0,
+                0,
+                62
+              ],
+              [
+                3,
+                13,
+                0,
+                0,
+                63
+              ],
+              [
+                4,
+                1,
+                0,
+                0,
+                88
+              ]
+            ]
+          }
+        },
+        "main.js.map": {
+          "kind": "javascript",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.js",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                22
+              ],
+              [
+                1,
+                17,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                22,
+                0,
+                0,
+                49
+              ],
+              [
+                2,
+                8,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                18,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                26,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                27,
+                0,
+                0,
+                49
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                52
+              ],
+              [
+                3,
+                5,
+                0,
+                0,
+                53
+              ],
+              [
+                4,
+                4,
+                0,
+                0,
+                54
+              ],
+              [
+                4,
+                22,
+                0,
+                0,
+                58
+              ],
+              [
+                4,
+                25,
+                0,
+                0,
+                54
+              ],
+              [
+                4,
+                39,
+                0,
+                0,
+                66
+              ],
+              [
+                4,
+                46,
+                0,
+                0,
+                73
+              ],
+              [
+                4,
+                50,
+                0,
+                0,
+                77
+              ],
+              [
+                4,
+                51,
+                0,
+                0,
+                78
+              ],
+              [
+                4,
+                56,
+                0,
+                0,
+                83
+              ],
+              [
+                4,
+                57,
+                0,
+                0,
+                84
+              ],
+              [
+                4,
+                58,
+                0,
+                0,
+                85
+              ],
+              [
+                4,
+                59,
+                0,
+                0,
+                86
+              ],
+              [
+                5,
+                4,
+                0,
+                0,
+                87
+              ],
+              [
+                5,
+                14,
+                0,
+                0,
+                88
+              ],
+              [
+                6,
+                0,
+                0,
+                0,
+                87
+              ],
+              [
+                6,
+                1,
+                0,
+                0,
+                88
+              ],
+              [
+                6,
+                1,
+                0,
+                0,
+                0
+              ],
+              [
+                6,
+                5,
+                0,
+                0,
+                88
+              ]
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "module/7",
+      "files": {
+        "main.ts": "export class Box<T> { constructor(public value: T) {} read(): T { return this.value; } }\n"
+      },
+      "config": {
+        "compilerOptions": {
+          "target": "ES5",
+          "module": "ESNext",
+          "lib": [
+            "ES5"
+          ],
+          "strict": true,
+          "declaration": true,
+          "sourceMap": true,
+          "declarationMap": true,
+          "noEmitOnError": true,
+          "rootDir": ".",
+          "outDir": "dist",
+          "newLine": "CRLF",
+          "emitBOM": true,
+          "removeComments": true
+        },
+        "files": [
+          "main.ts"
+        ]
+      },
+      "javascript": {
+        "main.js": "﻿var Box = (function () {\r\n    function Box(value) {\r\n        this.value = value;\r\n    }\r\n    Box.prototype.read = function () { return this.value; };\r\n    return Box;\r\n}());\r\nexport { Box };\r\n//# sourceMappingURL=main.js.map"
+      },
+      "declarations": {
+        "main.d.ts": "﻿export declare class Box<T> {\r\n    value: T;\r\n    constructor(value: T);\r\n    read(): T;\r\n}\r\n//# sourceMappingURL=main.d.ts.map"
+      },
+      "maps": {
+        "main.d.ts.map": {
+          "kind": "declaration",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.d.ts",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                21,
+                0,
+                0,
+                13
+              ],
+              [
+                0,
+                24,
+                0,
+                0,
+                16
+              ],
+              [
+                0,
+                25,
+                0,
+                0,
+                17
+              ],
+              [
+                0,
+                26,
+                0,
+                0,
+                18
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                9,
+                0,
+                0,
+                46
+              ],
+              [
+                1,
+                11,
+                0,
+                0,
+                48
+              ],
+              [
+                1,
+                12,
+                0,
+                0,
+                49
+              ],
+              [
+                2,
+                16,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                23,
+                0,
+                0,
+                48
+              ],
+              [
+                2,
+                24,
+                0,
+                0,
+                49
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                54
+              ],
+              [
+                3,
+                8,
+                0,
+                0,
+                58
+              ],
+              [
+                3,
+                12,
+                0,
+                0,
+                62
+              ],
+              [
+                3,
+                13,
+                0,
+                0,
+                63
+              ],
+              [
+                4,
+                1,
+                0,
+                0,
+                88
+              ]
+            ]
+          }
+        },
+        "main.js.map": {
+          "kind": "javascript",
+          "expected": {
+            "metadata": {
+              "version": 3,
+              "file": "main.js",
+              "sourceRoot": "",
+              "sources": [
+                "../main.ts"
+              ],
+              "names": []
+            },
+            "segments": [
+              [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              [
+                1,
+                4,
+                0,
+                0,
+                22
+              ],
+              [
+                1,
+                17,
+                0,
+                0,
+                41
+              ],
+              [
+                1,
+                22,
+                0,
+                0,
+                49
+              ],
+              [
+                2,
+                8,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                18,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                21,
+                0,
+                0,
+                41
+              ],
+              [
+                2,
+                26,
+                0,
+                0,
+                46
+              ],
+              [
+                2,
+                27,
+                0,
+                0,
+                49
+              ],
+              [
+                3,
+                4,
+                0,
+                0,
+                52
+              ],
+              [
+                3,
+                5,
+                0,
+                0,
+                53
+              ],
+              [
+                4,
+                4,
+                0,
+                0,
+                54
+              ],
+              [
+                4,
+                22,
+                0,
+                0,
+                58
+              ],
+              [
+                4,
+                25,
+                0,
+                0,
+                54
+              ],
+              [
+                4,
+                39,
+                0,
+                0,
+                66
+              ],
+              [
+                4,
+                46,
+                0,
+                0,
+                73
+              ],
+              [
+                4,
+                50,
+                0,
+                0,
+                77
+              ],
+              [
+                4,
+                51,
+                0,
+                0,
+                78
+              ],
+              [
+                4,
+                56,
+                0,
+                0,
+                83
+              ],
+              [
+                4,
+                57,
+                0,
+                0,
+                84
+              ],
+              [
+                4,
+                58,
+                0,
+                0,
+                85
+              ],
+              [
+                4,
+                59,
+                0,
+                0,
+                86
+              ],
+              [
+                5,
+                4,
+                0,
+                0,
+                87
+              ],
+              [
+                5,
+                14,
+                0,
+                0,
+                88
+              ],
+              [
+                6,
+                0,
+                0,
+                0,
+                87
+              ],
+              [
+                6,
+                1,
+                0,
+                0,
+                88
+              ],
+              [
+                6,
+                1,
+                0,
+                0,
+                0
+              ],
+              [
+                6,
+                5,
+                0,
+                0,
+                88
+              ]
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

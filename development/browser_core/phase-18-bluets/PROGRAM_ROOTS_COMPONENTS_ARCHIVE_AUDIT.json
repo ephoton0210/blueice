@@ -1,0 +1,39 @@
+{
+  "conclusion": "all-completed-component-archive-members-verified",
+  "recordedAt": "2026-11-17T04:12:17.966468+00:00",
+  "archives": [
+    {
+      "path": "PROGRAM_ROOTS_COMPONENTS_01.tar.gz",
+      "members": 11252,
+      "sha256": "5a8aef27b8699966946a78a06ec2b7ce99d136d775da6b5fb41f2018342f494c"
+    },
+    {
+      "path": "PROGRAM_ROOTS_COMPONENTS_02.tar.gz",
+      "members": 76193,
+      "sha256": "05b494062297da4272d66e5a9e10e287d393c6140469e9c01e374d211d5cd13f"
+    },
+    {
+      "path": "PROGRAM_ROOTS_COMPONENTS_03.tar.gz",
+      "members": 234584,
+      "sha256": "26cc5071b69fdf9ade2167da36e4fb860bd103032f35534c152fb481842bf242"
+    },
+    {
+      "path": "PROGRAM_ROOTS_COMPONENTS_04.tar.gz",
+      "members": 2838,
+      "sha256": "01009ce391febedb50cd35d0f109ea4585a52c21b24cf9326d8f17f75ec0c8e3"
+    },
+    {
+      "path": "PROGRAM_ROOTS_COMPONENTS_05.tar.gz",
+      "members": 2838,
+      "sha256": "0c513dc44adbe3b4f0f93e824264b67869a28b555395af49d45f2948c5fe928c"
+    }
+  ],
+  "regularFiles": 327705,
+  "originalFrozenRegularFilesVerified": 86569,
+  "originalFrozenSymlinksVerified": 13,
+  "totalSymlinksStoredAsMetadata": 37,
+  "acceptedParentCompilerVerified": true,
+  "memberManifestSha256": "5ce5b1a2613d6219d844fab7d591209762366305c9eae82c1028006d2b8d3bc7",
+  "completionCredit": false,
+  "scope": "Every staged completed-component member independently decoded and hashed. Fresh full workspace/map and final delivery publication remain separate."
+}

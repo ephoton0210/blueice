@@ -500,6 +500,7 @@ pub struct RegisteredProjectCompilerService {
 #[derive(Debug)]
 struct RegisteredProject {
     registration: RegisteredProjectRegistration,
+    program_roots: Vec<String>,
     compiler: IncrementalCompiler,
     next_generation: u64,
     latest: Option<RetainedCompilation>,
@@ -583,7 +584,20 @@ impl RegisteredProjectCompilerService {
         &mut self,
         registration: RegisteredProjectRegistration,
     ) -> Result<RegisteredProjectId, CompilerServiceError> {
+        let roots = vec![registration.entry_module.clone()];
+        self.register_program(registration, roots)
+    }
+
+    /// Registers an immutable ordered subset of the owner's closed graph.
+    /// The legacy entry remains its first root; no query can change either.
+    /// Validation completes before an ID or compiler session is consumed.
+    pub fn register_program(
+        &mut self,
+        registration: RegisteredProjectRegistration,
+        roots: Vec<String>,
+    ) -> Result<RegisteredProjectId, CompilerServiceError> {
         validate_registration(&registration)?;
+        validate_program_roots(&registration, &roots)?;
         registration
             .loader
             .load(&registration.entry_module)
@@ -612,6 +626,7 @@ impl RegisteredProjectCompilerService {
             id,
             RegisteredProject {
                 registration,
+                program_roots: roots,
                 compiler: IncrementalCompiler::new(),
                 next_generation: 0,
                 latest: None,
@@ -983,8 +998,8 @@ impl RegisteredProjectCompilerService {
         let limits = self.limits;
         let result = {
             let project = self.project_mut(project_id)?;
-            let result = project.compiler.compile(
-                &project.registration.entry_module,
+            let result = project.compiler.compile_program(
+                &project.program_roots,
                 &project.registration.loader,
                 project.registration.compiler_options.clone(),
             );

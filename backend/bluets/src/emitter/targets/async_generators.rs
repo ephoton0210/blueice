@@ -101,7 +101,7 @@ pub(super) fn lower(
         let replacement = format!(
             "{start_anchor}function {name}{signature_anchor}({parameters}) {signature_anchor}{{\n\
              {generated}if (new.target) throw new TypeError(\"Async generator is not a constructor\");\n\
-             {signature_anchor}return {helper}(this, arguments, function* ({originals}) {{{body}{body_close}{completion});\n{completion}}}"
+             {signature_anchor}return {helper}(this, arguments, function* ({originals}) {{{body}{body_close}{completion}); {completion}}}"
         );
         let source = if external {
             String::new()
@@ -263,8 +263,26 @@ fn rewrite(
         } else {
             format!("{prefix}{generated}({start}yield {marker}({awaiting}, {generated}({operand}{close} {generated}){close}){generated})")
         };
+        let (edit_start, replacement) =
+            if !token.is("return") && index > 0 && tokens[index - 1].is(";") {
+                // The synthetic leading group must not consume the preceding
+                // statement's endpoint. A trivia carrier separates that original
+                // boundary from the generated group's unmapped boundary.
+                let end = begin + tokens[index - 1].end;
+                let gap = if end < begin + token.start {
+                    relocations::relocated_verbatim(end, begin + token.start)
+                } else {
+                    String::new()
+                };
+                (
+                    end,
+                    format!("{}{gap} {replacement}", relocations::source_anchor(end)),
+                )
+            } else {
+                (begin + token.start, replacement)
+            };
         edits.push(TextEdit {
-            start: begin + token.start,
+            start: edit_start,
             end: last,
             replacement,
         });

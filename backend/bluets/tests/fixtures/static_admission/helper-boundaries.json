@@ -1,0 +1,1664 @@
+{
+  "typescript": "5.9.3",
+  "sourceFixture": "ge2_module_helpers/cases.json",
+  "sourceFixtureSha256": "6e945ec5249baa238a57680a9dbfab122c44ea418d61352c2a8c4ea4773dc1ef",
+  "calibrationReportSha256": "ba19fcf9f803e8a2f4d372042fe413fa5f8e37886162fca8e10cd26560698850",
+  "scope": "Unchanged G-E2 source forms under noEmit. Complete normalized Native diagnostics, including target and helper-provider controls.",
+  "cases": [
+    {
+      "id": "async-arrow-finally/ES5/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 23,
+              "length": 7
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "async-arrow-finally/ES5/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "async-arrow-finally/ES2015/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 23,
+              "length": 7
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "async-arrow-finally/ES2015/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "async-arrow-finally/ES2017/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "async-arrow-finally/ES2017/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "async-arrow-finally/ES2018/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "async-arrow-finally/ES2018/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "async-arrow-finally/ES2022/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "async-arrow-finally/ES2022/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "async-arrow-finally/ESNext/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "async-arrow-finally/ESNext/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "async-generator-finally/ES5/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 24,
+              "length": 8
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "async-generator-finally/ES5/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "async-generator-finally/ES2015/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 24,
+              "length": 8
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "async-generator-finally/ES2015/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "async-generator-finally/ES2017/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 24,
+              "length": 8
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "async-generator-finally/ES2017/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "async-generator-finally/ES2018/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "async-generator-finally/ES2018/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "async-generator-finally/ES2022/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "async-generator-finally/ES2022/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "async-generator-finally/ESNext/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "async-generator-finally/ESNext/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "generator-switch-delegation/ES5/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 18,
+              "length": 8
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "generator-switch-delegation/ES5/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "generator-switch-delegation/ES2015/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "generator-switch-delegation/ES2015/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "generator-switch-delegation/ES2017/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "generator-switch-delegation/ES2017/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "generator-switch-delegation/ES2018/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "generator-switch-delegation/ES2018/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "generator-switch-delegation/ES2022/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "generator-switch-delegation/ES2022/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "generator-switch-delegation/ESNext/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "generator-switch-delegation/ESNext/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "helper-name-collision/ES5/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 3,
+              "column": 16,
+              "length": 7
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "helper-name-collision/ES5/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "helper-name-collision/ES2015/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 3,
+              "column": 16,
+              "length": 7
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "helper-name-collision/ES2015/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "helper-name-collision/ES2017/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "helper-name-collision/ES2017/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "helper-name-collision/ES2018/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "helper-name-collision/ES2018/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "helper-name-collision/ES2022/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "helper-name-collision/ES2022/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "helper-name-collision/ESNext/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "helper-name-collision/ESNext/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "inherit-constructor-spread/ES5/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 22,
+              "length": 12
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "inherit-constructor-spread/ES5/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "inherit-constructor-spread/ES2015/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "inherit-constructor-spread/ES2015/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "inherit-constructor-spread/ES2017/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "inherit-constructor-spread/ES2017/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "inherit-constructor-spread/ES2018/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "inherit-constructor-spread/ES2018/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "inherit-constructor-spread/ES2022/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "inherit-constructor-spread/ES2022/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "inherit-constructor-spread/ESNext/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "inherit-constructor-spread/ESNext/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "interop-exportstar-cycle/ES5/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 1,
+              "length": 32
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "interop-exportstar-cycle/ES5/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "interop-exportstar-cycle/ES2015/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 1,
+              "length": 32
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "interop-exportstar-cycle/ES2015/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "interop-exportstar-cycle/ES2017/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 1,
+              "length": 32
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "interop-exportstar-cycle/ES2017/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "interop-exportstar-cycle/ES2018/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 1,
+              "length": 32
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "interop-exportstar-cycle/ES2018/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "interop-exportstar-cycle/ES2022/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 1,
+              "length": 32
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "interop-exportstar-cycle/ES2022/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "interop-exportstar-cycle/ESNext/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 1,
+              "length": 32
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "interop-exportstar-cycle/ESNext/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "iterable-bindings-forof/ES5/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 11,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "iterable-bindings-forof/ES5/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "iterable-bindings-forof/ES2015/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "iterable-bindings-forof/ES2015/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "iterable-bindings-forof/ES2017/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "iterable-bindings-forof/ES2017/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "iterable-bindings-forof/ES2018/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "iterable-bindings-forof/ES2018/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "iterable-bindings-forof/ES2022/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "iterable-bindings-forof/ES2022/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "iterable-bindings-forof/ESNext/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "iterable-bindings-forof/ESNext/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "legacy-parameter-decorator/ES5/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 3,
+              "column": 1,
+              "length": 7
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-parameter-decorator/ES5/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "legacy-parameter-decorator/ES2015/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 3,
+              "column": 1,
+              "length": 7
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-parameter-decorator/ES2015/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "legacy-parameter-decorator/ES2017/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 3,
+              "column": 1,
+              "length": 7
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-parameter-decorator/ES2017/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "legacy-parameter-decorator/ES2018/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 3,
+              "column": 1,
+              "length": 7
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-parameter-decorator/ES2018/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "legacy-parameter-decorator/ES2022/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 3,
+              "column": 1,
+              "length": 7
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-parameter-decorator/ES2022/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "legacy-parameter-decorator/ESNext/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 3,
+              "column": 1,
+              "length": 7
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-parameter-decorator/ESNext/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "object-rest-spread/ES5/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 15,
+              "length": 9
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "object-rest-spread/ES5/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "object-rest-spread/ES2015/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 15,
+              "length": 9
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "object-rest-spread/ES2015/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "object-rest-spread/ES2017/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 15,
+              "length": 9
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "object-rest-spread/ES2017/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "object-rest-spread/ES2018/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "object-rest-spread/ES2018/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "object-rest-spread/ES2022/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "object-rest-spread/ES2022/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "object-rest-spread/ESNext/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "object-rest-spread/ESNext/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "optional-nullish/ES5/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "optional-nullish/ES5/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "optional-nullish/ES2015/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "optional-nullish/ES2015/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "optional-nullish/ES2017/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "optional-nullish/ES2017/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "optional-nullish/ES2018/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "optional-nullish/ES2018/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "optional-nullish/ES2022/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "optional-nullish/ES2022/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "optional-nullish/ESNext/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "optional-nullish/ESNext/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "private-accessor/ES5/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 18028,
+            "message": "Private identifiers are only available when targeting ECMAScript 2015 and higher.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 20,
+              "length": 6
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 70,
+              "length": 11
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES5/complete",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 18028,
+            "message": "Private identifiers are only available when targeting ECMAScript 2015 and higher.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 20,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES2015/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 70,
+              "length": 11
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES2015/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "private-accessor/ES2017/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 70,
+              "length": 11
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES2017/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "private-accessor/ES2018/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 70,
+              "length": 11
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES2018/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "private-accessor/ES2022/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 70,
+              "length": 11
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ES2022/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "private-accessor/ESNext/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 1,
+              "column": 70,
+              "length": 11
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-accessor/ESNext/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "sparse-array-call-spread/ES5/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 3,
+              "column": 27,
+              "length": 9
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "sparse-array-call-spread/ES5/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "sparse-array-call-spread/ES2015/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "sparse-array-call-spread/ES2015/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "sparse-array-call-spread/ES2017/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "sparse-array-call-spread/ES2017/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "sparse-array-call-spread/ES2018/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "sparse-array-call-spread/ES2018/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "sparse-array-call-spread/ES2022/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "sparse-array-call-spread/ES2022/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "sparse-array-call-spread/ESNext/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "sparse-array-call-spread/ESNext/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "standard-decorator/ES5/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 3,
+              "column": 20,
+              "length": 5
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "standard-decorator/ES5/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "standard-decorator/ES2015/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 3,
+              "column": 20,
+              "length": 5
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "standard-decorator/ES2015/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "standard-decorator/ES2017/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 3,
+              "column": 20,
+              "length": 5
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "standard-decorator/ES2017/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "standard-decorator/ES2018/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 3,
+              "column": 20,
+              "length": 5
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "standard-decorator/ES2018/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "standard-decorator/ES2022/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 3,
+              "column": 20,
+              "length": 5
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "standard-decorator/ES2022/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "standard-decorator/ESNext/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "standard-decorator/ESNext/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "tagged-template/ES5/absent",
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 2354,
+            "message": "This syntax requires an imported helper but module 'tslib' cannot be found.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 31,
+              "length": 11
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "tagged-template/ES5/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "tagged-template/ES2015/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "tagged-template/ES2015/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "tagged-template/ES2017/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "tagged-template/ES2017/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "tagged-template/ES2018/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "tagged-template/ES2018/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "tagged-template/ES2022/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "tagged-template/ES2022/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "tagged-template/ESNext/absent",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    },
+    {
+      "id": "tagged-template/ESNext/complete",
+      "expected": {
+        "accepts": true,
+        "diagnostics": []
+      }
+    }
+  ]
+}

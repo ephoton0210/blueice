@@ -34,6 +34,7 @@ use crate::parser::NamespaceDeclaration;
 
 mod exports;
 mod import_types;
+mod objects;
 mod type_traversal;
 mod values;
 use type_traversal::{named_types, Qualifier};
@@ -174,6 +175,7 @@ fn declared_in(namespace: &NamespaceDeclaration) -> Declared {
 impl ModuleChecker<'_> {
     fn policy(&self) -> CheckerPolicy {
         CheckerPolicy {
+            no_emit: self.no_emit,
             verbatim_module_syntax: self.verbatim_module_syntax,
             check_javascript: self.check_javascript,
             checking: self.explicit_checking.then_some(self.checking),
@@ -202,23 +204,28 @@ impl ModuleChecker<'_> {
         }
         let path = join(&self.namespace_path, &namespace.name);
         let run = self.run_namespace_body(namespace, &path, false);
-        self.return_inference
-            .results
-            .borrow_mut()
-            .extend(run.inferred_returns);
-        self.return_inference
-            .parameters
-            .borrow_mut()
-            .extend(run.inferred_parameters);
-        self.return_inference
-            .fields
-            .borrow_mut()
-            .extend(run.inferred_fields);
-        self.diagnostics.extend(run.diagnostics);
-        for mut symbol in run.symbols {
-            symbol.name = join(&path, &symbol.name);
-            symbol.exported = false;
-            self.symbols.push(symbol);
+        // A global provider contributes static shapes to other files. Its
+        // own checker retains diagnostics, symbols and source-offset inference;
+        // foreign offsets must never overwrite this file's inference records.
+        if namespace.span.module == self.module.id {
+            self.return_inference
+                .results
+                .borrow_mut()
+                .extend(run.inferred_returns);
+            self.return_inference
+                .parameters
+                .borrow_mut()
+                .extend(run.inferred_parameters);
+            self.return_inference
+                .fields
+                .borrow_mut()
+                .extend(run.inferred_fields);
+            self.diagnostics.extend(run.diagnostics);
+            for mut symbol in run.symbols {
+                symbol.name = join(&path, &symbol.name);
+                symbol.exported = false;
+                self.symbols.push(symbol);
+            }
         }
         self.publish_namespace(namespace, &path, run.published);
     }
@@ -658,77 +665,6 @@ impl ModuleChecker<'_> {
         members.namespaces.extend(published.members.namespaces);
         if published.has_values {
             self.register_namespace_object(namespace, path);
-        }
-    }
-
-    /// Binds the value `N` of a namespace that has run-time members, unless the
-    /// name is already a function, class or enum the namespace merged into.
-    fn register_namespace_object(&mut self, namespace: &NamespaceDeclaration, path: &str) {
-        let local = &namespace.name;
-        let object = format!("typeof {path}");
-        // A name that is already an enum, function or class keeps its own value;
-        // only a namespace object this namespace bound before is replaced.
-        let own_object = self
-            .types
-            .get(&object)
-            .is_some_and(|definition| definition.kind == TypeDefinitionKind::NamespaceObject);
-        if self.values.contains_key(local) && !own_object {
-            return;
-        }
-        let members = self.namespaces.get(path).cloned().unwrap_or_default();
-        let mut fields = Vec::new();
-        for name in &members.values {
-            let key = format!("{path}.{name}");
-            let value = match (self.functions.get(&key), self.values.get(&key)) {
-                (Some(signatures), _) if !signatures.is_empty() => Type::Function {
-                    parameters: signatures[0].parameters.clone(),
-                    result: Box::new(signatures[0].return_type.clone()),
-                },
-                (_, Some(value)) => value.clone(),
-                _ => Type::Unknown,
-            };
-            fields.push(TypeField {
-                accessor_write_type: None,
-                method: false,
-                name: name.clone(),
-                readonly: false,
-                optional: false,
-                value,
-                span: namespace.name_span.clone(),
-            });
-        }
-        for name in &members.namespaces {
-            let inner = format!("{path}.{name}");
-            if self.values.contains_key(&inner) {
-                fields.push(TypeField {
-                    accessor_write_type: None,
-                    method: false,
-                    name: name.clone(),
-                    readonly: true,
-                    optional: false,
-                    value: Type::Named {
-                        name: format!("typeof {inner}"),
-                        arguments: Vec::new(),
-                    },
-                    span: namespace.name_span.clone(),
-                });
-            }
-        }
-        let value = Type::Named {
-            name: object.clone(),
-            arguments: Vec::new(),
-        };
-        self.types.insert(
-            object,
-            TypeDefinition {
-                kind: TypeDefinitionKind::NamespaceObject,
-                parameters: Vec::new(),
-                value: Type::Record(fields),
-            },
-        );
-        self.values.insert(path.to_string(), value.clone());
-        if local != path {
-            self.values.insert(local.clone(), value);
         }
     }
 

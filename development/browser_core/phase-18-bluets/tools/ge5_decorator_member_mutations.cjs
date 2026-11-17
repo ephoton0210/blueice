@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Every control remains valid JavaScript with a bounded, coherently published map.
-const assert=require('node:assert/strict'),{stream}=require('./ge5_role_stream.cjs'),{mutate,encode}=require('./ge5_role_mutations.cjs'),{coherent}=require('./ge5_decorator_preserved_mutations.cjs');
+const assert=require('node:assert/strict'),{stream}=require('./ge5_role_stream.cjs'),{mutate,encode,transpose}=require('./ge5_role_mutations.cjs'),{coherent}=require('./ge5_decorator_preserved_mutations.cjs');
 function check(ts,native,actual,options,original){return require('./ge5_decorator_member_module.cjs').compare(ts,stream(ts,native.code,native.raw),stream(ts,actual.code,actual.raw),options,original);}
 function run(ts,native,actual,options,original,proof){
   const controls=[],claimed=new Set(native.decoded.segments.filter(point=>point.length>2).map(point=>JSON.stringify(point.slice(2))));
@@ -42,7 +42,7 @@ function run(ts,native,actual,options,original,proof){
     const storage=copy.expression.right.expression;code('source rest '+callIndex+'.'+index+': replace complete argument storage',storage.getStart(actual.source),storage.end,'argumentX');
     const offset=array.getStart(actual.source)+1;if(actual.owner(offset))mapping('source rest '+callIndex+'.'+index+': erase original array role',offset,null);
   }
-  const phaseNodes=proof.classes?.[0]?.phases?.actual;if(phaseNodes){const meta=phaseNodes[1],store=phaseNodes[2],start=meta.getStart(actual.source),end=store.end,middle=actual.code.slice(meta.end,store.getStart(actual.source));assert(!/[\r\n]/.test(actual.code.slice(start,end)),'bounded adjacent phase control preserves complete generated line widths');code('class phases: move a later evaluation before decoration',start,end,store.getText(actual.source)+middle+meta.getText(actual.source));}
+  const phaseNodes=proof.classes?.[0]?.phases?.actual;if(phaseNodes){const meta=phaseNodes[1],store=phaseNodes[2];rejects('class phases: move a later evaluation before decoration',transpose(ts,actual,meta.getStart(actual.source),meta.end,store.getStart(actual.source),store.end));}
   for(const node of proof.actual?.sourceNodes??[]){const publication=ts.isExportDeclaration(node)&&node.exportClause&&ts.isNamedExports(node.exportClause)&&node.exportClause.elements.some(element=>element.name.text==='C')||ts.isExpressionStatement(node)&&ts.isBinaryExpression(node.expression)&&ts.isPropertyAccessExpression(node.expression.left)&&node.expression.left.getText()==='exports.C'&&node.expression.right.getText()==='C';if(publication)code('module publication: omit original class binding',node.getStart(actual.source),node.end,actual.code.slice(node.getStart(actual.source),node.end).replace(/[^\r\n]/g,' '));}
   for(const [index,expression]of (proof.delegated?.prelude?.classes??[]).entries())for(const [phase,separator]of expression.phases.entries()){mapping('source class value '+index+' phase '+phase+': retarget exact logical endpoint',separator.actual.end,wrong);if(actual.owner(separator.actual.end))mapping('source class value '+index+' phase '+phase+': erase exact logical endpoint',separator.actual.end,null);}
   for(const [index,expression]of (proof.delegated?.prelude?.classes??[]).entries())if(expression.actual.nameSetter){const value=expression.actual.nameSetter.arguments[2].properties[0].initializer;assert(ts.isStringLiteral(value));code('class value '+index+': change the Native inferred name',value.getStart(actual.source)+1,value.getStart(actual.source)+2,'Z');}

@@ -8,6 +8,7 @@ fn project(name: &str, source: &str) -> CompilerCatalogProject {
     let root = format!("project:///{name}");
     let entry = format!("{root}/main.ts");
     CompilerCatalogProject {
+        program_roots: None,
         canonical_project_root: root.clone(),
         canonical_config_root: format!("{root}/blue-ts.json"),
         canonical_output_root: format!("project:///{name}-dist"),

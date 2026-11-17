@@ -9,6 +9,10 @@ use super::*;
 pub(super) struct Signatures(Vec<(usize, usize)>);
 
 impl Signatures {
+    pub(super) fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     pub(super) fn retain(
         &mut self,
         emitted: &EmittedJavaScript,

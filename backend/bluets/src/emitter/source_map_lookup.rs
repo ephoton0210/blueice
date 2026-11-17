@@ -130,6 +130,7 @@ impl SourceMap {
             }
             let mut column = 0i64;
             let mut previous = None;
+            let mut previous_original: Option<SourceMapOriginalPosition> = None;
             for encoded in encoded_line.split(',') {
                 segment_count = segment_count
                     .checked_add(1)
@@ -144,12 +145,11 @@ impl SourceMap {
                 column = column
                     .checked_add(fields[0])
                     .ok_or(SourceMapLookupError::MalformedMap)?;
-                if previous.is_some_and(|value| column <= value)
+                if previous.is_some_and(|value| column < value)
                     || usize::try_from(column).map_or(true, |value| value > width)
                 {
                     return Err(SourceMapLookupError::MalformedMap);
                 }
-                previous = Some(column);
                 let original = if fields.len() == 1 {
                     None
                 } else {
@@ -195,6 +195,25 @@ impl SourceMap {
                         name_index: name,
                     })
                 };
+                if previous == Some(column) {
+                    // Native class factories can end one source range and
+                    // begin another at the same generated coordinate. Retain
+                    // traversal order, while rejecting redundant events and
+                    // hidden mapped/unmapped source grants.
+                    let distinct = match (previous_original, original) {
+                        (Some(first), Some(last)) => {
+                            first.source_index != last.source_index
+                                || first.line != last.line
+                                || first.column_utf16 != last.column_utf16
+                        }
+                        _ => false,
+                    };
+                    if !distinct {
+                        return Err(SourceMapLookupError::MalformedMap);
+                    }
+                }
+                previous = Some(column);
+                previous_original = original;
                 if line == generated_line && column as usize <= generated_column_utf16 {
                     selected = original;
                 }

@@ -173,6 +173,7 @@ fn launcher_combines_owner_compiler_catalog_and_page_http_policy_in_one_private_
     let catalog = CompilerCatalogBootstrap {
         version: COMPILER_CATALOG_BOOTSTRAP_VERSION,
         projects: vec![CompilerCatalogProject {
+            program_roots: None,
             canonical_project_root: "project:///combined".into(),
             canonical_config_root: "project:///combined/blue-ts.json".into(),
             canonical_output_root: "project:///combined-dist".into(),
@@ -305,6 +306,7 @@ fn launcher_bootstraps_two_owner_selected_projects_without_public_registration()
         let root = format!("project:///{name}");
         let entry = format!("{root}/main.ts");
         CompilerCatalogProject {
+            program_roots: None,
             canonical_project_root: root.clone(),
             canonical_config_root: format!("{root}/blue-ts.json"),
             canonical_output_root: format!("project:///{name}-dist"),
@@ -424,6 +426,7 @@ fn launcher_registers_a_canonical_physical_catalog_before_compiler_queries() {
     let catalog = CompilerCatalogBootstrap {
         version: COMPILER_CATALOG_BOOTSTRAP_VERSION,
         projects: vec![CompilerCatalogProject {
+            program_roots: None,
             canonical_project_root: project.to_str().unwrap().to_string(),
             canonical_config_root: project.join("blue-ts.json").to_str().unwrap().to_string(),
             canonical_output_root: output.to_str().unwrap().to_string(),

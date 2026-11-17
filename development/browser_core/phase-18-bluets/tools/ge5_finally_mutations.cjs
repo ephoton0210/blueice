@@ -8,6 +8,14 @@ const { stream } = require('./ge5_role_stream.cjs');
 const { mutate } = require('./ge5_role_mutations.cjs');
 const { compare } = require('./ge5_linear_roles.cjs');
 
+function actionKind(ts, statement, wanted) {
+  if (!ts.isReturnStatement(statement) || !statement.expression
+    || !ts.isObjectLiteralExpression(statement.expression)
+    || statement.expression.properties.length !== 1) return false;
+  const property = statement.expression.properties[0];
+  return ts.isPropertyAssignment(property) && property.name.getText() === 'kind'
+    && ts.isStringLiteral(property.initializer) && property.initializer.text === wanted;
+}
 function run(ts, native, actual, originals, proof) {
   assert.equal(proof.actualPaths.length, 1);
   const trace = proof.actual, start = node => node.getStart(actual.source);
@@ -77,7 +85,7 @@ function run(ts, native, actual, originals, proof) {
   const transfer = yieldState.find(statement => ts.isExpressionStatement(statement) && ts.isBinaryExpression(statement.expression)
     && statement.expression.left.getText() === trace.machine.context + '.label');
   codeMutation('skip the discarded try resume', transfer.expression.right, String(returnState));
-  const finish = dead.flat().find(statement => statement.getText().includes('kind:"finish"'));
+  const finish = dead.flat().find(statement => actionKind(ts, statement, 'finish'));
   assert(finish);
   codeMutation('duplicate leave and erase finish scaffold', finish.expression.properties[0].initializer, '"leave"');
   const extra = stream(ts, actual.code.slice(0, region.statement.end) + '0;' + actual.code.slice(region.statement.end), actual.raw);

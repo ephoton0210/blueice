@@ -1465,6 +1465,7 @@ impl CompilerServiceIpcRequestReceiver {
 mod adapter;
 mod output_artifacts;
 mod output_staging;
+mod program_roots;
 
 #[cfg(test)]
 mod output_write_tests;

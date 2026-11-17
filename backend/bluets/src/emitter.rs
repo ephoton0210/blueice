@@ -28,6 +28,9 @@ mod authored_type;
 mod callable_objects;
 mod class_expressions;
 mod class_lowering;
+mod static_admission;
+pub(crate) use static_admission::semantics as validate_static_semantics;
+pub(crate) use static_admission::validate as validate_no_emit_admission;
 mod classes;
 mod commonjs;
 mod computed_fields;
@@ -50,6 +53,7 @@ mod literal_order;
 mod module_lowering;
 mod module_wrappers;
 mod namespaces;
+mod native_layout;
 mod node_imports;
 mod output_options;
 mod private_lowering;
@@ -175,6 +179,10 @@ pub(crate) fn emit(
             let mut file_options = options.clone();
             file_options.module_kind = project.module_kind(id, options.module_kind);
             file_options.isolated_modules |= options.verbatim_module_syntax;
+            // Native layout uses original boundary ownership for printing,
+            // independently of whether the host publishes a source map.
+            file_options.source_map |=
+                options.javascript_layout == crate::JavaScriptLayout::TypeScript;
             let (emitted, strict_runtime) = if options.emit_declaration_only {
                 (
                     EmittedJavaScript {
@@ -457,6 +465,7 @@ fn emit_javascript(
             replacement: format!("{quote}{emitted_specifier}{quote}"),
         });
     }
+    javascript_maps::separate_arrow_entries(module, options, &mut edits);
     module_lowering::lower(
         module,
         project,
@@ -476,6 +485,7 @@ fn emit_javascript(
     } else {
         BTreeMap::new()
     };
+    javascript_maps::separate_method_entries(module, options, &token_anchors, &mut edits);
     let emitted = decorators::targets::lower(
         apply_edits_with_anchors(
             &module.source,
@@ -496,7 +506,14 @@ fn emit_javascript(
         options,
     )?;
     let emitted = targets::lower(emitted, module, options)?;
-    let emitted = targets::es5::lower_module(emitted, module, options, &lexical, wrapper)?;
+    let emitted = targets::es5::lower_module(
+        emitted,
+        module,
+        options,
+        &lexical,
+        wrapper,
+        targets::es5::ClassContext::for_project(project),
+    )?;
     let emitted = if wrapper == crate::ModuleKind::System {
         targets::es5::lower_system_bindings(emitted, module, options)?
     } else {
@@ -511,7 +528,8 @@ fn emit_javascript(
     };
     let emitted = module_wrappers::wrap(emitted, module, options, wrapper);
     let emitted = targets::lower_string_literals(emitted, module, options)?;
-    let emitted = output_options::format_javascript(emitted, module, options)?;
+    let emitted = native_layout::format(emitted, module, project, options)?;
+    let emitted = output_options::format_javascript(emitted, module, project, options)?;
     if let Some(record) = &mut strict_runtime {
         record.helper_import.expected_text =
             output_options::format_text(record.helper_import.expected_text.clone(), options);
@@ -700,6 +718,9 @@ fn apply_edits_with_anchors(
                             emitted.insert_unmapped("");
                             anchored = true;
                         }
+                    }
+                    relocations::Part::Inherited => {
+                        anchored = true;
                     }
                     relocations::Part::Relocated {
                         text,

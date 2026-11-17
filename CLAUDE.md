@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-11-14).**
+**Current BlueTS / BlueTSC compatibility status (2026-11-17).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
 Pinned compiler: **TypeScript 5.9.3**. **N = 43,112 suite-qualified
@@ -21,7 +21,7 @@ case assertions**, not unique programs or a percentage of the TypeScript languag
 | Suite labels | 187 scoped closed, 1 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
-| Source refusal sites | 230 in 11 areas; condition-specific locations, not extra failing cases |
+| Source refusal sites | 231 in 11 areas; condition-specific locations, not extra failing cases |
 
 All 43,112 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
@@ -31,13 +31,23 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:7be6eb17296278ce86fe4a5d6a5de1c40259f9bb`.
-Input graph SHA-256: `519e50a7b4cb3aa4e04325faa5893c6d8ba5891939866ee2f8e51095c2a74767`.
+Compiler/oracle source: `backend-tree:37beae676a55482728b6aa8682240bd9588e7fdc`.
+Input graph SHA-256: `9dd266a077ac1c7d6bafcfaad68428d257cd59a5b3cd930e7216611ea9a62892`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
 
 <!-- END CURRENT BLUETS STATUS -->
+
+**P0-H accepted (2026-11-17):** owner-selected roots compile as one closed
+program with shared legal script declarations, complete generation identity
+and exact prior output ownership. All six frozen requirements and complete
+same-source runtime/artifact gates pass. See the
+[acceptance summary](development/browser_core/phase-18-bluets/PROGRAM_ROOTS_ACCEPTANCE.md),
+[measurement](development/browser_core/phase-18-bluets/PROGRAM_ROOTS_MEASUREMENT.json) and
+[independent delivery audit](development/browser_core/phase-18-bluets/PROGRAM_ROOTS_ACCEPTANCE_AUDIT.json).
+This scoped delivery keeps all22 broader feature rows open and full TypeScript
+parity OFF.
 
 <!-- BEGIN GM3 CURRENT PLATFORM EVIDENCE -->
 

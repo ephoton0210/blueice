@@ -1,0 +1,1554 @@
+{
+  "typescript": "5.9.3",
+  "inputsSha256": "2f9b72adf8ebb56a9120e35f3beec9fa2f0cc4b61c9bc4509675bada32c5d139",
+  "sourceFixtureSha256": "6d507399b4ab25ba3d6ada14c798758918d93f798a36c211015fe871b5accf4d",
+  "referenceFixtureSha256": "f4a46b3a8f61c45d401cd85c8f63e857c32d28b4ba241970367a83340b686648",
+  "cases": [
+    {
+      "id": "ge3-decorators-private-super-accessors-legacy-es5-commonjs-assign",
+      "family": "original-ge3-private",
+      "files": {
+        "main.ts": "const events: any[] = [];\nfunction dec(...args: any[]): any { events.push(['decorate', args.length, args[1] === undefined ? 'class' : String(args[1])]); }\nfunction replace(value: any): any { events.push(['replace', value.name]); return class extends value { static replacement = true; }; }\nclass Base { value: number = 1; get amount(): number { return this.value; } set amount(n: number) { this.value = n; } }\nexport class C extends Base { @dec get #amount(): number { return super.amount; } @dec set #amount(n: number) { super.amount = n; } run(): number { this.#amount = 2; return this.#amount; } }\nexport const result: any = [new C().run(), events];"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "lib": [
+          "ES2022",
+          "ESNext.Decorators"
+        ],
+        "strict": true,
+        "experimentalDecorators": true,
+        "useDefineForClassFields": false,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out",
+        "declarationDir": "types",
+        "newLine": "LF"
+      },
+      "originalNativeDiagnostics": [
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 440,
+          "length": 1,
+          "related": []
+        },
+        {
+          "code": 2340,
+          "message": "Only public and protected methods of the base class are accessible via the 'super' keyword.",
+          "module": "main.ts",
+          "start": 482,
+          "length": 6,
+          "related": []
+        },
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 492,
+          "length": 1,
+          "related": []
+        },
+        {
+          "code": 2340,
+          "message": "Only public and protected methods of the base class are accessible via the 'super' keyword.",
+          "module": "main.ts",
+          "start": 528,
+          "length": 6,
+          "related": []
+        }
+      ],
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 31,
+              "length": 1
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 2340,
+            "message": "Only public and protected methods of the base class are accessible via the 'super' keyword.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 73,
+              "length": 6
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 83,
+              "length": 1
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 2340,
+            "message": "Only public and protected methods of the base class are accessible via the 'super' keyword.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 119,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "ge3-decorators-private-super-accessors-legacy-es5-commonjs-define",
+      "family": "original-ge3-private",
+      "files": {
+        "main.ts": "const events: any[] = [];\nfunction dec(...args: any[]): any { events.push(['decorate', args.length, args[1] === undefined ? 'class' : String(args[1])]); }\nfunction replace(value: any): any { events.push(['replace', value.name]); return class extends value { static replacement = true; }; }\nclass Base { value: number = 1; get amount(): number { return this.value; } set amount(n: number) { this.value = n; } }\nexport class C extends Base { @dec get #amount(): number { return super.amount; } @dec set #amount(n: number) { super.amount = n; } run(): number { this.#amount = 2; return this.#amount; } }\nexport const result: any = [new C().run(), events];"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "lib": [
+          "ES2022",
+          "ESNext.Decorators"
+        ],
+        "strict": true,
+        "experimentalDecorators": true,
+        "useDefineForClassFields": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out",
+        "declarationDir": "types",
+        "newLine": "LF"
+      },
+      "originalNativeDiagnostics": [
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 440,
+          "length": 1,
+          "related": []
+        },
+        {
+          "code": 2340,
+          "message": "Only public and protected methods of the base class are accessible via the 'super' keyword.",
+          "module": "main.ts",
+          "start": 482,
+          "length": 6,
+          "related": []
+        },
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 492,
+          "length": 1,
+          "related": []
+        },
+        {
+          "code": 2340,
+          "message": "Only public and protected methods of the base class are accessible via the 'super' keyword.",
+          "module": "main.ts",
+          "start": 528,
+          "length": 6,
+          "related": []
+        }
+      ],
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 31,
+              "length": 1
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 2340,
+            "message": "Only public and protected methods of the base class are accessible via the 'super' keyword.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 73,
+              "length": 6
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 83,
+              "length": 1
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 2340,
+            "message": "Only public and protected methods of the base class are accessible via the 'super' keyword.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 119,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "ge3-decorators-private-super-accessors-legacy-es5-esnext-assign",
+      "family": "original-ge3-private",
+      "files": {
+        "main.ts": "const events: any[] = [];\nfunction dec(...args: any[]): any { events.push(['decorate', args.length, args[1] === undefined ? 'class' : String(args[1])]); }\nfunction replace(value: any): any { events.push(['replace', value.name]); return class extends value { static replacement = true; }; }\nclass Base { value: number = 1; get amount(): number { return this.value; } set amount(n: number) { this.value = n; } }\nexport class C extends Base { @dec get #amount(): number { return super.amount; } @dec set #amount(n: number) { super.amount = n; } run(): number { this.#amount = 2; return this.#amount; } }\nexport const result: any = [new C().run(), events];"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ES5",
+        "module": "ESNext",
+        "lib": [
+          "ES2022",
+          "ESNext.Decorators"
+        ],
+        "strict": true,
+        "experimentalDecorators": true,
+        "useDefineForClassFields": false,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out",
+        "declarationDir": "types",
+        "newLine": "LF"
+      },
+      "originalNativeDiagnostics": [
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 440,
+          "length": 1,
+          "related": []
+        },
+        {
+          "code": 2340,
+          "message": "Only public and protected methods of the base class are accessible via the 'super' keyword.",
+          "module": "main.ts",
+          "start": 482,
+          "length": 6,
+          "related": []
+        },
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 492,
+          "length": 1,
+          "related": []
+        },
+        {
+          "code": 2340,
+          "message": "Only public and protected methods of the base class are accessible via the 'super' keyword.",
+          "module": "main.ts",
+          "start": 528,
+          "length": 6,
+          "related": []
+        }
+      ],
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 31,
+              "length": 1
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 2340,
+            "message": "Only public and protected methods of the base class are accessible via the 'super' keyword.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 73,
+              "length": 6
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 83,
+              "length": 1
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 2340,
+            "message": "Only public and protected methods of the base class are accessible via the 'super' keyword.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 119,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "ge3-decorators-private-super-accessors-legacy-es5-esnext-define",
+      "family": "original-ge3-private",
+      "files": {
+        "main.ts": "const events: any[] = [];\nfunction dec(...args: any[]): any { events.push(['decorate', args.length, args[1] === undefined ? 'class' : String(args[1])]); }\nfunction replace(value: any): any { events.push(['replace', value.name]); return class extends value { static replacement = true; }; }\nclass Base { value: number = 1; get amount(): number { return this.value; } set amount(n: number) { this.value = n; } }\nexport class C extends Base { @dec get #amount(): number { return super.amount; } @dec set #amount(n: number) { super.amount = n; } run(): number { this.#amount = 2; return this.#amount; } }\nexport const result: any = [new C().run(), events];"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ES5",
+        "module": "ESNext",
+        "lib": [
+          "ES2022",
+          "ESNext.Decorators"
+        ],
+        "strict": true,
+        "experimentalDecorators": true,
+        "useDefineForClassFields": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out",
+        "declarationDir": "types",
+        "newLine": "LF"
+      },
+      "originalNativeDiagnostics": [
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 440,
+          "length": 1,
+          "related": []
+        },
+        {
+          "code": 2340,
+          "message": "Only public and protected methods of the base class are accessible via the 'super' keyword.",
+          "module": "main.ts",
+          "start": 482,
+          "length": 6,
+          "related": []
+        },
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 492,
+          "length": 1,
+          "related": []
+        },
+        {
+          "code": 2340,
+          "message": "Only public and protected methods of the base class are accessible via the 'super' keyword.",
+          "module": "main.ts",
+          "start": 528,
+          "length": 6,
+          "related": []
+        }
+      ],
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 31,
+              "length": 1
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 2340,
+            "message": "Only public and protected methods of the base class are accessible via the 'super' keyword.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 73,
+              "length": 6
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 83,
+              "length": 1
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 2340,
+            "message": "Only public and protected methods of the base class are accessible via the 'super' keyword.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 119,
+              "length": 6
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "ge3-decorators-private-super-accessors-legacy-es2015-commonjs-assign",
+      "family": "original-ge3-private",
+      "files": {
+        "main.ts": "const events: any[] = [];\nfunction dec(...args: any[]): any { events.push(['decorate', args.length, args[1] === undefined ? 'class' : String(args[1])]); }\nfunction replace(value: any): any { events.push(['replace', value.name]); return class extends value { static replacement = true; }; }\nclass Base { value: number = 1; get amount(): number { return this.value; } set amount(n: number) { this.value = n; } }\nexport class C extends Base { @dec get #amount(): number { return super.amount; } @dec set #amount(n: number) { super.amount = n; } run(): number { this.#amount = 2; return this.#amount; } }\nexport const result: any = [new C().run(), events];"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ES2015",
+        "module": "CommonJS",
+        "lib": [
+          "ES2022",
+          "ESNext.Decorators"
+        ],
+        "strict": true,
+        "experimentalDecorators": true,
+        "useDefineForClassFields": false,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out",
+        "declarationDir": "types",
+        "newLine": "LF"
+      },
+      "originalNativeDiagnostics": [
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 440,
+          "length": 1,
+          "related": []
+        },
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 492,
+          "length": 1,
+          "related": []
+        }
+      ],
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 31,
+              "length": 1
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 83,
+              "length": 1
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "ge3-decorators-private-super-accessors-legacy-es2015-commonjs-define",
+      "family": "original-ge3-private",
+      "files": {
+        "main.ts": "const events: any[] = [];\nfunction dec(...args: any[]): any { events.push(['decorate', args.length, args[1] === undefined ? 'class' : String(args[1])]); }\nfunction replace(value: any): any { events.push(['replace', value.name]); return class extends value { static replacement = true; }; }\nclass Base { value: number = 1; get amount(): number { return this.value; } set amount(n: number) { this.value = n; } }\nexport class C extends Base { @dec get #amount(): number { return super.amount; } @dec set #amount(n: number) { super.amount = n; } run(): number { this.#amount = 2; return this.#amount; } }\nexport const result: any = [new C().run(), events];"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ES2015",
+        "module": "CommonJS",
+        "lib": [
+          "ES2022",
+          "ESNext.Decorators"
+        ],
+        "strict": true,
+        "experimentalDecorators": true,
+        "useDefineForClassFields": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out",
+        "declarationDir": "types",
+        "newLine": "LF"
+      },
+      "originalNativeDiagnostics": [
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 440,
+          "length": 1,
+          "related": []
+        },
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 492,
+          "length": 1,
+          "related": []
+        }
+      ],
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 31,
+              "length": 1
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 83,
+              "length": 1
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "ge3-decorators-private-super-accessors-legacy-es2015-esnext-assign",
+      "family": "original-ge3-private",
+      "files": {
+        "main.ts": "const events: any[] = [];\nfunction dec(...args: any[]): any { events.push(['decorate', args.length, args[1] === undefined ? 'class' : String(args[1])]); }\nfunction replace(value: any): any { events.push(['replace', value.name]); return class extends value { static replacement = true; }; }\nclass Base { value: number = 1; get amount(): number { return this.value; } set amount(n: number) { this.value = n; } }\nexport class C extends Base { @dec get #amount(): number { return super.amount; } @dec set #amount(n: number) { super.amount = n; } run(): number { this.#amount = 2; return this.#amount; } }\nexport const result: any = [new C().run(), events];"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ES2015",
+        "module": "ESNext",
+        "lib": [
+          "ES2022",
+          "ESNext.Decorators"
+        ],
+        "strict": true,
+        "experimentalDecorators": true,
+        "useDefineForClassFields": false,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out",
+        "declarationDir": "types",
+        "newLine": "LF"
+      },
+      "originalNativeDiagnostics": [
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 440,
+          "length": 1,
+          "related": []
+        },
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 492,
+          "length": 1,
+          "related": []
+        }
+      ],
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 31,
+              "length": 1
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 83,
+              "length": 1
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "ge3-decorators-private-super-accessors-legacy-es2015-esnext-define",
+      "family": "original-ge3-private",
+      "files": {
+        "main.ts": "const events: any[] = [];\nfunction dec(...args: any[]): any { events.push(['decorate', args.length, args[1] === undefined ? 'class' : String(args[1])]); }\nfunction replace(value: any): any { events.push(['replace', value.name]); return class extends value { static replacement = true; }; }\nclass Base { value: number = 1; get amount(): number { return this.value; } set amount(n: number) { this.value = n; } }\nexport class C extends Base { @dec get #amount(): number { return super.amount; } @dec set #amount(n: number) { super.amount = n; } run(): number { this.#amount = 2; return this.#amount; } }\nexport const result: any = [new C().run(), events];"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ES2015",
+        "module": "ESNext",
+        "lib": [
+          "ES2022",
+          "ESNext.Decorators"
+        ],
+        "strict": true,
+        "experimentalDecorators": true,
+        "useDefineForClassFields": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out",
+        "declarationDir": "types",
+        "newLine": "LF"
+      },
+      "originalNativeDiagnostics": [
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 440,
+          "length": 1,
+          "related": []
+        },
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 492,
+          "length": 1,
+          "related": []
+        }
+      ],
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 31,
+              "length": 1
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 83,
+              "length": 1
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "ge3-decorators-private-super-accessors-legacy-es2022-commonjs-assign",
+      "family": "original-ge3-private",
+      "files": {
+        "main.ts": "const events: any[] = [];\nfunction dec(...args: any[]): any { events.push(['decorate', args.length, args[1] === undefined ? 'class' : String(args[1])]); }\nfunction replace(value: any): any { events.push(['replace', value.name]); return class extends value { static replacement = true; }; }\nclass Base { value: number = 1; get amount(): number { return this.value; } set amount(n: number) { this.value = n; } }\nexport class C extends Base { @dec get #amount(): number { return super.amount; } @dec set #amount(n: number) { super.amount = n; } run(): number { this.#amount = 2; return this.#amount; } }\nexport const result: any = [new C().run(), events];"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES2022",
+          "ESNext.Decorators"
+        ],
+        "strict": true,
+        "experimentalDecorators": true,
+        "useDefineForClassFields": false,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out",
+        "declarationDir": "types",
+        "newLine": "LF"
+      },
+      "originalNativeDiagnostics": [
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 440,
+          "length": 1,
+          "related": []
+        },
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 492,
+          "length": 1,
+          "related": []
+        }
+      ],
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 31,
+              "length": 1
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 83,
+              "length": 1
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "ge3-decorators-private-super-accessors-legacy-es2022-commonjs-define",
+      "family": "original-ge3-private",
+      "files": {
+        "main.ts": "const events: any[] = [];\nfunction dec(...args: any[]): any { events.push(['decorate', args.length, args[1] === undefined ? 'class' : String(args[1])]); }\nfunction replace(value: any): any { events.push(['replace', value.name]); return class extends value { static replacement = true; }; }\nclass Base { value: number = 1; get amount(): number { return this.value; } set amount(n: number) { this.value = n; } }\nexport class C extends Base { @dec get #amount(): number { return super.amount; } @dec set #amount(n: number) { super.amount = n; } run(): number { this.#amount = 2; return this.#amount; } }\nexport const result: any = [new C().run(), events];"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES2022",
+          "ESNext.Decorators"
+        ],
+        "strict": true,
+        "experimentalDecorators": true,
+        "useDefineForClassFields": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out",
+        "declarationDir": "types",
+        "newLine": "LF"
+      },
+      "originalNativeDiagnostics": [
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 440,
+          "length": 1,
+          "related": []
+        },
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 492,
+          "length": 1,
+          "related": []
+        }
+      ],
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 31,
+              "length": 1
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 83,
+              "length": 1
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "ge3-decorators-private-super-accessors-legacy-es2022-esnext-assign",
+      "family": "original-ge3-private",
+      "files": {
+        "main.ts": "const events: any[] = [];\nfunction dec(...args: any[]): any { events.push(['decorate', args.length, args[1] === undefined ? 'class' : String(args[1])]); }\nfunction replace(value: any): any { events.push(['replace', value.name]); return class extends value { static replacement = true; }; }\nclass Base { value: number = 1; get amount(): number { return this.value; } set amount(n: number) { this.value = n; } }\nexport class C extends Base { @dec get #amount(): number { return super.amount; } @dec set #amount(n: number) { super.amount = n; } run(): number { this.#amount = 2; return this.#amount; } }\nexport const result: any = [new C().run(), events];"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "lib": [
+          "ES2022",
+          "ESNext.Decorators"
+        ],
+        "strict": true,
+        "experimentalDecorators": true,
+        "useDefineForClassFields": false,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out",
+        "declarationDir": "types",
+        "newLine": "LF"
+      },
+      "originalNativeDiagnostics": [
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 440,
+          "length": 1,
+          "related": []
+        },
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 492,
+          "length": 1,
+          "related": []
+        }
+      ],
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 31,
+              "length": 1
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 83,
+              "length": 1
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "ge3-decorators-private-super-accessors-legacy-es2022-esnext-define",
+      "family": "original-ge3-private",
+      "files": {
+        "main.ts": "const events: any[] = [];\nfunction dec(...args: any[]): any { events.push(['decorate', args.length, args[1] === undefined ? 'class' : String(args[1])]); }\nfunction replace(value: any): any { events.push(['replace', value.name]); return class extends value { static replacement = true; }; }\nclass Base { value: number = 1; get amount(): number { return this.value; } set amount(n: number) { this.value = n; } }\nexport class C extends Base { @dec get #amount(): number { return super.amount; } @dec set #amount(n: number) { super.amount = n; } run(): number { this.#amount = 2; return this.#amount; } }\nexport const result: any = [new C().run(), events];"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "lib": [
+          "ES2022",
+          "ESNext.Decorators"
+        ],
+        "strict": true,
+        "experimentalDecorators": true,
+        "useDefineForClassFields": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out",
+        "declarationDir": "types",
+        "newLine": "LF"
+      },
+      "originalNativeDiagnostics": [
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 440,
+          "length": 1,
+          "related": []
+        },
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 492,
+          "length": 1,
+          "related": []
+        }
+      ],
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 31,
+              "length": 1
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 83,
+              "length": 1
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "ge3-decorators-private-super-accessors-legacy-esnext-commonjs-assign",
+      "family": "original-ge3-private",
+      "files": {
+        "main.ts": "const events: any[] = [];\nfunction dec(...args: any[]): any { events.push(['decorate', args.length, args[1] === undefined ? 'class' : String(args[1])]); }\nfunction replace(value: any): any { events.push(['replace', value.name]); return class extends value { static replacement = true; }; }\nclass Base { value: number = 1; get amount(): number { return this.value; } set amount(n: number) { this.value = n; } }\nexport class C extends Base { @dec get #amount(): number { return super.amount; } @dec set #amount(n: number) { super.amount = n; } run(): number { this.#amount = 2; return this.#amount; } }\nexport const result: any = [new C().run(), events];"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ESNext",
+        "module": "CommonJS",
+        "lib": [
+          "ES2022",
+          "ESNext.Decorators"
+        ],
+        "strict": true,
+        "experimentalDecorators": true,
+        "useDefineForClassFields": false,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out",
+        "declarationDir": "types",
+        "newLine": "LF"
+      },
+      "originalNativeDiagnostics": [
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 440,
+          "length": 1,
+          "related": []
+        },
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 492,
+          "length": 1,
+          "related": []
+        }
+      ],
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 31,
+              "length": 1
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 83,
+              "length": 1
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "ge3-decorators-private-super-accessors-legacy-esnext-commonjs-define",
+      "family": "original-ge3-private",
+      "files": {
+        "main.ts": "const events: any[] = [];\nfunction dec(...args: any[]): any { events.push(['decorate', args.length, args[1] === undefined ? 'class' : String(args[1])]); }\nfunction replace(value: any): any { events.push(['replace', value.name]); return class extends value { static replacement = true; }; }\nclass Base { value: number = 1; get amount(): number { return this.value; } set amount(n: number) { this.value = n; } }\nexport class C extends Base { @dec get #amount(): number { return super.amount; } @dec set #amount(n: number) { super.amount = n; } run(): number { this.#amount = 2; return this.#amount; } }\nexport const result: any = [new C().run(), events];"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ESNext",
+        "module": "CommonJS",
+        "lib": [
+          "ES2022",
+          "ESNext.Decorators"
+        ],
+        "strict": true,
+        "experimentalDecorators": true,
+        "useDefineForClassFields": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out",
+        "declarationDir": "types",
+        "newLine": "LF"
+      },
+      "originalNativeDiagnostics": [
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 440,
+          "length": 1,
+          "related": []
+        },
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 492,
+          "length": 1,
+          "related": []
+        }
+      ],
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 31,
+              "length": 1
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 83,
+              "length": 1
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "ge3-decorators-private-super-accessors-legacy-esnext-esnext-assign",
+      "family": "original-ge3-private",
+      "files": {
+        "main.ts": "const events: any[] = [];\nfunction dec(...args: any[]): any { events.push(['decorate', args.length, args[1] === undefined ? 'class' : String(args[1])]); }\nfunction replace(value: any): any { events.push(['replace', value.name]); return class extends value { static replacement = true; }; }\nclass Base { value: number = 1; get amount(): number { return this.value; } set amount(n: number) { this.value = n; } }\nexport class C extends Base { @dec get #amount(): number { return super.amount; } @dec set #amount(n: number) { super.amount = n; } run(): number { this.#amount = 2; return this.#amount; } }\nexport const result: any = [new C().run(), events];"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ESNext",
+        "module": "ESNext",
+        "lib": [
+          "ES2022",
+          "ESNext.Decorators"
+        ],
+        "strict": true,
+        "experimentalDecorators": true,
+        "useDefineForClassFields": false,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out",
+        "declarationDir": "types",
+        "newLine": "LF"
+      },
+      "originalNativeDiagnostics": [
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 440,
+          "length": 1,
+          "related": []
+        },
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 492,
+          "length": 1,
+          "related": []
+        }
+      ],
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 31,
+              "length": 1
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 83,
+              "length": 1
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "ge3-decorators-private-super-accessors-legacy-esnext-esnext-define",
+      "family": "original-ge3-private",
+      "files": {
+        "main.ts": "const events: any[] = [];\nfunction dec(...args: any[]): any { events.push(['decorate', args.length, args[1] === undefined ? 'class' : String(args[1])]); }\nfunction replace(value: any): any { events.push(['replace', value.name]); return class extends value { static replacement = true; }; }\nclass Base { value: number = 1; get amount(): number { return this.value; } set amount(n: number) { this.value = n; } }\nexport class C extends Base { @dec get #amount(): number { return super.amount; } @dec set #amount(n: number) { super.amount = n; } run(): number { this.#amount = 2; return this.#amount; } }\nexport const result: any = [new C().run(), events];"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ESNext",
+        "module": "ESNext",
+        "lib": [
+          "ES2022",
+          "ESNext.Decorators"
+        ],
+        "strict": true,
+        "experimentalDecorators": true,
+        "useDefineForClassFields": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out",
+        "declarationDir": "types",
+        "newLine": "LF"
+      },
+      "originalNativeDiagnostics": [
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 440,
+          "length": 1,
+          "related": []
+        },
+        {
+          "code": 1206,
+          "message": "Decorators are not valid here.",
+          "module": "main.ts",
+          "start": 492,
+          "length": 1,
+          "related": []
+        }
+      ],
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 31,
+              "length": 1
+            },
+            "relatedInformation": []
+          },
+          {
+            "code": 1206,
+            "message": "Decorators are not valid here.",
+            "file": "main.ts",
+            "position": {
+              "line": 5,
+              "column": 83,
+              "length": 1
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "public/instance/get-first",
+      "family": "legal-pair-control",
+      "files": {
+        "main.ts": "function dec(...args: any[]): any {}\nexport class C { @dec get value(): number { return 1; } @dec set value(n: number) {} }\n"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "experimentalDecorators": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1207,
+            "message": "Decorators cannot be applied to multiple get/set accessors of the same name.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 57,
+              "length": 1
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "public/instance/set-first",
+      "family": "legal-pair-control",
+      "files": {
+        "main.ts": "function dec(...args: any[]): any {}\nexport class C { @dec set value(n: number) {} @dec get value(): number { return 1; } }\n"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "experimentalDecorators": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1207,
+            "message": "Decorators cannot be applied to multiple get/set accessors of the same name.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 47,
+              "length": 1
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "public/static/get-first",
+      "family": "legal-pair-control",
+      "files": {
+        "main.ts": "function dec(...args: any[]): any {}\nexport class C { @dec static get value(): number { return 1; } @dec static set value(n: number) {} }\n"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "experimentalDecorators": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1207,
+            "message": "Decorators cannot be applied to multiple get/set accessors of the same name.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 64,
+              "length": 1
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "public/static/set-first",
+      "family": "legal-pair-control",
+      "files": {
+        "main.ts": "function dec(...args: any[]): any {}\nexport class C { @dec static set value(n: number) {} @dec static get value(): number { return 1; } }\n"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "experimentalDecorators": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1207,
+            "message": "Decorators cannot be applied to multiple get/set accessors of the same name.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 54,
+              "length": 1
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-keyword/instance/get-first",
+      "family": "legal-pair-control",
+      "files": {
+        "main.ts": "function dec(...args: any[]): any {}\nexport class C { @dec private get value(): number { return 1; } @dec private set value(n: number) {} }\n"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "experimentalDecorators": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1207,
+            "message": "Decorators cannot be applied to multiple get/set accessors of the same name.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 65,
+              "length": 1
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-keyword/instance/set-first",
+      "family": "legal-pair-control",
+      "files": {
+        "main.ts": "function dec(...args: any[]): any {}\nexport class C { @dec private set value(n: number) {} @dec private get value(): number { return 1; } }\n"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "experimentalDecorators": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1207,
+            "message": "Decorators cannot be applied to multiple get/set accessors of the same name.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 55,
+              "length": 1
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-keyword/static/get-first",
+      "family": "legal-pair-control",
+      "files": {
+        "main.ts": "function dec(...args: any[]): any {}\nexport class C { @dec private static get value(): number { return 1; } @dec private static set value(n: number) {} }\n"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "experimentalDecorators": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1207,
+            "message": "Decorators cannot be applied to multiple get/set accessors of the same name.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 72,
+              "length": 1
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "private-keyword/static/set-first",
+      "family": "legal-pair-control",
+      "files": {
+        "main.ts": "function dec(...args: any[]): any {}\nexport class C { @dec private static set value(n: number) {} @dec private static get value(): number { return 1; } }\n"
+      },
+      "entry": "main.ts",
+      "options": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strict": true,
+        "experimentalDecorators": true,
+        "declaration": true,
+        "noEmitOnError": true,
+        "rootDir": ".",
+        "outDir": "out"
+      },
+      "expected": {
+        "accepts": false,
+        "diagnostics": [
+          {
+            "code": 1207,
+            "message": "Decorators cannot be applied to multiple get/set accessors of the same name.",
+            "file": "main.ts",
+            "position": {
+              "line": 2,
+              "column": 62,
+              "length": 1
+            },
+            "relatedInformation": []
+          }
+        ]
+      }
+    }
+  ],
+  "calibrationReportSha256": "f3cb16c3b0ed547907f2ec9af672fe259168c6a56279ed817d8cc67a445e534d",
+  "scope": "Sixteen unchanged original G-E3 private-accessor cases and eight legal public/private-keyword controls. Full Native diagnostics; both emission modes must agree. Zero inventory credit."
+}

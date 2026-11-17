@@ -217,6 +217,7 @@ impl<'a> ScopeModel<'a> {
         model.scopes[0].types.extend(types.keys().cloned());
         if let Some(ambient) = ambient {
             for (name, value) in &ambient.values {
+                let value = values.get(name).unwrap_or(value);
                 model.value(0, name, 0, false, false, value.clone());
                 if let Some(kind) = ambient.binding_kinds.get(name) {
                     model.binding_kind(0, name, *kind);

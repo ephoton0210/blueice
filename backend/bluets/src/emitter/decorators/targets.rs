@@ -64,7 +64,14 @@ pub(in crate::emitter) fn lower(
             &emitted,
         )?;
         emitted = targets::mapped_edits(emitted, edits);
-        emitted = targets::es5::lower_generated(emitted, &owned, module, options, &lexical)?;
+        emitted = targets::es5::lower_generated(
+            emitted,
+            &owned,
+            module,
+            options,
+            &lexical,
+            targets::es5::ClassContext::for_project(project),
+        )?;
     }
     Ok(emitted)
 }

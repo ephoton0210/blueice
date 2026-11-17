@@ -1,0 +1,107 @@
+{
+  "scope": "Actual pinned Native CLI missing-root exits and preservation of prior output across noEmit/noEmitOnError flags. Original Native stdout/stderr retained without rewriting.",
+  "nativeCalibrationSha256": "d21c79efe0fb216a726acf40bf5f7e648d893e8b0f2dcffe518c0b178b835039",
+  "compilerSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "cases": [
+    {
+      "noEmit": false,
+      "noEmitOnError": false,
+      "args": [
+        "missing.ts",
+        "--target",
+        "es5",
+        "--module",
+        "commonjs",
+        "--declaration",
+        "true",
+        "--outDir",
+        "dist",
+        "--pretty",
+        "false",
+        "--noEmit",
+        "false",
+        "--noEmitOnError",
+        "false"
+      ],
+      "exit": 2,
+      "stdout": "error TS6053: File 'missing.ts' not found.\n  The file is in the program because:\n    Root file specified for compilation\n",
+      "stderr": "",
+      "priorOutputsPreserved": true
+    },
+    {
+      "noEmit": false,
+      "noEmitOnError": true,
+      "args": [
+        "missing.ts",
+        "--target",
+        "es5",
+        "--module",
+        "commonjs",
+        "--declaration",
+        "true",
+        "--outDir",
+        "dist",
+        "--pretty",
+        "false",
+        "--noEmit",
+        "false",
+        "--noEmitOnError",
+        "true"
+      ],
+      "exit": 1,
+      "stdout": "error TS6053: File 'missing.ts' not found.\n  The file is in the program because:\n    Root file specified for compilation\n",
+      "stderr": "",
+      "priorOutputsPreserved": true
+    },
+    {
+      "noEmit": true,
+      "noEmitOnError": false,
+      "args": [
+        "missing.ts",
+        "--target",
+        "es5",
+        "--module",
+        "commonjs",
+        "--declaration",
+        "true",
+        "--outDir",
+        "dist",
+        "--pretty",
+        "false",
+        "--noEmit",
+        "true",
+        "--noEmitOnError",
+        "false"
+      ],
+      "exit": 2,
+      "stdout": "error TS6053: File 'missing.ts' not found.\n  The file is in the program because:\n    Root file specified for compilation\n",
+      "stderr": "",
+      "priorOutputsPreserved": true
+    },
+    {
+      "noEmit": true,
+      "noEmitOnError": true,
+      "args": [
+        "missing.ts",
+        "--target",
+        "es5",
+        "--module",
+        "commonjs",
+        "--declaration",
+        "true",
+        "--outDir",
+        "dist",
+        "--pretty",
+        "false",
+        "--noEmit",
+        "true",
+        "--noEmitOnError",
+        "true"
+      ],
+      "exit": 2,
+      "stdout": "error TS6053: File 'missing.ts' not found.\n  The file is in the program because:\n    Root file specified for compilation\n",
+      "stderr": "",
+      "priorOutputsPreserved": true
+    }
+  ]
+}

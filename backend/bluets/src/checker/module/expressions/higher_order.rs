@@ -59,11 +59,24 @@ impl ModuleChecker<'_> {
         ) else {
             return Type::Unknown;
         };
-        let Ok(Some(signature)) =
-            self.select_function_signature(signatures, &actuals, explicit_type_arguments)
-        else {
-            return Type::Unknown;
-        };
+        let signature =
+            match self.select_function_signature(signatures, &actuals, explicit_type_arguments) {
+                Ok(Some(signature)) => signature,
+                Ok(None)
+                    if signatures.len() == 1
+                        && explicit_type_arguments.is_none()
+                        && signatures[0]
+                            .type_parameters
+                            .iter()
+                            .any(|parameter| parameter.constraint.is_some()) =>
+                {
+                    // Checking retains the argument error. Inference still recovers
+                    // the constrained result, so an enclosing assignment receives
+                    // the same independently meaningful diagnostic as Native.
+                    &signatures[0]
+                }
+                _ => return Type::Unknown,
+            };
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
         budget.checking = self.checking;
         self.instantiate_signature_result(

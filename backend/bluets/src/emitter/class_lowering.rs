@@ -50,6 +50,8 @@ pub(super) fn has_wrapped_class_expressions(module: &Module) -> bool {
 /// The emitted form of a class's fields for one target and option set.
 #[derive(Clone, Copy)]
 struct FieldEmit {
+    native_layout: bool,
+    retain_export_completion: bool,
     es5: bool,
     es2022: bool,
     define: bool,
@@ -157,6 +159,8 @@ fn lower_classes(
 ) -> Result<(), Diagnostic> {
     let auto_origins = origins.auto_accessors;
     let emit = FieldEmit {
+        native_layout: options.javascript_layout == crate::JavaScriptLayout::TypeScript,
+        retain_export_completion: wrapper == crate::ModuleKind::CommonJs,
         es5: options.target == EcmaTarget::Es5,
         es2022: options.target >= EcmaTarget::Es2022,
         define: options.defines_class_fields(),
@@ -206,11 +210,11 @@ fn lower_classes(
             && !options.experimental_decorators
             && super::decorators::lowers_class(class, options)
         {
-            native_parameter_properties(class, edits)?;
+            native_parameter_properties(class, edits, emit.native_layout)?;
             continue;
         }
         if emit.native() {
-            native_parameter_properties(class, edits)?;
+            native_parameter_properties(class, edits, emit.native_layout)?;
             continue;
         }
         if !emit.es2022 {
@@ -278,6 +282,7 @@ fn lower_classes(
 fn native_parameter_properties(
     class: &ClassDeclaration,
     edits: &mut Vec<TextEdit>,
+    native_layout: bool,
 ) -> Result<(), Diagnostic> {
     let properties = class.parameter_property_fields();
     if properties.is_empty() {
@@ -289,12 +294,23 @@ fn native_parameter_properties(
     };
     let declarations: String = properties
         .iter()
-        .map(|field| format!(" {};", field.name))
+        .map(|field| {
+            if native_layout {
+                format!(
+                    " {}{};{}",
+                    super::relocations::source_anchor(field.name_span.start),
+                    field.name,
+                    super::relocations::unmapped()
+                )
+            } else {
+                format!(" {};", field.name)
+            }
+        })
         .collect();
     insert(edits, class.body_span.start + 1, declarations);
     let assignments: String = properties
         .iter()
-        .map(|field| parameter_assignment(class, field))
+        .map(|field| parameter_assignment(class, field, native_layout))
         .collect();
     insert(edits, insertion.offset, assignments);
     Ok(())
@@ -359,7 +375,7 @@ fn lower_class_with_static_origins(
         .unwrap_or_default();
     for property in class.parameter_property_fields() {
         prologue.push_str(&if !emit.define {
-            parameter_assignment(class, &property)
+            parameter_assignment(class, &property, emit.native_layout)
         } else {
             store_this(emit, &property.name, Some(property.name.clone()))
         });
@@ -599,6 +615,25 @@ fn lower_class_with_static_origins(
             }
         }
     }
+    let has_static_initializer = class.members.iter().any(|member| {
+        member
+            .field
+            .as_ref()
+            .is_some_and(|field| field.is_static && !field.declared && field.initializer.is_some())
+    });
+    if emit.retain_export_completion
+        && !emit.es5
+        && class.exported
+        && after_class.is_empty()
+        && has_static_initializer
+        && statics.starts_with(' ')
+    {
+        // The CommonJS publication already ends at the original class end.
+        // Its next static operation has an explicit field entry. Keep the
+        // existing separator as that publication's completion carrier instead
+        // of erasing the endpoint with a generated-space reset.
+        after_class.push_str(super::relocations::inherited());
+    }
     after_class.push_str(&statics);
     if !emit.es5
         && !emit.es2022
@@ -610,11 +645,7 @@ fn lower_class_with_static_origins(
             .members
             .iter()
             .any(|member| member.static_block.is_some())
-        && !class.members.iter().any(|member| {
-            member.field.as_ref().is_some_and(|field| {
-                field.is_static && !field.declared && field.initializer.is_some()
-            })
-        })
+        && !has_static_initializer
     {
         if let Some(rest) = after_class.strip_prefix(' ') {
             // The original class completes before its moved block. Reuse the
@@ -637,7 +668,11 @@ fn store_this(emit: FieldEmit, name: &str, value: Option<String>) -> String {
     store_field(emit, "this", name, None, value)
 }
 
-fn parameter_assignment(class: &ClassDeclaration, property: &ClassField) -> String {
+fn parameter_assignment(
+    class: &ClassDeclaration,
+    property: &ClassField,
+    native_layout: bool,
+) -> String {
     let start = property.name_span.start;
     let end = class
         .body
@@ -646,7 +681,15 @@ fn parameter_assignment(class: &ClassDeclaration, property: &ClassField) -> Stri
         .map_or(property.name_span.end, |token| token.end);
     let start = super::relocations::source_anchor(start);
     let end = super::relocations::source_anchor(end);
-    format!(" {start}this.{0}{end} = {start}{0}{end};", property.name)
+    let completion = if native_layout {
+        format!("{} ", super::relocations::source_anchor(property.span.end))
+    } else {
+        String::new()
+    };
+    format!(
+        " {start}this.{0}{end} = {start}{0}{end};{completion}",
+        property.name
+    )
 }
 
 fn store_field(
@@ -917,7 +960,7 @@ fn insert_prologue(
     Ok(())
 }
 
-fn missing_super(span: SourceSpan) -> Diagnostic {
+pub(super) fn missing_super(span: SourceSpan) -> Diagnostic {
     Diagnostic::error(
         DiagnosticCode::UnsupportedSyntax,
         span,
