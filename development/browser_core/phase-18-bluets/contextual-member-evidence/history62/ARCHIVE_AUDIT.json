@@ -1,0 +1,48 @@
+{
+  "conclusion": "all-completed-component-archive-members-verified",
+  "recordedAt": "2026-11-17T14:37:44.956755+00:00",
+  "sourceRevision": "backend-tree:1f17b30713047b88f11b4b56db524ca6bd362789",
+  "compilerSha256": "d511b5bd706539b1558d227155efc92657de33e121e03dc18fbcde4bbb96aff6",
+  "archives": [
+    {
+      "path": "CONTEXTUAL_MEMBER_COMPONENTS_01.tar.gz",
+      "members": 14857,
+      "sha256": "ed12c989fbfda685819ff15ea25fd9efa3c426cef458ca5532553d25f18c162f"
+    },
+    {
+      "path": "CONTEXTUAL_MEMBER_COMPONENTS_02.tar.gz",
+      "members": 845,
+      "sha256": "5b606ce9fe13a448e3e36460260c472256dac6c14703e6c584fc13af663d9e37"
+    },
+    {
+      "path": "CONTEXTUAL_MEMBER_COMPONENTS_03.tar.gz",
+      "members": 270,
+      "sha256": "73ad88e3d2b9949f1719e6917579e2b1c2555a6192144fc6b863a01f38248df3"
+    },
+    {
+      "path": "CONTEXTUAL_MEMBER_COMPONENTS_04.tar.gz",
+      "members": 48541,
+      "sha256": "d8dd593e2fc6cbfc9ce07e090745ad737c3eea5272ed7cdda8ed667bb7e91497"
+    },
+    {
+      "path": "CONTEXTUAL_MEMBER_COMPONENTS_05.tar.gz",
+      "members": 48586,
+      "sha256": "a4cd834fb84fdf955af6aa00e81b871cef528cba8c9bd0dcff5758851be2d966"
+    },
+    {
+      "path": "CONTEXTUAL_MEMBER_COMPONENTS_06.tar.gz",
+      "members": 8649,
+      "sha256": "afc491fa1e053185b7285624d8b1e1059538e48e879bc9a6c72f04c1c291286c"
+    }
+  ],
+  "regularFiles": 121748,
+  "backendSourceFilesVerified": 14227,
+  "currentToolFilesVerified": 621,
+  "symbolicLinksStoredAsMetadata": 0,
+  "memberManifestSha256": "4a69beeb36e57dd7e13a67b055c3f8c96552e2e7523d4075c849af562a7b8229",
+  "auditToolSha256": "25afe14b85f1ee7e3229f6ac50372744c62d430bbdb9dbb52ae9dd43663b0fbb",
+  "completedComponentBindingSha256": "58b1fcdb89d3e521aa63e8548e5a5361b2a0bc51012d663d6d7ceb108f8e8e00",
+  "completionCredit": false,
+  "wholeP0IComplete": false,
+  "scope": "Every archived completed source/red/history/component member independently decoded and hashed. Full Native/workspace/map/project/Windows/metadata and final publication remain required."
+}

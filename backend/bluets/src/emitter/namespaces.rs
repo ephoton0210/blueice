@@ -645,8 +645,11 @@ pub(super) fn scan(
                     // ES5 preparation may already preserve this source key.
                     // This replacement owns both the key and rewritten value.
                     let prefix = format!("{}: ", token.text);
+                    let anchored = super::targets::es5::shorthand_prefix(start, &token.text);
                     edits.retain(|edit| {
-                        !(edit.start == start && edit.end == start && edit.replacement == prefix)
+                        !(edit.start == start
+                            && edit.end == start
+                            && (edit.replacement == prefix || edit.replacement == anchored))
                     });
                     replacement = format!("{prefix}{replacement}");
                 }

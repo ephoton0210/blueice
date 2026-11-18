@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "status": "frozen-before-production",
+  "package": "P0-I",
+  "scope": "Contextual generic member results, complete constrained assertion diagnostics, and exact generic callable header maps within all original20 forms and fixed profiles/representations. Broader22 remain open.",
+  "acceptedParent": "cb28ffc4437fb58b135424b5f94f945941ca6535",
+  "parentCompilerSource": "backend-tree:37beae676a55482728b6aa8682240bd9588e7fdc",
+  "frozenFixture": "backend/bluets/tests/fixtures/contextual_member_results/FROZEN.json",
+  "frozenFixtureSha256": "200f9fe947f873261363f4158f3f82ab61874e1d78c989529e3cedbbbcf10e2c",
+  "requirements": {
+    "originalUnmappedForms": 20,
+    "actualCompilerProfiles": 2,
+    "cliSurfacesPerProfile": 2,
+    "mappedPrimaryObservationsPerSurface": 160,
+    "supplementaryUtf16ObservationsPerSurface": 320,
+    "nativeAcceptedGraphsPerSurface": 456,
+    "nativeRejectedGraphsPerSurface": 24,
+    "exactDeclarationFilesPerSurface": 480,
+    "completeMapsPerSurface": 960,
+    "fourProducerConsumerDirections": true,
+    "consumerProgramsPerDirectionAndSurface": 912,
+    "syntaxFilesPerSurface": 480,
+    "actualUnmodifiedExecutionsPerSurface": 64,
+    "separateOwnerResourceControls": 4,
+    "allOriginal43112CaseObjectsPreserved": true,
+    "productionRustAndDeclarationLineLimitExclusive": 1500
+  },
+  "fidelity": [
+    "All original20 discovery sources/configurations and their full diagnostics/declarations replay unchanged; no original form may be dropped.",
+    "All480 mapped observations compare verdicts, complete primary/recursive-related diagnostics and UTF16 spans, exact complete declaration and JavaScript inventories/bytes, every decoded map segment/metadata field and source/generated bounds.",
+    "Every Native-accepted declaration graph has isolated positive and negative consumers in all four Native/BlueTS producer/consumer directions. Native calibration contains912 consumer programs; all required directions must be present.",
+    "All480 emitted JavaScript files parse at the selected edition. ES5/ESNext uses complete module grammar and separately checks every emitted body as ES5. Execute all64 authored runtime controls from unchanged emitted files.",
+    "Preserve type-expansion and source budgets, NoInfer/candidate/alias-owner isolation, noEmit authority and unselected-source confinement; do not add remote authority."
+  ],
+  "delivery": [
+    "Test-first public red evidence, all four library boundary controls and a complete actual-compiler/source snapshot are mandatory before production repair.",
+    "After repair, require the complete source-bound Native catalog and full workspace, both original compiler/map profiles with all55/298 functions and8407\u00d7two corpora, four real projects, and affected accepted P0-H program/lifecycle/owner regressions.",
+    "Windows x86_64 VM82 core oracles plus25 paths and affected complete cohorts, format, warnings-denied workspace/all-target Clippy, Node/Python/accounting/status, module limits and independent published-artifact audit are mandatory. Hosted CI and ARM are supplementary.",
+    "Check P0-I and commit implementation plus matching complete measurement/evidence only after every requirement passes; then push. Do not close a broader G-ID from this finite package."
+  ],
+  "preimplementationEvidence": {
+    "originalDiscovery": "target/contextual-member-discovery-20261117-2/report.json",
+    "native": "target/contextual-member-contract-20261117-1/reference.json",
+    "downstream": "target/contextual-member-contract-20261117-1/downstream-reference.json",
+    "acceptedParentBaseline": "target/contextual-member-contract-20261117-1/accepted-parent-baseline/report.json",
+    "acceptedParentObservations": 1920,
+    "acceptedParentTypeAgreements": 288,
+    "acceptedParentIncorrectRejections": 1536,
+    "acceptedParentAcceptedMapDifferences": 288
+  },
+  "inventoryCredit": 0
+}

@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "nativeAgreementCredit": 0,
+  "controls": [
+    {
+      "id": "zero-type-expansion-budget",
+      "sourceCase": "member-variable",
+      "limit": {
+        "max_type_expansions": 0
+      },
+      "expected": "Bounded refusal with no artifacts; never an accepted unknown fallback."
+    },
+    {
+      "id": "total-source-budget",
+      "sourceCase": "member-variable",
+      "limit": {
+        "max_total_source_bytes": "source UTF8 byte length minus one"
+      },
+      "expected": "ResourceLimit with no artifacts."
+    },
+    {
+      "id": "no-emit-contextual-program",
+      "sourceCase": "member-variable",
+      "options": {
+        "no_emit": true
+      },
+      "expected": "Successful static check with output absent; no runtime execution or authority."
+    },
+    {
+      "id": "unselected-owner-source",
+      "sourceCase": "member-variable",
+      "unselected": {
+        "id": "memory:///outside.ts",
+        "source": "declare const factory: { make<T>(): string };\n"
+      },
+      "expected": "No outside source load, no outside module/metadata, same selected-root result."
+    }
+  ]
+}

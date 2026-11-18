@@ -1,0 +1,809 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "inputSha256": "a5794c3f9bfda29afd6ad1f82142e3df208bba452ebcacce3caa06799eb34385",
+  "conclusion": "complete-native-assertion-overlap-regressions",
+  "cases": [
+    {
+      "id": "ES5-CommonJS-functions-false/string-literal-parameter",
+      "profile": "ES5-CommonJS-functions-false",
+      "form": "string-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\";\n"
+      }
+    },
+    {
+      "id": "ES5-CommonJS-functions-false/number-literal-parameter",
+      "profile": "ES5-CommonJS-functions-false",
+      "form": "number-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: 2;\n"
+      }
+    },
+    {
+      "id": "ES5-CommonJS-functions-false/boolean-literal-parameter",
+      "profile": "ES5-CommonJS-functions-false",
+      "form": "boolean-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: false;\n"
+      }
+    },
+    {
+      "id": "ES5-CommonJS-functions-false/literal-union-parameter",
+      "profile": "ES5-CommonJS-functions-false",
+      "form": "literal-union-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\" | null;\n"
+      }
+    },
+    {
+      "id": "ES5-CommonJS-functions-false/undefined-negative",
+      "profile": "ES5-CommonJS-functions-false",
+      "form": "undefined-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'undefined' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'undefined'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 56,
+            "length": 14
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES5-CommonJS-functions-false/string-to-number-negative",
+      "profile": "ES5-CommonJS-functions-false",
+      "form": "string-to-number-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'string' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 84,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES5-CommonJS-functions-false/number-to-string-negative",
+      "profile": "ES5-CommonJS-functions-false",
+      "form": "number-to-string-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'number' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'number'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 76,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES5-CommonJS-functions-true/string-literal-parameter",
+      "profile": "ES5-CommonJS-functions-true",
+      "form": "string-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\";\n"
+      }
+    },
+    {
+      "id": "ES5-CommonJS-functions-true/number-literal-parameter",
+      "profile": "ES5-CommonJS-functions-true",
+      "form": "number-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: 2;\n"
+      }
+    },
+    {
+      "id": "ES5-CommonJS-functions-true/boolean-literal-parameter",
+      "profile": "ES5-CommonJS-functions-true",
+      "form": "boolean-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: false;\n"
+      }
+    },
+    {
+      "id": "ES5-CommonJS-functions-true/literal-union-parameter",
+      "profile": "ES5-CommonJS-functions-true",
+      "form": "literal-union-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\" | null;\n"
+      }
+    },
+    {
+      "id": "ES5-CommonJS-functions-true/undefined-negative",
+      "profile": "ES5-CommonJS-functions-true",
+      "form": "undefined-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'undefined' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'undefined'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 56,
+            "length": 14
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES5-CommonJS-functions-true/string-to-number-negative",
+      "profile": "ES5-CommonJS-functions-true",
+      "form": "string-to-number-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'string' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 84,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES5-CommonJS-functions-true/number-to-string-negative",
+      "profile": "ES5-CommonJS-functions-true",
+      "form": "number-to-string-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'number' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'number'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 76,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES5-ESNext-functions-false/string-literal-parameter",
+      "profile": "ES5-ESNext-functions-false",
+      "form": "string-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\";\n"
+      }
+    },
+    {
+      "id": "ES5-ESNext-functions-false/number-literal-parameter",
+      "profile": "ES5-ESNext-functions-false",
+      "form": "number-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: 2;\n"
+      }
+    },
+    {
+      "id": "ES5-ESNext-functions-false/boolean-literal-parameter",
+      "profile": "ES5-ESNext-functions-false",
+      "form": "boolean-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: false;\n"
+      }
+    },
+    {
+      "id": "ES5-ESNext-functions-false/literal-union-parameter",
+      "profile": "ES5-ESNext-functions-false",
+      "form": "literal-union-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\" | null;\n"
+      }
+    },
+    {
+      "id": "ES5-ESNext-functions-false/undefined-negative",
+      "profile": "ES5-ESNext-functions-false",
+      "form": "undefined-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'undefined' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'undefined'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 56,
+            "length": 14
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES5-ESNext-functions-false/string-to-number-negative",
+      "profile": "ES5-ESNext-functions-false",
+      "form": "string-to-number-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'string' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 84,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES5-ESNext-functions-false/number-to-string-negative",
+      "profile": "ES5-ESNext-functions-false",
+      "form": "number-to-string-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'number' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'number'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 76,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES5-ESNext-functions-true/string-literal-parameter",
+      "profile": "ES5-ESNext-functions-true",
+      "form": "string-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\";\n"
+      }
+    },
+    {
+      "id": "ES5-ESNext-functions-true/number-literal-parameter",
+      "profile": "ES5-ESNext-functions-true",
+      "form": "number-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: 2;\n"
+      }
+    },
+    {
+      "id": "ES5-ESNext-functions-true/boolean-literal-parameter",
+      "profile": "ES5-ESNext-functions-true",
+      "form": "boolean-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: false;\n"
+      }
+    },
+    {
+      "id": "ES5-ESNext-functions-true/literal-union-parameter",
+      "profile": "ES5-ESNext-functions-true",
+      "form": "literal-union-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\" | null;\n"
+      }
+    },
+    {
+      "id": "ES5-ESNext-functions-true/undefined-negative",
+      "profile": "ES5-ESNext-functions-true",
+      "form": "undefined-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'undefined' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'undefined'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 56,
+            "length": 14
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES5-ESNext-functions-true/string-to-number-negative",
+      "profile": "ES5-ESNext-functions-true",
+      "form": "string-to-number-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'string' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 84,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES5-ESNext-functions-true/number-to-string-negative",
+      "profile": "ES5-ESNext-functions-true",
+      "form": "number-to-string-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'number' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'number'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 76,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES2022-CommonJS-functions-false/string-literal-parameter",
+      "profile": "ES2022-CommonJS-functions-false",
+      "form": "string-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\";\n"
+      }
+    },
+    {
+      "id": "ES2022-CommonJS-functions-false/number-literal-parameter",
+      "profile": "ES2022-CommonJS-functions-false",
+      "form": "number-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: 2;\n"
+      }
+    },
+    {
+      "id": "ES2022-CommonJS-functions-false/boolean-literal-parameter",
+      "profile": "ES2022-CommonJS-functions-false",
+      "form": "boolean-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: false;\n"
+      }
+    },
+    {
+      "id": "ES2022-CommonJS-functions-false/literal-union-parameter",
+      "profile": "ES2022-CommonJS-functions-false",
+      "form": "literal-union-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\" | null;\n"
+      }
+    },
+    {
+      "id": "ES2022-CommonJS-functions-false/undefined-negative",
+      "profile": "ES2022-CommonJS-functions-false",
+      "form": "undefined-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'undefined' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'undefined'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 56,
+            "length": 14
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES2022-CommonJS-functions-false/string-to-number-negative",
+      "profile": "ES2022-CommonJS-functions-false",
+      "form": "string-to-number-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'string' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 84,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES2022-CommonJS-functions-false/number-to-string-negative",
+      "profile": "ES2022-CommonJS-functions-false",
+      "form": "number-to-string-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'number' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'number'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 76,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES2022-CommonJS-functions-true/string-literal-parameter",
+      "profile": "ES2022-CommonJS-functions-true",
+      "form": "string-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\";\n"
+      }
+    },
+    {
+      "id": "ES2022-CommonJS-functions-true/number-literal-parameter",
+      "profile": "ES2022-CommonJS-functions-true",
+      "form": "number-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: 2;\n"
+      }
+    },
+    {
+      "id": "ES2022-CommonJS-functions-true/boolean-literal-parameter",
+      "profile": "ES2022-CommonJS-functions-true",
+      "form": "boolean-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: false;\n"
+      }
+    },
+    {
+      "id": "ES2022-CommonJS-functions-true/literal-union-parameter",
+      "profile": "ES2022-CommonJS-functions-true",
+      "form": "literal-union-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\" | null;\n"
+      }
+    },
+    {
+      "id": "ES2022-CommonJS-functions-true/undefined-negative",
+      "profile": "ES2022-CommonJS-functions-true",
+      "form": "undefined-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'undefined' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'undefined'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 56,
+            "length": 14
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES2022-CommonJS-functions-true/string-to-number-negative",
+      "profile": "ES2022-CommonJS-functions-true",
+      "form": "string-to-number-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'string' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 84,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES2022-CommonJS-functions-true/number-to-string-negative",
+      "profile": "ES2022-CommonJS-functions-true",
+      "form": "number-to-string-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'number' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'number'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 76,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES2022-ESNext-functions-false/string-literal-parameter",
+      "profile": "ES2022-ESNext-functions-false",
+      "form": "string-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\";\n"
+      }
+    },
+    {
+      "id": "ES2022-ESNext-functions-false/number-literal-parameter",
+      "profile": "ES2022-ESNext-functions-false",
+      "form": "number-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: 2;\n"
+      }
+    },
+    {
+      "id": "ES2022-ESNext-functions-false/boolean-literal-parameter",
+      "profile": "ES2022-ESNext-functions-false",
+      "form": "boolean-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: false;\n"
+      }
+    },
+    {
+      "id": "ES2022-ESNext-functions-false/literal-union-parameter",
+      "profile": "ES2022-ESNext-functions-false",
+      "form": "literal-union-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\" | null;\n"
+      }
+    },
+    {
+      "id": "ES2022-ESNext-functions-false/undefined-negative",
+      "profile": "ES2022-ESNext-functions-false",
+      "form": "undefined-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'undefined' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'undefined'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 56,
+            "length": 14
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES2022-ESNext-functions-false/string-to-number-negative",
+      "profile": "ES2022-ESNext-functions-false",
+      "form": "string-to-number-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'string' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 84,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES2022-ESNext-functions-false/number-to-string-negative",
+      "profile": "ES2022-ESNext-functions-false",
+      "form": "number-to-string-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'number' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'number'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 76,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES2022-ESNext-functions-true/string-literal-parameter",
+      "profile": "ES2022-ESNext-functions-true",
+      "form": "string-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\";\n"
+      }
+    },
+    {
+      "id": "ES2022-ESNext-functions-true/number-literal-parameter",
+      "profile": "ES2022-ESNext-functions-true",
+      "form": "number-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: 2;\n"
+      }
+    },
+    {
+      "id": "ES2022-ESNext-functions-true/boolean-literal-parameter",
+      "profile": "ES2022-ESNext-functions-true",
+      "form": "boolean-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: false;\n"
+      }
+    },
+    {
+      "id": "ES2022-ESNext-functions-true/literal-union-parameter",
+      "profile": "ES2022-ESNext-functions-true",
+      "form": "literal-union-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\" | null;\n"
+      }
+    },
+    {
+      "id": "ES2022-ESNext-functions-true/undefined-negative",
+      "profile": "ES2022-ESNext-functions-true",
+      "form": "undefined-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'undefined' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'undefined'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 56,
+            "length": 14
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES2022-ESNext-functions-true/string-to-number-negative",
+      "profile": "ES2022-ESNext-functions-true",
+      "form": "string-to-number-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'string' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'string'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 84,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES2022-ESNext-functions-true/number-to-string-negative",
+      "profile": "ES2022-ESNext-functions-true",
+      "form": "number-to-string-negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'number' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'number'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 76,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    }
+  ]
+}

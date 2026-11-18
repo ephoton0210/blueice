@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "consumers": {
+    "direct-variable-control": {
+      "positive": "import { result } from \"./main\";\nconst demanded: number = result;\n",
+      "negative": "import { result } from \"./main\";\nconst rejected: string = result;\n"
+    },
+    "direct-return-control": {
+      "positive": "import { result } from \"./main\";\nconst demanded: number = result();\n",
+      "negative": "import { result } from \"./main\";\nconst rejected: string = result();\n"
+    },
+    "member-variable": {
+      "positive": "import { result } from \"./main\";\nconst demanded: number = result;\n",
+      "negative": "import { result } from \"./main\";\nconst rejected: string = result;\n"
+    },
+    "member-return": {
+      "positive": "import { result } from \"./main\";\nconst demanded: number = result();\n",
+      "negative": "import { result } from \"./main\";\nconst rejected: string = result();\n"
+    },
+    "member-argument": {
+      "positive": "import { result } from \"./main\";\nconst demanded: number = result;\n",
+      "negative": "import { result } from \"./main\";\nconst rejected: string = result;\n"
+    },
+    "computed-literal-variable": {
+      "positive": "import { result } from \"./main\";\nconst demanded: number = result;\n",
+      "negative": "import { result } from \"./main\";\nconst rejected: string = result;\n"
+    },
+    "computed-key-variable": {
+      "positive": "import { result } from \"./main\";\nconst demanded: number = result;\n",
+      "negative": "import { result } from \"./main\";\nconst rejected: string = result;\n"
+    },
+    "static-method-variable": {
+      "positive": "import { result } from \"./main\";\nconst demanded: number = result;\n",
+      "negative": "import { result } from \"./main\";\nconst rejected: string = result;\n"
+    },
+    "instance-method-variable": {
+      "positive": "import { result } from \"./main\";\nconst demanded: number = result;\n",
+      "negative": "import { result } from \"./main\";\nconst rejected: string = result;\n"
+    },
+    "namespace-variable": {
+      "positive": "import { result } from \"./main\";\nconst demanded: number = result;\n",
+      "negative": "import { result } from \"./main\";\nconst rejected: string = result;\n"
+    },
+    "defaulted-member-variable": {
+      "positive": "import { result } from \"./main\";\nconst demanded: number = result;\n",
+      "negative": "import { result } from \"./main\";\nconst rejected: string = result;\n"
+    },
+    "callable-property-variable": {
+      "positive": "import { result } from \"./main\";\nconst demanded: number = result;\n",
+      "negative": "import { result } from \"./main\";\nconst rejected: string = result;\n"
+    },
+    "overloaded-member-variable": {
+      "positive": "import { result } from \"./main\";\nconst demanded: number = result;\n",
+      "negative": "import { result } from \"./main\";\nconst rejected: string = result;\n"
+    },
+    "imported-member-variable": {
+      "positive": "import { result } from \"./main\";\nconst demanded: number = result;\n",
+      "negative": "import { result } from \"./main\";\nconst rejected: string = result;\n"
+    },
+    "parenthesized-member-variable": {
+      "positive": "import { result } from \"./main\";\nconst demanded: number = result;\n",
+      "negative": "import { result } from \"./main\";\nconst rejected: string = result;\n"
+    },
+    "member-callable-result": {
+      "positive": "import { result } from \"./main\";\nconst demanded: number = result();\n",
+      "negative": "import { result } from \"./main\";\nconst rejected: string = result();\n"
+    },
+    "overload-context-member-argument": {
+      "positive": "import { result } from \"./main\";\nconst demanded: \"number\" = result;\n",
+      "negative": "import { result } from \"./main\";\nconst rejected: number = result;\n"
+    },
+    "conditional-member-context": {
+      "positive": "import { result } from \"./main\";\nconst demanded: number = result;\n",
+      "negative": "import { result } from \"./main\";\nconst rejected: string = result;\n"
+    },
+    "object-property-member-context": {
+      "positive": "import { result } from \"./main\";\nconst demanded: number = result.value;\n",
+      "negative": "import { result } from \"./main\";\nconst rejected: string = result.value;\n"
+    }
+  },
+  "runtimeForms": [
+    "direct-variable-control",
+    "member-variable",
+    "computed-literal-variable",
+    "static-method-variable",
+    "instance-method-variable",
+    "namespace-variable",
+    "conditional-member-context",
+    "object-property-member-context"
+  ],
+  "runtimeRepresentations": [
+    "original"
+  ],
+  "syntax": "Complete module grammar; ES5/ESNext declaration bodies separately parse as ES5. No emitted source rewriting.",
+  "primaryObservations": 160,
+  "supplementaryObservations": 320,
+  "expectedConsumerPrograms": 912,
+  "expectedJavaScriptParses": 480,
+  "expectedExecutions": 64
+}

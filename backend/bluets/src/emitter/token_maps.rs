@@ -111,7 +111,7 @@ pub(super) fn mark_start(source: &str, tokens: &[Token], index: usize) -> bool {
     }
     if token.is("}")
         && index > 0
-        && tokens[index - 1].is("}")
+        && matches!(tokens[index - 1].text.as_str(), "}" | ")")
         && object_close(tokens, index)
         && source[tokens[index - 1].end..token.start]
             .bytes()
@@ -135,6 +135,21 @@ pub(super) fn mark_start(source: &str, tokens: &[Token], index: usize) -> bool {
 
 pub(super) fn mark_end(tokens: &[Token], index: usize) -> bool {
     let token = &tokens[index];
+    // A final object property owns the complete call result before the
+    // closing brace's trivia, including a call with no arguments.
+    if token.is(")")
+        && tokens.get(index + 1).is_some_and(|next| next.is("}"))
+        && object_close(tokens, index + 1)
+    {
+        return true;
+    }
+    if token.is(")")
+        && tokens.get(index + 1).is_some_and(|next| {
+            next.is("?") || next.is(":") && conditional_colon(tokens, index + 1)
+        })
+    {
+        return true;
+    }
     // Empty parentheses can only be a parameter/call list, not an expression
     // group. Like their closing token, the following gap retains the opener.
     if token.is(")") && index > 0 && tokens[index - 1].is("(") {
@@ -151,13 +166,6 @@ pub(super) fn mark_end(tokens: &[Token], index: usize) -> bool {
         return true;
     }
     if token.is("]") {
-        return true;
-    }
-    if token.is(")")
-        && tokens.get(index + 1).is_some_and(|token| {
-            token.is("?") || token.is(":") && conditional_colon(tokens, index + 1)
-        })
-    {
         return true;
     }
     if token.is(")") {
@@ -387,7 +395,7 @@ fn unlabelled_jump(tokens: &[Token], index: usize) -> bool {
             .is_some_and(|before| tokens[before].is(".") || tokens[before].is("?."))
 }
 
-fn conditional_colon(tokens: &[Token], index: usize) -> bool {
+pub(super) fn conditional_colon(tokens: &[Token], index: usize) -> bool {
     let mut depth = 0usize;
     let mut nested = 0usize;
     for token in tokens[..index].iter().rev() {

@@ -13,7 +13,7 @@ mod inferred;
 mod members;
 mod modules;
 mod types;
-pub(crate) const VERSION: &str = "declaration-map-provenance-v6";
+pub(crate) const VERSION: &str = "declaration-map-provenance-v7";
 
 pub(super) fn build(
     id: &str,

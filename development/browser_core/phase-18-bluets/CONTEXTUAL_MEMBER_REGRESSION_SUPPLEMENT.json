@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "status": "frozen-before-source61-correction",
+  "package": "P0-I",
+  "reason": "Source60 introduced four incorrect rejections for widened literal/union sources; source60 complete acceptance was stopped and receives no delivery credit.",
+  "primaryContractSha256": "6c8d1206d735742db700b2a107064f7f0aa404e45e55ee4473ca427c45a55d5e",
+  "primaryFixtureSha256Unchanged": "200f9fe947f873261363f4158f3f82ab61874e1d78c989529e3cedbbbcf10e2c",
+  "supplementalFixture": "backend/bluets/tests/fixtures/contextual_member_results/ASSERTION_OVERLAP_FROZEN.json",
+  "supplementalFixtureSha256": "c56d06d11d53061b8d5256db53503948cbd5db5a73f5a629b72c0cd3b8c9c6d8",
+  "requirements": {
+    "unchangedIntroducedRegressionForms": 4,
+    "negativeDiagnosticForms": 3,
+    "nativeProfiles": 8,
+    "nativeObservations": 56,
+    "cliSurfacesPerActualCompiler": 2,
+    "completeComparisonsPerActualCompiler": 112,
+    "completeDiagnosticsAndExactDeclarations": true,
+    "original20FormsUnchanged": true,
+    "newInventoryCredit": 0,
+    "totalSupplementComparisonsPerActualCompiler": 192
+  },
+  "red": {
+    "publicLog": "target/contextual-member-acceptance-source60-20261117-1/assertion-review/public-red.log",
+    "publicLogSha256": "03c1f531b4e6e2dbab5a416ea566bf7da5d7d414a78c6c4b0c821d0243a7c011",
+    "observations": 112,
+    "differences": 96,
+    "binaryAndSources": "target/contextual-member-acceptance-source60-20261117-1/assertion-review/public-red-snapshot/manifest.json"
+  },
+  "preservation": {
+    "acceptedParent": "cb28ffc4437fb58b135424b5f94f945941ca6535",
+    "source60EvidenceRetained": true,
+    "source60AbortedAcceptance": "target/contextual-member-acceptance-source60-20261117-1/ABORT_SOURCE60.json",
+    "noPrimaryGoldenModified": true,
+    "noBudgetOrAuthorityIncrease": true
+  },
+  "knownPreexistingGap": {
+    "feature": "G-T5",
+    "form": "unknown-parameter",
+    "nativeAccepts": true,
+    "acceptedParentAndSource60RejectWith": 2322,
+    "evidence": "target/contextual-member-acceptance-source60-20261117-1/assertion-review/report.json",
+    "scope": "Retained broader G-T5 gap outside original20 forms; no closure or parity credit."
+  },
+  "aliasSupplement": {
+    "frozenFixture": "backend/bluets/tests/fixtures/contextual_member_results/ASSERTION_ALIAS_FROZEN.json",
+    "frozenFixtureSha256": "376964aa694e4922a3ede711ff276cd7fea0364279de5ebfeabdf39379cedc8e",
+    "forms": 5,
+    "nativeObservations": 40,
+    "cliComparisonsPerActualCompiler": 80,
+    "scope": "Alias union widening, scalar aliases, rigid parameter unions, hexadecimal literals and enum source names; no primary golden changes or extra denominator credit.",
+    "publicRed": "target/contextual-member-acceptance-source60-20261117-1/assertion-review/alias-public-red.log",
+    "publicRedDifferences": 32
+  },
+  "budgetControl": {
+    "scope": "Separate owner-selected resource boundary; zero additional inventory credit.",
+    "publicTest": "constrained_assertion_budget_exhaustion_refuses_without_artifacts",
+    "limits": [
+      0,
+      1,
+      2,
+      64
+    ],
+    "resourceLimitWithoutArtifacts": [
+      0,
+      1
+    ],
+    "originalTs2352WithoutArtifacts": [
+      2,
+      64
+    ],
+    "publicRed": "target/contextual-member-acceptance-source60-20261117-1/assertion-review/budget-public-red.log",
+    "publicRedSha256": "841f5a97058912054087f82d6031f64cfbfcdb87a23dd97f6e31a17f59ab93e5",
+    "publicRedSnapshot": "target/contextual-member-acceptance-source60-20261117-1/assertion-review/budget-public-red-snapshot/manifest.json"
+  }
+}

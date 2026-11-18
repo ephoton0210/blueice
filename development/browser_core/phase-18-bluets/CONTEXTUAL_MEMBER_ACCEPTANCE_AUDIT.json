@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "conclusion": "complete-contextual-contract-and-published-artifacts-accepted",
+  "recordedAt": "2026-11-18T04:09:03.753568+00:00",
+  "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+  "contractSha256": "6c8d1206d735742db700b2a107064f7f0aa404e45e55ee4473ca427c45a55d5e",
+  "artifactIndexSha256": "ddf2190129cd5aeea446968779a4855f719e066d9f26b329ebe54e30fd87e3da",
+  "measurementSha256": "4c747d745b6680fa6416d64ca0da4c7215ce44b82ae5e5d72eecccdcd65dd9ae",
+  "publishedMemberArchives": 44,
+  "publishedMembersIndividuallyVerified": 1445247,
+  "archiveGroups": {
+    "history": 157301,
+    "history62": 121748,
+    "components": 113057,
+    "final": 526579,
+    "publicationHistory": 526562
+  },
+  "publishedWindowsSuccessAndFailureSeparatelyVerified": true,
+  "publishedWindowsAbortHistorySeparatelyVerified": true,
+  "nativeSuites": 192,
+  "nativeFunctions": 1095,
+  "workspaceExecutables": 737,
+  "workspaceTotals": {
+    "passed": 8060,
+    "failed": 0,
+    "ignored": 401,
+    "filtered": 0
+  },
+  "originalCaseIdentitiesPreserved": 43112,
+  "newPrimaryAndOwnerControls": 164,
+  "broaderFeatureRowsOpen": 22,
+  "fullTypeScriptParity": false,
+  "auditToolSha256": "87dfa664f8c6629e20adc3334e2245bfb2f6df840e3c4eb3d7a5e687bd1ba6b3",
+  "allFrozenRequirementsSatisfied": true,
+  "TODOCheckboxChanged": false,
+  "commitOrPushPerformed": false
+}

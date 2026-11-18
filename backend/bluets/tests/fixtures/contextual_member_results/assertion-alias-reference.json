@@ -1,0 +1,569 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "inputSha256": "ae13fec9a0297c651e731f21a5435e0e72cc2a36e16123d25ade8736ff722e98",
+  "conclusion": "complete-native-assertion-alias-regressions",
+  "cases": [
+    {
+      "id": "ES5-CommonJS-functions-false/alias-union-parameter",
+      "profile": "ES5-CommonJS-functions-false",
+      "form": "alias-union-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Target = \"blue\" | null;\nexport declare const result: Target;\nexport {};\n"
+      }
+    },
+    {
+      "id": "ES5-CommonJS-functions-false/alias-scalar-parameter",
+      "profile": "ES5-CommonJS-functions-false",
+      "form": "alias-scalar-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\";\n"
+      }
+    },
+    {
+      "id": "ES5-CommonJS-functions-false/parameter-union-parameter",
+      "profile": "ES5-CommonJS-functions-false",
+      "form": "parameter-union-parameter",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'S' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'S'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 99,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES5-CommonJS-functions-false/hexadecimal-literal-parameter",
+      "profile": "ES5-CommonJS-functions-false",
+      "form": "hexadecimal-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: 2;\n"
+      }
+    },
+    {
+      "id": "ES5-CommonJS-functions-false/enum-constraint-parameter",
+      "profile": "ES5-CommonJS-functions-false",
+      "form": "enum-constraint-parameter",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'First' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'First'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 86,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES5-CommonJS-functions-true/alias-union-parameter",
+      "profile": "ES5-CommonJS-functions-true",
+      "form": "alias-union-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Target = \"blue\" | null;\nexport declare const result: Target;\nexport {};\n"
+      }
+    },
+    {
+      "id": "ES5-CommonJS-functions-true/alias-scalar-parameter",
+      "profile": "ES5-CommonJS-functions-true",
+      "form": "alias-scalar-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\";\n"
+      }
+    },
+    {
+      "id": "ES5-CommonJS-functions-true/parameter-union-parameter",
+      "profile": "ES5-CommonJS-functions-true",
+      "form": "parameter-union-parameter",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'S' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'S'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 99,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES5-CommonJS-functions-true/hexadecimal-literal-parameter",
+      "profile": "ES5-CommonJS-functions-true",
+      "form": "hexadecimal-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: 2;\n"
+      }
+    },
+    {
+      "id": "ES5-CommonJS-functions-true/enum-constraint-parameter",
+      "profile": "ES5-CommonJS-functions-true",
+      "form": "enum-constraint-parameter",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'First' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'First'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 86,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES5-ESNext-functions-false/alias-union-parameter",
+      "profile": "ES5-ESNext-functions-false",
+      "form": "alias-union-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Target = \"blue\" | null;\nexport declare const result: Target;\nexport {};\n"
+      }
+    },
+    {
+      "id": "ES5-ESNext-functions-false/alias-scalar-parameter",
+      "profile": "ES5-ESNext-functions-false",
+      "form": "alias-scalar-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\";\n"
+      }
+    },
+    {
+      "id": "ES5-ESNext-functions-false/parameter-union-parameter",
+      "profile": "ES5-ESNext-functions-false",
+      "form": "parameter-union-parameter",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'S' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'S'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 99,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES5-ESNext-functions-false/hexadecimal-literal-parameter",
+      "profile": "ES5-ESNext-functions-false",
+      "form": "hexadecimal-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: 2;\n"
+      }
+    },
+    {
+      "id": "ES5-ESNext-functions-false/enum-constraint-parameter",
+      "profile": "ES5-ESNext-functions-false",
+      "form": "enum-constraint-parameter",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'First' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'First'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 86,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES5-ESNext-functions-true/alias-union-parameter",
+      "profile": "ES5-ESNext-functions-true",
+      "form": "alias-union-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Target = \"blue\" | null;\nexport declare const result: Target;\nexport {};\n"
+      }
+    },
+    {
+      "id": "ES5-ESNext-functions-true/alias-scalar-parameter",
+      "profile": "ES5-ESNext-functions-true",
+      "form": "alias-scalar-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\";\n"
+      }
+    },
+    {
+      "id": "ES5-ESNext-functions-true/parameter-union-parameter",
+      "profile": "ES5-ESNext-functions-true",
+      "form": "parameter-union-parameter",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'S' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'S'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 99,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES5-ESNext-functions-true/hexadecimal-literal-parameter",
+      "profile": "ES5-ESNext-functions-true",
+      "form": "hexadecimal-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: 2;\n"
+      }
+    },
+    {
+      "id": "ES5-ESNext-functions-true/enum-constraint-parameter",
+      "profile": "ES5-ESNext-functions-true",
+      "form": "enum-constraint-parameter",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'First' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'First'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 86,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES2022-CommonJS-functions-false/alias-union-parameter",
+      "profile": "ES2022-CommonJS-functions-false",
+      "form": "alias-union-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Target = \"blue\" | null;\nexport declare const result: Target;\nexport {};\n"
+      }
+    },
+    {
+      "id": "ES2022-CommonJS-functions-false/alias-scalar-parameter",
+      "profile": "ES2022-CommonJS-functions-false",
+      "form": "alias-scalar-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\";\n"
+      }
+    },
+    {
+      "id": "ES2022-CommonJS-functions-false/parameter-union-parameter",
+      "profile": "ES2022-CommonJS-functions-false",
+      "form": "parameter-union-parameter",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'S' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'S'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 99,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES2022-CommonJS-functions-false/hexadecimal-literal-parameter",
+      "profile": "ES2022-CommonJS-functions-false",
+      "form": "hexadecimal-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: 2;\n"
+      }
+    },
+    {
+      "id": "ES2022-CommonJS-functions-false/enum-constraint-parameter",
+      "profile": "ES2022-CommonJS-functions-false",
+      "form": "enum-constraint-parameter",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'First' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'First'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 86,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES2022-CommonJS-functions-true/alias-union-parameter",
+      "profile": "ES2022-CommonJS-functions-true",
+      "form": "alias-union-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Target = \"blue\" | null;\nexport declare const result: Target;\nexport {};\n"
+      }
+    },
+    {
+      "id": "ES2022-CommonJS-functions-true/alias-scalar-parameter",
+      "profile": "ES2022-CommonJS-functions-true",
+      "form": "alias-scalar-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\";\n"
+      }
+    },
+    {
+      "id": "ES2022-CommonJS-functions-true/parameter-union-parameter",
+      "profile": "ES2022-CommonJS-functions-true",
+      "form": "parameter-union-parameter",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'S' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'S'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 99,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES2022-CommonJS-functions-true/hexadecimal-literal-parameter",
+      "profile": "ES2022-CommonJS-functions-true",
+      "form": "hexadecimal-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: 2;\n"
+      }
+    },
+    {
+      "id": "ES2022-CommonJS-functions-true/enum-constraint-parameter",
+      "profile": "ES2022-CommonJS-functions-true",
+      "form": "enum-constraint-parameter",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'First' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'First'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 86,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES2022-ESNext-functions-false/alias-union-parameter",
+      "profile": "ES2022-ESNext-functions-false",
+      "form": "alias-union-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Target = \"blue\" | null;\nexport declare const result: Target;\nexport {};\n"
+      }
+    },
+    {
+      "id": "ES2022-ESNext-functions-false/alias-scalar-parameter",
+      "profile": "ES2022-ESNext-functions-false",
+      "form": "alias-scalar-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\";\n"
+      }
+    },
+    {
+      "id": "ES2022-ESNext-functions-false/parameter-union-parameter",
+      "profile": "ES2022-ESNext-functions-false",
+      "form": "parameter-union-parameter",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'S' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'S'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 99,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES2022-ESNext-functions-false/hexadecimal-literal-parameter",
+      "profile": "ES2022-ESNext-functions-false",
+      "form": "hexadecimal-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: 2;\n"
+      }
+    },
+    {
+      "id": "ES2022-ESNext-functions-false/enum-constraint-parameter",
+      "profile": "ES2022-ESNext-functions-false",
+      "form": "enum-constraint-parameter",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'First' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'First'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 86,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES2022-ESNext-functions-true/alias-union-parameter",
+      "profile": "ES2022-ESNext-functions-true",
+      "form": "alias-union-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "type Target = \"blue\" | null;\nexport declare const result: Target;\nexport {};\n"
+      }
+    },
+    {
+      "id": "ES2022-ESNext-functions-true/alias-scalar-parameter",
+      "profile": "ES2022-ESNext-functions-true",
+      "form": "alias-scalar-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: \"blue\";\n"
+      }
+    },
+    {
+      "id": "ES2022-ESNext-functions-true/parameter-union-parameter",
+      "profile": "ES2022-ESNext-functions-true",
+      "form": "parameter-union-parameter",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'S' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'S'.",
+          "file": "main.ts",
+          "position": {
+            "line": 1,
+            "column": 99,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    },
+    {
+      "id": "ES2022-ESNext-functions-true/hexadecimal-literal-parameter",
+      "profile": "ES2022-ESNext-functions-true",
+      "form": "hexadecimal-literal-parameter",
+      "accepts": true,
+      "diagnostics": [],
+      "declarations": {
+        "main.d.ts": "export declare const result: 2;\n"
+      }
+    },
+    {
+      "id": "ES2022-ESNext-functions-true/enum-constraint-parameter",
+      "profile": "ES2022-ESNext-functions-true",
+      "form": "enum-constraint-parameter",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2352,
+          "message": "Conversion of type 'First' to type 'T' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  'T' could be instantiated with an arbitrary type which could be unrelated to 'First'.",
+          "file": "main.ts",
+          "position": {
+            "line": 2,
+            "column": 86,
+            "length": 10
+          },
+          "relatedInformation": []
+        }
+      ],
+      "declarations": {}
+    }
+  ]
+}

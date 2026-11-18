@@ -1,0 +1,77 @@
+{
+  "typescript": "5.9.3",
+  "cases": [
+    {
+      "id": "optional-const-number",
+      "source": "declare const maybe: (<T>(value:T)=>T) | undefined;\nexport const result = maybe?.(1); const witness: 1 | undefined = result;\n",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: number | undefined;\n",
+      "acceptedParentAgrees": true,
+      "preLiteralContextCorrectionAgrees": true
+    },
+    {
+      "id": "member-const-number",
+      "source": "declare const provider: { pick<T>(value:T): T };\nexport const result = provider.pick(1); const witness: 1 = result;\n",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result = 1;\n",
+      "acceptedParentAgrees": true,
+      "preLiteralContextCorrectionAgrees": true
+    },
+    {
+      "id": "optional-context-number",
+      "source": "declare const maybe: (<T>(value:T)=>T) | undefined;\nexport const result: 1 | undefined = maybe?.(1);\n",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: 1 | undefined;\n",
+      "acceptedParentAgrees": true,
+      "preLiteralContextCorrectionAgrees": false
+    },
+    {
+      "id": "optional-context-string",
+      "source": "declare const maybe: (<T>(value:T)=>T) | undefined;\nexport const result: \"one\" | undefined = maybe?.(\"one\");\n",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: \"one\" | undefined;\n",
+      "acceptedParentAgrees": true,
+      "preLiteralContextCorrectionAgrees": false
+    },
+    {
+      "id": "optional-context-boolean",
+      "source": "declare const maybe: (<T>(value:T)=>T) | undefined;\nexport const result: true | undefined = maybe?.(true);\n",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: true | undefined;\n",
+      "acceptedParentAgrees": true,
+      "preLiteralContextCorrectionAgrees": false
+    },
+    {
+      "id": "optional-context-alias",
+      "source": "type Result = 1 | undefined; declare const maybe: (<T>(value:T)=>T) | undefined;\nexport const result: Result = maybe?.(1);\n",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "type Result = 1 | undefined;\nexport declare const result: Result;\nexport {};\n",
+      "acceptedParentAgrees": true,
+      "preLiteralContextCorrectionAgrees": false
+    },
+    {
+      "id": "direct-context-union",
+      "source": "declare function pick<T>(value:T):T;\nexport const result: 1 | undefined = pick(1);\n",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: 1 | undefined;\n",
+      "acceptedParentAgrees": false,
+      "preLiteralContextCorrectionAgrees": false
+    },
+    {
+      "id": "member-context-union",
+      "source": "declare const provider: { pick<T>(value:T): T };\nexport const result: 1 | undefined = provider.pick(1);\n",
+      "accepts": true,
+      "diagnostics": [],
+      "declaration": "export declare const result: 1 | undefined;\n",
+      "acceptedParentAgrees": true,
+      "preLiteralContextCorrectionAgrees": false
+    }
+  ]
+}

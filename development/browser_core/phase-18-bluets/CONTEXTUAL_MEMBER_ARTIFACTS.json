@@ -1,0 +1,612 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+  "artifacts": [
+    {
+      "path": "contextual-member-evidence/history/CONTEXTUAL_MEMBER_COMPONENTS_01.tar.gz",
+      "bytes": 34863072,
+      "sha256": "35acdf8acf5777e89b55cc557082e92da215f3f07a962f59fc12c12e97a8139a",
+      "kind": "history",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_COMPONENTS_01.tar.gz",
+      "sourceRevision": "backend-tree:0f91c383d4f5471683d6d69638248769b9ed7534",
+      "members": 16904,
+      "memberManifest": "contextual-member-evidence/history/CONTEXTUAL_MEMBER_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/history/CONTEXTUAL_MEMBER_COMPONENTS_02.tar.gz",
+      "bytes": 25538960,
+      "sha256": "cb801840d61e085cf25fb77480f48ba8bb65c6bc6c1c145793e9d7b3301075c9",
+      "kind": "history",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_COMPONENTS_02.tar.gz",
+      "sourceRevision": "backend-tree:0f91c383d4f5471683d6d69638248769b9ed7534",
+      "members": 3155,
+      "memberManifest": "contextual-member-evidence/history/CONTEXTUAL_MEMBER_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/history/CONTEXTUAL_MEMBER_COMPONENTS_03.tar.gz",
+      "bytes": 18550358,
+      "sha256": "7953fd58f5b8b1ca134b06ecd3316f52946a95cb2e627f39d8d4d90b1d1d21c4",
+      "kind": "history",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_COMPONENTS_03.tar.gz",
+      "sourceRevision": "backend-tree:0f91c383d4f5471683d6d69638248769b9ed7534",
+      "members": 581,
+      "memberManifest": "contextual-member-evidence/history/CONTEXTUAL_MEMBER_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/history/CONTEXTUAL_MEMBER_COMPONENTS_04.tar.gz",
+      "bytes": 14662313,
+      "sha256": "b1d14e1e366988c19d8f66b40ac25f1e572d160a91d88cd3946315bb30ae0769",
+      "kind": "history",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_COMPONENTS_04.tar.gz",
+      "sourceRevision": "backend-tree:0f91c383d4f5471683d6d69638248769b9ed7534",
+      "members": 61556,
+      "memberManifest": "contextual-member-evidence/history/CONTEXTUAL_MEMBER_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/history/CONTEXTUAL_MEMBER_COMPONENTS_05.tar.gz",
+      "bytes": 20965384,
+      "sha256": "913500ba4feba5266ad05c7f8a9c57f79f89a968df467463721b267202b89200",
+      "kind": "history",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_COMPONENTS_05.tar.gz",
+      "sourceRevision": "backend-tree:0f91c383d4f5471683d6d69638248769b9ed7534",
+      "members": 50977,
+      "memberManifest": "contextual-member-evidence/history/CONTEXTUAL_MEMBER_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/history/CONTEXTUAL_MEMBER_COMPONENTS_06.tar.gz",
+      "bytes": 23184034,
+      "sha256": "65bedab93676273fc61cb8baeb3e6e70ae7ae9af4b130c1d7bf7da968e9f46c2",
+      "kind": "history",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_COMPONENTS_06.tar.gz",
+      "sourceRevision": "backend-tree:0f91c383d4f5471683d6d69638248769b9ed7534",
+      "members": 22863,
+      "memberManifest": "contextual-member-evidence/history/CONTEXTUAL_MEMBER_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/history/CONTEXTUAL_MEMBER_COMPONENTS_07.tar.gz",
+      "bytes": 8676638,
+      "sha256": "fef2a5a82d5e406db5a83c7be0149edf326ae35f3e5c47ef4ce683b9ab91c163",
+      "kind": "history",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_COMPONENTS_07.tar.gz",
+      "sourceRevision": "backend-tree:0f91c383d4f5471683d6d69638248769b9ed7534",
+      "members": 1265,
+      "memberManifest": "contextual-member-evidence/history/CONTEXTUAL_MEMBER_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/history62/CONTEXTUAL_MEMBER_COMPONENTS_01.tar.gz",
+      "bytes": 36019554,
+      "sha256": "ed12c989fbfda685819ff15ea25fd9efa3c426cef458ca5532553d25f18c162f",
+      "kind": "history62",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_COMPONENTS_01.tar.gz",
+      "sourceRevision": "backend-tree:1f17b30713047b88f11b4b56db524ca6bd362789",
+      "members": 14857,
+      "memberManifest": "contextual-member-evidence/history62/CONTEXTUAL_MEMBER_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/history62/CONTEXTUAL_MEMBER_COMPONENTS_02.tar.gz",
+      "bytes": 32014972,
+      "sha256": "5b606ce9fe13a448e3e36460260c472256dac6c14703e6c584fc13af663d9e37",
+      "kind": "history62",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_COMPONENTS_02.tar.gz",
+      "sourceRevision": "backend-tree:1f17b30713047b88f11b4b56db524ca6bd362789",
+      "members": 845,
+      "memberManifest": "contextual-member-evidence/history62/CONTEXTUAL_MEMBER_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/history62/CONTEXTUAL_MEMBER_COMPONENTS_03.tar.gz",
+      "bytes": 19778920,
+      "sha256": "73ad88e3d2b9949f1719e6917579e2b1c2555a6192144fc6b863a01f38248df3",
+      "kind": "history62",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_COMPONENTS_03.tar.gz",
+      "sourceRevision": "backend-tree:1f17b30713047b88f11b4b56db524ca6bd362789",
+      "members": 270,
+      "memberManifest": "contextual-member-evidence/history62/CONTEXTUAL_MEMBER_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/history62/CONTEXTUAL_MEMBER_COMPONENTS_04.tar.gz",
+      "bytes": 13714528,
+      "sha256": "d8dd593e2fc6cbfc9ce07e090745ad737c3eea5272ed7cdda8ed667bb7e91497",
+      "kind": "history62",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_COMPONENTS_04.tar.gz",
+      "sourceRevision": "backend-tree:1f17b30713047b88f11b4b56db524ca6bd362789",
+      "members": 48541,
+      "memberManifest": "contextual-member-evidence/history62/CONTEXTUAL_MEMBER_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/history62/CONTEXTUAL_MEMBER_COMPONENTS_05.tar.gz",
+      "bytes": 23828545,
+      "sha256": "a4cd834fb84fdf955af6aa00e81b871cef528cba8c9bd0dcff5758851be2d966",
+      "kind": "history62",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_COMPONENTS_05.tar.gz",
+      "sourceRevision": "backend-tree:1f17b30713047b88f11b4b56db524ca6bd362789",
+      "members": 48586,
+      "memberManifest": "contextual-member-evidence/history62/CONTEXTUAL_MEMBER_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/history62/CONTEXTUAL_MEMBER_COMPONENTS_06.tar.gz",
+      "bytes": 11405987,
+      "sha256": "afc491fa1e053185b7285624d8b1e1059538e48e879bc9a6c72f04c1c291286c",
+      "kind": "history62",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_COMPONENTS_06.tar.gz",
+      "sourceRevision": "backend-tree:1f17b30713047b88f11b4b56db524ca6bd362789",
+      "members": 8649,
+      "memberManifest": "contextual-member-evidence/history62/CONTEXTUAL_MEMBER_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/components/CONTEXTUAL_MEMBER_COMPONENTS_01.tar.gz",
+      "bytes": 36020329,
+      "sha256": "11046b0d238aeaa32d28ca72a8acc5f96a5d453eba2333964319b0d069a97cd5",
+      "kind": "components",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_COMPONENTS_01.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 14860,
+      "memberManifest": "contextual-member-evidence/components/CONTEXTUAL_MEMBER_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/components/CONTEXTUAL_MEMBER_COMPONENTS_02.tar.gz",
+      "bytes": 32014972,
+      "sha256": "5b606ce9fe13a448e3e36460260c472256dac6c14703e6c584fc13af663d9e37",
+      "kind": "components",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_COMPONENTS_02.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 845,
+      "memberManifest": "contextual-member-evidence/components/CONTEXTUAL_MEMBER_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/components/CONTEXTUAL_MEMBER_COMPONENTS_03.tar.gz",
+      "bytes": 19782452,
+      "sha256": "a49e743c52cfe2a8043edc50c85baebc9f0ad0fd8b846430eb9eea56dc963798",
+      "kind": "components",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_COMPONENTS_03.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 271,
+      "memberManifest": "contextual-member-evidence/components/CONTEXTUAL_MEMBER_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/components/CONTEXTUAL_MEMBER_COMPONENTS_04.tar.gz",
+      "bytes": 13717142,
+      "sha256": "c2912c4f9c1bef5b850fe7fa88949200370c83a29b526cb59ae020f17aee0baa",
+      "kind": "components",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_COMPONENTS_04.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 48540,
+      "memberManifest": "contextual-member-evidence/components/CONTEXTUAL_MEMBER_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/components/CONTEXTUAL_MEMBER_COMPONENTS_05.tar.gz",
+      "bytes": 25605651,
+      "sha256": "9ac25edd17a5f5b46004b1c4bb0323483127d8dba0ec542e0f77341a9bbbab25",
+      "kind": "components",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_COMPONENTS_05.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 48143,
+      "memberManifest": "contextual-member-evidence/components/CONTEXTUAL_MEMBER_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/components/CONTEXTUAL_MEMBER_COMPONENTS_06.tar.gz",
+      "bytes": 17355748,
+      "sha256": "7d5c2d124258caea15e264168c0566deb60ecb0fb125ddee92d9e51d0e3d4cc7",
+      "kind": "components",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_COMPONENTS_06.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 382,
+      "memberManifest": "contextual-member-evidence/components/CONTEXTUAL_MEMBER_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/components/CONTEXTUAL_MEMBER_COMPONENTS_07.tar.gz",
+      "bytes": 29038686,
+      "sha256": "bc44b434d76e2b126b54dca74fbb309d8794d31760e496d4eed6cc2283019486",
+      "kind": "components",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_COMPONENTS_07.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 16,
+      "memberManifest": "contextual-member-evidence/components/CONTEXTUAL_MEMBER_COMPONENT_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_01.tar.gz",
+      "bytes": 35738264,
+      "sha256": "8f271b860b9e14a358a4509e5734bd873a1a270aaff1fda144e124b4c4c71ddb",
+      "kind": "final",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_01.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 53265,
+      "memberManifest": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_02.tar.gz",
+      "bytes": 34329098,
+      "sha256": "2c76df3c289630b9565e494f33081b3c53ae55d737da0e55b009ac804efa2768",
+      "kind": "final",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_02.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 18706,
+      "memberManifest": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_03.tar.gz",
+      "bytes": 32663021,
+      "sha256": "5805bcc1ffc075f4ce1861e299fec8c729ae3e0164b60adeb7336172b84b5e09",
+      "kind": "final",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_03.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 4785,
+      "memberManifest": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_04.tar.gz",
+      "bytes": 34319801,
+      "sha256": "88b37bf7498d4dbff87c059c0a25b1f5a228f0fb1c121d395277540f27d78360",
+      "kind": "final",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_04.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 18709,
+      "memberManifest": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_05.tar.gz",
+      "bytes": 10627507,
+      "sha256": "893ffce65651594a3953aaf8e3d2a14cc82b6c38c4f5ae4c0e5bc6cb22636989",
+      "kind": "final",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_05.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 1,
+      "memberManifest": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_06.tar.gz",
+      "bytes": 35112936,
+      "sha256": "c71a5e1a380f20f63704eb7e6791bccceedbbb4b7c3a601a70d4cdd8963e12ad",
+      "kind": "final",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_06.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 59542,
+      "memberManifest": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_07.tar.gz",
+      "bytes": 41697940,
+      "sha256": "c0e6fd095cdb7a3ad51f4571dd1fe8410705554d4cb9b5409c78bd24af3aafbf",
+      "kind": "final",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_07.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 76196,
+      "memberManifest": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_08.tar.gz",
+      "bytes": 27990067,
+      "sha256": "15e50e07d4bde8d4531dce5878751d29876f54c4271cc1b09a2b3d354438fcec",
+      "kind": "final",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_08.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 100309,
+      "memberManifest": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_09.tar.gz",
+      "bytes": 15570826,
+      "sha256": "f1b1762d45967e443589339b8b40a9ed251f0c4ca105f424096b96f1e0f6e885",
+      "kind": "final",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_09.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 41106,
+      "memberManifest": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_10.tar.gz",
+      "bytes": 20628078,
+      "sha256": "cf990f121bd07135cdf14339bef6a87ad961946c2273e007f18b831917989b65",
+      "kind": "final",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_10.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 35,
+      "memberManifest": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_11.tar.gz",
+      "bytes": 21301894,
+      "sha256": "4af1e8962b5fcab5ddc78a3eea200fbd4e20a7f57685c4a0a2a43e5f63434a1b",
+      "kind": "final",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_11.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 2824,
+      "memberManifest": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_12.tar.gz",
+      "bytes": 38893137,
+      "sha256": "e129551c8470d9c218734cc23e203112963508f47f1fb168804a766d57fcd1f2",
+      "kind": "final",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_12.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 151101,
+      "memberManifest": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz"
+    },
+    {
+      "path": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_01.tar.gz",
+      "bytes": 35738033,
+      "sha256": "106c5c765500d0000f499a828a5c9d45ae163fbdb8409240bc6a31129fa8481d",
+      "kind": "publicationHistory",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_01.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 53265,
+      "memberManifest": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz",
+      "completionCredit": false
+    },
+    {
+      "path": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_02.tar.gz",
+      "bytes": 34329098,
+      "sha256": "2c76df3c289630b9565e494f33081b3c53ae55d737da0e55b009ac804efa2768",
+      "kind": "publicationHistory",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_02.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 18706,
+      "memberManifest": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz",
+      "completionCredit": false
+    },
+    {
+      "path": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_03.tar.gz",
+      "bytes": 32663021,
+      "sha256": "5805bcc1ffc075f4ce1861e299fec8c729ae3e0164b60adeb7336172b84b5e09",
+      "kind": "publicationHistory",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_03.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 4785,
+      "memberManifest": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz",
+      "completionCredit": false
+    },
+    {
+      "path": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_04.tar.gz",
+      "bytes": 34319801,
+      "sha256": "88b37bf7498d4dbff87c059c0a25b1f5a228f0fb1c121d395277540f27d78360",
+      "kind": "publicationHistory",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_04.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 18709,
+      "memberManifest": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz",
+      "completionCredit": false
+    },
+    {
+      "path": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_05.tar.gz",
+      "bytes": 10627507,
+      "sha256": "893ffce65651594a3953aaf8e3d2a14cc82b6c38c4f5ae4c0e5bc6cb22636989",
+      "kind": "publicationHistory",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_05.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 1,
+      "memberManifest": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz",
+      "completionCredit": false
+    },
+    {
+      "path": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_06.tar.gz",
+      "bytes": 35112936,
+      "sha256": "c71a5e1a380f20f63704eb7e6791bccceedbbb4b7c3a601a70d4cdd8963e12ad",
+      "kind": "publicationHistory",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_06.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 59542,
+      "memberManifest": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz",
+      "completionCredit": false
+    },
+    {
+      "path": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_07.tar.gz",
+      "bytes": 41697940,
+      "sha256": "c0e6fd095cdb7a3ad51f4571dd1fe8410705554d4cb9b5409c78bd24af3aafbf",
+      "kind": "publicationHistory",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_07.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 76196,
+      "memberManifest": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz",
+      "completionCredit": false
+    },
+    {
+      "path": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_08.tar.gz",
+      "bytes": 27990053,
+      "sha256": "8aa7e201da784a9af33a2541f0d6b73775434d0602571f346eee238245db57e5",
+      "kind": "publicationHistory",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_08.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 100309,
+      "memberManifest": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz",
+      "completionCredit": false
+    },
+    {
+      "path": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_09.tar.gz",
+      "bytes": 15570826,
+      "sha256": "f1b1762d45967e443589339b8b40a9ed251f0c4ca105f424096b96f1e0f6e885",
+      "kind": "publicationHistory",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_09.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 41106,
+      "memberManifest": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz",
+      "completionCredit": false
+    },
+    {
+      "path": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_10.tar.gz",
+      "bytes": 20628078,
+      "sha256": "cf990f121bd07135cdf14339bef6a87ad961946c2273e007f18b831917989b65",
+      "kind": "publicationHistory",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_10.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 35,
+      "memberManifest": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz",
+      "completionCredit": false
+    },
+    {
+      "path": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_11.tar.gz",
+      "bytes": 21301894,
+      "sha256": "4af1e8962b5fcab5ddc78a3eea200fbd4e20a7f57685c4a0a2a43e5f63434a1b",
+      "kind": "publicationHistory",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_11.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 2824,
+      "memberManifest": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz",
+      "completionCredit": false
+    },
+    {
+      "path": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_12.tar.gz",
+      "bytes": 38350393,
+      "sha256": "4ac23967e4b352f7030868646b09549e22ddc8e5cb2deeb2718da287917a9107",
+      "kind": "publicationHistory",
+      "sourceArchiveName": "CONTEXTUAL_MEMBER_FINAL_12.tar.gz",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+      "members": 151084,
+      "memberManifest": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz",
+      "completionCredit": false
+    },
+    {
+      "path": "contextual-member-evidence/windows/SOURCE63_SUCCESS.tar.gz",
+      "bytes": 64782214,
+      "sha256": "22321c0f9de12f5288a9fae26b6ef48809318e8588b2502d17a594643af4982a",
+      "kind": "windows-success",
+      "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22"
+    },
+    {
+      "path": "contextual-member-evidence/windows/SOURCE61_FAILURE.tar.gz",
+      "bytes": 67158521,
+      "sha256": "adacd5b40d3e738f723f6a02d0408f957eb11b935d51dcddf56f5a70f262d0aa",
+      "kind": "windows-failure-history",
+      "sourceRevision": "backend-tree:0f91c383d4f5471683d6d69638248769b9ed7534",
+      "completionCredit": false
+    },
+    {
+      "path": "contextual-member-evidence/windows/SOURCE62_ABORTED.tar.gz",
+      "bytes": 65752911,
+      "sha256": "0c6cd9d52a045a33cba845d045f7c78c3be515a8a201022e96a346c8b3d3f009",
+      "kind": "windows-aborted-history",
+      "sourceRevision": "backend-tree:1f17b30713047b88f11b4b56db524ca6bd362789",
+      "completionCredit": false
+    }
+  ],
+  "supportingArtifacts": [
+    {
+      "path": "contextual-member-evidence/history/CONTEXTUAL_MEMBER_COMPONENT_MEMBERS.jsonl.gz",
+      "bytes": 4185806,
+      "sha256": "db30ac0b6216a420828f945347c8f3d9af979370c0bb1b7b29d1fcd4b0b9a7d2",
+      "kind": "member-manifest",
+      "group": "history",
+      "members": 157301
+    },
+    {
+      "path": "contextual-member-evidence/history/CONTEXTUAL_MEMBER_SYMLINKS.json",
+      "bytes": 118,
+      "sha256": "e25d4fa391acbe01c146f43e9b9d1a8f72c2825ea2cff33f79091affd3ed272d",
+      "kind": "symlink-identities",
+      "group": "history"
+    },
+    {
+      "path": "contextual-member-evidence/history/ARCHIVE_AUDIT.json",
+      "bytes": 2219,
+      "sha256": "d1fb80bf13f3ccbf67abbb7aa778eadf693e75e84cab1931728975f155629d81",
+      "kind": "independent-member-audit",
+      "group": "history"
+    },
+    {
+      "path": "contextual-member-evidence/history62/CONTEXTUAL_MEMBER_COMPONENT_MEMBERS.jsonl.gz",
+      "bytes": 2927413,
+      "sha256": "4a69beeb36e57dd7e13a67b055c3f8c96552e2e7523d4075c849af562a7b8229",
+      "kind": "member-manifest",
+      "group": "history62",
+      "members": 121748
+    },
+    {
+      "path": "contextual-member-evidence/history62/CONTEXTUAL_MEMBER_SYMLINKS.json",
+      "bytes": 118,
+      "sha256": "e25d4fa391acbe01c146f43e9b9d1a8f72c2825ea2cff33f79091affd3ed272d",
+      "kind": "symlink-identities",
+      "group": "history62"
+    },
+    {
+      "path": "contextual-member-evidence/history62/ARCHIVE_AUDIT.json",
+      "bytes": 2042,
+      "sha256": "e1c46b4a39aeed37e04ec7eccd9dae5dd53d9a0c24e9979fa5ea736d60f17d81",
+      "kind": "independent-member-audit",
+      "group": "history62"
+    },
+    {
+      "path": "contextual-member-evidence/components/CONTEXTUAL_MEMBER_COMPONENT_MEMBERS.jsonl.gz",
+      "bytes": 3629801,
+      "sha256": "0586c8815168c1e13895b07436d115e38ca8c7be7491948c5c99435463396236",
+      "kind": "member-manifest",
+      "group": "components",
+      "members": 113057
+    },
+    {
+      "path": "contextual-member-evidence/components/CONTEXTUAL_MEMBER_SYMLINKS.json",
+      "bytes": 118,
+      "sha256": "e25d4fa391acbe01c146f43e9b9d1a8f72c2825ea2cff33f79091affd3ed272d",
+      "kind": "symlink-identities",
+      "group": "components"
+    },
+    {
+      "path": "contextual-member-evidence/components/ARCHIVE_AUDIT.json",
+      "bytes": 2214,
+      "sha256": "d472ca0f86fa3b0ca0b037210320d7082b840f5ab55ebf1be1e2ae2d166d3b81",
+      "kind": "independent-member-audit",
+      "group": "components"
+    },
+    {
+      "path": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz",
+      "bytes": 20648195,
+      "sha256": "453433f4be00d4cd498cee7c452906b2b7b2fb5d4a8a92df967fba81e6b38269",
+      "kind": "member-manifest",
+      "group": "final",
+      "members": 526579
+    },
+    {
+      "path": "contextual-member-evidence/final/CONTEXTUAL_MEMBER_FINAL_SYMLINKS.json",
+      "bytes": 8144,
+      "sha256": "6fe5ae1800d9b42e2ffe2ad4d95edccbf6bdc6ff988ad0e9c1f02f5ef5b055d1",
+      "kind": "symlink-identities",
+      "group": "final"
+    },
+    {
+      "path": "contextual-member-evidence/final/ARCHIVE_AUDIT.json",
+      "bytes": 2807,
+      "sha256": "120515beba4d93ec584c22b7425f864019198b73a1b416293b88bab5d3c7d5f6",
+      "kind": "independent-member-audit",
+      "group": "final"
+    },
+    {
+      "path": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_MEMBERS.jsonl.gz",
+      "bytes": 20647186,
+      "sha256": "c9cdebfc3bba3a3264c5e817bf9e1c1fdad618a4d3e5280f4f0cacdccf6b61ef",
+      "kind": "member-manifest",
+      "group": "publicationHistory",
+      "members": 526562
+    },
+    {
+      "path": "contextual-member-evidence/publicationHistory/CONTEXTUAL_MEMBER_FINAL_SYMLINKS.json",
+      "bytes": 8144,
+      "sha256": "6fe5ae1800d9b42e2ffe2ad4d95edccbf6bdc6ff988ad0e9c1f02f5ef5b055d1",
+      "kind": "symlink-identities",
+      "group": "publicationHistory"
+    },
+    {
+      "path": "contextual-member-evidence/publicationHistory/ARCHIVE_AUDIT.json",
+      "bytes": 2807,
+      "sha256": "c355ea04be8a163cfcda489a5dac38eff6f5a601f6fa0177142e372882765729",
+      "kind": "independent-member-audit",
+      "group": "publicationHistory"
+    },
+    {
+      "path": "contextual-member-evidence/windows/SOURCE63_ARCHIVE_AUDIT.json",
+      "bytes": 754,
+      "sha256": "f86f84146d513dca4089945b115b578a1d678825a066466496cc26a03173081c",
+      "kind": "independent-windows-audit"
+    },
+    {
+      "path": "contextual-member-evidence/windows/SOURCE61_FAILURE_AUDIT.json",
+      "bytes": 1254,
+      "sha256": "18128de6858f3d3bb6200581c37aa5d5fecf2021d76c38dfc16490102e4a5a6a",
+      "kind": "independent-windows-failure-audit"
+    },
+    {
+      "path": "contextual-member-evidence/windows/SOURCE62_ABORTED_AUDIT.json",
+      "bytes": 1409,
+      "sha256": "47583b286720f3e8da530f20db46bd226017c908844ce481b888463b26755e93",
+      "kind": "independent-windows-abort-audit"
+    }
+  ],
+  "scope": "Both historical source sets are separate from source63 components/final successful runtime evidence. Failed Windows61 and aborted Windows62 have zero acceptance credit. The failed publication is retained separately as publicationHistory with zero extra acceptance credit. All published bytes require independent audit before P0-I completion."
+}

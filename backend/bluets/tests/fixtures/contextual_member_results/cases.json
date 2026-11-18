@@ -1,0 +1,187 @@
+{
+  "schema": 1,
+  "acceptedParent": "cb28ffc4437fb58b135424b5f94f945941ca6535",
+  "originalDiscoveryInputSha256": "74ae1032a6cdd0fafa201162e844622389669c4886890e83839175120b63ca35",
+  "options": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "CommonJS",
+    "lib": [
+      "ES5"
+    ],
+    "types": [],
+    "declaration": true,
+    "noEmitOnError": true,
+    "skipLibCheck": true,
+    "outDir": "dist",
+    "sourceMap": true,
+    "declarationMap": true
+  },
+  "profiles": [
+    {
+      "id": "ES5-CommonJS-functions-false",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "strictFunctionTypes": false
+      }
+    },
+    {
+      "id": "ES5-CommonJS-functions-true",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "strictFunctionTypes": true
+      }
+    },
+    {
+      "id": "ES5-ESNext-functions-false",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "ESNext",
+        "strictFunctionTypes": false
+      }
+    },
+    {
+      "id": "ES5-ESNext-functions-true",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "ESNext",
+        "strictFunctionTypes": true
+      }
+    },
+    {
+      "id": "ES2022-CommonJS-functions-false",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strictFunctionTypes": false
+      }
+    },
+    {
+      "id": "ES2022-CommonJS-functions-true",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strictFunctionTypes": true
+      }
+    },
+    {
+      "id": "ES2022-ESNext-functions-false",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strictFunctionTypes": false
+      }
+    },
+    {
+      "id": "ES2022-ESNext-functions-true",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strictFunctionTypes": true
+      }
+    }
+  ],
+  "representations": [
+    {
+      "id": "original",
+      "prefix": ""
+    },
+    {
+      "id": "crlf-astral",
+      "prefix": "// Unicode 😀\r\n"
+    },
+    {
+      "id": "inline-astral",
+      "prefix": "/* π😀 */ "
+    }
+  ],
+  "cases": [
+    {
+      "id": "direct-variable-control",
+      "source": "function make<T>(): T { return undefined as T; }\nexport const result: number = make();\n"
+    },
+    {
+      "id": "direct-return-control",
+      "source": "function make<T>(): T { return undefined as T; }\nexport function result(): number { return make(); }\n"
+    },
+    {
+      "id": "member-variable",
+      "source": "const factory = { make<T>(): T { return undefined as T; } };\nexport const result: number = factory.make();\n"
+    },
+    {
+      "id": "member-return",
+      "source": "const factory = { make<T>(): T { return undefined as T; } };\nexport function result(): number { return factory.make(); }\n"
+    },
+    {
+      "id": "member-argument",
+      "source": "const factory = { make<T>(): T { return undefined as T; } };\nfunction consume(value: number): number { return value; }\nexport const result = consume(factory.make());\n"
+    },
+    {
+      "id": "computed-literal-variable",
+      "source": "const factory = { make<T>(): T { return undefined as T; } };\nexport const result: number = factory[\"make\"]();\n"
+    },
+    {
+      "id": "computed-key-variable",
+      "source": "const factory = { make<T>(): T { return undefined as T; } };\nconst key: \"make\" = \"make\";\nexport const result: number = factory[key]();\n"
+    },
+    {
+      "id": "static-method-variable",
+      "source": "class Factory { static make<T>(): T { return undefined as T; } }\nexport const result: number = Factory.make();\n"
+    },
+    {
+      "id": "instance-method-variable",
+      "source": "class Factory { make<T>(): T { return undefined as T; } }\nconst factory = new Factory();\nexport const result: number = factory.make();\n"
+    },
+    {
+      "id": "namespace-variable",
+      "source": "namespace Factory { export function make<T>(): T { return undefined as T; } }\nexport const result: number = Factory.make();\n"
+    },
+    {
+      "id": "defaulted-member-variable",
+      "source": "const factory = { make<T = string>(): T { return undefined as T; } };\nexport const result: number = factory.make();\n"
+    },
+    {
+      "id": "bounded-member-negative",
+      "nativeExpectedAccepts": false,
+      "source": "const factory = { make<T extends string>(): T { return undefined as T; } };\nexport const result: number = factory.make();\n"
+    },
+    {
+      "id": "callable-property-variable",
+      "source": "function make<T>(): T { return undefined as T; }\nconst factory = { make };\nexport const result: number = factory.make();\n"
+    },
+    {
+      "id": "overloaded-member-variable",
+      "source": "interface Factory { make<T>(): T; make<T>(value: T): T; }\ndeclare const factory: Factory;\nexport const result: number = factory.make();\n"
+    },
+    {
+      "id": "imported-member-variable",
+      "files": {
+        "factory.ts": "export const factory = { make<T>(): T { return undefined as T; } };\n"
+      },
+      "source": "import { factory } from \"./factory\";\nexport const result: number = factory.make();\n"
+    },
+    {
+      "id": "parenthesized-member-variable",
+      "source": "const factory = { make<T>(): T { return undefined as T; } };\nexport const result: number = (factory.make)();\n"
+    },
+    {
+      "id": "member-callable-result",
+      "source": "const factory = { make<T>(): () => T { return () => undefined as T; } };\nexport const result: () => number = factory.make();\n"
+    },
+    {
+      "id": "overload-context-member-argument",
+      "source": "const factory = { make<T>(): T { return undefined as T; } };\ndeclare function consume(value: number): \"number\";\ndeclare function consume(value: string): \"string\";\nexport const result = consume(factory.make());\n"
+    },
+    {
+      "id": "conditional-member-context",
+      "source": "const factory = { make<T>(): T { return undefined as T; } };\nexport const result: number = true ? factory.make() : 0;\n"
+    },
+    {
+      "id": "object-property-member-context",
+      "source": "const factory = { make<T>(): T { return undefined as T; } };\nexport const result: { value: number } = { value: factory.make() };\n"
+    }
+  ],
+  "scope": "160 primary original-source observations and320 UTF16/CRLF supplementary observations. No implementation or acceptance credit."
+}

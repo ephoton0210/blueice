@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "primaryFixtureUnchangedSha256": "200f9fe947f873261363f4158f3f82ab61874e1d78c989529e3cedbbbcf10e2c",
+  "sha256": {
+    "assertion-overlap-cases.json": "a5794c3f9bfda29afd6ad1f82142e3df208bba452ebcacce3caa06799eb34385",
+    "assertion-overlap-reference.json": "2bf135deae1a46d9df8d62ed79f0cf5200ae9c52be8d2b557a119b4850a84355"
+  },
+  "source60RegressionDiscoverySha256": "1ed063d3ebf61bcc1ac90dd53c9e21ab50fca59dd9464440d3e768edf0be8aaa",
+  "forms": 7,
+  "profiles": 8,
+  "observations": 56,
+  "accepts": 32,
+  "rejects": 24,
+  "inventoryCredit": 0,
+  "productionCorrectionBeforeFreeze": false
+}

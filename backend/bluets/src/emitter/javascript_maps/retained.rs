@@ -289,16 +289,30 @@ pub(super) fn anchors(
         if let Some(open) = open {
             parameter_opens.insert(head[open].start);
             if function.kind == NestedFunctionKind::Method {
+                let key_end = if function.type_parameters.is_empty() {
+                    head.get(open.wrapping_sub(1)).map(|token| token.end)
+                } else {
+                    head.iter()
+                        .find(|token| token.is("<"))
+                        .map(|token| token.start)
+                };
+                if !function.type_parameters.is_empty() {
+                    anchors.insert(head[open].start, key_end);
+                }
                 if let Some(close) = super::closing_parenthesis(head, open) {
                     // A method's body follows its runtime parameter list even
                     // when its return type occupies source text in between.
                     anchors.insert(
                         body,
-                        Some(if close == open + 1 {
-                            head[open].start
-                        } else {
-                            head[close].start
-                        }),
+                        Some(
+                            if close == open + 1 && !function.type_parameters.is_empty() {
+                                key_end.unwrap_or(head[open].start)
+                            } else if close == open + 1 {
+                                head[open].start
+                            } else {
+                                head[close].start
+                            },
+                        ),
                     );
                 }
             }

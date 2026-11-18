@@ -58,6 +58,39 @@ impl Mapper<'_> {
             else {
                 continue;
             };
+            // Object methods retain an exact nested-callable identity even
+            // though their containing object type is inferred.
+            if origin.method && origin.span.module == "<inferred>" {
+                let module = self.source;
+                if let Some(function) =
+                    module.nested_functions.get(&origin.span.start).filter(|f| {
+                        f.kind == NestedFunctionKind::Method
+                            && f.span.end == origin.span.end
+                            && self.source_tokens.iter().any(|token| {
+                                token.start == f.span.start && token.text == field.name
+                            })
+                            && matches!(&origin.value, Type::GenericFunction { span, .. }
+                            if span.module == module.id)
+                    })
+                {
+                    if let Type::GenericFunction {
+                        type_parameters,
+                        parameters,
+                        ..
+                    } = &field.value
+                    {
+                        self.type_parameters(type_parameters, &function.type_parameters);
+                        self.inferred_parameters(parameters, &function.parameters);
+                        if function.return_type.is_some() {
+                            self.ty(
+                                annotation(&self.generated(&field.span)),
+                                &self.function_annotation(function),
+                            );
+                        }
+                    }
+                }
+                continue;
+            }
             if origin.span.module != self.source.id {
                 continue;
             }

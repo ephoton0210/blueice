@@ -1,0 +1,47 @@
+{
+  "options": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "declaration": true,
+    "newLine": "lf",
+    "lib": [
+      "ES5"
+    ],
+    "types": []
+  },
+  "cases": [
+    {
+      "id": "optional-const-number",
+      "source": "declare const maybe: (<T>(value:T)=>T) | undefined;\nexport const result = maybe?.(1); const witness: 1 | undefined = result;\n"
+    },
+    {
+      "id": "member-const-number",
+      "source": "declare const provider: { pick<T>(value:T): T };\nexport const result = provider.pick(1); const witness: 1 = result;\n"
+    },
+    {
+      "id": "optional-context-number",
+      "source": "declare const maybe: (<T>(value:T)=>T) | undefined;\nexport const result: 1 | undefined = maybe?.(1);\n"
+    },
+    {
+      "id": "optional-context-string",
+      "source": "declare const maybe: (<T>(value:T)=>T) | undefined;\nexport const result: \"one\" | undefined = maybe?.(\"one\");\n"
+    },
+    {
+      "id": "optional-context-boolean",
+      "source": "declare const maybe: (<T>(value:T)=>T) | undefined;\nexport const result: true | undefined = maybe?.(true);\n"
+    },
+    {
+      "id": "optional-context-alias",
+      "source": "type Result = 1 | undefined; declare const maybe: (<T>(value:T)=>T) | undefined;\nexport const result: Result = maybe?.(1);\n"
+    },
+    {
+      "id": "direct-context-union",
+      "source": "declare function pick<T>(value:T):T;\nexport const result: 1 | undefined = pick(1);\n"
+    },
+    {
+      "id": "member-context-union",
+      "source": "declare const provider: { pick<T>(value:T): T };\nexport const result: 1 | undefined = provider.pick(1);\n"
+    }
+  ]
+}

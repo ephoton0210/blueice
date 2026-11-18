@@ -11,21 +11,21 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 **Current BlueTS / BlueTSC compatibility status (2026-11-17).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 43,112 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 43,276 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 42,181/42,187 (99.9858%); 3 open, 3 refused observations |
-| Separate controls | 633 native-reference + 292 BlueTS owner = 925; excluded from direct agreement |
-| Case labels | 43,106 scoped closed (including controls), 3 open, 3 refused |
-| Suite inventory | 191 suites / 396 ignored Rust functions; not a case denominator |
-| Suite labels | 187 scoped closed, 1 open, 3 refused |
+| Direct agreement | 42,341/42,347 (99.9858%); 3 open, 3 refused observations |
+| Separate controls | 633 native-reference + 296 BlueTS owner = 929; excluded from direct agreement |
+| Case labels | 43,270 scoped closed (including controls), 3 open, 3 refused |
+| Suite inventory | 192 suites / 397 ignored Rust functions; not a case denominator |
+| Suite labels | 188 scoped closed, 1 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 231 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 43,112 recorded case expectations pass; expected differences/refusals are not
+All 43,276 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,8 +33,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:37beae676a55482728b6aa8682240bd9588e7fdc`.
-Input graph SHA-256: `9dd266a077ac1c7d6bafcfaad68428d257cd59a5b3cd930e7216611ea9a62892`.
+Compiler/oracle source: `backend-tree:dc685c689478832169cc6e4904fe07d737d97d22`.
+Input graph SHA-256: `4baf31eb626a1db1279349b85832a594a376925aafaa7bd9131012177c99242e`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -146,7 +146,7 @@ Code supporting these dependencies:
 
 The [current presence witnesses](STRING_INTRINSIC_MEASUREMENT.json#/presenceInventory/corrected)
 pass all22 names in both selected profiles. These44 witnesses carry no semantic
-denominator credit; broader catalogs and compositions remain open. P0-A/B/C/D/E/F have
+denominator credit; broader catalogs and compositions remain open. P0-A/B/C/D/E/F/G/H have
 complete source-bound acceptance within their frozen contracts.
 
 - [x] **P0-A — NoInfer and shared candidate boundaries.** Delivered the frozen
@@ -243,6 +243,55 @@ complete source-bound acceptance within their frozen contracts.
   [Historical measurements](PROGRAM_ROOTS_FOLLOWUP.md).
   All43,112 original case objects,12,201 fixtures and618 tool names are retained;
   all22 broader feature rows remain open and full TypeScript parity stays OFF.
+
+
+- [x] **P0-I — Contextual generic member results and complete diagnostics/maps.**
+  Repair shared result-context inference for object/computed/class/imported
+  generic callables, preserve constraint/default/overload and alias identities,
+  report the original bounded TS2352 diagnostic, and remove incorrect generic
+  callable header map events through source ownership rather than a waiver.
+  [Frozen contract](CONTEXTUAL_MEMBER_CONTRACT.json) ·
+  [Checklist and red evidence](CONTEXTUAL_MEMBER_FOLLOWUP.md).
+  [Native-grammar verifier correction](CONTEXTUAL_MEMBER_VERIFIER_REVIEW.md).
+  Minimum: all20 original forms,160 mapped primary plus320 UTF16 siblings per
+  actual profile/surface;480 exact declarations /960 complete maps;912 consumers
+  in all four directions,480 parses,64 real executions and four separate owner
+  controls. Require complete same-source Native/local/Windows82/25, both map
+  profiles, projects, applicable P0-H regressions and tooling, module limits and
+  independent artifact delivery before checking or committing this whole item.
+  The [assertion regression supplement](CONTEXTUAL_MEMBER_REGRESSION_SUPPLEMENT.json)
+  additionally requires all192 literal/union/alias assertion comparisons per actual
+  compiler and fail-closed assertion budget controls, with zero extra denominator
+  credit. Source60 acceptance was stopped
+  for four introduced regressions. A preexisting `unknown as T` result-type
+  mismatch remains a documented G-T5 gap.
+  Parent baseline:1,920 observations;1,536 wrong rejections,288 type agreements
+  and288 accepted JavaScript-map differences. Stopped Source60–62 attempts and
+  their complete failure evidence are retained in the linked follow-up.
+  The [freshness supplement](CONTEXTUAL_CALL_FRESHNESS_SUPPLEMENT.json) additionally
+  requires eight Native-frozen literal/context controls with zero extra inventory
+  credit. Source63 passes the complete Native192 suites /1,095 functions with
+  zero failed, ignored or filtered tests. The complete local workspace passes
+  8,060 tests /zero failures /401 existing ignores /zero filters; all737 compiled
+  executables ran. All five previous Unix-socket-path failures pass within this
+  full run using private short canonical TMPDIR. Windows72 complete cohorts /25
+  path cases /82 oracles and its source/compiler/raw-log archive are independently
+  verified. The workspace CLI's complete960-producer /7,296-consumer contract
+  and physical-artifact audit pass, as do fmt/Clippy and Node/Python/accounting/
+  status checks. Both original55/298 and8,407-by-two map profiles and G-T4
+  freshness controls (all102 original plus8 supplemental per profile) pass.
+  Both contextual/physical profiles pass, including all192 supplemental
+  assertion comparisons each. Both complete14-step program-root and four-project
+  profiles pass after correcting the lifecycle-consumer compiler bindings and
+  repeating their dependent checkpoint audits. The full same-source runtime
+  contract audit and independent published-artifact audit pass:44 member
+  archives /1,445,247 individually verified members.
+  [Acceptance](CONTEXTUAL_MEMBER_ACCEPTANCE.md) ·
+  [Independent audit](CONTEXTUAL_MEMBER_ACCEPTANCE_AUDIT.json) ·
+  [Measurements](CONTEXTUAL_MEMBER_MEASUREMENT.json) ·
+  [Full artifact index](CONTEXTUAL_MEMBER_ARTIFACTS.json).
+  Frozen primary and old G-T4
+  expected outputs remain unchanged.
 
 Each package needs frozen authored inputs and Native expectations before
 production changes, complete primary/related diagnostics and UTF-16 positions,

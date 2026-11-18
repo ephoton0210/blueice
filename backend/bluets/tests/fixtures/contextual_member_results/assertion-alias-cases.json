@@ -1,0 +1,112 @@
+{
+  "schema": 1,
+  "scope": "Zero-denominator alias/rigid-parameter/enum regression supplement for source61 assertion comparison; original20 and original seven supplemental forms remain unchanged.",
+  "options": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "CommonJS",
+    "lib": [
+      "ES5"
+    ],
+    "types": [],
+    "declaration": true,
+    "noEmitOnError": true,
+    "skipLibCheck": true,
+    "outDir": "dist",
+    "sourceMap": false,
+    "declarationMap": false
+  },
+  "profiles": [
+    {
+      "id": "ES5-CommonJS-functions-false",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "strictFunctionTypes": false
+      }
+    },
+    {
+      "id": "ES5-CommonJS-functions-true",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "strictFunctionTypes": true
+      }
+    },
+    {
+      "id": "ES5-ESNext-functions-false",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "ESNext",
+        "strictFunctionTypes": false
+      }
+    },
+    {
+      "id": "ES5-ESNext-functions-true",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "ESNext",
+        "strictFunctionTypes": true
+      }
+    },
+    {
+      "id": "ES2022-CommonJS-functions-false",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strictFunctionTypes": false
+      }
+    },
+    {
+      "id": "ES2022-CommonJS-functions-true",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strictFunctionTypes": true
+      }
+    },
+    {
+      "id": "ES2022-ESNext-functions-false",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strictFunctionTypes": false
+      }
+    },
+    {
+      "id": "ES2022-ESNext-functions-true",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strictFunctionTypes": true
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "alias-union-parameter",
+      "nativeExpectedAccepts": true,
+      "source": "type Source = \"red\" | undefined; type Target = \"blue\" | null;\nconst factory = { make<T extends Target>(value: Source): T { return value as T; } };\nexport const result = factory.make(\"red\");\n"
+    },
+    {
+      "id": "alias-scalar-parameter",
+      "nativeExpectedAccepts": true,
+      "source": "type Source = \"red\";\nconst factory = { make<T extends \"blue\">(value: Source): T { return value as T; } };\nexport const result = factory.make(\"red\");\n"
+    },
+    {
+      "id": "parameter-union-parameter",
+      "nativeExpectedAccepts": false,
+      "source": "const factory = { make<S extends \"red\" | undefined,T extends \"blue\" | null>(value: S): T { return value as T; } };\nexport const result = factory.make(\"red\");\n"
+    },
+    {
+      "id": "hexadecimal-literal-parameter",
+      "nativeExpectedAccepts": true,
+      "source": "const factory = { make<T extends 2>(): T { const value: 0x1 = 0x1; return value as T; } };\nexport const result = factory.make();\n"
+    },
+    {
+      "id": "enum-constraint-parameter",
+      "nativeExpectedAccepts": false,
+      "source": "enum First { A = 1 } enum Second { B = 1 }\nconst factory = { make<T extends Second>(): T { const value: First = First.A; return value as T; } };\nexport const result = factory.make();\n"
+    }
+  ]
+}

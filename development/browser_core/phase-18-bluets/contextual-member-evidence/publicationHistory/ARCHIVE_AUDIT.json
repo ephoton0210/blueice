@@ -1,0 +1,75 @@
+{
+  "conclusion": "all-final-runtime-archive-members-verified",
+  "recordedAt": "2026-11-18T03:55:52.710959+00:00",
+  "sourceRevision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+  "archives": [
+    {
+      "path": "CONTEXTUAL_MEMBER_FINAL_01.tar.gz",
+      "members": 53265,
+      "sha256": "106c5c765500d0000f499a828a5c9d45ae163fbdb8409240bc6a31129fa8481d"
+    },
+    {
+      "path": "CONTEXTUAL_MEMBER_FINAL_02.tar.gz",
+      "members": 18706,
+      "sha256": "2c76df3c289630b9565e494f33081b3c53ae55d737da0e55b009ac804efa2768"
+    },
+    {
+      "path": "CONTEXTUAL_MEMBER_FINAL_03.tar.gz",
+      "members": 4785,
+      "sha256": "5805bcc1ffc075f4ce1861e299fec8c729ae3e0164b60adeb7336172b84b5e09"
+    },
+    {
+      "path": "CONTEXTUAL_MEMBER_FINAL_04.tar.gz",
+      "members": 18709,
+      "sha256": "88b37bf7498d4dbff87c059c0a25b1f5a228f0fb1c121d395277540f27d78360"
+    },
+    {
+      "path": "CONTEXTUAL_MEMBER_FINAL_05.tar.gz",
+      "members": 1,
+      "sha256": "893ffce65651594a3953aaf8e3d2a14cc82b6c38c4f5ae4c0e5bc6cb22636989"
+    },
+    {
+      "path": "CONTEXTUAL_MEMBER_FINAL_06.tar.gz",
+      "members": 59542,
+      "sha256": "c71a5e1a380f20f63704eb7e6791bccceedbbb4b7c3a601a70d4cdd8963e12ad"
+    },
+    {
+      "path": "CONTEXTUAL_MEMBER_FINAL_07.tar.gz",
+      "members": 76196,
+      "sha256": "c0e6fd095cdb7a3ad51f4571dd1fe8410705554d4cb9b5409c78bd24af3aafbf"
+    },
+    {
+      "path": "CONTEXTUAL_MEMBER_FINAL_08.tar.gz",
+      "members": 100309,
+      "sha256": "8aa7e201da784a9af33a2541f0d6b73775434d0602571f346eee238245db57e5"
+    },
+    {
+      "path": "CONTEXTUAL_MEMBER_FINAL_09.tar.gz",
+      "members": 41106,
+      "sha256": "f1b1762d45967e443589339b8b40a9ed251f0c4ca105f424096b96f1e0f6e885"
+    },
+    {
+      "path": "CONTEXTUAL_MEMBER_FINAL_10.tar.gz",
+      "members": 35,
+      "sha256": "cf990f121bd07135cdf14339bef6a87ad961946c2273e007f18b831917989b65"
+    },
+    {
+      "path": "CONTEXTUAL_MEMBER_FINAL_11.tar.gz",
+      "members": 2824,
+      "sha256": "4af1e8962b5fcab5ddc78a3eea200fbd4e20a7f57685c4a0a2a43e5f63434a1b"
+    },
+    {
+      "path": "CONTEXTUAL_MEMBER_FINAL_12.tar.gz",
+      "members": 151084,
+      "sha256": "4ac23967e4b352f7030868646b09549e22ddc8e5cb2deeb2718da287917a9107"
+    }
+  ],
+  "regularFiles": 526562,
+  "memberManifestSha256": "c9cdebfc3bba3a3264c5e817bf9e1c1fdad618a4d3e5280f4f0cacdccf6b61ef",
+  "auditToolSha256": "dd6dca6a3f35557a7f10f0f1aaede7dc0208e6336c059fc9f735e91031ee57e0",
+  "staticRunnerDependenciesVerified": 201,
+  "runtimeContractAuditSha256": "32cfdf95a75af9b80937b59800c431edfe1fca9f36dca1e73073ce05a96c1762",
+  "wholeP0IComplete": false,
+  "completionCredit": false,
+  "scope": "Every complete successful runtime archive member decoded and hashed; final published-byte/contract audit is still required."
+}

@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "package": "P0-I",
+  "scope": "Restore literal freshness when newly shared contextual member-call inference is visited by flow analysis or literal-union/alias contexts.",
+  "frozenFixture": "backend/bluets/tests/fixtures/contextual_call_freshness/FROZEN.json",
+  "frozenFixtureSha256": "e2a0bd1d71574ac804c46483c69633c3b9ae39d064bdfb967f851586e40a2a70",
+  "nativeImplementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "originalGT4Cases": 102,
+  "originalGT4FixtureSha256": "51f175f86dd91d3181c5a36410d853d01c45dcf1bc89356c58135aa3f23c88f9",
+  "originalGT4ReferenceSha256": "d4c530a5b91042d90194531efca5286a13f368e51f88712e66e83f06ef5faa8b",
+  "originalRegressionMismatches": 10,
+  "supplementalNativeObservations": 8,
+  "introducedSupplementalFailures": 5,
+  "preexistingDirectUnionFailure": 1,
+  "inventoryCredit": 0,
+  "requirements": [
+    "Keep every original G-T4 input and Native expectation unchanged; execute all six original functions with no ignored/filtered tests.",
+    "All eight new Native-frozen observations must retain complete verdicts and exact declarations. Unannotated declarations must not contextualize themselves with provisional types.",
+    "Primitive literal contexts nested in union/intersection/aliases preserve ordinary generic-call candidate freshness within unchanged expansion budgets; no owner/candidate authority is granted.",
+    "Repeat the original P0-I primary/supplemental contracts, all checker regressions and complete source-bound Native/workspace/original-profile/Windows/platform/tooling/artifact gates before completion or commit."
+  ],
+  "preCorrectionEvidence": "target/contextual-member-optional-inference-correction-source63-20261118-1/public-red.json",
+  "additionalPublicRed": "target/contextual-member-optional-inference-correction-source63-20261118-1/literal-context-public-red.json",
+  "primaryContractUnchanged": true,
+  "wholeP0IComplete": false
+}

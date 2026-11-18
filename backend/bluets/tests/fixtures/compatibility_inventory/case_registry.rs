@@ -28,6 +28,9 @@ pub fn primary(snapshot: &Snapshot, suite: &Suite) -> Result<Option<Vec<Case>>> 
     if stem == "higher_order_inference" {
         return super::case_higher_order_inference::primary(snapshot).map(Some);
     }
+    if stem == "contextual_member_results" {
+        return super::case_contextual_members::primary(snapshot).map(Some);
+    }
     if stem == "symbolic_keys" {
         return super::case_symbolic_keys::primary(snapshot).map(Some);
     }

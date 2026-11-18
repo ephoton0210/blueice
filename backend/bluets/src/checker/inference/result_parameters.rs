@@ -5,6 +5,32 @@
 //! Empty-record restrictions keep an otherwise direct result parameter naked.
 use super::*;
 
+pub(super) fn literal_context(
+    value: &Type,
+    aliases: &BTreeMap<String, TypeDefinition>,
+    active: &mut HashSet<String>,
+    budget: &mut TypeExpansionBudget,
+) -> bool {
+    if !budget.consume() {
+        return false;
+    }
+    match value {
+        Type::Literal(_) => true,
+        Type::Union(parts) | Type::Intersection(parts) => parts
+            .iter()
+            .any(|part| literal_context(part, aliases, &mut active.clone(), budget)),
+        Type::Named { name, .. }
+            if aliases
+                .get(name)
+                .is_some_and(|definition| definition.kind == TypeDefinitionKind::Alias) =>
+        {
+            instantiate_named(value, aliases, active, budget, "literal result context")
+                .is_some_and(|value| literal_context(&value, aliases, active, budget))
+        }
+        _ => false,
+    }
+}
+
 pub(super) fn naked(
     value: &Type,
     parameters: &[TypeParameter],

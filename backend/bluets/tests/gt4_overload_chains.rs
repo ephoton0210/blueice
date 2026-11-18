@@ -97,6 +97,34 @@ fn outputs() -> Vec<Value> {
 #[test]
 fn overload_chain_compositions_match_complete_native_observations() {
     outputs();
+    // These additional Native-frozen regressions add no inventory credit.
+    let reference: Value = serde_json::from_str(include_str!(
+        "fixtures/contextual_call_freshness/reference.json"
+    ))
+    .unwrap();
+    for row in reference["cases"].as_array().unwrap() {
+        let result = compile(
+            "main.ts",
+            &MapLoader::from([ModuleSource::new(
+                "main.ts",
+                row["source"].as_str().unwrap(),
+            )]),
+            options(&json!({})),
+        );
+        assert!(
+            result.diagnostics.is_empty(),
+            "{}: {:?}",
+            row["id"],
+            result.diagnostics
+        );
+        let output = result.output.expect("Native accepts this complete program");
+        assert_eq!(
+            output.artifacts["main.ts"].declaration.as_deref(),
+            row["declaration"].as_str(),
+            "{}",
+            row["id"]
+        );
+    }
 }
 
 #[test]

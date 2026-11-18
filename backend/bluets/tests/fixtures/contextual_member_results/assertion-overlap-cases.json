@@ -1,0 +1,115 @@
+{
+  "schema": 1,
+  "scope": "Zero-denominator regression supplement: preserve all original20 forms and repair four source60-introduced constrained assertion regressions, with full widened-source negative diagnostics.",
+  "options": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "CommonJS",
+    "lib": [
+      "ES5"
+    ],
+    "types": [],
+    "declaration": true,
+    "noEmitOnError": true,
+    "skipLibCheck": true,
+    "outDir": "dist",
+    "sourceMap": false,
+    "declarationMap": false
+  },
+  "profiles": [
+    {
+      "id": "ES5-CommonJS-functions-false",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "strictFunctionTypes": false
+      }
+    },
+    {
+      "id": "ES5-CommonJS-functions-true",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "strictFunctionTypes": true
+      }
+    },
+    {
+      "id": "ES5-ESNext-functions-false",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "ESNext",
+        "strictFunctionTypes": false
+      }
+    },
+    {
+      "id": "ES5-ESNext-functions-true",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "ESNext",
+        "strictFunctionTypes": true
+      }
+    },
+    {
+      "id": "ES2022-CommonJS-functions-false",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strictFunctionTypes": false
+      }
+    },
+    {
+      "id": "ES2022-CommonJS-functions-true",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strictFunctionTypes": true
+      }
+    },
+    {
+      "id": "ES2022-ESNext-functions-false",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strictFunctionTypes": false
+      }
+    },
+    {
+      "id": "ES2022-ESNext-functions-true",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strictFunctionTypes": true
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "string-literal-parameter",
+      "source": "const factory = { make<T extends \"blue\">(): T { const value: \"red\" = \"red\"; return value as T; } };\nexport const result = factory.make();\n"
+    },
+    {
+      "id": "number-literal-parameter",
+      "source": "const factory = { make<T extends 2>(): T { const value: 1 = 1; return value as T; } };\nexport const result = factory.make();\n"
+    },
+    {
+      "id": "boolean-literal-parameter",
+      "source": "const factory = { make<T extends false>(): T { const value: true = true; return value as T; } };\nexport const result = factory.make();\n"
+    },
+    {
+      "id": "literal-union-parameter",
+      "source": "const factory = { make<T extends \"blue\" | null>(value: \"red\" | undefined): T { return value as T; } };\nexport const result = factory.make(\"red\");\n"
+    },
+    {
+      "id": "undefined-negative",
+      "source": "const factory = { make<T extends \"blue\">(): T { return undefined as T; } };\nexport const result = factory.make();\n"
+    },
+    {
+      "id": "string-to-number-negative",
+      "source": "const factory = { make<T extends number>(): T { const value: \"red\" = \"red\"; return value as T; } };\nexport const result = factory.make();\n"
+    },
+    {
+      "id": "number-to-string-negative",
+      "source": "const factory = { make<T extends string>(): T { const value: 1 = 1; return value as T; } };\nexport const result = factory.make();\n"
+    }
+  ]
+}

@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "typescript": "5.9.3",
-  "source_revision": "backend-tree:37beae676a55482728b6aa8682240bd9588e7fdc",
-  "source_graph_sha256": "9dd266a077ac1c7d6bafcfaad68428d257cd59a5b3cd930e7216611ea9a62892",
+  "source_revision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+  "source_graph_sha256": "4baf31eb626a1db1279349b85832a594a376925aafaa7bd9131012177c99242e",
   "fixture_directories": 3392,
   "diagnostic_programs": 3182,
   "diagnostic_templates": 221,
@@ -323,6 +323,18 @@
         "backend/bluets/tests/fixtures/conditional_inference/boundary-reference.json": "f449eeb647cb48825097ce2100552e6b6b79b6a8",
         "backend/bluets/tests/fixtures/conditional_inference/cases.json": "6c13f9e2af9efb923109fa33a653e4bf9ad121c8",
         "backend/bluets/tests/fixtures/conditional_inference/reference.json": "061de5ac66137b7da7b785dcc22393a8db8abea8"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/contextual_member_results.rs",
+      "ignored_tests": [
+        "contextual_member_results_match_the_complete_native_contract"
+      ],
+      "inputs": {
+        "backend/bluets/tests/contextual_member_results.rs": "6ffe30566c015e9243c8730ee5a8d9f0c4da8444",
+        "backend/bluets/tests/fixtures/contextual_member_results/ASSERTION_ALIAS_FROZEN.json": "595df93c9dd9dbf0e76c1c74319fa2acdfa558bf",
+        "backend/bluets/tests/fixtures/contextual_member_results/ASSERTION_OVERLAP_FROZEN.json": "48be29ee35495d85850a23c54f7207de17ea0872",
+        "backend/bluets/tests/fixtures/contextual_member_results/cases.json": "bc8e93713a7d7c75c1725bb136a64f0a0c23d3dd"
       }
     },
     {
@@ -1566,9 +1578,10 @@
         "gt4_native_observations_are_reproducible"
       ],
       "inputs": {
+        "backend/bluets/tests/fixtures/contextual_call_freshness/reference.json": "5e5a2e703d70795b2fa2bd242c22ec7f41427274",
         "backend/bluets/tests/fixtures/gt4_overload_chains/cases.json": "c8dc9d5dafab5940326e9b443bc391025ef580e5",
         "backend/bluets/tests/fixtures/gt4_overload_chains/reference.json": "ecc5ae8da194bb22497955ab15b9ab52963429aa",
-        "backend/bluets/tests/gt4_overload_chains.rs": "ba7438566c4d7050b08c0b18ccab5a5051fc6a51"
+        "backend/bluets/tests/gt4_overload_chains.rs": "e7edb4822bb40680c135190dfb6c6f6866bcb3ec"
       }
     },
     {

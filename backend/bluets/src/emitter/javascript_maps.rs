@@ -107,6 +107,11 @@ pub(super) fn token_anchors(
         return BTreeMap::new();
     };
     let mut anchors = BTreeMap::new();
+    if options.target == crate::EcmaTarget::Es5 {
+        for (&offset, name) in &module.object_shorthands {
+            anchors.insert(offset, Some(offset + name.len()));
+        }
+    }
     if options.module_kind == crate::ModuleKind::Esm {
         for (token, origin) in imports::star_exports(module, &tokens) {
             anchors.insert(token.start, Some(origin));
@@ -207,6 +212,21 @@ pub(super) fn token_anchors(
             );
         }
         if let Declaration::Class(class) = declaration {
+            for method in class
+                .members
+                .iter()
+                .filter_map(|member| member.method.as_ref())
+            {
+                if let Some(parameter) = method.type_parameters.last() {
+                    if let Some(open) = tokens.iter().find(|token| {
+                        token.is("(")
+                            && token.start >= parameter.span.end
+                            && token.start < method.span.end
+                    }) {
+                        anchors.insert(open.start, Some(method.name_span.end));
+                    }
+                }
+            }
             // A decorated class still copies its explicit constructor. Its
             // opening parenthesis inherits the constructor keyword even when
             // the surrounding class declaration is replaced by a decorator IIFE.
@@ -325,7 +345,9 @@ pub(super) fn token_anchors(
                 }
                 anchors.insert(
                     body.start,
-                    Some(if close == open + 1 {
+                    Some(if close == open + 1 && !generics.is_empty() {
+                        name.end
+                    } else if close == open + 1 {
                         header[open].start
                     } else {
                         header[close].start
@@ -424,11 +446,17 @@ fn function_anchors(
     }
     anchors.insert(
         body,
-        Some(if close == open + 1 || only_rest {
-            header[open].start
-        } else {
-            header[close].start
-        }),
+        Some(
+            if close == open + 1 && !function.type_parameters.is_empty() {
+                // Erased type parameters add no runtime header phase. An empty
+                // parameter list continues the function name's existing boundary.
+                name.end
+            } else if close == open + 1 || only_rest {
+                header[open].start
+            } else {
+                header[close].start
+            },
+        ),
     );
     default_parameters(&function.parameters, tokens, anchors);
 }

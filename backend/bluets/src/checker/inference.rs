@@ -20,7 +20,7 @@ mod result_parameters;
 mod results;
 mod surfaces;
 
-pub(crate) const VERSION: &str = "bluets-generic-inference/16";
+pub(crate) const VERSION: &str = "bluets-generic-inference/18";
 
 pub(in crate::checker) fn depends_on_parameter(
     value: &Type,
@@ -233,6 +233,10 @@ fn finish_candidates(
         &mut HashSet::new(),
         budget,
     );
+    let literal_context = naked.is_some()
+        && context.is_some_and(|value| {
+            result_parameters::literal_context(value, aliases, &mut HashSet::new(), budget)
+        });
     for parameter in &signature.type_parameters {
         let literal_constraint = parameter.constraint.as_ref().is_some_and(|constraint| {
             if matches!(constraint, Type::KeyOf(_) | Type::Literal(_)) {
@@ -258,7 +262,7 @@ fn finish_candidates(
         let preserve = parameter.is_const
             || literal_constraint
             || (naked.as_deref() == Some(parameter.name.as_str())
-                && context.is_none_or(|value| matches!(value, Type::Literal(_))));
+                && (context.is_none() || literal_context));
         if let Some(value) = candidates
             .get(&parameter.name)
             .and_then(|candidates| candidates.solve(preserve, aliases, budget))

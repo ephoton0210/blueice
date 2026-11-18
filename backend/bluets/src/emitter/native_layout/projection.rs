@@ -461,6 +461,15 @@ fn trivia(tokens: &[Token]) -> BTreeSet<usize> {
         if token.is("=") {
             result.insert(token.start);
         }
+        if i >= 2
+            && tokens[i - 1].is(":")
+            && tokens[i - 2].text == token.text
+            && token.is_binding_identifier()
+        {
+            // A lowered shorthand's value continues its original key end.
+            // Written key/value nodes with different owners remain distinct.
+            result.insert(token.start);
+        }
         // Export expressions share one leading node range. Drop a repeated
         // default-modifier owner while preserving distinct declaration roles.
         if token.is("default") && previous.is_some_and(|token| token.is("export")) {
@@ -468,6 +477,13 @@ fn trivia(tokens: &[Token]) -> BTreeSet<usize> {
         }
         if token.is("function") || token.is("extends") {
             result.extend([token.start, token.end]);
+        } else if token.is("(")
+            && (previous.is_some_and(|t| t.is("function"))
+                || i >= 2 && tokens[i - 2].is("function"))
+        {
+            // A callable parameter opener continues the name/keyword phase;
+            // erased generic parameters cannot add a repeated owner here.
+            result.insert(token.start);
         } else if token.is("class") || token.is("constructor") && next.is_some_and(|t| t.is("(")) {
             result.insert(token.end);
         } else if token.is("{") && previous.is_some_and(|t| t.is(")"))

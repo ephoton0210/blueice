@@ -43,3 +43,60 @@ test('the moved callback signature still rejects a different original role',()=>
  assert.notDeepEqual(actual.owner(open.start),[0,0,0]);
  assert.throws(()=>f.check(mutate(ts,f.actual(),open.start,[0,0,0])),/complete moved original async signature/);
 });
+
+function nativeArrowFixture() {
+ const id='ge2_module_helpers/helper-name-collision-cjs-es5-i0-n0/original/external';
+ const index=input.cases.findIndex(row=>row.id===id); assert(index>=0);
+ const original=graph.resolve(input,input.cases[index],graph.parents(root,input));
+ const expected=reference.cases[index],name='out/main.js.map';
+ const code=reference.blobs[expected.outputs['out/main.js']];
+ const raw=authority.raw(reference,expected,name);
+ const origin=require('./ge5_helper_collision_read.cjs').source(ts,original.files['main.ts']);
+ const arrow=require('./ge5_helper_collision_arrow.cjs');
+ const native=()=>stream(ts,code,raw),actual=()=>stream(ts,code,raw);
+ const check=view=>arrow.compare(ts,native(),view,original.options,origin);
+ function expression(view) {
+  const calls=[];
+  function visit(node) {
+   if(ts.isCallExpression(node)&&ts.isPropertyAccessExpression(node.expression)
+      &&node.expression.name.text==='then'
+      &&ts.isCallExpression(node.expression.expression)
+      &&ts.isIdentifier(node.expression.expression.expression)
+      &&node.expression.expression.expression.text==='compute')calls.push(node);
+   ts.forEachChild(node,visit);
+  }
+  visit(view.source); assert.equal(calls.length,1);
+  const fn=calls[0].arguments[0]; assert(ts.isFunctionExpression(fn));
+  assert.equal(fn.body.statements.length,1);
+  const returned=fn.body.statements[0]; assert(ts.isReturnStatement(returned));
+  return returned.expression;
+ }
+ return {native,actual,check,expression,code,raw};
+}
+
+test('the ES5 concise-arrow verifier accepts the unchanged frozen Native return grammar',()=>{
+ const f=nativeArrowFixture(),proof=f.check(f.actual());
+ assert.deepEqual(proof.holes,[]);
+ assert(ts.isBinaryExpression(proof.actual.expression));
+});
+
+test('an ungrouped ES5 concise-arrow body still rejects an unrelated source role',()=>{
+ const f=nativeArrowFixture(),actual=f.actual(),expression=f.expression(actual);
+ assert(ts.isBinaryExpression(expression)&&ts.isBinaryExpression(expression.left));
+ const value=expression.left.left; assert(ts.isIdentifier(value));
+ const at=value.getStart(actual.source); assert.notDeepEqual(actual.owner(at),[0,0,0]);
+ assert.throws(()=>f.check(mutate(ts,actual,at,[0,0,0])));
+});
+
+test('an ungrouped ES5 concise-arrow endpoint still requires the exact Native owner',()=>{
+ const f=nativeArrowFixture(),actual=f.actual(),at=f.expression(actual).end;
+ assert.notDeepEqual(actual.owner(at),[0,0,0]);
+ assert.throws(()=>f.check(mutate(ts,actual,at,[0,0,0])));
+});
+
+test('an ungrouped ES5 concise-arrow verifier rejects a changed original operator',()=>{
+ const f=nativeArrowFixture(),actual=f.actual(),expression=f.expression(actual);
+ const at=expression.operatorToken.getStart(actual.source); assert.equal(f.code[at],'+');
+ const code=f.code.slice(0,at)+'-'+f.code.slice(at+1);
+ assert.throws(()=>f.check(stream(ts,code,f.raw)));
+});

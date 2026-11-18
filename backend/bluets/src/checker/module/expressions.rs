@@ -6,6 +6,7 @@
 
 use super::*;
 
+mod assertion_overlap;
 mod assertion_qualifiers;
 pub(in crate::checker) use assertion_qualifiers::projection_qualifiers;
 mod call_chains;
@@ -677,11 +678,17 @@ impl<'a> ModuleChecker<'a> {
                 }
             }
             let contextual = (positions_known
-                && argument.first().is_some_and(|token| {
+                && (argument.first().is_some_and(|token| {
                     token.is("[")
                         || token.is("{")
                         || self.module.nested_functions.contains_key(&token.start)
-                }))
+                }) || self.contextual_member_call(argument, scope).is_some_and(
+                    |(_, signatures, _)| {
+                        signatures
+                            .iter()
+                            .any(|signature| !signature.type_parameters.is_empty())
+                    },
+                )))
             .then(|| {
                 self.contextual_argument_type(
                     argument,

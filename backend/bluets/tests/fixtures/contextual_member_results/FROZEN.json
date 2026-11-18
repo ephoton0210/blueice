@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "acceptedParent": "cb28ffc4437fb58b135424b5f94f945941ca6535",
+  "parentCompilerSource": "backend-tree:37beae676a55482728b6aa8682240bd9588e7fdc",
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "libraries": {
+    "lib.es5.d.ts": "c430d44666289dae81f30fa7b2edebf186ecc91a2d4c71266ea6ae76388792e1",
+    "lib.decorators.d.ts": "8e7f8264d0fb4c5339605a15daadb037bf238c10b654bb3eee14208f860a32ea",
+    "lib.decorators.legacy.d.ts": "782dec38049b92d4e85c1585fbea5474a219c6984a35b004963b00beb1aab538"
+  },
+  "sha256": {
+    "boundary-controls.json": "ba7c1fdd89add116d1dc63782e6b5bc3f77de3a15ee67f163be2e4c3d6106af0",
+    "cases.json": "c4c2873a7ddb0879555b273b65fdec3466cac5697c28663e65df6515037c28ed",
+    "downstream-input.json": "915752856f134da7b531284e448f65c1ab9149ebf93ad8ca8a0edf0b1f4651e2",
+    "downstream-reference.json": "27329c17d286c013801ada081e352a5ee29edb67963e51b7e8c13afe19b91b9f",
+    "original-discovery.json": "74ae1032a6cdd0fafa201162e844622389669c4886890e83839175120b63ca35",
+    "original-reference.json": "f532c8fc6b3df42718cb8640c786108700991911f07925faa78f21d37b49c745",
+    "reference.json": "8af100196959daaa61bc8c0bf4e5049ebceb177ae4328f8a0f0c3fe4e9d792f9"
+  },
+  "primaryObservations": 160,
+  "supplementaryUtf16Observations": 320,
+  "acceptedObservations": 456,
+  "rejectedObservations": 24,
+  "declarationFiles": 480,
+  "mapFiles": 960,
+  "nativeConsumers": 912,
+  "nativeSyntaxParses": 480,
+  "nativeExecutions": 64,
+  "originalUnmappedForms": 20,
+  "separateBoundaryControls": 4,
+  "productionChangesBeforeFreeze": false
+}

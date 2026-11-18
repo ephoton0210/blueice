@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "status": "frozen-before-literal-context-correction",
+  "recordedAt": "2026-11-17T16:26:01.804229+00:00",
+  "typescript": "5.9.3",
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "sha256": {
+    "cases.json": "86e948efbb9ff92cbffdebc61b91ea9af4c4a613125bab5805f3aa9e33b98b8c",
+    "reference.json": "609cd9e4587c40928238a57a75b0f127d4fe37ef56d4a61d51a6ac11903a8841"
+  },
+  "observations": 8,
+  "introducedFailures": 5,
+  "preexistingDirectUnionGap": 1,
+  "inventoryCredit": 0,
+  "scope": "Literal freshness for unannotated and scalar literal-union/alias contexts; preserve all original G-T4 fixtures and P0-I primary expectations."
+}

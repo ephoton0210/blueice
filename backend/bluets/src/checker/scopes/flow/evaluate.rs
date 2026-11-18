@@ -272,19 +272,13 @@ fn expression(
                 let mut actual = predicates::reference(scopes, &tokens[equal + 1..], 0)
                     .and_then(|(id, path)| properties::read(scopes, &after, &id, &path))
                     .unwrap_or_else(|| {
-                        let rhs = crate::checker::strip_outer_parentheses(&tokens[equal + 1..]);
-                        let own_function_initializer = tokens.first().is_some_and(|token| {
+                        let own_initializer = tokens.first().is_some_and(|token| {
                             matches!(token.text.as_str(), "const" | "let" | "var")
-                        }) && rhs
-                            .first()
-                            .and_then(|token| scopes.module.nested_functions.get(&token.start))
-                            .is_some_and(|function| {
-                                rhs.last()
-                                    .is_some_and(|token| token.end == function.span.end)
-                            });
-                        // An unannotated function must not be contextualized
-                        // by its own provisional, pre-flow inferred signature.
-                        let context = if own_function_initializer && !scopes.flow_annotated(&id) {
+                        });
+                        // An unannotated initializer has no contextual type.
+                        // Its provisional declaration must not feed back into
+                        // result inference and widen a fresh call result.
+                        let context = if own_initializer && !scopes.flow_annotated(&id) {
                             &Type::Unknown
                         } else {
                             &declared

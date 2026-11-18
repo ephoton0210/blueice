@@ -1,0 +1,53 @@
+{
+  "conclusion": "all-completed-component-archive-members-verified",
+  "recordedAt": "2026-11-17T12:06:33.844820+00:00",
+  "sourceRevision": "backend-tree:0f91c383d4f5471683d6d69638248769b9ed7534",
+  "compilerSha256": "cd1da98a5c36b974ecc5e35d49c0032b0a4f24d80a9bad5f281364e6f773fc17",
+  "archives": [
+    {
+      "path": "CONTEXTUAL_MEMBER_COMPONENTS_01.tar.gz",
+      "members": 16904,
+      "sha256": "35acdf8acf5777e89b55cc557082e92da215f3f07a962f59fc12c12e97a8139a"
+    },
+    {
+      "path": "CONTEXTUAL_MEMBER_COMPONENTS_02.tar.gz",
+      "members": 3155,
+      "sha256": "cb801840d61e085cf25fb77480f48ba8bb65c6bc6c1c145793e9d7b3301075c9"
+    },
+    {
+      "path": "CONTEXTUAL_MEMBER_COMPONENTS_03.tar.gz",
+      "members": 581,
+      "sha256": "7953fd58f5b8b1ca134b06ecd3316f52946a95cb2e627f39d8d4d90b1d1d21c4"
+    },
+    {
+      "path": "CONTEXTUAL_MEMBER_COMPONENTS_04.tar.gz",
+      "members": 61556,
+      "sha256": "b1d14e1e366988c19d8f66b40ac25f1e572d160a91d88cd3946315bb30ae0769"
+    },
+    {
+      "path": "CONTEXTUAL_MEMBER_COMPONENTS_05.tar.gz",
+      "members": 50977,
+      "sha256": "913500ba4feba5266ad05c7f8a9c57f79f89a968df467463721b267202b89200"
+    },
+    {
+      "path": "CONTEXTUAL_MEMBER_COMPONENTS_06.tar.gz",
+      "members": 22863,
+      "sha256": "65bedab93676273fc61cb8baeb3e6e70ae7ae9af4b130c1d7bf7da968e9f46c2"
+    },
+    {
+      "path": "CONTEXTUAL_MEMBER_COMPONENTS_07.tar.gz",
+      "members": 1265,
+      "sha256": "fef2a5a82d5e406db5a83c7be0149edf326ae35f3e5c47ef4ce683b9ab91c163"
+    }
+  ],
+  "regularFiles": 157301,
+  "backendSourceFilesVerified": 14227,
+  "currentToolFilesVerified": 621,
+  "symbolicLinksStoredAsMetadata": 0,
+  "memberManifestSha256": "db30ac0b6216a420828f945347c8f3d9af979370c0bb1b7b29d1fcd4b0b9a7d2",
+  "auditToolSha256": "25afe14b85f1ee7e3229f6ac50372744c62d430bbdb9dbb52ae9dd43663b0fbb",
+  "completedComponentBindingSha256": "ef2995b026b538e0075fd738f7c26ae60c9e562bafbdabd49c6bdc48430fdd05",
+  "completionCredit": false,
+  "wholeP0IComplete": false,
+  "scope": "Every archived completed source/red/history/component member independently decoded and hashed. Full Native/workspace/map/project/Windows/metadata and final publication remain required."
+}

@@ -10,6 +10,14 @@ use crate::parser::{NestedFunctionBody, NestedFunctionKind};
 mod arrow_origins;
 pub(crate) const OBJECT_LOWERING_VERSION: &str = "bluets-es5-object-lowering/1";
 
+pub(in crate::emitter) fn shorthand_prefix(offset: usize, name: &str) -> String {
+    format!(
+        "{}{name}{}: ",
+        relocations::source_anchor(offset),
+        relocations::source_anchor(offset + name.len()),
+    )
+}
+
 pub(in crate::emitter) fn prepare(
     module: &Module,
     project: &Project,
@@ -60,7 +68,7 @@ fn prepare_with_origins(
         edits.push(TextEdit {
             start: offset,
             end: offset,
-            replacement: format!("{name}: "),
+            replacement: shorthand_prefix(offset, name),
         });
     }
     let tokens = crate::syntax::lex_with_limits(
@@ -142,6 +150,8 @@ fn prepare_with_origins(
         let concise = matches!(function.body, NestedFunctionBody::Expression(_));
         let plain_concise = concise && capture.is_none();
         let source_concise = plain_concise && origins.is_source(module, function);
+        let wrap_concise =
+            !source_concise || options.javascript_layout != crate::JavaScriptLayout::TypeScript;
         let prologue =
             parameters::prologue(module, &tokens, &function.parameters, edits, &mut sequence)?;
         let parameter_end = if single {
@@ -166,7 +176,7 @@ fn prepare_with_origins(
         let arrow_body = if concise {
             if plain_concise {
                 format!(
-                    " {{{}{}{prologue}{}return {}({}",
+                    " {{{}{}{prologue}{}return {}{}{}",
                     if plain_empty_source {
                         format!(
                             "{} ",
@@ -175,17 +185,18 @@ fn prepare_with_origins(
                     } else {
                         String::new()
                     },
-                    if source_concise {
+                    if source_concise && wrap_concise {
                         crate::emitter::relocations::unmapped().to_string()
                     } else {
                         crate::emitter::relocations::source_anchor(body.start)
                     },
                     crate::emitter::relocations::source_anchor(body.start),
-                    if source_concise {
+                    if source_concise && wrap_concise {
                         crate::emitter::relocations::unmapped().to_string()
                     } else {
                         crate::emitter::relocations::source_anchor(body.start)
                     },
+                    if wrap_concise { "(" } else { "" },
                     crate::emitter::relocations::source_anchor(body.start)
                 )
             } else {
@@ -246,7 +257,11 @@ fn prepare_with_origins(
                 } else {
                     end.clone()
                 };
-                format!("{end} {grouping}){end}; {begin}}}{end}{suffix}")
+                if wrap_concise {
+                    format!("{end} {grouping}){end}; {begin}}}{end}{suffix}")
+                } else {
+                    format!("{end}; {begin}}}{end}{suffix}")
+                }
             } else {
                 format!("{}{suffix}", if concise { "); }" } else { "" })
             },

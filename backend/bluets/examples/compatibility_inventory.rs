@@ -8,6 +8,8 @@
 mod accounting;
 #[path = "../tests/fixtures/compatibility_inventory/case_conditional_inference.rs"]
 mod case_conditional_inference;
+#[path = "../tests/fixtures/compatibility_inventory/case_contextual_members.rs"]
+mod case_contextual_members;
 #[path = "../tests/fixtures/compatibility_inventory/case_ge5.rs"]
 mod case_ge5;
 #[path = "../tests/fixtures/compatibility_inventory/case_higher_order_inference.rs"]

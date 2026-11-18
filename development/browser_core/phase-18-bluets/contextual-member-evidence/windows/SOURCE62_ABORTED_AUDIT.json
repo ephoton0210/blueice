@@ -1,0 +1,29 @@
+{
+  "conclusion": "aborted-windows-source-and-raw-evidence-independently-verified",
+  "completionCredit": false,
+  "receipt": {
+    "conclusion": "aborted-run-preserved",
+    "completionCredit": false,
+    "sourceRevision": "backend-tree:1f17b30713047b88f11b4b56db524ca6bd362789",
+    "sourceManifestSha256": "3b27e35fa00ea3495e83fc6ede39c6a5e071bf0f5def99fc849290371d97d0ae",
+    "archive": "B:\\BlueIce\\gm3-20261109-360d7d921\\p0i-source62w1-aborted-evidence.tar.gz",
+    "archiveBytes": 65752911,
+    "archiveSha256": "0c6cd9d52a045a33cba845d045f7c78c3be515a8a201022e96a346c8b3d3f009",
+    "memberLedgerSha256": "adc1e1f7cf37fb15a310d6c46d05e9cce39c93424313da325efe412ff6792937",
+    "members": 19766,
+    "sourceFiles": 14936,
+    "compilerSha256": "2a26efdde89f7632899029ca68820d8cf76170340a939563d0895c179e96d0a3",
+    "interruptedTestSha256": "ac3615972f9519141ce59c5c61b90cbb9b79f82b70ef476cde21e4ce435e4bb8",
+    "emissionCaptures": 0,
+    "interruptedCohort": "diagnostics_projects",
+    "completedCohorts": 42,
+    "core82Run": false,
+    "pathCases": 0,
+    "createdAt": "2026-11-17T16:23:15.581552+00:00",
+    "reason": "Local source62 G-T4 public regression:10 optional generic-call observations lose literal freshness; no whole-source acceptance credit."
+  },
+  "bytes": 65752911,
+  "verifiedMembers": 19766,
+  "invalidJavascriptFiles": 0,
+  "finishedAt": "2026-11-17T16:31:30.760480+00:00"
+}

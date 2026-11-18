@@ -1,0 +1,28 @@
+{
+  "conclusion": "failed-windows-source-and-raw-evidence-independently-verified",
+  "completionCredit": false,
+  "receipt": {
+    "conclusion": "failed-run-preserved",
+    "completionCredit": false,
+    "sourceRevision": "backend-tree:0f91c383d4f5471683d6d69638248769b9ed7534",
+    "sourceManifestSha256": "62eeae82b9a5f3763f0e041965bad5d24562b392d1698e44e7b1bfbcb344a583",
+    "archive": "B:\\BlueIce\\gm3-20261109-360d7d921\\p0i-source61w1-failure-evidence.tar.gz",
+    "archiveBytes": 67158521,
+    "archiveSha256": "adacd5b40d3e738f723f6a02d0408f957eb11b935d51dcddf56f5a70f262d0aa",
+    "memberLedgerSha256": "a801ed08939f0c84b477d8939f1691aa188b090505a6b15130479c49217416ca",
+    "members": 32181,
+    "sourceFiles": 14936,
+    "compilerSha256": "87927d02c15561b7888238c20a374099dae01fb3485bbf7ac53772171f1533b0",
+    "failedTestSha256": "262f8af705d71353de3341b9b9f6ba439b5cc4a79040c97742da5cddbbea0bf7",
+    "failingEmissionCaptures": 1,
+    "failedCohort": "higher_order_inference",
+    "completedCohorts": 45,
+    "core82Run": false,
+    "pathCases": 0,
+    "createdAt": "2026-11-17T14:13:10.028425+00:00"
+  },
+  "bytes": 67158521,
+  "verifiedMembers": 32181,
+  "invalidJavascriptFiles": 1,
+  "finishedAt": "2026-11-17T14:14:53.197995+00:00"
+}

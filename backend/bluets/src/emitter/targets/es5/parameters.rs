@@ -156,7 +156,10 @@ pub(super) fn declarations(
                 edits.push(TextEdit {
                     start: tokens[parameter_open].start,
                     end: tokens[parameter_open].start,
-                    replacement: ": function ".into(),
+                    replacement: format!(
+                        "{}: function ",
+                        relocations::source_anchor(tokens[head].start)
+                    ),
                 });
             }
         }

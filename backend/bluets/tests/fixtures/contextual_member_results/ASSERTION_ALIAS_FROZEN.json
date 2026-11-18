@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "typescript": "5.9.3",
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "primaryFixtureUnchangedSha256": "200f9fe947f873261363f4158f3f82ab61874e1d78c989529e3cedbbbcf10e2c",
+  "originalAssertionSupplementSha256": "c56d06d11d53061b8d5256db53503948cbd5db5a73f5a629b72c0cd3b8c9c6d8",
+  "sha256": {
+    "assertion-alias-cases.json": "ae13fec9a0297c651e731f21a5435e0e72cc2a36e16123d25ade8736ff722e98",
+    "assertion-alias-reference.json": "9c248b0ac2aa8185002c08ca0a0b351f70f2e4325ed4a527c2734a1d8afaf8bf"
+  },
+  "source61AliasDiscoverySha256": "7ceda138dd73493a82874d358d601fd1a7a066d83921a463ada9960989b72572",
+  "forms": 5,
+  "profiles": 8,
+  "observations": 40,
+  "accepts": 24,
+  "rejects": 16,
+  "inventoryCredit": 0,
+  "aliasCorrectionBeforeFreeze": false
+}

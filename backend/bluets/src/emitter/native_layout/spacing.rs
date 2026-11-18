@@ -90,7 +90,11 @@ pub(super) fn between(tokens: &[Token], i: usize, gap: &str, roles: &Roles) -> S
         return " ".into();
     }
     if next.is(":") {
-        return String::new();
+        return if crate::emitter::token_maps::conditional_colon(tokens, i) {
+            " ".into()
+        } else {
+            String::new()
+        };
     }
     if prev.is(":") {
         return " ".into();

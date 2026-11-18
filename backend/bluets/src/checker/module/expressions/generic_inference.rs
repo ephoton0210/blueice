@@ -132,20 +132,30 @@ impl ModuleChecker<'_> {
         scope: &BTreeMap<String, Type>,
         expected: &Type,
     ) -> Option<Type> {
-        let call = direct_call_parts(strip_outer_parentheses(tokens))?;
-        if call.generic {
+        // Flow inference uses Unknown to represent the absence of context.
+        // Keep the ordinary call path's literal and overload evidence intact.
+        if matches!(expected, Type::Unknown) {
             return None;
         }
-        let signatures = self
-            .function_value_signatures(&call.callee.text, scope, false)
-            .or_else(|| self.functions.get(&call.callee.text).cloned())?;
+        let tokens = strip_outer_parentheses(tokens);
+        let (arguments, signatures, short_circuit) = if let Some(call) = direct_call_parts(tokens) {
+            if call.generic {
+                return None;
+            }
+            let signatures = self
+                .function_value_signatures(&call.callee.text, scope, false)
+                .or_else(|| self.functions.get(&call.callee.text).cloned())?;
+            (call.arguments, signatures, false)
+        } else {
+            self.contextual_member_call(tokens, scope)?
+        };
         if signatures
             .iter()
             .all(|signature| signature.type_parameters.is_empty())
         {
             return None;
         }
-        let arguments = split_call_arguments(call.arguments)?;
+        let arguments = split_call_arguments(arguments)?;
         let actuals = self
             .expanded_call_argument_types_for(&arguments, scope, &signatures)
             .ok()?;
@@ -176,6 +186,10 @@ impl ModuleChecker<'_> {
                 )));
             }
         }
-        Some(result)
+        Some(if short_circuit {
+            crate::checker::type_operators::union([result, Type::Undefined])
+        } else {
+            result
+        })
     }
 }

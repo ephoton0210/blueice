@@ -138,32 +138,57 @@ impl ModuleChecker<'_> {
                         );
                         return true;
                     }
-                } else if marker.is("as") && matches!(annotation, Type::Literal(_)) {
-                    let actual = self.infer_expression(operand, scope);
+                } else if marker.is("as")
+                    && (matches!(annotation, Type::Literal(_))
+                        || self
+                            .assertion_parameter_constraint(&annotation, marker.start)
+                            .is_some())
+                {
+                    let mut actual = self.infer_expression(operand, scope);
+                    let parameter_constraint =
+                        self.assertion_parameter_constraint(&annotation, marker.start);
                     let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
                     budget.checking = self.checking;
-                    let overlaps = is_assignable(
-                        &actual,
-                        &annotation,
-                        &self.types,
-                        &mut HashSet::new(),
-                        &mut budget,
-                    ) || is_assignable(
-                        &annotation,
-                        &actual,
-                        &self.types,
-                        &mut HashSet::new(),
-                        &mut budget,
+                    let overlaps = if let Some(constraint) = &parameter_constraint {
+                        actual = self.assertion_source_base_type(&actual, &mut budget);
+                        self.assertion_overlaps_constraint(&actual, constraint, &mut budget)
+                    } else {
+                        is_assignable(
+                            &actual,
+                            &annotation,
+                            &self.types,
+                            &mut HashSet::new(),
+                            &mut budget,
+                        ) || is_assignable(
+                            &annotation,
+                            &actual,
+                            &self.types,
+                            &mut HashSet::new(),
+                            &mut budget,
+                        )
+                    };
+                    let point = SourceSpan::new(
+                        &self.module.id,
+                        tokens.first().expect("assertion operand").start,
+                        tokens.last().expect("assertion target").end,
                     );
-                    if !overlaps && !budget.exhausted {
-                        let point = SourceSpan::new(
-                            &self.module.id,
-                            tokens.first().expect("assertion operand").start,
-                            tokens.last().expect("assertion target").end,
+                    if parameter_constraint.is_some() && budget.exhausted {
+                        self.blue_only_type_error(
+                            &point,
+                            "type assertion comparison exceeded the configured type-expansion budget".into(),
+                            DiagnosticCode::ResourceLimit,
+                            "An owner-selected BlueTSC resource budget was exhausted.",
                         );
+                        return true;
+                    }
+                    if !overlaps && !budget.exhausted {
                         self.typescript_type_error(
                             &point,
-                            "literal assertion types do not overlap".into(),
+                            if parameter_constraint.is_some() {
+                                "generic assertion types do not overlap".into()
+                            } else {
+                                "literal assertion types do not overlap".into()
+                            },
                             DiagnosticCode::TypeMismatch,
                             2352,
                             vec![
@@ -171,6 +196,21 @@ impl ModuleChecker<'_> {
                                 crate::diagnostic::type_text::render_in(&annotation, self.project),
                             ],
                         );
+                        if parameter_constraint.is_some() && self.enforce_types {
+                            let target =
+                                crate::diagnostic::type_text::render_in(&annotation, self.project);
+                            let source =
+                                crate::diagnostic::type_text::render_in(&actual, self.project);
+                            if let Some(counterpart) = self
+                                .diagnostics
+                                .last_mut()
+                                .and_then(|diagnostic| diagnostic.typescript.as_mut())
+                            {
+                                counterpart.message.push_str(&format!(
+                                    "\n  '{target}' could be instantiated with an arbitrary type which could be unrelated to '{source}'."
+                                ));
+                            }
+                        }
                         return true;
                     }
                 } else if marker.is("satisfies") {
@@ -385,5 +425,19 @@ impl ModuleChecker<'_> {
             }
         }
         false
+    }
+
+    fn assertion_parameter_constraint(&self, value: &Type, offset: usize) -> Option<Type> {
+        let value = self.scopes.as_ref().map_or_else(
+            || value.clone(),
+            |scopes| scopes.parameter_type_at(value, offset),
+        );
+        let value = canonical_parameter_references(&value, &self.types);
+        let Type::Named { name, arguments } = value else {
+            return None;
+        };
+        let definition = self.types.get(&name)?;
+        (arguments.is_empty() && definition.kind == TypeDefinitionKind::Parameter)
+            .then(|| definition.value.clone())
     }
 }

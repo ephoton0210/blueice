@@ -17,6 +17,29 @@ struct ResolvedCall<'a> {
 }
 
 impl ModuleChecker<'_> {
+    /// Resolve contextual result evidence without taking ownership of the
+    /// ordinary member checker's diagnostics or receiver validation.
+    pub(super) fn contextual_member_call<'a>(
+        &self,
+        tokens: &'a [Token],
+        scope: &BTreeMap<String, Type>,
+    ) -> Option<(&'a [Token], Vec<FunctionSignature>, bool)> {
+        let call = syntax::call(tokens)?;
+        if call.explicit.is_some() {
+            return None;
+        }
+        let callee = self.chain_callee(call.callee, scope, 0)?;
+        let (value, nullable) = self.chain_non_nullable(&callee.value)?;
+        let mut local = scope.clone();
+        local.insert("#contextual-result".into(), value);
+        let signatures = self.function_value_signatures("#contextual-result", &local, false)?;
+        Some((
+            call.arguments,
+            signatures,
+            self.checking.strict_null_checks && (callee.short_circuit || call.optional && nullable),
+        ))
+    }
+
     fn resolved_chain<'a>(
         &self,
         tokens: &'a [Token],

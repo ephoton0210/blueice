@@ -39,6 +39,7 @@ pub fn additional(snapshot: &Snapshot, suite: &Suite) -> Result<Vec<Case>> {
         "symbolic_keys" => super::case_symbolic_keys::additional(snapshot)?,
         "conditional_inference" => super::case_conditional_inference::additional(snapshot)?,
         "higher_order_inference" => super::case_higher_order_inference::additional(snapshot)?,
+        "contextual_member_results" => super::case_contextual_members::additional(snapshot)?,
         "gc1_object_generic_methods" | "gm2_incremental_options" => {
             let path = format!("backend/bluets/tests/fixtures/{stem}/reference.json");
             let mut controls = super::case_sources::json_cases(
