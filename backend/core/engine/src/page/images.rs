@@ -843,14 +843,15 @@ mod tests {
                     });
                     // Absolute page coordinates, so they can be set beside a real browser's.
                     eprintln!(
-                        "{}{}{} x={:.0} y={:.0} w={:.0} h={:.0}",
+                        "{}{}{} x={:.p$} y={:.p$} w={:.p$} h={:.p$}",
                         "  ".repeat(depth),
                         name,
                         style,
                         ax,
                         ay,
                         f.width,
-                        f.height
+                        f.height,
+                        p = if std::env::var("BI_FRAC").is_ok() { 2 } else { 0 }
                     );
                 }
                 for child in &f.children {
