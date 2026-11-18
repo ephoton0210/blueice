@@ -154,6 +154,10 @@ impl Page {
         /// More new rules than this, or matching more than half the page's elements, and a full
         /// cascade is as cheap.
         const MOST_RULES: usize = 64;
+        // The search below walks the document's own tree; a shadow tree's nodes are not in it.
+        if self.doc.has_shadow_roots() {
+            return false;
+        }
         let environment = self.media_environment();
         let author = crate::stylesheet::extract_inline_stylesheets_with_linked(
             &self.doc,
@@ -374,6 +378,29 @@ mod tests {
         let host = host.expect("the host");
         assert_eq!(page.styles[&host].display, "contents");
         assert_eq!(page.styles, fresh(&page));
+    }
+
+    #[test]
+    fn an_svg_a_script_puts_in_a_shadow_root_keeps_its_attribute_size() {
+        let mut page = Page::new(1280.0, 800.0);
+        page.set_web_scripts(true);
+        page.load_html_str(
+            "<body><my-btn></my-btn><script>\
+             const r = document.querySelector('my-btn').attachShadow({mode: 'open'});\
+             r.innerHTML = '<style>.b{display:flex;align-items:center;border:1px solid;padding:4px;width:80px;justify-content:space-between}.b:before{content:\"\";height:18px;width:15px}</style><button class=b><svg width=24 height=24 viewBox=\"0 0 24 24\"><path d=\"m1 1\"/></svg></button>';\
+             </script></body>",
+            Some("https://example.com/p".to_string()),
+        );
+        page.settle();
+        fn find<'a>(f: &'a blueice_layout::Fragment, doc: &blueice_dom::Document, tag: &str) -> Option<&'a blueice_layout::Fragment> {
+            if f.node.is_some_and(|n| matches!(doc.data(n), NodeData::Element { tag_name, .. } if tag_name == tag)) {
+                return Some(f);
+            }
+            f.children.iter().find_map(|c| find(c, doc, tag))
+        }
+        let svg = find(&page.fragment, &page.doc, "svg").expect("the svg is laid out");
+        let button = find(&page.fragment, &page.doc, "button").expect("the button is laid out");
+        assert_eq!((svg.width, svg.height, button.height), (24.0, 24.0, 34.0));
     }
 
     #[test]

@@ -1290,3 +1290,13 @@ Open, separate gap found on MDN: Lit custom elements never upgrade because dynam
 - Webpack's computed `import("./" + u(id))` chunks are found from the runtime's filename table plus the `"./x/element.js":["id",[chunks]]` context map, for the custom elements the page's HTML uses (`webpack_chunk_urls`). A general lazy module loader in the VM is still open.
 - A `<dialog>` without `open` is `display: none`.
 - MDN `/docs/Web/CSS` now matches Safari's header (no open mega menu). Still differing: the h1 in `.reference-layout__header` is 16px high of Safari's (its `margin: 1rem 0` is lost), page height 4591 vs 4270, the navigation search box 28 vs 34px, the logo svg size; the diff script also pairs the off-screen skip links wrongly.
+
+### MDN layout fixes (second round)
+
+- A grid/flex item under a `display: contents` child of the container is still an item (its own formatting root), so MDN's `h1 { margin: 1rem 0 }` stays inside `.layout__header`.
+- A media range bound may be `calc()`/`min()`/`max()`/`clamp()` (`(width >= calc(1rem * 2 + 31rem))`); it was "unknown", which hid MDN's sidebar margins.
+- An absolutely positioned replaced box with a width and `height: auto` takes the height its aspect ratio gives.
+- After a script adds a stylesheet to a document with shadow roots, the restyle is a full cascade (the incremental by-rule search does not walk shadow trees).
+- A shadow tree's rules reach its own host only through `:host`; a plain `.button` rule no longer styles `<mdn-button class=button>`.
+- Linked stylesheets: 64 per page (was 16; MDN links 17 and its footer sheet was dropped).
+- Compare-script caveat: Safari reports geometry for the contents of a closed `<details>` (content-visibility), BlueIce does not lay them out, so the sidebar list pairs up wrongly in a naive diff; and the viewport height must match (sticky sidebars are `100vh` tall).

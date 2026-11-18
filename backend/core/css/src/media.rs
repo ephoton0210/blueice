@@ -374,7 +374,64 @@ fn operator(tokens: &[Token]) -> Option<(Comparison, usize)> {
         if equal { 2 } else { 1 },
     ))
 }
+/// `tokens` with every `calc()`/`min()`/`max()`/`clamp()` call replaced by the pixel length it
+/// comes to (the root font size is 16px and there is no containing block), so a range such as
+/// `(width >= calc(1rem * 2 + 31rem))` reads like `(width >= 528px)`. `None` when one cannot
+/// be evaluated.
+fn fold_math(tokens: &[Token], env: &MediaEnvironment) -> Option<Vec<Token>> {
+    let mut out = Vec::with_capacity(tokens.len());
+    let mut i = 0;
+    while i < tokens.len() {
+        let is_math = matches!(&tokens[i], Token::Ident(n) if matches!(n.to_ascii_lowercase().as_str(), "calc" | "min" | "max" | "clamp"))
+            && tokens.get(i + 1) == Some(&Token::LeftParen);
+        if !is_math {
+            out.push(tokens[i].clone());
+            i += 1;
+            continue;
+        }
+        let mut depth = 0usize;
+        let mut end = None;
+        for (j, token) in tokens.iter().enumerate().skip(i + 1) {
+            match token {
+                Token::LeftParen => depth += 1,
+                Token::RightParen => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = Some(j);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let end = end?;
+        let calc = crate::calc::parse_calc(&tokens[i..=end])?;
+        let px = calc.to_px(&crate::value::LengthContext {
+            font_size: 16.0,
+            root_font_size: 16.0,
+            viewport_width: env.width,
+            viewport_height: env.height,
+            percent_base: f64::NAN,
+        })?;
+        out.push(Token::Dimension(px, "px".to_string()));
+        i = end + 1;
+    }
+    Some(out)
+}
+
 fn range(tokens: &[Token], env: &MediaEnvironment) -> Truth {
+    let folded;
+    let tokens = if tokens.iter().any(|t| matches!(t, Token::Ident(n) if n.eq_ignore_ascii_case("calc") || n.eq_ignore_ascii_case("min") || n.eq_ignore_ascii_case("max") || n.eq_ignore_ascii_case("clamp"))) {
+        match fold_math(tokens, env) {
+            Some(t) => {
+                folded = t;
+                &folded[..]
+            }
+            None => return Truth::Unknown,
+        }
+    } else {
+        tokens
+    };
     if tokens.len() < 3 {
         return Truth::Unknown;
     }

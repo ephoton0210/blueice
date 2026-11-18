@@ -479,7 +479,18 @@ fn compute_style_for(
             .selectors
             .iter()
             .filter(|s| match pseudo {
-                None => matches(doc, node, s),
+                None => {
+                    matches(doc, node, s)
+                        // The host answers its own shadow tree's rules only through `:host`.
+                        && indexed.rule.scope.is_none_or(|scope| {
+                            doc.tree_root(node) == scope
+                                || s.compounds.iter().any(|c| {
+                                    c.simple_selectors
+                                        .iter()
+                                        .any(|x| matches!(x, crate::selector::SimpleSelector::Pseudo(crate::selector::PseudoClass::Host(_))))
+                                })
+                        })
+                }
                 Some(which) => {
                     s.pseudo_element() == Some(which) && matches_pseudo_element(doc, node, s)
                 }
@@ -1176,6 +1187,27 @@ mod tests {
         assert_eq!(px(&inside, "margin-left"), Some(Value::Length(crate::value::Length::Px(3.0))));
         assert_eq!(px(&outside, "margin-left"), None, "a shadow tree's `div` rule is not the page's");
         assert_eq!(px(&host, "padding-left"), Some(Value::Length(crate::value::Length::Px(7.0))));
+    }
+
+    #[test]
+    fn a_shadow_trees_plain_selectors_do_not_match_its_own_host() {
+        // MDN's `mdn-button class=button` carries its own shadow `.button { padding: .5em }`:
+        // that rule is for the button inside, the host is reached only through `:host`.
+        let mut doc = Document::new();
+        let root = doc.root();
+        let host = elem(&mut doc, root, "mdn-button", &[("class", "button")]);
+        let shadow = doc.create_node(NodeData::Element { tag_name: "#fragment".into(), attributes: vec![] });
+        let inner = elem(&mut doc, shadow, "button", &[("class", "button")]);
+        doc.attach_shadow(host, shadow);
+        let mut author = parse(".button { padding-left: 9px } :host { margin-left: 3px } :host(.button) { margin-right: 4px }");
+        for rule in &mut author {
+            rule.scope = Some(shadow);
+        }
+        let styles = cascade(&doc, &[(Origin::Author, &author)]);
+        assert!(styles[&inner].other.contains_key("padding-left"));
+        assert!(!styles[&host].other.contains_key("padding-left"), "a plain selector is not about the host");
+        assert!(styles[&host].other.contains_key("margin-left"));
+        assert!(styles[&host].other.contains_key("margin-right"));
     }
 
     #[test]

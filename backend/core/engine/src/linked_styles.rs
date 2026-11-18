@@ -26,7 +26,7 @@ pub(crate) struct SheetLimits {
 }
 
 pub(crate) const DEFAULT_SHEET_LIMITS: SheetLimits = SheetLimits {
-    sheets: 16,
+    sheets: 64,
     bytes_each: 2 * 1024 * 1024,
     bytes_total: 6 * 1024 * 1024,
     redirects: 3,
@@ -341,6 +341,21 @@ mod tests {
             &allow_all
         )
         .is_empty());
+    }
+
+    #[test]
+    fn a_page_with_many_sheets_gets_them_all() {
+        // MDN links 17 sheets, the last of them its footer's; a browser loads every one.
+        let paths: Vec<&'static str> = (0..20)
+            .map(|n| &*Box::leak(format!("/s{n}.css").into_boxed_str()))
+            .collect();
+        let (origin, _) = serve(paths.iter().map(|p| css(p, "p{}")).collect());
+        let html: String = (0..20)
+            .map(|n| format!("<link rel=stylesheet href=/s{n}.css>"))
+            .collect();
+        let sheets = fetch(&html, &format!("{origin}/"), &allow_all);
+        assert_eq!(sheets.len(), 20);
+        assert!(sheets.contains_key("/s19.css"), "the 20th link is fetched too");
     }
 
     #[test]

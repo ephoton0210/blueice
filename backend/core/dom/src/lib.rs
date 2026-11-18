@@ -256,6 +256,11 @@ impl Document {
         self.shadow_roots.iter().find(|(_, r)| **r == root).map(|(h, _)| *h)
     }
 
+    /// Every shadow root, for tests that style a shadow tree by hand.
+    pub fn shadow_roots_for_test(&self) -> Vec<NodeId> {
+        self.shadow_roots.values().copied().collect()
+    }
+
     /// Whether any element carries a shadow root.
     pub fn has_shadow_roots(&self) -> bool {
         !self.shadow_roots.is_empty()

@@ -770,6 +770,18 @@ fn layout_block_level_uncached(
     let border = style.border(cbw);
     let pb_h = padding.horizontal() + border.horizontal();
     let pb_v = padding.vertical() + border.vertical();
+    // A picture whose width is given but whose height is `auto` (an absolutely positioned `svg`
+    // with `width: 20%`) takes the height its aspect ratio leaves it.
+    let mut forced = forced;
+    if forced.width.is_some()
+        && forced.height.is_none()
+        && ctx.tag(node).is_some_and(is_replaced_tag)
+        && !blueice_css::is_pseudo_node(node)
+    {
+        if let Some((_, h)) = crate::inline::replaced_size(ctx, node, &style, cbw) {
+            forced.height = Some(h + pb_v);
+        }
+    }
     // A picture laid out as a block (`img { display: block }` is every CSS reset's rule) is as
     // big as the picture says, not as wide as its container: the size it would have as an
     // inline box becomes the size forced on this one.
@@ -909,12 +921,19 @@ fn layout_block_level_uncached(
     let child_cb_height = specified_height.map(clamp_height);
 
     // A flex or grid item is a formatting root of its own.
-    let is_item = !blueice_css::is_pseudo_node(node) && ctx.parent(node).is_some_and(|p| {
-        matches!(
-            ctx.style(p).display(),
-            Display::Flex | Display::InlineFlex | Display::Grid | Display::InlineGrid
-        )
-    });
+    // A `display: contents` parent has no box: its children are the container's items.
+    let is_item = !blueice_css::is_pseudo_node(node) && {
+        let mut parent = ctx.parent(node);
+        while let Some(p) = parent.filter(|p| ctx.style(*p).display() == Display::Contents) {
+            parent = ctx.parent(p);
+        }
+        parent.is_some_and(|p| {
+            matches!(
+                ctx.style(p).display(),
+                Display::Flex | Display::InlineFlex | Display::Grid | Display::InlineGrid
+            )
+        })
+    };
     let bfc = is_item || is_bfc_root(&style, display, c.root);
     let collapse_top = !bfc && padding.top == 0.0 && border.top == 0.0;
     let collapse_bottom = !bfc
@@ -1593,6 +1612,111 @@ mod tests {
         let inside = drawn(p_in).expect("the slotted paragraph is drawn");
         assert_eq!(inside.1, 10.0, "inside the shadow div's padding");
         assert!(drawn(p_out).is_none(), "a child that names no slot is not drawn");
+    }
+
+    #[test]
+    fn an_absolutely_positioned_svg_with_a_width_and_auto_height_keeps_its_aspect_ratio() {
+        let f = body_fragment(
+            "<div class=c><svg id=s width=100 height=100 viewBox='0 0 100 100'></svg></div>",
+            ".c { position: relative; width: 400px; height: 50px } svg { position: absolute; right: 0; top: 0; width: 20%; height: auto }",
+            400.0,
+        );
+        let svg = &f.children[0].children[0];
+        assert_eq!((svg.width, svg.height), (80.0, 80.0));
+    }
+
+    #[test]
+    fn a_flex_item_svg_keeps_the_size_its_attributes_give() {
+        // MDN's search button: a flex row holding a 24x24 `svg` (and a `::before` box).
+        let f = body_fragment(
+            "<button class=b><svg width=24 height=24 viewBox='0 0 24 24'></svg></button>",
+            "*, ::after, ::before { box-sizing: border-box } .b { display: flex; align-items: center; padding: 4px 4px 4px 12px; border: 1px solid; width: 80px; justify-content: space-between } .b::before { content: ''; height: 18px; width: 15px; border-bottom: 2px solid }",
+            400.0,
+        );
+        let button = &f.children[0];
+        let svg = button.children.last().unwrap();
+        assert_eq!((svg.width, svg.height), (24.0, 24.0), "{:?}", button.children.iter().map(|c| (c.width, c.height)).collect::<Vec<_>>());
+        assert_eq!(button.height, 34.0);
+    }
+
+    #[test]
+    fn a_shadow_rooted_search_button_with_lit_markers_keeps_its_svg_height() {
+        // MDN's server-rendered `mdn-search-button`, markers and whitespace included.
+        let html = "<body style='overflow:hidden'><nav style='display:grid;grid-template-columns:min-content 1fr min-content;column-gap:16px'><div>l</div><div>m</div><div><mdn-search-button><template shadowrootmode=open><style>.b{align-items:center;border:1px solid;display:flex;justify-content:space-between;margin:0;padding:.25rem .25rem .25rem .75rem;width:5rem}.b:before{content:'';height:18px;width:15px;border-bottom:2px solid}</style><!--lit-part X--><!--lit-node 0--><button class=b title=s\n    >\n      <!--lit-part Y--><svg xmlns='http://www.w3.org/2000/svg' width=24 height=24 viewBox='0 0 24 24'><path d='m21 21'/></svg><!--/lit-part-->\n    </button><!--/lit-part--></template></mdn-search-button></div></nav></body>";
+        let doc = blueice_html::parse(html);
+        let ua = ua_stylesheet();
+        let mut author = Vec::new();
+        for node in doc.shadow_roots_for_test() {
+            for k in doc.children(node) {
+                if let NodeData::Element { tag_name, .. } = doc.data(k) {
+                    if tag_name == "style" {
+                        let text: String = doc.children(k).filter_map(|t| match doc.data(t) { NodeData::Text { data } => Some(data.clone()), _ => None }).collect();
+                        let mut rules = blueice_css::parse(&text).rules;
+                        for r in &mut rules { r.scope = Some(node); }
+                        author.extend(rules);
+                    }
+                }
+            }
+        }
+        let styles = cascade(&doc, &[(Origin::Ua, &ua), (Origin::Author, &author)]);
+        let body = find_by_tag(&doc, doc.root(), "body").unwrap();
+        let f = layout_block(&doc, body, &styles, 400.0);
+        fn find<'a>(f: &'a Fragment, doc: &Document, tag: &str) -> Option<&'a Fragment> {
+            if f.node.is_some_and(|n| matches!(doc.data(n), NodeData::Element { tag_name, .. } if tag_name == tag)) {
+                return Some(f);
+            }
+            f.children.iter().find_map(|c| find(c, doc, tag))
+        }
+        let button = find(&f, &doc, "button").expect("button");
+        let svg = find(&f, &doc, "svg").expect("svg");
+        assert_eq!((svg.width, svg.height), (24.0, 24.0));
+        assert_eq!(button.height, 34.0);
+    }
+
+    #[test]
+    fn an_item_under_a_display_contents_child_of_a_grid_is_still_an_item() {
+        // MDN: `<main style="display: contents"><div class=header><h1>` in a grid.
+        let f = body_fragment(
+            "<div class=g><main><div class=i><h1>t</h1></div></main></div>",
+            ".g { display: grid; grid-template-columns: 1fr } main { display: contents } h1 { margin: 16px 0; height: 20px }",
+            400.0,
+        );
+        let item = &f.children[0].children[0];
+        assert_eq!((item.children[0].y, item.height), (16.0, 52.0));
+    }
+
+    #[test]
+    fn an_empty_inline_before_a_block_makes_no_line_and_keeps_the_blocks_margin() {
+        // MDN: `<mdn-survey></mdn-survey><h1>` in a grid item; Safari puts the h1 16px down.
+        let f = body_fragment(
+            "<div class=g><div class=i><x-s></x-s><h1>t</h1></div></div>",
+            ".g { display: grid; grid-template-columns: 1fr } .i { grid-area: 1 / 1 } h1 { margin: 16px 0; height: 20px } x-s { margin-top: 8px }",
+            400.0,
+        );
+        let item = &f.children[0].children[0];
+        let h1 = item.children.last().unwrap();
+        assert_eq!((h1.y, item.height), (16.0, 52.0), "{:?}", item.children.iter().map(|c| (c.y, c.height)).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn a_grid_items_first_childs_margin_stays_inside_the_item() {
+        let f = body_fragment(
+            "<div class=g><div class=i><h1>t</h1></div></div>",
+            ".g { display: grid; grid-template-columns: 1fr } .i { grid-area: 1 / 1 } h1 { margin: 16px 0; height: 20px }",
+            400.0,
+        );
+        let item = &f.children[0].children[0];
+        assert_eq!(item.children[0].y, 16.0, "the margin is inside the item, which is a formatting root");
+        assert_eq!(item.height, 52.0);
+        // The same with named areas and a second row, as MDN's reference layout.
+        let f = body_fragment(
+            "<div class=g><div class=i><h1>t</h1><p>p</p></div><div class=j>j</div></div>",
+            ".g { display: grid; grid-template-columns: 1fr 100px; grid-template-areas: 'header side' 'body side' } .i { grid-area: header } .j { grid-area: side } h1 { margin: 16px 0; height: 20px } p { margin: 0; height: 30px }",
+            400.0,
+        );
+        let item = &f.children[0].children[0];
+        assert_eq!(item.children[0].y, 16.0, "named areas: {:?}", (item.y, item.height));
+        assert_eq!(item.height, 82.0);
     }
 
     #[test]
