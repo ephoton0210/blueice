@@ -1300,3 +1300,10 @@ Open, separate gap found on MDN: Lit custom elements never upgrade because dynam
 - A shadow tree's rules reach its own host only through `:host`; a plain `.button` rule no longer styles `<mdn-button class=button>`.
 - Linked stylesheets: 64 per page (was 16; MDN links 17 and its footer sheet was dropped).
 - Compare-script caveat: Safari reports geometry for the contents of a closed `<details>` (content-visibility), BlueIce does not lay them out, so the sidebar list pairs up wrongly in a naive diff; and the viewport height must match (sticky sidebars are `100vh` tall).
+
+### MDN layout fixes (third round)
+
+- **Comment nodes never match selectors.** Lit's `<!--lit-part-->` markers are stored as `#comment` elements; `matches()` now returns false for them, `previous_element`/`element_sibling` skip them and `:empty` ignores them. Root cause of "custom elements never defined": `querySelectorAll('*')` returned comment nodes and broke the upgrade loop. Regression: `selectors_and_element_lists_never_include_a_comment_node`.
+- **Grid longhands.** `grid-row-end: span N` / `grid-column-start` are honoured (`placement_of` longhand override, `Value::List` span in `parse_single_line`); fixes the MDN footer row heights. Test: `the_longhands_grid_row_end_and_grid_column_start_place_and_span_an_item`.
+- Dynamic imports started while a module waits on top-level await all settle (regression test in `page/web_scripts.rs`).
+- MDN `/docs/Web/CSS`: body height 4270 = Safari; footer within 1px. Open: 1px accumulated offset after the second-level h2 (2838 vs 2837).

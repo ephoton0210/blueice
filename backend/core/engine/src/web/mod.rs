@@ -478,6 +478,17 @@ mod tests {
     }
 
     #[test]
+    fn selectors_and_element_lists_never_include_a_comment_node() {
+        // The `*` walk that loads a page's custom elements calls `tagName.toLowerCase()` on
+        // every hit; a comment (no tag name) in the list stops it for the rest of the page.
+        let mut h = host("<div id=d><!--lit-part--><b>x</b><!--/lit-part--><mdn-late></mdn-late></div>");
+        assert_eq!(
+            log(&mut h, "const all = [...document.querySelectorAll('*')]; console.log(all.every((e) => e.nodeType === 1 && typeof e.tagName === 'string'), all.map((e) => e.tagName).join(','), document.getElementById('d').children.length, document.getElementById('d').getElementsByTagName('*').length, document.querySelector('b').previousElementSibling, document.querySelectorAll('#d > *').length)"),
+            "[log] true HTML,HEAD,BODY,DIV,B,MDN-LATE 2 2 null 2"
+        );
+    }
+
+    #[test]
     fn a_lit_marker_comment_is_a_comment_node_with_element_siblings() {
         let mut h = host("<div id=d><!--lit-node 0--><b id=n>x</b><!--/lit-part--></div>");
         assert_eq!(

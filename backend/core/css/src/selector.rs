@@ -779,7 +779,7 @@ pub fn with_scope<R>(scope: NodeId, f: impl FnOnce() -> R) -> R {
 /// descendant/child combinators and across siblings for `+` and `~`.
 pub fn matches(doc: &Document, node: NodeId, selector: &ComplexSelector) -> bool {
     let n = selector.compounds.len();
-    if n == 0 {
+    if n == 0 || is_comment(doc, node) {
         return false;
     }
     if !compound_matches(doc, node, &selector.compounds[n - 1]) {
@@ -799,10 +799,15 @@ pub fn matches_pseudo_element(doc: &Document, node: NodeId, selector: &ComplexSe
         && matches_from(doc, selector, n - 1, node)
 }
 
+/// A comment node (kept as an element named `#comment`): no selector matches it.
+fn is_comment(doc: &Document, node: NodeId) -> bool {
+    matches!(doc.data(node), NodeData::Element { tag_name, .. } if tag_name == "#comment")
+}
+
 fn previous_element(doc: &Document, node: NodeId) -> Option<NodeId> {
     let mut sibling = doc.prev_sibling(node);
     while let Some(s) = sibling {
-        if matches!(doc.data(s), NodeData::Element { .. }) {
+        if matches!(doc.data(s), NodeData::Element { .. }) && !is_comment(doc, s) {
             return Some(s);
         }
         sibling = doc.prev_sibling(s);

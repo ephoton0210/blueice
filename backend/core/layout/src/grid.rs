@@ -299,6 +299,23 @@ fn parse_line(tokens: &[Token]) -> Line {
     }
 }
 
+/// One `grid-row-start`-style line: `3`, `span 2`, a name or `auto`.
+fn parse_single_line(value: &Value) -> Line {
+    match value {
+        Value::Unparsed(t) => parse_line(t),
+        Value::Keyword(k) if k == "auto" => Line::Auto,
+        Value::Keyword(k) => Line::Name(k.clone()),
+        Value::Number(n) => Line::Num(*n as i32),
+        Value::List(parts) => match parts.as_slice() {
+            [Value::Keyword(w), Value::Number(n)] | [Value::Number(n), Value::Keyword(w)] if w == "span" => {
+                Line::Span((*n as usize).max(1))
+            }
+            _ => Line::Auto,
+        },
+        _ => Line::Auto,
+    }
+}
+
 fn parse_pair(value: Option<&Value>) -> (Line, Line) {
     let tokens = match value {
         Some(Value::Unparsed(t)) => t.as_slice(),
@@ -423,6 +440,18 @@ fn placement_of(
     let style = ctx.style(node);
     let (mut rs, mut re) = parse_pair(style.raw("grid-row"));
     let (mut cs, mut ce) = parse_pair(style.raw("grid-column"));
+    // The longhands win over the shorthand they are written after (the common case is that only
+    // one of the two is written).
+    for (property, line) in [
+        ("grid-row-start", &mut rs),
+        ("grid-row-end", &mut re),
+        ("grid-column-start", &mut cs),
+        ("grid-column-end", &mut ce),
+    ] {
+        if let Some(value) = style.raw(property) {
+            *line = parse_single_line(value);
+        }
+    }
     if let Some(value) = style.raw("grid-area") {
         match value {
             Value::Keyword(name) if name != "auto" => {
@@ -1363,6 +1392,22 @@ mod tests {
         let styles = cascade(&doc, &[(Origin::Ua, &ua), (Origin::Author, &author)]);
         let body = find(&doc, doc.root(), "body").unwrap();
         layout_block(&doc, body, &styles, width).children.remove(0)
+    }
+
+    #[test]
+    fn the_longhands_grid_row_end_and_grid_column_start_place_and_span_an_item() {
+        // MDN's footer: `.links { grid-row-end: span 2 }` beside two one-row items; the
+        // spanning item's height is shared by the two rows it covers.
+        let f = grid(
+            "<i class=a>a</i><i class=b>b</i><i class=l>l</i>",
+            ".g { grid-template-columns: 100px 100px; row-gap: 10px } .a { height: 20px; grid-area: 1 / 1 } .b { height: 10px; grid-area: 2 / 1 } .l { height: 100px; grid-column-start: 2; grid-row-end: span 2 }",
+            400.0,
+        );
+        let b = boxes(&f);
+        assert_eq!(b[2].1, 0.0, "the spanning item starts in the first row: {b:?}");
+        assert_eq!(b[2].3, 100.0);
+        // Rows: 20 and 10 plus (100 - 10 - 30) / 2 = 30 each, so row 2 starts at 50 + 10.
+        assert_eq!(b[1].1, 60.0, "{b:?}");
     }
 
     fn boxes(f: &Fragment) -> Vec<(f64, f64, f64, f64)> {

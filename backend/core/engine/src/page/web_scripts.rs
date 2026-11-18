@@ -1490,6 +1490,33 @@ mod tests {
     }
 
     #[test]
+    fn dynamic_imports_started_while_a_module_waits_on_top_level_await_all_settle() {
+        // Webpack's runtime: an entry module awaits `Promise.all` over `import()`s of chunks,
+        // several started at once, some from code that runs while the entry is suspended.
+        let mut p = Page::new(400.0, 300.0);
+        p.set_web_scripts(true);
+        for n in 1..=6 {
+            p.pending_linked_modules.insert(
+                format!("/c/{n}.js"),
+                format!("export const ids = [{n}]; export const modules = {{ m{n}: () => {n} }};"),
+            );
+        }
+        p.load_html_str(
+            "<body><p id=p>x</p><script type=module>\
+             const out = [];\
+             const load = (n) => import('/c/' + n + '.js').then((m) => { out.push(m.ids[0]); });\
+             window.single = load(1);\
+             await Promise.all([load(2), load(3), load(4)]);\
+             await Promise.all([load(5)]);\
+             await load(6);\
+             document.getElementById('p').textContent = out.sort().join('-');\
+             </script></body>",
+            Some("https://example.com/".into()),
+        );
+        assert_eq!(texts(&p), vec!["1-2-3-4-5-6"]);
+    }
+
+    #[test]
     fn a_module_that_fails_to_link_ends_only_itself() {
         let mut p = Page::new(400.0, 300.0);
         p.set_web_scripts(true);
