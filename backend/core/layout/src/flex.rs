@@ -94,6 +94,33 @@ struct Item {
     cross_pos: f64,
 }
 
+/// Whether `item` is a `<textarea>` whose height is only the one its `rows` (or the default two
+/// rows) give it. That height is the control's intrinsic size, not an author's `height`, so in a
+/// row it stretches to its line like any auto-height item.
+fn self_sized_text_area(
+    ctx: &Ctx<'_>,
+    item: &Item,
+    style: Option<&Style<'_>>,
+    row: bool,
+    container_cross: Option<f64>,
+) -> bool {
+    let (Source::Element(node), Some(style), true) = (&item.source, style, row) else {
+        return false;
+    };
+    if ctx.tag(*node) != Some("textarea") {
+        return false;
+    }
+    let rows = ctx
+        .attr(*node, "rows")
+        .and_then(|r| r.trim().parse::<u32>().ok())
+        .filter(|n| (1..=10_000).contains(n))
+        .map_or(2.3636, |n| f64::from(n) * 1.1818);
+    let expected = rows * style.font_size();
+    style
+        .px("height", container_cross.unwrap_or(f64::NAN))
+        .is_some_and(|h| (h - expected).abs() < 0.01)
+}
+
 impl Item {
     fn margin_main(&self, row: bool, start: bool) -> Option<f64> {
         let index = match (row, start) {
@@ -439,7 +466,7 @@ pub(crate) fn layout_flex(ctx: &Ctx<'_>, container: NodeId, input: &FlexInput) -
             s.px(cross_prop, container_cross.unwrap_or(f64::NAN))
                 .map(|v| border_box(s, v, pb_cross))
         });
-        item.cross_definite = specified_cross.is_some();
+        item.cross_definite = specified_cross.is_some() && !self_sized_text_area(ctx, item, style.as_ref(), row, container_cross);
 
         // Column items need a width to measure their height against.
         let column_width = if row {
@@ -1210,6 +1237,22 @@ mod tests {
             300.0,
         );
         assert_eq!(ys(&self_override), vec![0.0, 60.0, 0.0]);
+    }
+
+    #[test]
+    fn a_textarea_in_a_wrapping_flex_row_stretches_to_the_line() {
+        // Google's search box: `.a4bIc { display:flex; flex-wrap:wrap; height:50px }` holding a
+        // `textarea { width:100%; border-bottom:8px solid transparent; padding-top:14px }`.
+        // A single wrapped line takes the container's whole cross size and its auto-height
+        // item stretches across it.
+        let f = flex(
+            "<div class=f><textarea class=t rows=1></textarea></div>",
+            ".f { display: flex; flex-wrap: wrap; height: 50px } \
+             .t { width: 100%; line-height: 22px; border: none; border-bottom: 8px solid transparent; padding: 14px 0 0; margin: 0; display: flex }",
+            300.0,
+        );
+        let t = &f.children[0];
+        assert!((t.height - 50.0).abs() < 0.01, "textarea height {}", t.height);
     }
 
     #[test]

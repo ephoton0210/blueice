@@ -597,7 +597,8 @@ mod tests {
             linked_images.len(),
             started.elapsed()
         );
-        let mut page = Page::new(width, 900.0);
+        let height: f64 = std::env::var("BI_HEIGHT").ok().and_then(|h| h.parse().ok()).unwrap_or(900.0);
+        let mut page = Page::new(width, height);
         let scripts = std::env::var("BI_SCRIPTS").is_ok();
         if scripts {
             page.set_web_scripts(true);

@@ -1308,3 +1308,17 @@ Open, separate gap found on MDN: Lit custom elements never upgrade because dynam
 - Dynamic imports started while a module waits on top-level await all settle (regression test in `page/web_scripts.rs`).
 - MDN `/docs/Web/CSS`: body height 4270 = Safari; footer within 1px. Open: 1px accumulated offset after the second-level h2 (2838 vs 2837).
 - **The remaining 1px on MDN is a font-metrics difference, not layout.** `dd > p` lines holding `<code>` are 28.25px in Safari (its system monospace has ascent+descent whose half-leading puts 8.25 below the baseline) and 28.5px here (bundled monospace: ascent 16 / descent 5). Layout arithmetic is identical; the sum of rounded line boxes drifts 1px over ~10 such lines. Fixing it means using the platform's own monospace face metrics (a font-availability question, tracked with `system-ui` metrics on the Google home page). `BI_FRAC=1` now prints fragment boxes with two decimals to make this visible.
+
+### Google home vs Safari (fourth round)
+
+Compared at Safari's own viewport (`BI_WIDTH=1280 BI_HEIGHT=848`; the harness used to hard-code 900 tall, which moved every flexible-height box). Fixed:
+
+- **A float gives its inline-block parent no baseline.** `.gb_D{display:inline-block}` holding only a floated link rests on its bottom edge, so the line keeps the strut's descent (header 48 → 53px). Float fragments are now `out_of_flow`.
+- **A `<textarea>` whose height is only its `rows` size stretches in a flex line.** The UA/presentational height is the control's intrinsic size, not an author height (search field 41 → 50px).
+- **A fixed-height `<button>` centres its block content** vertically (WebKit), e.g. the "AI Mode" button's 20px row in 36px.
+
+Still different, with the reason:
+
+- Safari is signed in (avatar in the header) and is served a different variant of the buttons row; that is page state, not rendering.
+- The voice-search icon is absent here because the page feature-detects `webkitSpeechRecognition`, which BlueJS does not provide (a missing Web API, tracked in `BROWSER_INTEGRATION_TODO.md`).
+- **Not an interpretation difference, still open:** `transform: rotate/scale/skew`, the `rotate` property, `mask-image: conic-gradient` and `filter: blur` are not painted (`.tgPjse`/`.Tdahud`/`.eruMcc`, the animated glow around the AI-mode button). Layout of those boxes differs from Safari's reported (rotated) bounds for the same reason.

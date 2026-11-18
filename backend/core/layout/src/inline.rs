@@ -2868,6 +2868,21 @@ mod tests {
     }
 
     #[test]
+    fn an_inline_block_holding_only_a_float_sits_on_its_bottom_edge() {
+        // Google's header apps button: an inline-block 48px tall whose only content is a
+        // floated link. A float is out of flow, so the box has no line of its own and rests on
+        // its bottom margin edge, leaving the strut's descent beneath it.
+        let f = body(
+            "<!DOCTYPE html><div><span class=box><a>Go</a></span></div>",
+            "div { line-height: 24px; font-size: 16px } .box { display: inline-block; height: 48px } \
+             a { float: right; display: inline-block; height: 40px }",
+            600.0,
+        );
+        let line = &f.children[0];
+        assert!(line.height > 48.0 + 2.0, "line {} should hold the box plus the strut's descent", line.height);
+    }
+
+    #[test]
     fn a_select_sits_on_the_baseline_of_its_text() {
         // rust-lang.org's language menu: a 23px select in a 28.8px-line div. Its text baseline,
         // not its bottom edge, meets the line's baseline, so the line is 29px, not 32.

@@ -355,6 +355,8 @@ pub(crate) fn layout_flow(
                 let (fx, fy) = float::place(&all_floats, side, w, h, top, content_width);
                 fragment.x = fx + ml;
                 fragment.y = fy + mt;
+                // A float is out of flow: its lines never give its parent a baseline.
+                fragment.out_of_flow = true;
                 let rect = FloatRect {
                     left: fx,
                     top: fy,
@@ -1180,6 +1182,18 @@ fn layout_block_level_uncached(
     let content_height = clamp_height(specified_height.unwrap_or(intrinsic_height));
     let origin_x = border.left + padding.left;
     let origin_y = border.top + padding.top;
+    // WebKit centres a button's content in the room a fixed height leaves it. (A flex or grid
+    // button lays its own items out, so only a plain block-flow button needs this.)
+    let button_centering = if ctx.tag(node) == Some("button")
+        && specified_height.is_some()
+        && !is_native
+        && !matches!(display, Display::Flex | Display::InlineFlex | Display::Grid | Display::InlineGrid)
+    {
+        ((content_height - intrinsic_height) / 2.0).max(0.0)
+    } else {
+        0.0
+    };
+    let origin_y = origin_y + button_centering;
     for f in &mut children {
         f.x += origin_x;
         f.y += origin_y;
@@ -1623,6 +1637,20 @@ mod tests {
         );
         let svg = &f.children[0].children[0];
         assert_eq!((svg.width, svg.height), (80.0, 80.0));
+    }
+
+    #[test]
+    fn a_fixed_height_button_centres_its_block_content_vertically() {
+        // Google's "AI Mode" button: `height: 36px; padding: 0 8px` around a 20px-tall flex row.
+        // WebKit centres a button's content in the room its height leaves.
+        let f = body_fragment(
+            "<button class=b><div class=c>x</div></button>",
+            ".b { height: 36px; padding: 0 8px; border: 0 } .c { display: flex; height: 20px }",
+            400.0,
+        );
+        let button = &f.children[0].children[0];
+        assert_eq!(button.height, 36.0);
+        assert_eq!(button.children[0].y, 8.0, "content sits in the middle of the button");
     }
 
     #[test]
