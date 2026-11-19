@@ -176,6 +176,16 @@ impl ScopeModel<'_> {
         (!binding?.type_only).then(|| BindingId(scope, name.into()))
     }
 
+    /// Flow stores a complete callable signature, while the module's legacy
+    /// value map may store only its result. Compare the lexical owner rather
+    /// than these different representations, preserving local shadowing.
+    pub(in crate::checker) fn module_function_reference(&self, name: &str, offset: usize) -> bool {
+        self.resolve(self.scope_at(offset), name, Meaning::Value)
+            .is_some_and(|(scope, binding)| {
+                scope == 0 && binding.is_some_and(|binding| binding.kind == BindingKind::Function)
+            })
+    }
+
     pub(super) fn flow_declared(&self, id: &BindingId) -> Type {
         self.scopes[id.0]
             .values

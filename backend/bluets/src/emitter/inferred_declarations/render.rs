@@ -253,10 +253,12 @@ impl Context<'_> {
         indent: usize,
         span: &SourceSpan,
     ) -> Result<String, Diagnostic> {
+        let value = value.semantic_type();
         if let Some(rendered) = self.render_operator(value, indent, span) {
             return rendered;
         }
         Ok(match value {
+            Type::RuntimeQualified { .. } => unreachable!("semantic declaration type"),
             Type::Predicate(predicate) => {
                 let target = predicate
                     .target

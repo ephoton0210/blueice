@@ -20,7 +20,7 @@ mod result_parameters;
 mod results;
 mod surfaces;
 
-pub(crate) const VERSION: &str = "bluets-generic-inference/18";
+pub(crate) const VERSION: &str = "bluets-generic-inference/20";
 
 pub(in crate::checker) fn depends_on_parameter(
     value: &Type,
@@ -59,6 +59,7 @@ pub(in crate::checker) fn declared_parameter<'a>(
     value: &Type,
     parameters: &'a [TypeParameter],
 ) -> Option<&'a TypeParameter> {
+    let value = value.semantic_type();
     let Type::Named { name, arguments } = value else {
         return None;
     };

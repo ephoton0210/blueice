@@ -1,0 +1,123 @@
+{
+  "conclusion": "all-archive-fragments-and-complete-file-bytes-independently-verified",
+  "archives": 25,
+  "files": 1664840,
+  "fragments": 1665105,
+  "bytes": 7912538836,
+  "requiredHashesVerified": 1664840,
+  "wholeP0JComplete": false,
+  "recordedAt": "2026-11-19T20:06:49.342406+00:00",
+  "sourceRevision": "backend-tree:fd642c71683fbd992d1319e5598c51f5379dc766",
+  "artifactIndexSha256": "70cd7dee303ffdce51728e2bb820d138793866401076b2fee478afad18a96ba2",
+  "runtimeAuditSha256": "be37d7f4f70346d742087225adf11e202069459e2bab814ce2106c2f7666be4e",
+  "compilerProfiles": [
+    {
+      "profile": "native",
+      "compilerSha256": "a15efd2650d97411931408b4037883bc157acf792b35883606760b1d8ef6b2af",
+      "counts": {
+        "semanticProducers": 816,
+        "ownerProducers": 480,
+        "semanticAccepted": 768,
+        "semanticRejected": 48,
+        "exactSemanticDeclarations": 912,
+        "completeSemanticMaps": 1824,
+        "completeSemanticSegments": 27804,
+        "consumerPrograms": 6144,
+        "consumerDirections": [
+          "native/native",
+          "native/blue",
+          "blue/native",
+          "blue/blue"
+        ],
+        "realExecutions": 768,
+        "ownerNegativeRefusalsAtAuthoredMutation": 384,
+        "ownerPositiveControls": 96,
+        "exactOwnerPositiveDeclarations": 96,
+        "completeOwnerPositiveMaps": 192,
+        "completeOwnerPositiveSegments": 3312,
+        "totalExactDeclarations": 1008,
+        "totalCompleteMaps": 2016,
+        "totalSyntaxChecks": 1008
+      },
+      "physicalFiles": 25488,
+      "physicalReads": 29520
+    },
+    {
+      "profile": "workspace",
+      "compilerSha256": "a4085867a1e4a6c2ed7c6705ffaa9d31030f2bcc22a61145a11b1548ef5155fa",
+      "counts": {
+        "semanticProducers": 816,
+        "ownerProducers": 480,
+        "semanticAccepted": 768,
+        "semanticRejected": 48,
+        "exactSemanticDeclarations": 912,
+        "completeSemanticMaps": 1824,
+        "completeSemanticSegments": 27804,
+        "consumerPrograms": 6144,
+        "consumerDirections": [
+          "native/native",
+          "native/blue",
+          "blue/native",
+          "blue/blue"
+        ],
+        "realExecutions": 768,
+        "ownerNegativeRefusalsAtAuthoredMutation": 384,
+        "ownerPositiveControls": 96,
+        "exactOwnerPositiveDeclarations": 96,
+        "completeOwnerPositiveMaps": 192,
+        "completeOwnerPositiveSegments": 3312,
+        "totalExactDeclarations": 1008,
+        "totalCompleteMaps": 2016,
+        "totalSyntaxChecks": 1008
+      },
+      "physicalFiles": 25488,
+      "physicalReads": 29520
+    },
+    {
+      "profile": "standalone",
+      "compilerSha256": "b2d09d2f09292be4f7640fdfdf9c39f2909f38dd4490cbb144712c34dad6d830",
+      "counts": {
+        "semanticProducers": 816,
+        "ownerProducers": 480,
+        "semanticAccepted": 768,
+        "semanticRejected": 48,
+        "exactSemanticDeclarations": 912,
+        "completeSemanticMaps": 1824,
+        "completeSemanticSegments": 27804,
+        "consumerPrograms": 6144,
+        "consumerDirections": [
+          "native/native",
+          "native/blue",
+          "blue/native",
+          "blue/blue"
+        ],
+        "realExecutions": 768,
+        "ownerNegativeRefusalsAtAuthoredMutation": 384,
+        "ownerPositiveControls": 96,
+        "exactOwnerPositiveDeclarations": 96,
+        "completeOwnerPositiveMaps": 192,
+        "completeOwnerPositiveSegments": 3312,
+        "totalExactDeclarations": 1008,
+        "totalCompleteMaps": 2016,
+        "totalSyntaxChecks": 1008
+      },
+      "physicalFiles": 25488,
+      "physicalReads": 29520
+    }
+  ],
+  "symbolicLinksStoredAsMetadata": 24,
+  "backendFiles": 14239,
+  "originalCaseObjectsPreserved": 43276,
+  "newPrimaryAndSeparateControls": 216,
+  "originalFixturePathsPreserved": 12224,
+  "originalToolNamesPreserved": 621,
+  "originalToolFilesByteIdentical": 619,
+  "mechanicallyCorrectedOriginalTools": 2,
+  "oracleHostCorrectionsSha256": "287056fd44b301bdd1d58f165a381bda0bcbca59b4371004115b87232616f646",
+  "allFrozenRuntimeRequirementsPassed": true,
+  "allPublishedBytesIndependentlyVerified": true,
+  "TODOUncheckedAtAudit": true,
+  "commitPerformed": false,
+  "fullTypeScriptParity": false,
+  "auditToolSha256": "a2e2026913fe6d6e12d564561c79c5375a8dc27e45ddf8b4e82577769466551d"
+}

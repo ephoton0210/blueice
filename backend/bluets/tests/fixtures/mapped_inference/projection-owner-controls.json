@@ -39,7 +39,7 @@
         "main.d.ts": "export declare function result<T>(value: unknown): T;\n"
       },
       "source": "export function result<T>(value: unknown): T { return value as unknown as T; }\n",
-      "blueAccepts": false
+      "blueAccepts": true
     },
     {
       "id": "readonly-cannot-acquire-parameter",

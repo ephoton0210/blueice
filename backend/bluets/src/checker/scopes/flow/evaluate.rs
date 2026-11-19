@@ -316,7 +316,11 @@ fn expression(
                         Type::Union(_) | Type::Unknown | Type::Any
                     ) && actual != Type::Unknown
                 {
-                    actual = declared;
+                    actual = if declared == Type::Any {
+                        declared
+                    } else {
+                        declared.retaining_runtime_qualifiers(&actual)
+                    };
                 }
                 if actual != Type::Unknown || reset_unknown {
                     actual = assignments::named_union_assignment(

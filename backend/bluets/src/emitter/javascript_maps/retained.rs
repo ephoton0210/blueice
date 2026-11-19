@@ -250,14 +250,16 @@ pub(super) fn end_anchors(
             let head = header(tokens, function, body);
             if let Some(open) = head.iter().position(|token| token.is("(")) {
                 if let Some(close) = super::closing_parenthesis(head, open) {
-                    anchors.insert(
-                        head[close].end,
-                        if close == open + 1 {
-                            head[open].start
-                        } else {
-                            head[close].start
-                        },
-                    );
+                    if function.return_type.is_none() {
+                        anchors.insert(
+                            head[close].end,
+                            if close == open + 1 {
+                                head[open].start
+                            } else {
+                                head[close].start
+                            },
+                        );
+                    }
                 }
             }
             if let Some(arrow) = arrow(module, head) {
@@ -288,6 +290,12 @@ pub(super) fn anchors(
             .position(|token| token.start >= after_generics && token.is("("));
         if let Some(open) = open {
             parameter_opens.insert(head[open].start);
+            if function.kind == NestedFunctionKind::Arrow
+                && !function.type_parameters.is_empty()
+                && options.target >= crate::EcmaTarget::Es2015
+            {
+                anchors.insert(head[open].start, Some(function.span.start));
+            }
             if function.kind == NestedFunctionKind::Method {
                 let key_end = if function.type_parameters.is_empty() {
                     head.get(open.wrapping_sub(1)).map(|token| token.end)

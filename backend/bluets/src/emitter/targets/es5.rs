@@ -150,12 +150,54 @@ fn prepare_with_origins(
         let concise = matches!(function.body, NestedFunctionBody::Expression(_));
         let plain_concise = concise && capture.is_none();
         let source_concise = plain_concise && origins.is_source(module, function);
+        let annotated_concise = source_concise
+            && function.return_type.is_some()
+            && options.javascript_layout == crate::JavaScriptLayout::TypeScript;
+        let parameter_close = if single {
+            None
+        } else {
+            let after_generics = function
+                .type_parameters
+                .last()
+                .map_or(function.span.start, |parameter| parameter.span.end);
+            let open = tokens[start..arrow]
+                .iter()
+                .position(|token| token.is("(") && token.start >= after_generics)
+                .map(|index| start + index)
+                .ok_or_else(|| {
+                    unsupported(
+                        module,
+                        &function.span,
+                        "arrow parameter list was not retained",
+                    )
+                })?;
+            if annotated_concise {
+                edits.push(TextEdit {
+                    start: tokens[open].start,
+                    end: tokens[open].end,
+                    replacement: format!("{}(", crate::emitter::relocations::inherited()),
+                });
+            }
+            Some(
+                crate::emitter::javascript_maps::closing_parenthesis(&tokens, open).ok_or_else(
+                    || {
+                        unsupported(
+                            module,
+                            &function.span,
+                            "arrow parameter close was not retained",
+                        )
+                    },
+                )?,
+            )
+        };
         let wrap_concise =
             !source_concise || options.javascript_layout != crate::JavaScriptLayout::TypeScript;
         let prologue =
             parameters::prologue(module, &tokens, &function.parameters, edits, &mut sequence)?;
         let parameter_end = if single {
             tokens[arrow - 1].end
+        } else if annotated_concise {
+            tokens[parameter_close.expect("parenthesized arrow")].start
         } else {
             tokens[arrow - 1].start
         };
@@ -169,7 +211,11 @@ fn prepare_with_origins(
             parameter_end
         };
         let arrow_start = if (!concise || plain_concise) && !single {
-            tokens[arrow - 1].end
+            if annotated_concise {
+                tokens[parameter_close.expect("parenthesized arrow")].end
+            } else {
+                tokens[arrow - 1].end
+            }
         } else {
             tokens[arrow].start
         };
@@ -182,6 +228,8 @@ fn prepare_with_origins(
                             "{} ",
                             crate::emitter::relocations::source_anchor(signature_origin)
                         )
+                    } else if annotated_concise {
+                        " ".to_string()
                     } else {
                         String::new()
                     },
@@ -217,17 +265,32 @@ fn prepare_with_origins(
                 }
             )
         };
+        if annotated_concise {
+            // This header replacement consumes the erased result annotation.
+            // Keep an earlier, shorter erase at the same start from hiding it.
+            edits.retain(|edit| {
+                !(edit.replacement.is_empty()
+                    && arrow_start <= edit.start
+                    && edit.end <= tokens[arrow].end)
+            });
+        }
         edits.push(TextEdit {
             start: arrow_start,
             end: if concise { tokens[arrow].end } else { body.end },
             replacement: format!(
                 "{}{}{}{arrow_body}",
-                if concise && !plain_concise {
+                if annotated_concise {
+                    crate::emitter::relocations::inherited().to_string()
+                } else if concise && !plain_concise {
                     String::new()
                 } else {
                     crate::emitter::relocations::source_anchor(signature_origin)
                 },
-                &module.source[arrow_start..tokens[arrow].start],
+                &module.source[if annotated_concise {
+                    tokens[arrow - 1].end
+                } else {
+                    arrow_start
+                }..tokens[arrow].start],
                 if single { ")" } else { "" },
             ),
         });

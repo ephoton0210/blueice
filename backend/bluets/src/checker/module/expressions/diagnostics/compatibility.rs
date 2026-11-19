@@ -184,6 +184,32 @@ impl ModuleChecker<'_> {
         actual: &Type,
         expected: &Type,
     ) -> Option<String> {
+        if matches!(
+            expected,
+            Type::String | Type::Number | Type::Boolean | Type::BigInt | Type::Symbol
+        ) {
+            if let Some(parameter) = self
+                .bound_parameter_identity(actual)
+                .and_then(|identity| self.bound_parameters.get(&identity))
+            {
+                if let Some(constraint) = &parameter.constraint {
+                    let constraint =
+                        super::super::super::return_inference::widen(constraint.clone());
+                    let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
+                    budget.checking = self.checking;
+                    if !is_assignable(
+                        &constraint,
+                        expected,
+                        &self.types,
+                        &mut HashSet::new(),
+                        &mut budget,
+                    ) && !budget.exhausted
+                    {
+                        return Some(root_pair_detail(&constraint, expected, self.project));
+                    }
+                }
+            }
+        }
         if let Some(detail) = self.indexed_assignment_detail(actual, expected) {
             return Some(detail);
         }

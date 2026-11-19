@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "status": "native-frozen-before-implementation",
+  "package": "P0-J",
+  "acceptedParent": "7d8fa17b90da3e7b29946a4319090286ce8dbb09",
+  "compilerSource": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "libraries": {
+    "lib.es5.d.ts": "c430d44666289dae81f30fa7b2edebf186ecc91a2d4c71266ea6ae76388792e1",
+    "lib.decorators.d.ts": "8e7f8264d0fb4c5339605a15daadb037bf238c10b654bb3eee14208f860a32ea",
+    "lib.decorators.legacy.d.ts": "782dec38049b92d4e85c1585fbea5474a219c6984a35b004963b00beb1aab538"
+  },
+  "sha256": {
+    "cases.json": "18028a54ac7c08911866ce79d523a9aec854016a8674ab872326e49c74e69260",
+    "reference.json": "7be42eed8216cbd049f5855cfc9d842c9184ce5ca7171c37ac007433a568b966",
+    "mutation-sites.json": "a23d030f9f18d3cf8bdb4dfd2cd98990cd2ddc3462616234990411cdfebcce32"
+  },
+  "counts": {
+    "producers": 648,
+    "semantic": 408,
+    "owner": 240,
+    "accepted": 624,
+    "rejected": 24,
+    "declarations": 744,
+    "maps": 1488,
+    "syntax": 744,
+    "consumers": 768,
+    "executions": 384
+  },
+  "nativePhysicalAudit": {
+    "path": "target/assertion-result-contract-20261118-1/independent-native-audit.json",
+    "sha256": "b6a78109b409d05a4f84e26547c79b71a9ecfdaee297d260a098e58f38c0c1e4"
+  },
+  "acceptedParentBaseline": {
+    "path": "target/assertion-result-contract-20261118-1/parent-baseline/report.json",
+    "sha256": "e61518832c6048202696d2c053c1b0b8b72020f483498b059d0f0df89e7864ad",
+    "counts": {
+      "observations": 2592,
+      "semantic": 1632,
+      "owner": 960,
+      "semanticAgreements": 192,
+      "semanticDifferences": 1440,
+      "incorrectRejections": 1248,
+      "exactDeclarationDifferences": 96,
+      "ownerVerdictDifferences": 0
+    }
+  },
+  "originalSourceProgramsRetained": 20,
+  "productionChangesBeforeFreeze": false,
+  "acceptanceCredit": false,
+  "inventoryCredit": 0
+}

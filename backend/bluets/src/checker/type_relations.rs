@@ -133,6 +133,12 @@ pub(super) fn is_assignable(
     visited: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> bool {
+    if let Type::RuntimeQualified { semantic, .. } = actual {
+        return budget.consume() && is_assignable(semantic, expected, aliases, visited, budget);
+    }
+    if let Type::RuntimeQualified { semantic, .. } = expected {
+        return budget.consume() && is_assignable(actual, semantic, aliases, visited, budget);
+    }
     if let Type::InferenceBarrier(base) = actual {
         return budget.consume() && is_assignable(base, expected, aliases, visited, budget);
     }

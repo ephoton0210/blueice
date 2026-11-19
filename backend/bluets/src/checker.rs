@@ -41,10 +41,10 @@ pub(crate) use scopes::emission::{
 };
 pub(crate) use scopes::flow::VERSION as FLOW_VERSION;
 pub(crate) const CLASS_SURFACE_VERSION: &str = "class-surface-v5";
-pub(crate) const MODULE_EXPORTS_VERSION: &str = "module-exports-v11";
+pub(crate) const MODULE_EXPORTS_VERSION: &str = "module-exports-v12";
 pub(crate) const STRUCTURAL_BOUNDARIES_VERSION: &str = "bluets-structural-boundaries/6";
 pub(crate) const OVERLOAD_CHAINS_VERSION: &str = "bluets-overload-chains/4";
-pub(crate) const RETURN_CONTEXT_VERSION: &str = "bluets-return-context/7";
+pub(crate) const RETURN_CONTEXT_VERSION: &str = "bluets-return-context/8";
 mod computed_keys;
 pub(crate) mod tuple_compositions;
 mod type_operators;
@@ -1120,16 +1120,24 @@ fn conditional_expression_parts(tokens: &[Token]) -> Option<(&[Token], &[Token],
 }
 
 fn infer_logical_expression(left: Type, right: Type, is_or: bool) -> Type {
-    if left == Type::Boolean && right == Type::Boolean {
-        Type::Boolean
-    } else {
-        let retained = scopes::flow::truthy_type(&left, is_or);
-        retained.map_or(right.clone(), |left| type_operators::union([left, right]))
-    }
+    let qualifiers = left.runtime_qualifiers().join(right.runtime_qualifiers());
+    let result =
+        if left.semantic_type() == &Type::Boolean && right.semantic_type() == &Type::Boolean {
+            Type::Boolean
+        } else {
+            let retained = scopes::flow::truthy_type(&left, is_or);
+            retained.map_or(right.clone(), |left| {
+                let merged = merge_conditional_branch_types(left, right);
+                type_operators::union([merged])
+            })
+        };
+    result.with_runtime_qualifiers(qualifiers)
 }
 
 fn infer_additive_expression(operator: &Token, left: Type, right: Type) -> Type {
-    if operator.is("+") && (left == Type::String || right == Type::String) {
+    if operator.is("+")
+        && (left.semantic_type() == &Type::String || right.semantic_type() == &Type::String)
+    {
         Type::String
     } else {
         infer_numeric_binary_expression(left, right)
@@ -1137,9 +1145,11 @@ fn infer_additive_expression(operator: &Token, left: Type, right: Type) -> Type 
 }
 
 fn infer_numeric_binary_expression(left: Type, right: Type) -> Type {
-    if left == Type::Number && right == Type::Number {
+    let left = left.semantic_type();
+    let right = right.semantic_type();
+    if left == &Type::Number && right == &Type::Number {
         Type::Number
-    } else if left == Type::BigInt && right == Type::BigInt {
+    } else if left == &Type::BigInt && right == &Type::BigInt {
         Type::BigInt
     } else {
         Type::Unknown
@@ -1158,19 +1168,23 @@ fn is_strict_equality_primitive_type(value: &Type) -> bool {
 }
 
 fn infer_nullish_coalescing_expression(left: Type, right: Type) -> Type {
-    match exclude_nullish_type(left) {
+    let qualifiers = left.runtime_qualifiers().join(right.runtime_qualifiers());
+    let result = match exclude_nullish_type(left) {
         None => right,
         Some(left) => merge_conditional_branch_types(left, right),
-    }
+    };
+    result.with_runtime_qualifiers(qualifiers)
 }
 
 fn exclude_nullish_type(value: Type) -> Option<Type> {
     match value {
+        Type::RuntimeQualified { .. } => exclude_nullish_type(value.semantic_type().clone())
+            .map(|semantic| semantic.with_runtime_qualifiers(value.runtime_qualifiers())),
         Type::Null | Type::Undefined => None,
         Type::Union(values) => {
             let mut values = values
                 .into_iter()
-                .filter(|value| !matches!(value, Type::Null | Type::Undefined))
+                .filter_map(exclude_nullish_type)
                 .collect::<Vec<_>>();
             match values.len() {
                 0 => None,
@@ -1183,8 +1197,8 @@ fn exclude_nullish_type(value: Type) -> Option<Type> {
 }
 
 fn merge_conditional_branch_types(consequent: Type, alternate: Type) -> Type {
-    if consequent == alternate {
-        consequent
+    if type_identity(&consequent.semantic_clone()) == type_identity(&alternate.semantic_clone()) {
+        consequent.retaining_runtime_qualifiers(&alternate)
     } else {
         Type::Union(vec![consequent, alternate])
     }

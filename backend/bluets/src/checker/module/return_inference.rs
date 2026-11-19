@@ -12,6 +12,7 @@ mod context;
 mod freshness;
 pub(in crate::checker::module) use freshness::getter_union;
 mod predicates;
+mod runtime_origins;
 pub(super) use completion::has_return;
 
 #[derive(Default)]
@@ -24,6 +25,7 @@ pub(super) struct ReturnInference {
     pub(super) generic_parameters: RefCell<BTreeMap<usize, Vec<TypeParameter>>>,
     pub(super) fresh_results: RefCell<BTreeSet<usize>>,
     active: RefCell<Vec<Frame>>,
+    runtime_active: RefCell<Vec<usize>>,
     failures: RefCell<BTreeMap<usize, (SourceSpan, bool)>>,
 }
 
@@ -102,7 +104,13 @@ impl ModuleChecker<'_> {
         expression: bool,
     ) -> Type {
         if let Some(result) = &function.return_type {
-            return result.clone();
+            return self.annotated_runtime_result(
+                result,
+                &function.parameters,
+                &function.body,
+                scope,
+                &function.span,
+            );
         }
         self.inferred_body_result(
             &function.parameters,
@@ -469,25 +477,25 @@ impl ModuleChecker<'_> {
             .find_map(|frame| frame.locals.get(name).cloned());
         let local_function = local.is_some();
         let function = local.or_else(|| {
-            (scope.get(name) == self.values.get(name)).then(|| {
-                self.module
-                    .declarations
-                    .iter()
-                    .find_map(|declaration| match declaration {
-                        Declaration::Function(function)
-                            if function.name == name
-                                && !function.overload
-                                && !function.declared =>
-                        {
-                            Some(function.clone())
-                        }
-                        _ => None,
-                    })
-            })?
+            self.module
+                .declarations
+                .iter()
+                .find_map(|declaration| match declaration {
+                    Declaration::Function(function)
+                        if function.name == name
+                            && !function.overload
+                            && !function.declared
+                            && (scope.get(name) == self.values.get(name)
+                                || (function.return_type.is_some()
+                                    && self.scopes.as_ref().is_some_and(|scopes| {
+                                        scopes.module_function_reference(name, call_start)
+                                    }))) =>
+                    {
+                        Some(function.clone())
+                    }
+                    _ => None,
+                })
         })?;
-        if function.return_type.is_some() {
-            return None;
-        }
         let mut signatures = (!local_function)
             .then(|| self.functions.get(name).cloned())
             .flatten()
@@ -495,7 +503,7 @@ impl ModuleChecker<'_> {
                 vec![FunctionSignature {
                     parameters: function.parameters.clone(),
                     type_parameters: function.type_parameters.clone(),
-                    return_type: Type::Unknown,
+                    return_type: function.return_type.clone().unwrap_or(Type::Unknown),
                 }]
             });
         // Explicit overloads remain the call surface.
@@ -503,6 +511,16 @@ impl ModuleChecker<'_> {
             matches!(declaration, Declaration::Function(other) if other.name == name && other.overload)
         }) {
             return None;
+        }
+        if function.return_type.is_some() {
+            let result = self.inferred_function_result(&function, scope, false);
+            for signature in &mut signatures {
+                signature.return_type = signature
+                    .return_type
+                    .clone()
+                    .retaining_runtime_qualifiers(&result);
+            }
+            return Some(signatures);
         }
         let tail_result = {
             let mut active = self.return_inference.active.borrow_mut();
@@ -530,9 +548,6 @@ impl ModuleChecker<'_> {
         function: &NestedFunction,
         scope: &BTreeMap<String, Type>,
     ) -> Type {
-        if let Some(result) = &function.return_type {
-            return result.clone();
-        }
         let body = match &function.body {
             NestedFunctionBody::Expression(tokens) => vec![FunctionBodyItem::Return {
                 tokens: tokens.clone(),
@@ -540,6 +555,15 @@ impl ModuleChecker<'_> {
             }],
             NestedFunctionBody::Block { items, .. } => items.clone(),
         };
+        if let Some(result) = &function.return_type {
+            return self.annotated_runtime_result(
+                result,
+                &function.parameters,
+                &body,
+                scope,
+                &function.span,
+            );
+        }
         self.inferred_body_result(
             &function.parameters,
             &body,

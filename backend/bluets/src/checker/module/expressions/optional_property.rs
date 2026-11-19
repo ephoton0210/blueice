@@ -98,6 +98,20 @@ pub(super) fn optional_receiver_parts(
     budget: &mut TypeExpansionBudget,
 ) -> Result<(Vec<Type>, bool), OptionalPropertyError> {
     match receiver {
+        Type::RuntimeQualified { semantic, .. } => {
+            if !budget.consume() {
+                return Err(OptionalPropertyError::Exhausted);
+            }
+            let (parts, nullish) = optional_receiver_parts(semantic, aliases, visited, budget)?;
+            let qualifiers = receiver.runtime_qualifiers();
+            Ok((
+                parts
+                    .into_iter()
+                    .map(|part| part.with_runtime_qualifiers(qualifiers))
+                    .collect(),
+                nullish,
+            ))
+        }
         Type::Null | Type::Undefined => Ok((Vec::new(), true)),
         Type::Union(parts) => {
             let mut values = Vec::new();

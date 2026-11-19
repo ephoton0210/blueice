@@ -81,8 +81,28 @@ impl Mapper<'_> {
                     self.named(&gt, &st, &g.name);
                     if s.annotation.is_some() {
                         self.ty(annotation(&gt), annotation(&st));
-                    } else if let Some(annotation) = &g.annotation {
-                        self.inferred_type(annotation, s.span.start);
+                    } else if let Some(value_type) = &g.annotation {
+                        // A reused assertion type has authored type-node
+                        // provenance even when the variable has no annotation.
+                        let assertion = self.source.erased_assertion_spans().find_map(|span| {
+                            let index = s
+                                .initializer
+                                .iter()
+                                .position(|token| token.start == span.start)?;
+                            let target = self.source.type_assertions.get(&span.start)?;
+                            (s.initializer[index].is("as")
+                                && s.initializer
+                                    .last()
+                                    .is_some_and(|last| last.end == span.end)
+                                && crate::checker::type_identity(target)
+                                    == crate::checker::type_identity(value_type))
+                            .then(|| s.initializer[index + 1..].to_vec())
+                        });
+                        if let Some(source_type) = assertion {
+                            self.ty(annotation(&gt), &source_type);
+                        } else {
+                            self.inferred_type(value_type, s.span.start);
+                        }
                     }
                     let ge = gt
                         .last()

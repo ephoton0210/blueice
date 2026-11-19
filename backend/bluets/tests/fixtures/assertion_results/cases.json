@@ -1,0 +1,308 @@
+{
+  "schema": 1,
+  "package": "P0-J",
+  "acceptedParent": "7d8fa17b90da3e7b29946a4319090286ce8dbb09",
+  "compilerSource": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
+  "options": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "CommonJS",
+    "lib": [
+      "ES5"
+    ],
+    "types": [],
+    "declaration": true,
+    "noEmitOnError": true,
+    "skipLibCheck": true,
+    "outDir": "dist",
+    "sourceMap": true,
+    "declarationMap": true,
+    "strictFunctionTypes": true
+  },
+  "profiles": [
+    {
+      "id": "ES5-CommonJS-nulls-false",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "strictNullChecks": false
+      }
+    },
+    {
+      "id": "ES5-CommonJS-nulls-true",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "strictNullChecks": true
+      }
+    },
+    {
+      "id": "ES5-ESNext-nulls-false",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "ESNext",
+        "strictNullChecks": false
+      }
+    },
+    {
+      "id": "ES5-ESNext-nulls-true",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "ESNext",
+        "strictNullChecks": true
+      }
+    },
+    {
+      "id": "ES2022-CommonJS-nulls-false",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strictNullChecks": false
+      }
+    },
+    {
+      "id": "ES2022-CommonJS-nulls-true",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "strictNullChecks": true
+      }
+    },
+    {
+      "id": "ES2022-ESNext-nulls-false",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strictNullChecks": false
+      }
+    },
+    {
+      "id": "ES2022-ESNext-nulls-true",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "strictNullChecks": true
+      }
+    }
+  ],
+  "representations": [
+    {
+      "id": "original",
+      "prefix": ""
+    },
+    {
+      "id": "crlf-astral",
+      "prefix": "// Unicode 😀\r\n"
+    },
+    {
+      "id": "inline-astral",
+      "prefix": "/* π😀 */ "
+    }
+  ],
+  "cases": [
+    {
+      "id": "unknown-object-method-literal",
+      "source": "const factory = { make<T extends \"blue\">(value: unknown): T { return value as T; } };\nexport const result = factory.make(\"red\");\n",
+      "role": "semantic",
+      "nativeExpectedAccepts": true,
+      "consumerType": "\"blue\""
+    },
+    {
+      "id": "unknown-direct-function-literal",
+      "source": "function make<T extends \"blue\">(value: unknown): T { return value as T; }\nexport const result = make(\"red\");\n",
+      "role": "semantic",
+      "nativeExpectedAccepts": true,
+      "consumerType": "\"blue\""
+    },
+    {
+      "id": "unknown-generic-arrow-literal",
+      "source": "const make = <T extends \"blue\">(value: unknown): T => value as T;\nexport const result = make(\"red\");\n",
+      "role": "semantic",
+      "nativeExpectedAccepts": true,
+      "consumerType": "\"blue\""
+    },
+    {
+      "id": "unknown-class-method-literal",
+      "source": "class Factory { make<T extends \"blue\">(value: unknown): T { return value as T; } }\nexport const result = new Factory().make(\"red\");\n",
+      "role": "semantic",
+      "nativeExpectedAccepts": true,
+      "consumerType": "\"blue\""
+    },
+    {
+      "id": "unknown-object-method-string",
+      "source": "const factory = { make<T extends string>(value: unknown): T { return value as T; } };\nexport const result = factory.make(\"red\");\n",
+      "role": "semantic",
+      "nativeExpectedAccepts": true,
+      "consumerType": "string"
+    },
+    {
+      "id": "unknown-object-method-unconstrained",
+      "source": "const factory = { make<T>(value: unknown): T { return value as T; } };\nexport const result = factory.make(\"red\");\n",
+      "role": "semantic",
+      "nativeExpectedAccepts": true,
+      "consumerType": "unknown"
+    },
+    {
+      "id": "any-object-method-literal-control",
+      "source": "const factory = { make<T extends \"blue\">(value: any): T { return value as T; } };\nexport const result = factory.make(\"red\");\n",
+      "role": "semantic",
+      "nativeExpectedAccepts": true,
+      "consumerType": "\"blue\""
+    },
+    {
+      "id": "unknown-object-method-invalid-result",
+      "source": "const factory = { make<T extends \"blue\">(value: unknown): number { return value as T; } };\nexport const result = factory.make(\"red\");\n",
+      "role": "semantic",
+      "nativeExpectedAccepts": false
+    },
+    {
+      "id": "unknown-to-literal",
+      "source": "function get(value: unknown): \"blue\" { return value as \"blue\"; }\nexport const result = get(\"red\");\n",
+      "role": "semantic",
+      "nativeExpectedAccepts": true,
+      "consumerType": "\"blue\""
+    },
+    {
+      "id": "unknown-to-string",
+      "source": "function get(value: unknown): string { return value as string; }\nexport const result = get(\"red\");\n",
+      "role": "semantic",
+      "nativeExpectedAccepts": true,
+      "consumerType": "string"
+    },
+    {
+      "id": "unknown-to-number",
+      "source": "function get(value: unknown): number { return value as number; }\nexport const result = get(1);\n",
+      "role": "semantic",
+      "nativeExpectedAccepts": true,
+      "consumerType": "number"
+    },
+    {
+      "id": "unknown-to-boolean",
+      "source": "function get(value: unknown): boolean { return value as boolean; }\nexport const result = get(true);\n",
+      "role": "semantic",
+      "nativeExpectedAccepts": true,
+      "consumerType": "boolean"
+    },
+    {
+      "id": "unknown-cast-inferred-result",
+      "source": "declare const value: unknown;\nexport const result = value as number;\n",
+      "role": "semantic",
+      "nativeExpectedAccepts": true,
+      "consumerType": "number"
+    },
+    {
+      "id": "readonly-plain-assert-write",
+      "source": "interface Event { readonly value: number; }\nfunction write(value: Event): void { const mutable = value as {value: number}; mutable.value = 2; }\nexport const result = 0;\n",
+      "role": "owner",
+      "nativeExpectedAccepts": true,
+      "bluePolicyExpectedAccepts": false
+    },
+    {
+      "id": "readonly-unknown-assert-write",
+      "source": "interface Event { readonly value: number; }\nfunction write(value: Event): void { const hidden = value as unknown; const mutable = hidden as {value: number}; mutable.value = 2; }\nexport const result = 0;\n",
+      "role": "owner",
+      "nativeExpectedAccepts": true,
+      "bluePolicyExpectedAccepts": false
+    },
+    {
+      "id": "unknown-input-generic-mutable-write",
+      "source": "interface Event { readonly value: number; }\nfunction cast<T>(value: unknown): T { return value as T; }\nfunction write(value: Event): void { const mutable = cast<{value: number}>(value); mutable.value = 2; }\nexport const result = 0;\n",
+      "role": "owner",
+      "nativeExpectedAccepts": true,
+      "bluePolicyExpectedAccepts": false
+    },
+    {
+      "id": "unknown-input-literal-constrained-intersection-write",
+      "source": "interface Event { readonly value: number; }\nfunction cast<T extends \"blue\">(value: unknown): T { return value as T; }\nfunction write(value: Event): void { const mutable = cast<\"blue\" & {value: number}>(value); mutable.value = 2; }\nexport const result = 0;\n",
+      "role": "owner",
+      "nativeExpectedAccepts": true,
+      "bluePolicyExpectedAccepts": false
+    },
+    {
+      "id": "mutable-assert-write-control",
+      "source": "interface Event { value: number; }\nfunction write(value: Event): void { const mutable = value as {value: number}; mutable.value = 2; }\nexport const result = 0;\n",
+      "role": "owner",
+      "nativeExpectedAccepts": true,
+      "bluePolicyExpectedAccepts": true
+    },
+    {
+      "id": "opaque-call-cast-write",
+      "source": "interface Event { readonly value: number; }\ndeclare function pick(value: unknown): unknown;\nfunction write(value: Event): void { const mutable = pick(value) as {value: number}; mutable.value = 2; }\nexport const result = 0;\n",
+      "role": "owner",
+      "nativeExpectedAccepts": true,
+      "bluePolicyExpectedAccepts": false
+    },
+    {
+      "id": "opaque-call-cast-without-readonly-control",
+      "source": "declare function pick(value: unknown): unknown;\nfunction write(value: number): void { const mutable = pick(value) as {value: number}; mutable.value = 2; }\nexport const result = 0;\n",
+      "role": "owner",
+      "nativeExpectedAccepts": true,
+      "bluePolicyExpectedAccepts": true
+    },
+    {
+      "id": "imported-unknown-function-literal",
+      "role": "semantic",
+      "source": "import { make } from \"./factory.js\";\nexport const result = make(\"red\");\n",
+      "files": {
+        "factory.ts": "export function make<T extends \"blue\">(value: unknown): T { return value as T; }\n"
+      },
+      "nativeExpectedAccepts": true,
+      "consumerType": "\"blue\""
+    },
+    {
+      "id": "imported-unknown-class-literal",
+      "role": "semantic",
+      "source": "import { Factory } from \"./factory.js\";\nexport const result = new Factory().make(\"red\");\n",
+      "files": {
+        "factory.ts": "export class Factory { make<T extends \"blue\">(value: unknown): T { return value as T; } }\n"
+      },
+      "nativeExpectedAccepts": true,
+      "consumerType": "\"blue\""
+    },
+    {
+      "id": "namespace-imported-unknown-member",
+      "role": "semantic",
+      "source": "import * as provider from \"./provider.js\";\nexport const result = provider.factory.make(\"red\");\n",
+      "files": {
+        "provider.ts": "export const factory = { make<T extends \"blue\">(value: unknown): T { return value as T; } };\n"
+      },
+      "nativeExpectedAccepts": true,
+      "consumerType": "\"blue\""
+    },
+    {
+      "id": "shadowed-parameter-unknown-method",
+      "role": "semantic",
+      "source": "function outer<T extends number>(seed: T) { return { make<T extends \"blue\">(value: unknown): T { return value as T; } }; }\nexport const result = outer(1).make(\"red\");\n",
+      "nativeExpectedAccepts": true,
+      "consumerType": "\"blue\""
+    },
+    {
+      "id": "readonly-cross-file-generic-cast-write",
+      "role": "owner",
+      "source": "import { cast } from \"./cast.js\";\ninterface Event { readonly value: number; }\nfunction write(value: Event): void { const mutable = cast<{value: number}>(value); mutable.value = 2; }\nexport const result = 0;\n",
+      "files": {
+        "cast.ts": "export function cast<T>(value: unknown): T { return value as T; }\n"
+      },
+      "nativeExpectedAccepts": true,
+      "bluePolicyExpectedAccepts": false
+    },
+    {
+      "id": "readonly-cross-file-generic-class-write",
+      "role": "owner",
+      "source": "import { Caster } from \"./cast.js\";\ninterface Event { readonly value: number; }\nfunction write(value: Event): void { const mutable = new Caster().cast<{value: number}>(value); mutable.value = 2; }\nexport const result = 0;\n",
+      "files": {
+        "cast.ts": "export class Caster { cast<T>(value: unknown): T { return value as T; } }\n"
+      },
+      "nativeExpectedAccepts": true,
+      "bluePolicyExpectedAccepts": false
+    },
+    {
+      "id": "readonly-generic-cast-alias-write",
+      "role": "owner",
+      "source": "interface Event { readonly value: number; }\nfunction cast<T>(value: unknown): T { return value as T; }\nconst recast = cast;\nfunction write(value: Event): void { const hidden: unknown = value; const mutable = recast<{value: number}>(hidden); mutable.value = 2; }\nexport const result = 0;\n",
+      "nativeExpectedAccepts": true,
+      "bluePolicyExpectedAccepts": false
+    }
+  ],
+  "scope": "Draft Native calibration before production changes; all17 semantic forms and10 authority controls remain separate. Every original discovery source is retained. No acceptance or inventory credit yet."
+}

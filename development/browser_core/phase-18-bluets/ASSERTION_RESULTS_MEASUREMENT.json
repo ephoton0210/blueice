@@ -1,0 +1,279 @@
+{
+  "schema": 1,
+  "conclusion": "complete-frozen-runtime-and-published-artifact-requirements-passed",
+  "recordedAt": "2026-11-19T20:06:49.503183+00:00",
+  "sourceRevision": "backend-tree:fd642c71683fbd992d1319e5598c51f5379dc766",
+  "acceptedParent": "7d8fa17b90da3e7b29946a4319090286ce8dbb09",
+  "frozenContractSha256": "962d5b8062eddf41fba8d5ee74c98b2ab80d9d5f8f87e59a4554161b9200e461",
+  "approvedPolicyAmendmentSha256": "e582d963cc10dc6b17fccdbcf355574610b35c81ff266c1cd0105241882fc9f1",
+  "nativeVersion": "5.9.3",
+  "nativeCalibration": {
+    "producers": 648,
+    "repeatBuilds": 2,
+    "semantic": 408,
+    "owner": 240,
+    "accepted": 624,
+    "rejected": 24,
+    "declarationFiles": 744,
+    "completeMaps": 1488,
+    "decodedSegments": 25400,
+    "syntax": 744,
+    "consumerPrograms": 768,
+    "realExecutions": 384
+  },
+  "profiles": [
+    {
+      "profile": "native",
+      "compilerSha256": "a15efd2650d97411931408b4037883bc157acf792b35883606760b1d8ef6b2af",
+      "counts": {
+        "semanticProducers": 816,
+        "ownerProducers": 480,
+        "semanticAccepted": 768,
+        "semanticRejected": 48,
+        "exactSemanticDeclarations": 912,
+        "completeSemanticMaps": 1824,
+        "completeSemanticSegments": 27804,
+        "consumerPrograms": 6144,
+        "consumerDirections": [
+          "native/native",
+          "native/blue",
+          "blue/native",
+          "blue/blue"
+        ],
+        "realExecutions": 768,
+        "ownerNegativeRefusalsAtAuthoredMutation": 384,
+        "ownerPositiveControls": 96,
+        "exactOwnerPositiveDeclarations": 96,
+        "completeOwnerPositiveMaps": 192,
+        "completeOwnerPositiveSegments": 3312,
+        "totalExactDeclarations": 1008,
+        "totalCompleteMaps": 2016,
+        "totalSyntaxChecks": 1008
+      },
+      "physicalFiles": 25488,
+      "physicalReads": 29520
+    },
+    {
+      "profile": "workspace",
+      "compilerSha256": "a4085867a1e4a6c2ed7c6705ffaa9d31030f2bcc22a61145a11b1548ef5155fa",
+      "counts": {
+        "semanticProducers": 816,
+        "ownerProducers": 480,
+        "semanticAccepted": 768,
+        "semanticRejected": 48,
+        "exactSemanticDeclarations": 912,
+        "completeSemanticMaps": 1824,
+        "completeSemanticSegments": 27804,
+        "consumerPrograms": 6144,
+        "consumerDirections": [
+          "native/native",
+          "native/blue",
+          "blue/native",
+          "blue/blue"
+        ],
+        "realExecutions": 768,
+        "ownerNegativeRefusalsAtAuthoredMutation": 384,
+        "ownerPositiveControls": 96,
+        "exactOwnerPositiveDeclarations": 96,
+        "completeOwnerPositiveMaps": 192,
+        "completeOwnerPositiveSegments": 3312,
+        "totalExactDeclarations": 1008,
+        "totalCompleteMaps": 2016,
+        "totalSyntaxChecks": 1008
+      },
+      "physicalFiles": 25488,
+      "physicalReads": 29520
+    },
+    {
+      "profile": "standalone",
+      "compilerSha256": "b2d09d2f09292be4f7640fdfdf9c39f2909f38dd4490cbb144712c34dad6d830",
+      "counts": {
+        "semanticProducers": 816,
+        "ownerProducers": 480,
+        "semanticAccepted": 768,
+        "semanticRejected": 48,
+        "exactSemanticDeclarations": 912,
+        "completeSemanticMaps": 1824,
+        "completeSemanticSegments": 27804,
+        "consumerPrograms": 6144,
+        "consumerDirections": [
+          "native/native",
+          "native/blue",
+          "blue/native",
+          "blue/blue"
+        ],
+        "realExecutions": 768,
+        "ownerNegativeRefusalsAtAuthoredMutation": 384,
+        "ownerPositiveControls": 96,
+        "exactOwnerPositiveDeclarations": 96,
+        "completeOwnerPositiveMaps": 192,
+        "completeOwnerPositiveSegments": 3312,
+        "totalExactDeclarations": 1008,
+        "totalCompleteMaps": 2016,
+        "totalSyntaxChecks": 1008
+      },
+      "physicalFiles": 25488,
+      "physicalReads": 29520
+    }
+  ],
+  "nativeSuites": 193,
+  "nativeFunctions": 1113,
+  "nativeExecutionAttempts": [
+    {
+      "report": "../../node-shutdown-recovery/failed-measurement.json",
+      "sha256": "11835b9d645ddecd59111f18725bd831b5ccfd5fbb88e09d3dc77ca9496c5018",
+      "conclusion": "failure",
+      "retainedSuccessfulSuites": 90,
+      "failedCohortNotCredited": "backend/bluets/tests/class_checker_matrix.rs"
+    },
+    {
+      "report": "recovery-2/measurement.json",
+      "sha256": "27ac66a6669491a630d616428474d3c46dd2cd64704d7f7d9346d93b2e8661c7",
+      "conclusion": "success",
+      "fullyRerunSuites": 103,
+      "hostFlag": "--no-maglev"
+    }
+  ],
+  "nativeHostRecovery": {
+    "nodeExecutable": "/opt/homebrew/Cellar/node/26.7.0/bin/node",
+    "nodeVersion": "v26.7.0",
+    "nodeSha256": "1ef99ea25fe70c9b67e7efe768ef8ee22148d3cabc703db6131b57aeb617d040",
+    "hostFlag": "--no-maglev",
+    "retainedSuccessfulSuites": 90,
+    "fullyRerunOrNeverStartedSuites": 103,
+    "fullClassCohortTests": 5,
+    "classFixtureVerdicts": 523,
+    "failedAttemptPreserved": true,
+    "noFailedResultCredited": true,
+    "independentAuditSha256": "bad9647fe20b6cc2df88e6e16135702f9a4a865dbd09e0c57bcd5df906c968f1",
+    "classAuditSha256": "bf70ff206eb87dec16f0e499a044c699ccbc2cd4be677f54004d8fcce986532d"
+  },
+  "workspaceTotals": {
+    "passed": 8081,
+    "failed": 0,
+    "ignored": 402,
+    "filtered": 0
+  },
+  "workspaceExecutables": 738,
+  "workspaceHostRecovery": {
+    "preservedFailedAttempt": "target/assertion-results-acceptance-source70-tools2-20261119-1/socket-host-recovery/failed-workspace-attempt/post-native/execution.json",
+    "failedAttemptSha256": "1788d3c733ec0f2bfa45de36cd56078a540259a9c5327e31d494eb2a01fb206f",
+    "failedAttemptLogSha256": "744ca3eef8ed33aed11d8d34ca6c9b29889b4cf5ec2cd83ed16c6186c9ff0f02",
+    "failedAttemptTotals": {
+      "passed": 7841,
+      "failed": 240,
+      "ignored": 402,
+      "filtered": 0
+    },
+    "sameFrozenCompleteCommand": true,
+    "failedResultsNotCredited": true,
+    "probeComparisonSha256": "5f6cbf01b88eb427988cc857fbc3fe293cff3c4044680a46617ffeed751cbbef",
+    "actualCorrectedControllerProbeSha256": "56921ce657bad005b16b06d6ca2699ab54259728360070f099e9dec2190479b0",
+    "freshCompleteWorkspaceLogSha256": "5b058f6b9595165a41d1ed5b1246dcdd6ddab6ea28c1836ac04742a590fb5de7"
+  },
+  "maps": {
+    "profiles": 2,
+    "familiesPerProfile": 55,
+    "functionsPerProfile": 298,
+    "configurationsPerProfile": 8407,
+    "repeatBuilds": 2
+  },
+  "originalNativeCorrections": {
+    "native": {
+      "conclusion": "all572-original-native-map-corrections-accounted",
+      "compilerSha256": "a15efd2650d97411931408b4037883bc157acf792b35883606760b1d8ef6b2af",
+      "report": "target/assertion-results-acceptance-source70-tools2-20261119-1/native/measurement/recovery-2/suite-artifacts/020/native-fix-report.json",
+      "reportSha256": "96642419ecc22146706520752a9fa429b1654272799cd219d0ec8f07d2b19c1f",
+      "ledgerSha256": "097a9b0df2857de39e2210e427c21f3dbcadebb4f8ed8d9dabbe5f0a87b04007",
+      "correctionIds": 572,
+      "configurations": 452,
+      "repeatBuilds": 2,
+      "allIdsAndCaseMapNamesMatch": true,
+      "stockAndCorrectedBlobsVerified": true,
+      "allBoundsAndGeneratedBraceControlsPassed": true
+    },
+    "workspace": {
+      "conclusion": "all572-original-native-map-corrections-accounted",
+      "compilerSha256": "a4085867a1e4a6c2ed7c6705ffaa9d31030f2bcc22a61145a11b1548ef5155fa",
+      "report": "target/assertion-results-acceptance-source70-tools2-20261119-1/map-profiles/workspace/ge5_source_maps/native-fix.json",
+      "reportSha256": "63c3e41a574ec442bf80e2736fffa886aa87308f8f337dd6b05a7f24509ed317",
+      "ledgerSha256": "097a9b0df2857de39e2210e427c21f3dbcadebb4f8ed8d9dabbe5f0a87b04007",
+      "correctionIds": 572,
+      "configurations": 452,
+      "repeatBuilds": 2,
+      "allIdsAndCaseMapNamesMatch": true,
+      "stockAndCorrectedBlobsVerified": true,
+      "allBoundsAndGeneratedBraceControlsPassed": true
+    },
+    "standalone": {
+      "conclusion": "all572-original-native-map-corrections-accounted",
+      "compilerSha256": "b2d09d2f09292be4f7640fdfdf9c39f2909f38dd4490cbb144712c34dad6d830",
+      "report": "target/assertion-results-acceptance-source70-tools2-20261119-1/map-profiles/standalone/ge5_source_maps/native-fix.json",
+      "reportSha256": "93b734c4894885bed3282117dc01a9b7b61bfee94fae5ea71a517d263839a586",
+      "ledgerSha256": "097a9b0df2857de39e2210e427c21f3dbcadebb4f8ed8d9dabbe5f0a87b04007",
+      "correctionIds": 572,
+      "configurations": 452,
+      "repeatBuilds": 2,
+      "allIdsAndCaseMapNamesMatch": true,
+      "stockAndCorrectedBlobsVerified": true,
+      "allBoundsAndGeneratedBraceControlsPassed": true
+    }
+  },
+  "programRoots": {
+    "profiles": 2,
+    "completeStepsPerProfile": 14,
+    "primary": 512,
+    "libraryStates": 528,
+    "persistentStates": 528,
+    "libraryMaps": 760,
+    "persistentMaps": 760,
+    "publicationStates": 108,
+    "tamperControls": 24,
+    "projects": [
+      "defu",
+      "mitt",
+      "reproductions",
+      "interchange"
+    ]
+  },
+  "tooling": {
+    "nodeFiles": 48,
+    "nodeTests": 319,
+    "originalSafeHomeObservations": 92,
+    "safeHomeBuildsPerObservation": 2,
+    "finalPythonAccountingStatusPassed": true
+  },
+  "windows": {
+    "conclusion": "complete-windows-archive-independently-verified",
+    "observedAt": "2026-11-19T15:44:03.598815+00:00",
+    "verifierSha256": "200e3ba90cdec80c6c6cad3f27cfef2f19a13deb4b196c6ba936ae95d74b41e3",
+    "sourceRevision": "backend-tree:fd642c71683fbd992d1319e5598c51f5379dc766",
+    "archiveSha256": "c3b5319445b42c884a44dbf9dd2071e83cb2ae7bd1d369c9eb1e193c2bd604d0",
+    "archiveBytes": 69027119,
+    "verifiedSourceFiles": 14957,
+    "compilerSha256": "2f0b46926ba72225ac0f35d7db5a9659d66f361d8accd96a93704b37edb42854",
+    "compilerMachine": 34404,
+    "completeCohorts": 77,
+    "coreOracles": 82,
+    "pathCases": 25,
+    "completionCredit": false,
+    "scope": "Current source70 Windows proof; complete Native/local/map/accounting delivery remains required."
+  },
+  "originalCaseObjectsPreserved": 43276,
+  "newPrimaryAndSeparateControls": 216,
+  "totalCaseObjects": 43492,
+  "originalFixturePathsPreserved": 12224,
+  "originalToolNamesPreserved": 621,
+  "originalToolFilesByteIdentical": 619,
+  "mechanicallyCorrectedOriginalTools": 2,
+  "oracleHostCorrectionsSha256": "287056fd44b301bdd1d58f165a381bda0bcbca59b4371004115b87232616f646",
+  "independentPublishedFiles": 1664840,
+  "publishedFragments": 1665105,
+  "publishedArchives": 25,
+  "publishedSourceBytes": 7912538836,
+  "artifactIndexSha256": "70cd7dee303ffdce51728e2bb820d138793866401076b2fee478afad18a96ba2",
+  "acceptanceAuditSha256": "f30d4316f97e8a03691462e41927fb8ab27932dfb5c9c1273b8af30619f21bea",
+  "broaderFeatureRowsOpen": 22,
+  "fullTypeScriptParity": false,
+  "checkboxAndCommitPending": true
+}

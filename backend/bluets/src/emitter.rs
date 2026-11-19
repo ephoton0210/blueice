@@ -753,6 +753,7 @@ fn apply_edits_with_anchors(
 
 fn type_to_ts(value: &Type) -> String {
     match value {
+        Type::RuntimeQualified { semantic, .. } => type_to_ts(semantic),
         Type::Conditional(_)
         | Type::StringMapping(_)
         | Type::InferenceBarrier(_)

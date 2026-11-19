@@ -257,6 +257,22 @@ impl<'a> ScopeModel<'a> {
             }
         }
         model.index_scopes();
+        // Erased assertion targets can introduce their own generic callable
+        // binders. Attach those scopes before resolving recorded type names.
+        for (start, annotation) in &module.type_assertions {
+            let scope = model.scope_at(*start);
+            let end = module
+                .edits
+                .iter()
+                .filter(|edit| {
+                    edit.replacement.is_empty() && edit.start <= *start && *start < edit.end
+                })
+                .map(|edit| edit.end)
+                .min()
+                .unwrap_or(*start);
+            model.type_scopes(annotation, &SourceSpan::new(&module.id, *start, end), scope);
+        }
+        model.index_scopes();
         // The parser records type names even inside assertions that disappear
         // during emit. Scope spans attach them to the same lexical identities.
         for reference in &module.type_references {

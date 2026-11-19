@@ -38,16 +38,16 @@ impl ModuleChecker<'_> {
                 continue;
             };
             let original = self.infer_expression(&tokens[open - 1..open], scope);
-            let mut value = original.clone();
+            let mut value = original.semantic_type().clone();
             let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
             let mut visited = HashSet::new();
             while let Some(expanded) =
                 instantiate_named(&value, &self.types, &mut visited, &mut budget, "tuple read")
             {
-                value = expanded;
+                value = expanded.semantic_type().clone();
             }
             let tuple = match &value {
-                Type::Readonly(value) => value.as_ref(),
+                Type::Readonly(value) => value.semantic_type(),
                 value => value,
             };
             let Type::Tuple(elements) = tuple else {
@@ -86,6 +86,10 @@ pub(in crate::checker::module) fn indexed_value_type(
     budget: &mut TypeExpansionBudget,
 ) -> Type {
     match value {
+        Type::RuntimeQualified { semantic, .. } => {
+            indexed_value_type(semantic, index, aliases, visited, budget)
+                .with_runtime_qualifiers(value.runtime_qualifiers())
+        }
         Type::Readonly(value) => indexed_value_type(value, index, aliases, visited, budget),
         Type::IndexedRecord { indices, .. } => {
             alternatives_type(indices.iter().map(|index| index.value.clone()).collect())

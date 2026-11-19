@@ -80,7 +80,13 @@ impl Mapper<'_> {
                     } = &field.value
                     {
                         self.type_parameters(type_parameters, &function.type_parameters);
-                        self.inferred_parameters(parameters, &function.parameters);
+                        // A type-builder method signature synthesizes its
+                        // parameter names; the retained annotations own maps.
+                        self.inferred_parameters_with_names(
+                            parameters,
+                            &function.parameters,
+                            false,
+                        );
                         if function.return_type.is_some() {
                             self.ty(
                                 annotation(&self.generated(&field.span)),
@@ -130,11 +136,22 @@ impl Mapper<'_> {
     }
 
     fn inferred_parameters(&mut self, generated: &[Parameter], source: &[Parameter]) {
+        self.inferred_parameters_with_names(generated, source, true);
+    }
+
+    fn inferred_parameters_with_names(
+        &mut self,
+        generated: &[Parameter],
+        source: &[Parameter],
+        names: bool,
+    ) {
         for (g, s) in generated.iter().zip(source) {
             if self.exhausted {
                 break;
             }
-            self.point(g.span.start, s.span.start);
+            if names {
+                self.point(g.span.start, s.span.start);
+            }
             if s.annotation.is_some() {
                 self.ty(
                     annotation(&self.generated(&g.span)),

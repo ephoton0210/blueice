@@ -144,6 +144,8 @@ impl<'a> ModuleChecker<'a> {
         right: &Type,
         span: &SourceSpan,
     ) {
+        let left = left.semantic_type();
+        let right = right.semantic_type();
         if !is_known_primitive_type(left) || !is_known_primitive_type(right) {
             return;
         }
@@ -202,6 +204,8 @@ impl<'a> ModuleChecker<'a> {
         right: &Type,
         span: &SourceSpan,
     ) {
+        let left = left.semantic_type();
+        let right = right.semantic_type();
         if is_strict_equality_primitive_type(left)
             && is_strict_equality_primitive_type(right)
             && left != right
@@ -226,6 +230,8 @@ impl<'a> ModuleChecker<'a> {
         right: &Type,
         span: &SourceSpan,
     ) {
+        let left = left.semantic_type();
+        let right = right.semantic_type();
         if !is_known_primitive_type(left) || !is_known_primitive_type(right) {
             return;
         }

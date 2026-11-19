@@ -45,6 +45,24 @@ impl ModuleChecker<'_> {
         tokens: &'a [Token],
         scope: &BTreeMap<String, Type>,
     ) -> Option<ResolvedCall<'a>> {
+        // call/apply/bind have typed adapters which preserve the receiver's
+        // result and validate its arguments. The broad library Function
+        // members must not replace those signatures for parenthesized calls.
+        if let Some(member) = member_call_parts(tokens, |start| {
+            self.module.generic_call_type_arguments.contains_key(&start)
+        }) {
+            if self
+                .function_method_result(
+                    member.receiver,
+                    &member.member.text,
+                    member.arguments,
+                    scope,
+                )
+                .is_some()
+            {
+                return None;
+            }
+        }
         let call = syntax::call(tokens)?;
         let mut callee = self.chain_callee(call.callee, scope, 0)?;
         let (non_nullable, nullable) = self.chain_non_nullable(&callee.value)?;

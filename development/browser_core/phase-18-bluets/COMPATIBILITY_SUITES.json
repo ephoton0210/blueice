@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "typescript": "5.9.3",
-  "source_revision": "backend-tree:dc685c689478832169cc6e4904fe07d737d97d22",
-  "source_graph_sha256": "4baf31eb626a1db1279349b85832a594a376925aafaa7bd9131012177c99242e",
+  "source_revision": "backend-tree:fd642c71683fbd992d1319e5598c51f5379dc766",
+  "source_graph_sha256": "9db59b3686e4450ed197ad35ead4696fb77ae6e24fe43fe4103815566b4b3a80",
   "fixture_directories": 3392,
   "diagnostic_programs": 3182,
   "diagnostic_templates": 221,
@@ -171,6 +171,20 @@
         "backend/bluets/tests/ambient_checker_matrix.rs": "a02495b01dd5f1c83a447f3ef07765f6386d90e3",
         "backend/bluets/tests/fixtures/typescript_oracle/ambient-checker-matrix.tsv": "ad687a71664ef2d54e6b3b6e53c4aa20c2c66a94",
         "backend/bluets/tests/fixtures/typescript_oracle/ambient-reference.json": "22487a38f513a8daf9846d6685d674e7673fe5bb"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/assertion_results.rs",
+      "ignored_tests": [
+        "assertion_results_match_the_complete_native_contract"
+      ],
+      "inputs": {
+        "backend/bluets/tests/assertion_results.rs": "e20a3a1fc81a44a0c8459cb451d182b87f6cf403",
+        "backend/bluets/tests/fixtures/assertion_results/cases.json": "d3de5782d55b6cebe921403b43bc6ac560d7feb4",
+        "backend/bluets/tests/fixtures/assertion_results/mutation-sites.json": "c9d9ccee1e050711572b834cac3e441e592e9dbe",
+        "backend/bluets/tests/fixtures/assertion_results/operations.json": "2b985a24c53f1db7aa9d052303d3eb5bbe7c1f0a",
+        "backend/bluets/tests/fixtures/assertion_results/reference.json": "33f3775bce2fe050c080907c38b490ab7a750a75",
+        "backend/bluets/tests/fixtures/typescript_oracle/dynamic-declarations-expression-static-self/main.ts": "d9add730be96a6a672f54aebaf67cac01aed7068"
       }
     },
     {
@@ -1828,7 +1842,7 @@
         "backend/bluets/tests/fixtures/mapped_inference/literal-preservation-controls.json": "88d4d423878f86c8e336728210a8feee22406298",
         "backend/bluets/tests/fixtures/mapped_inference/projection-identity-controls.json": "74ad8b213ccb9b2cca3bb419bb72dbd347c7921f",
         "backend/bluets/tests/fixtures/mapped_inference/projection-mutation-controls.json": "2d0440dc931850a566e5acd64a2b2bb43ab428b4",
-        "backend/bluets/tests/fixtures/mapped_inference/projection-owner-controls.json": "e9279afab492da962b2a6428b778854f14eb35af",
+        "backend/bluets/tests/fixtures/mapped_inference/projection-owner-controls.json": "4ccd7306be368b50f611c8d84c96f1cb38781cf5",
         "backend/bluets/tests/fixtures/mapped_inference/reference.json": "b155e2c553907e052ae65f2d95441eda1bb7fd43",
         "backend/bluets/tests/mapped_inference.rs": "8425bdd5325b6b684f1e1dcdc9b439f44d2ebb41"
       }

@@ -109,7 +109,19 @@ impl ModuleChecker<'_> {
                 );
             }
         }
-        if let Some(operand) = erased_assertion_operand(tokens) {
+        // The nested checker visits an arrow body's assertion in its own
+        // lexical scope; the complete arrow is not the assertion's operand.
+        let complete_function = tokens.first().is_some_and(|first| {
+            self.module
+                .nested_functions
+                .get(&first.start)
+                .is_some_and(|function| {
+                    tokens
+                        .last()
+                        .is_some_and(|last| function.span.end == last.end)
+                })
+        });
+        if let Some(operand) = erased_assertion_operand(tokens).filter(|_| !complete_function) {
             let marker = &tokens[operand.len()];
             if let Some(annotation) = self.module.type_assertions.get(&marker.start).cloned() {
                 if annotation == Type::ConstAssertion {

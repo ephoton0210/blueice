@@ -152,6 +152,7 @@ impl Type {
     pub(crate) fn operator_children(&self) -> Option<Vec<&Type>> {
         Some(match self {
             Self::Readonly(value) | Self::InferenceBarrier(value) => vec![value],
+            Self::RuntimeQualified { semantic, .. } => vec![semantic],
             Self::StringMapping(value) => vec![&value.operand],
             Self::IndexedRecord { object, indices } => std::iter::once(object.as_ref())
                 .chain(indices.iter().flat_map(|index| {
@@ -241,6 +242,15 @@ impl Type {
     ) -> Option<Type> {
         Some(match self {
             Self::Readonly(value) => Self::Readonly(Box::new(map(value, &[]))),
+            Self::RuntimeQualified {
+                semantic,
+                opaque,
+                may_readonly,
+            } => Self::RuntimeQualified {
+                semantic: Box::new(map(semantic, &[])),
+                opaque: *opaque,
+                may_readonly: *may_readonly,
+            },
             Self::InferenceBarrier(value) => Self::InferenceBarrier(Box::new(map(value, &[]))),
             Self::StringMapping(value) => Self::StringMapping(Box::new(StringMappingType {
                 operand: map(&value.operand, &[]),

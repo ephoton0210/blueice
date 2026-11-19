@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "package": "P0-J",
+  "status": "user-approved-policy-amendment",
+  "approvedOn": "2026-11-19",
+  "userInstruction": "接受 unknown as T",
+  "acceptedParent": "7d8fa17b90da3e7b29946a4319090286ce8dbb09",
+  "baseContract": "ASSERTION_RESULTS_CONTRACT.json",
+  "baseContractSha256": "962d5b8062eddf41fba8d5ee74c98b2ab80d9d5f8f87e59a4554161b9200e461",
+  "semanticRule": "An assertion has its semantic target type; unknown-to-T pure returns are accepted. Readonly and opaque runtime provenance remains separate and actual protected writes are refused.",
+  "supersededExpectation": {
+    "path": "backend/bluets/tests/fixtures/mapped_inference/projection-owner-controls.json",
+    "caseId": "unknown-cannot-acquire-parameter",
+    "field": "blueAccepts",
+    "before": false,
+    "after": true,
+    "nativeAccepts": true,
+    "sourceAndNativeDiagnosticsAndDeclarationUnchanged": true,
+    "primaryOrInventoryCredit": 0
+  },
+  "preservationExceptionIsExhaustive": true,
+  "changes": [
+    {
+      "path": "backend/bluets/tests/fixtures/mapped_inference/projection-owner-controls.json",
+      "beforeSha256": "8a1a81f5608ac08426df6579b2bc5b99bebffd22cdb8e2f1af1cd9f07fdca98d",
+      "afterSha256": "389ccb95c46c5f5b104e4b278f6ff0f27f77c3439eb0f004afae4c95ba6ec137",
+      "beforeText": "{\n  \"schema\": 1,\n  \"scope\": \"Supplementary same-parameter provenance acceptance and four intentional owner refusals. No primary or inventory credit. Native accepts all inputs; owner refusals are not Native agreements.\",\n  \"options\": {\n    \"target\": \"ES5\",\n    \"module\": \"CommonJS\",\n    \"strict\": true,\n    \"declaration\": true,\n    \"noEmitOnError\": true,\n    \"lib\": [\n      \"ES5\"\n    ],\n    \"outDir\": \"dist\"\n  },\n  \"typescript\": \"5.9.3\",\n  \"implementationSha256\": \"3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675\",\n  \"libraries\": {\n    \"lib.es5.d.ts\": \"c430d44666289dae81f30fa7b2edebf186ecc91a2d4c71266ea6ae76388792e1\",\n    \"lib.decorators.d.ts\": \"8e7f8264d0fb4c5339605a15daadb037bf238c10b654bb3eee14208f860a32ea\",\n    \"lib.decorators.legacy.d.ts\": \"782dec38049b92d4e85c1585fbea5474a219c6984a35b004963b00beb1aab538\"\n  },\n  \"nativeReferenceSha256\": \"f824dc44d33642531097ef1ce7bbffdd409ffb5d4fc01999b6490bd09bc75fd5\",\n  \"cases\": [\n    {\n      \"id\": \"same-parameter-projection\",\n      \"accepts\": true,\n      \"diagnostics\": [],\n      \"declarations\": {\n        \"main.d.ts\": \"export declare function result<T extends unknown[]>(value: T): T;\\n\"\n      },\n      \"source\": \"export function result<T extends unknown[]>(value: T): T { return [value[0]] as unknown as T; }\\n\",\n      \"blueAccepts\": true\n    },\n    {\n      \"id\": \"unknown-cannot-acquire-parameter\",\n      \"accepts\": true,\n      \"diagnostics\": [],\n      \"declarations\": {\n        \"main.d.ts\": \"export declare function result<T>(value: unknown): T;\\n\"\n      },\n      \"source\": \"export function result<T>(value: unknown): T { return value as unknown as T; }\\n\",\n      \"blueAccepts\": false\n    },\n    {\n      \"id\": \"readonly-cannot-acquire-parameter\",\n      \"accepts\": true,\n      \"diagnostics\": [],\n      \"declarations\": {\n        \"main.d.ts\": \"export declare function result<T>(value: readonly string[]): T;\\n\"\n      },\n      \"source\": \"export function result<T>(value: readonly string[]): T { return value as unknown as T; }\\n\",\n      \"blueAccepts\": false\n    },\n    {\n      \"id\": \"unrelated-parameter-projection\",\n      \"accepts\": true,\n      \"diagnostics\": [],\n      \"declarations\": {\n        \"main.d.ts\": \"export declare function result<T extends unknown[], U>(value: T): U;\\n\"\n      },\n      \"source\": \"export function result<T extends unknown[], U>(value: T): U { return [value[0]] as unknown as U; }\\n\",\n      \"blueAccepts\": false\n    },\n    {\n      \"id\": \"mixed-concrete-readonly-payload\",\n      \"accepts\": true,\n      \"diagnostics\": [],\n      \"declarations\": {\n        \"main.d.ts\": \"export declare function result<T extends unknown[]>(value: T, protectedValue: readonly string[]): T;\\n\"\n      },\n      \"source\": \"export function result<T extends unknown[]>(value: T, protectedValue: readonly string[]): T { return [value[0], protectedValue] as unknown as T; }\\n\",\n      \"blueAccepts\": false\n    }\n  ]\n}\n"
+    },
+    {
+      "path": "backend/bluets/tests/fixtures/mapped_inference/FROZEN.json",
+      "beforeSha256": "da62d531c7cbc15bd53c53467ab00c8eabf8a8174cc2d33ff0518d65ae511dd7",
+      "afterSha256": "9f75550cbcb6787ea18dcd21233c74294805a1a3edd7dcce9548f9924b9be142",
+      "beforeText": "{\n  \"schema\": 1,\n  \"typescript\": \"5.9.3\",\n  \"forms\": 101,\n  \"profiles\": 4,\n  \"comparisons\": 404,\n  \"accepted\": 358,\n  \"rejected\": 46,\n  \"declarationFiles\": 366,\n  \"consumers\": 716,\n  \"runtime\": 8,\n  \"sha256\": {\n    \"cases.json\": \"d5e41300bb0f5a74fae0aeaf639d4e68463ef482014d853b624f54824fac7f2e\",\n    \"reference.json\": \"e6eee4d7a56a1c88d46fb4fb9c688365f444c7f0ffb8b95ec6b9999ec291dd36\",\n    \"boundary-controls.json\": \"e92a17ab43498a02995ce9e33e61605fd53dc1900f53f669251fdca60505cdec\"\n  },\n  \"scope\": \"Finite reverse mapped inference, contextual sequence shapes and calibrated binding-name prerequisites; all broader G rows remain open.\",\n  \"boundaryControls\": 12,\n  \"supplementarySha256\": {\n    \"literal-preservation-controls.json\": \"071ba6d38172f0994e2c5e69e0a2147b7e183dec8682e7addd74bee4d682457b\",\n    \"projection-owner-controls.json\": \"8a1a81f5608ac08426df6579b2bc5b99bebffd22cdb8e2f1af1cd9f07fdca98d\",\n    \"projection-identity-controls.json\": \"97bacb8e04f7b792c83cc6e8ecd32b60497d9853026c340f17dd9be73632c43c\",\n    \"projection-mutation-controls.json\": \"b7bd97cd46d4dda9cdbe235e41a78cc92874686c276a2b55dcbcf4b7c13bef54\",\n    \"callback-context-controls.json\": \"9ae3633304c929873acd790577a3defbcaa58eb2d99bb700efa575f56fdc6d16\",\n    \"generic-argument-controls.json\": \"b484776848efa3611f918f617a25ffb767e7cda281d6e8ecc1ef7e253339093c\"\n  },\n  \"supplementaryLiteralComparisons\": 4,\n  \"supplementaryInventoryCredit\": 0,\n  \"supplementaryProjectionControls\": 5,\n  \"supplementaryIdentityControls\": 4,\n  \"supplementaryMutationControls\": 4,\n  \"supplementaryCallbackComparisons\": 4,\n  \"supplementaryGenericArgumentComparisons\": 12\n}\n"
+    }
+  ],
+  "unchangedRequirements": [
+    "All original source programs and Native observations",
+    "All 43,276 original complete inventory case objects except permitted measurement-pointer relocation",
+    "The other 12 original projection control expectations",
+    "All 621 original tools",
+    "The complete original P0-J semantic/owner matrix, budgets, exact declarations and maps, consumers, execution and default-deny boundaries",
+    "Complete fresh Native/workspace/standalone/Windows and independently audited delivery before whole-package commit"
+  ]
+}

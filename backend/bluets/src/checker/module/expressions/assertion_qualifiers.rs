@@ -79,6 +79,9 @@ fn qualified(
     budget: &mut TypeExpansionBudget,
     depth: usize,
 ) -> bool {
+    if !value.runtime_qualifiers().is_plain() {
+        return true;
+    }
     if matches!(
         value,
         Type::Any

@@ -10,6 +10,18 @@
 use super::*;
 
 impl ModuleChecker<'_> {
+    pub(in crate::checker::module) fn runtime_origin_qualifiers(
+        &self,
+        value: &Type,
+        budget: &mut TypeExpansionBudget,
+    ) -> Result<crate::parser::RuntimeQualifiers, ()> {
+        let mut qualifiers = value.runtime_qualifiers();
+        qualifiers.opaque |= matches!(value.semantic_type(), Type::Unknown | Type::StrictUnknown);
+        qualifiers.may_readonly |= matches!(value.semantic_type(), Type::Readonly(_))
+            || deep_contains_readonly(value, &self.types, budget, 0)?;
+        Ok(qualifiers)
+    }
+
     pub(super) fn possible_readonly_computed_receiver(
         &self,
         receiver: &[Token],
@@ -33,7 +45,14 @@ impl ModuleChecker<'_> {
         scope: &BTreeMap<String, Type>,
     ) -> Result<bool, ()> {
         let inferred = self.infer_expression(receiver, scope);
-        if !matches!(inferred, Type::Unknown | Type::StrictUnknown) {
+        if inferred.runtime_qualifiers().may_readonly {
+            return Ok(true);
+        }
+        if !matches!(
+            inferred.semantic_type(),
+            Type::Unknown | Type::StrictUnknown
+        ) && !inferred.runtime_qualifiers().opaque
+        {
             return Ok(false);
         }
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
@@ -299,6 +318,12 @@ fn deep_contains_readonly(
         return Err(());
     }
     match value {
+        Type::Readonly(_) => Ok(true),
+        Type::RuntimeQualified {
+            semantic,
+            may_readonly,
+            ..
+        } => Ok(*may_readonly || deep_contains_readonly(semantic, aliases, budget, depth + 1)?),
         Type::Record(fields) => {
             for field in fields {
                 if field.readonly

@@ -14,10 +14,11 @@ impl ModuleChecker<'_> {
         let mut scope = self.values.clone();
         for declaration in &self.module.declarations {
             if let Declaration::Variable(variable) = declaration {
-                let value = variable
-                    .annotation
-                    .clone()
-                    .unwrap_or_else(|| self.infer_variable_type(variable, &scope));
+                let actual = self.infer_variable_type(variable, &scope);
+                let value = variable.annotation.as_ref().map_or_else(
+                    || actual.clone(),
+                    |annotation| annotation.clone().retaining_runtime_qualifiers(&actual),
+                );
                 scope.insert(variable.name.clone(), value);
             }
         }
@@ -29,6 +30,7 @@ impl ModuleChecker<'_> {
                 }
                 let parameters = self.return_parameters(&function.parameters, &scope);
                 if function.return_type.is_some() {
+                    let result = self.inferred_function_result(function, &scope, false);
                     let overloaded = self.module.declarations.iter().any(|item| {
                         matches!(item, Declaration::Function(other)
                             if other.name == function.name && other.overload)
@@ -36,6 +38,10 @@ impl ModuleChecker<'_> {
                     if !overloaded {
                         if let Some(signatures) = self.functions.get_mut(&function.name) {
                             for signature in signatures {
+                                signature.return_type = signature
+                                    .return_type
+                                    .clone()
+                                    .with_runtime_qualifiers(result.runtime_qualifiers());
                                 for (bound, inferred) in
                                     signature.parameters.iter_mut().zip(&parameters)
                                 {
@@ -67,6 +73,22 @@ impl ModuleChecker<'_> {
                     if symbol.kind == SymbolKind::Function && symbol.span == function.span {
                         symbol.value_type = Some(result.clone());
                     }
+                }
+            }
+        }
+        // Callable aliases are seeded before function bodies. Refresh their
+        // complete signature before the lexical flow model snapshots bindings.
+        for declaration in &self.module.declarations {
+            if let Declaration::Variable(variable) = declaration {
+                if matches!(variable.initializer.as_slice(), [name] if self.functions.contains_key(&name.text))
+                {
+                    let actual = self.infer_variable_type(variable, &scope);
+                    let value = variable.annotation.as_ref().map_or_else(
+                        || actual.clone(),
+                        |annotation| annotation.clone().retaining_runtime_qualifiers(&actual),
+                    );
+                    self.values.insert(variable.name.clone(), value.clone());
+                    scope.insert(variable.name.clone(), value);
                 }
             }
         }
@@ -224,9 +246,6 @@ impl ModuleChecker<'_> {
                 );
             }
             *parameters = self.return_parameters(parameters, &scope);
-            if result.is_some() {
-                continue;
-            }
             let function = FunctionDeclaration {
                 name: "<method>".to_string(),
                 async_function,
@@ -234,7 +253,7 @@ impl ModuleChecker<'_> {
                 body_open: None,
                 type_parameters,
                 parameters: parameters.clone(),
-                return_type: None,
+                return_type: result.clone(),
                 body: body.clone(),
                 returns: Vec::new(),
                 locals: Vec::new(),

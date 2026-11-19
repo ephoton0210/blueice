@@ -1,0 +1,281 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:fd642c71683fbd992d1319e5598c51f5379dc766",
+  "acceptedParent": "7d8fa17b90da3e7b29946a4319090286ce8dbb09",
+  "runtimeAuditSha256": "be37d7f4f70346d742087225adf11e202069459e2bab814ce2106c2f7666be4e",
+  "compilerProfiles": [
+    {
+      "profile": "native",
+      "compilerSha256": "a15efd2650d97411931408b4037883bc157acf792b35883606760b1d8ef6b2af",
+      "counts": {
+        "semanticProducers": 816,
+        "ownerProducers": 480,
+        "semanticAccepted": 768,
+        "semanticRejected": 48,
+        "exactSemanticDeclarations": 912,
+        "completeSemanticMaps": 1824,
+        "completeSemanticSegments": 27804,
+        "consumerPrograms": 6144,
+        "consumerDirections": [
+          "native/native",
+          "native/blue",
+          "blue/native",
+          "blue/blue"
+        ],
+        "realExecutions": 768,
+        "ownerNegativeRefusalsAtAuthoredMutation": 384,
+        "ownerPositiveControls": 96,
+        "exactOwnerPositiveDeclarations": 96,
+        "completeOwnerPositiveMaps": 192,
+        "completeOwnerPositiveSegments": 3312,
+        "totalExactDeclarations": 1008,
+        "totalCompleteMaps": 2016,
+        "totalSyntaxChecks": 1008
+      },
+      "physicalFiles": 25488,
+      "physicalReads": 29520
+    },
+    {
+      "profile": "workspace",
+      "compilerSha256": "a4085867a1e4a6c2ed7c6705ffaa9d31030f2bcc22a61145a11b1548ef5155fa",
+      "counts": {
+        "semanticProducers": 816,
+        "ownerProducers": 480,
+        "semanticAccepted": 768,
+        "semanticRejected": 48,
+        "exactSemanticDeclarations": 912,
+        "completeSemanticMaps": 1824,
+        "completeSemanticSegments": 27804,
+        "consumerPrograms": 6144,
+        "consumerDirections": [
+          "native/native",
+          "native/blue",
+          "blue/native",
+          "blue/blue"
+        ],
+        "realExecutions": 768,
+        "ownerNegativeRefusalsAtAuthoredMutation": 384,
+        "ownerPositiveControls": 96,
+        "exactOwnerPositiveDeclarations": 96,
+        "completeOwnerPositiveMaps": 192,
+        "completeOwnerPositiveSegments": 3312,
+        "totalExactDeclarations": 1008,
+        "totalCompleteMaps": 2016,
+        "totalSyntaxChecks": 1008
+      },
+      "physicalFiles": 25488,
+      "physicalReads": 29520
+    },
+    {
+      "profile": "standalone",
+      "compilerSha256": "b2d09d2f09292be4f7640fdfdf9c39f2909f38dd4490cbb144712c34dad6d830",
+      "counts": {
+        "semanticProducers": 816,
+        "ownerProducers": 480,
+        "semanticAccepted": 768,
+        "semanticRejected": 48,
+        "exactSemanticDeclarations": 912,
+        "completeSemanticMaps": 1824,
+        "completeSemanticSegments": 27804,
+        "consumerPrograms": 6144,
+        "consumerDirections": [
+          "native/native",
+          "native/blue",
+          "blue/native",
+          "blue/blue"
+        ],
+        "realExecutions": 768,
+        "ownerNegativeRefusalsAtAuthoredMutation": 384,
+        "ownerPositiveControls": 96,
+        "exactOwnerPositiveDeclarations": 96,
+        "completeOwnerPositiveMaps": 192,
+        "completeOwnerPositiveSegments": 3312,
+        "totalExactDeclarations": 1008,
+        "totalCompleteMaps": 2016,
+        "totalSyntaxChecks": 1008
+      },
+      "physicalFiles": 25488,
+      "physicalReads": 29520
+    }
+  ],
+  "receipt": {
+    "schema": 1,
+    "conclusion": "complete-evidence-packed-not-accepted",
+    "archives": [
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_001.tar.gz",
+        "bytes": 50434531,
+        "sha256": "962affa0f69f9a857dbee4c7368c464add11db8b47576f07de120120bd782f5f",
+        "members": 63906
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_002.tar.gz",
+        "bytes": 54305536,
+        "sha256": "b7c51337a721f3e5ebf54b78b60023dbd6a1d55b2209ec93d222813af4470d0b",
+        "members": 69376
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_003.tar.gz",
+        "bytes": 52252398,
+        "sha256": "887cdec5ba0097e9434efb47f5b049246e0f80bc82566209e81447de926794a9",
+        "members": 130658
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_004.tar.gz",
+        "bytes": 61559820,
+        "sha256": "d131be641264a5c89379a8df17468157cd13ab1d540a6748ee1e1e2944946b50",
+        "members": 48597
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_005.tar.gz",
+        "bytes": 52025609,
+        "sha256": "9fb4cdae1729e217c6737a60580efcf1e75c9ec49c311d6f6a82dd4e86463317",
+        "members": 47018
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_006.tar.gz",
+        "bytes": 57916949,
+        "sha256": "ba381b673147a8306edc22911f0905c7caf63d3d67ae644679b71713e0b90320",
+        "members": 113221
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_007.tar.gz",
+        "bytes": 51082839,
+        "sha256": "c3bddf456e3d97a410bdb4ecd7a9e96ba80dd869d54b8090909861fb95fd9dbf",
+        "members": 106224
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_008.tar.gz",
+        "bytes": 63808372,
+        "sha256": "983f549b49b13eed12f4c12e03c642d682d2b9d2ea63b67f2f830de407e4aeb9",
+        "members": 32682
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_009.tar.gz",
+        "bytes": 53846391,
+        "sha256": "58c7aadc665d79977b46810b23bb98b9b3eb4ecc289f97b5a37ad81df3999bf5",
+        "members": 106281
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_010.tar.gz",
+        "bytes": 60410070,
+        "sha256": "0947259475ec40a2d46cbc78e3a3d3c41c8803496bbd7cd4459c89a164244119",
+        "members": 34446
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_011.tar.gz",
+        "bytes": 54693528,
+        "sha256": "7bd57f4cc793a368fb8b23d2bb94ce0356591fe7e65aeec5236f51bbbc7ded92",
+        "members": 226
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_012.tar.gz",
+        "bytes": 50944216,
+        "sha256": "bcf8b8ca919cb9607169f9bb473be84a5f7c0dea8d9bb93a65507cb933f84b74",
+        "members": 20669
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_013.tar.gz",
+        "bytes": 54537946,
+        "sha256": "6ae8124314da54040b804d3bcfb51fbbc43037d8a71ac859a488fdf2fce4f7e2",
+        "members": 126102
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_014.tar.gz",
+        "bytes": 60403380,
+        "sha256": "23489d3a2179bef95ca2447eb8dd9d106e4119bf1d0f917fca2e8d083f00fd1f",
+        "members": 34446
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_015.tar.gz",
+        "bytes": 61056101,
+        "sha256": "4bfa5d6f4e24784a2b8078ac3f72086367e202ed77464a2b863e62a3d8bfb26a",
+        "members": 114334
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_016.tar.gz",
+        "bytes": 51981252,
+        "sha256": "f0bb26e121260c83517c04e8d7b09c6eacfa0fa5cd5f85ee2a09ccc2b6142598",
+        "members": 70
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_017.tar.gz",
+        "bytes": 53109146,
+        "sha256": "836677977bec3c4c1dcd69bd435dc42ca02de620479e38e5784073b361fc4bca",
+        "members": 46774
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_018.tar.gz",
+        "bytes": 53426696,
+        "sha256": "f5e40ae018c40854a118f241cc790fa461e4e7b4f86649f6366e504fee64cc31",
+        "members": 104508
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_019.tar.gz",
+        "bytes": 50934263,
+        "sha256": "5a51512de69f4f48e8cacb7615e5151b8c1cc9fac2ca00de13dfda8b2773d97c",
+        "members": 20088
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_020.tar.gz",
+        "bytes": 52750826,
+        "sha256": "837480c5fad30a75084ce545237ee19021a1cfdbd202f1567277cc66047b6cfc",
+        "members": 123888
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_021.tar.gz",
+        "bytes": 52061681,
+        "sha256": "2547ada740bede986af5e4195986c8c84004be3b726df01a3d961f392fc0ae5b",
+        "members": 34255
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_022.tar.gz",
+        "bytes": 52280344,
+        "sha256": "f196534be9869dad80b4abe3176accb5fdce6dca7b6aa62e3ee857f8969977d6",
+        "members": 116970
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_023.tar.gz",
+        "bytes": 64164204,
+        "sha256": "3eeb73b1b0bae120f835046363f817b44a79db2ad61d426505f8db08df58177d",
+        "members": 22013
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_024.tar.gz",
+        "bytes": 53715486,
+        "sha256": "d0480a6dac7e847cf399be8a6049842d1c37753e4f7e903912e72ff030accf58",
+        "members": 9
+      },
+      {
+        "path": "ASSERTION_RESULTS_EVIDENCE_025.tar.gz",
+        "bytes": 51029757,
+        "sha256": "f8c07c03a427f772232b3dd5ac27dfc946634cdb643482abcd4ba0c890c6d5ed",
+        "members": 148344
+      }
+    ],
+    "fileCount": 1664840,
+    "fragmentCount": 1665105,
+    "sourceBytes": 7912538836,
+    "fileLedger": {
+      "path": "ASSERTION_RESULTS_EVIDENCE_FILES.jsonl.gz",
+      "sha256": "9d9b6e63fd5653984acad70331dad186bba7a87a53386a4a902c76c8f15f58b9"
+    },
+    "fragmentLedger": {
+      "path": "ASSERTION_RESULTS_EVIDENCE_FRAGMENTS.jsonl.gz",
+      "sha256": "d83c544deea658404b2b9df6dae2905c031f96aee351949424a6611d2cf8c9c7"
+    },
+    "partLimitExclusive": 67108864,
+    "maximumFragmentBytes": 16777216,
+    "wholeP0JComplete": false
+  },
+  "collection": {
+    "path": "ASSERTION_RESULTS_COLLECTION.json.gz",
+    "sha256": "f63edb1f9cbc87629eacb27c177c863e6e6bbf00e426fe53f090061032095c7a"
+  },
+  "symbolicLinks": {
+    "path": "ASSERTION_RESULTS_SYMBOLIC_LINKS.json",
+    "sha256": "075149509288d0c3bb6e57caff8293c01f45acfbb301fbe95fd90c01fed9ea00"
+  },
+  "artifactRequirementsSatisfied": false,
+  "wholeP0JComplete": false
+}

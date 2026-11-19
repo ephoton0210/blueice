@@ -11,9 +11,11 @@ use crate::syntax::{
 use std::collections::BTreeMap;
 
 mod assertions;
+mod runtime_qualifiers;
 mod string_types;
 mod type_forms;
 mod type_mapping;
+pub(crate) use runtime_qualifiers::RuntimeQualifiers;
 pub use string_types::{IntrinsicKind, IntrinsicType, StringMappingType};
 pub use type_forms::{
     ConditionalType, IndexSignature, MappedModifier, MappedType, TemplateLiteralType, Variance,
@@ -1095,6 +1097,13 @@ pub enum Type {
     },
     Array(Box<Type>),
     Readonly(Box<Type>),
+    /// An inferred value's static type and retained runtime-origin evidence.
+    /// Source syntax cannot construct this wrapper or grant write authority.
+    RuntimeQualified {
+        semantic: Box<Type>,
+        opaque: bool,
+        may_readonly: bool,
+    },
     /// A static inference boundary; ordinary relations still inspect its base.
     InferenceBarrier(Box<Type>),
     Tuple(Vec<TupleTypeElement>),

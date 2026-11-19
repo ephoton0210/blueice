@@ -155,10 +155,11 @@ impl<'a> ModuleChecker<'a> {
                 scope.extend(self.variable_pattern_bindings(local, &scope));
                 continue;
             }
-            let inferred = local
-                .annotation
-                .clone()
-                .unwrap_or_else(|| self.infer_expression(&local.initializer, &scope));
+            let actual = self.infer_expression(&local.initializer, &scope);
+            let inferred = local.annotation.as_ref().map_or_else(
+                || actual.clone(),
+                |annotation| annotation.clone().retaining_runtime_qualifiers(&actual),
+            );
             scope.insert(
                 local.name.clone(),
                 canonical_parameter_references(&inferred, &self.types),
@@ -857,10 +858,12 @@ fn hoist_from_if(statement: &FunctionIfStatement, scope: &mut BTreeMap<String, T
 
 /// The `T` of `Promise<T>`, when `value` is that type.
 pub(in crate::checker::module) fn promise_value_type(value: &Type) -> Option<Type> {
-    match value {
-        Type::Named { name, arguments } if name == "Promise" && arguments.len() == 1 => {
-            Some(arguments[0].clone())
-        }
+    match value.semantic_type() {
+        Type::Named { name, arguments } if name == "Promise" && arguments.len() == 1 => Some(
+            arguments[0]
+                .clone()
+                .with_runtime_qualifiers(value.runtime_qualifiers()),
+        ),
         _ => None,
     }
 }

@@ -42,6 +42,9 @@ impl Lowerer<'_, '_> {
             return Ok("Object".to_string());
         }
         Ok(match value {
+            Type::RuntimeQualified { semantic, .. } => {
+                self.serialize_at(class, semantic, span, depth + 1)?
+            }
             Type::Predicate(predicate) => {
                 self.serialize_at(class, &predicate.runtime_type(), span, depth + 1)?
             }

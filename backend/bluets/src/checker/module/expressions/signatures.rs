@@ -10,6 +10,17 @@ pub(in crate::checker::module) fn callable_signatures(
     construct: bool,
 ) -> Option<Vec<FunctionSignature>> {
     match value {
+        Type::RuntimeQualified { semantic, .. } => {
+            callable_signatures(semantic, construct).map(|mut signatures| {
+                for signature in &mut signatures {
+                    signature.return_type = signature
+                        .return_type
+                        .clone()
+                        .with_runtime_qualifiers(value.runtime_qualifiers());
+                }
+                signatures
+            })
+        }
         Type::IndexedRecord { object, .. } => callable_signatures(object, construct),
         Type::Function { parameters, result } if !construct => Some(vec![FunctionSignature {
             parameters: parameters.clone(),
@@ -75,7 +86,8 @@ impl ModuleChecker<'_> {
             return None;
         }
         let mut budget = TypeExpansionBudget::new(self.max_type_expansions);
-        let mut bound = bound.clone();
+        let qualifiers = bound.runtime_qualifiers();
+        let mut bound = bound.semantic_type().clone();
         let mut visited = HashSet::new();
         while let Some(expanded) = instantiate_named(
             &bound,
@@ -89,7 +101,11 @@ impl ModuleChecker<'_> {
         signatures::callable_signatures(&bound, construct).map(|signatures| {
             signatures
                 .into_iter()
-                .map(|signature| self.canonical_rest_signature(signature))
+                .map(|mut signature| {
+                    signature.return_type =
+                        signature.return_type.with_runtime_qualifiers(qualifiers);
+                    self.canonical_rest_signature(signature)
+                })
                 .collect()
         })
     }

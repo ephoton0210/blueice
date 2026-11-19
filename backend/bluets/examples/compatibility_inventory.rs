@@ -6,6 +6,8 @@
 
 #[path = "../tests/fixtures/compatibility_inventory/accounting.rs"]
 mod accounting;
+#[path = "../tests/fixtures/compatibility_inventory/case_assertion_results.rs"]
+mod case_assertion_results;
 #[path = "../tests/fixtures/compatibility_inventory/case_conditional_inference.rs"]
 mod case_conditional_inference;
 #[path = "../tests/fixtures/compatibility_inventory/case_contextual_members.rs"]

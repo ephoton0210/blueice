@@ -394,6 +394,8 @@ fn equality_filter(value: &Type, literal: &Token, positive: bool, loose: bool) -
 
 fn truthy(value: &Type, positive: bool) -> Option<Type> {
     match value {
+        Type::RuntimeQualified { semantic, .. } => truthy_type(semantic, positive)
+            .map(|value_type| value_type.with_runtime_qualifiers(value.runtime_qualifiers())),
         Type::Null | Type::Undefined | Type::Void | Type::Never => {
             (!positive).then(|| value.clone())
         }

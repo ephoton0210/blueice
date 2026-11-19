@@ -7,24 +7,23 @@
 use super::*;
 use crate::syntax::{lex, TokenKind};
 
+fn erases_attached_comments(declaration: &Declaration) -> bool {
+    matches!(
+        declaration,
+        Declaration::Interface(_) | Declaration::TypeAlias(_)
+    ) || matches!(declaration, Declaration::Function(function) if function.overload || function.declared)
+        || matches!(declaration, Declaration::Variable(variable) if variable.declared)
+}
+
 pub(super) fn erase_type_comments(module: &Module, edits: &mut [TextEdit]) {
-    if !module.declarations.iter().any(|declaration| {
-        matches!(
-            declaration,
-            Declaration::Interface(_) | Declaration::TypeAlias(_)
-        ) || matches!(declaration, Declaration::Function(function) if function.overload)
-    }) {
+    if !module.declarations.iter().any(erases_attached_comments) {
         return;
     }
     let Ok(tokens) = lex(&module.id, &module.source) else {
         return;
     };
     for declaration in &module.declarations {
-        if !(matches!(
-            declaration,
-            Declaration::Interface(_) | Declaration::TypeAlias(_)
-        ) || matches!(declaration, Declaration::Function(function) if function.overload))
-        {
+        if !erases_attached_comments(declaration) {
             continue;
         }
         let span = declaration.span();

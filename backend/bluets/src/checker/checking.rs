@@ -178,7 +178,10 @@ pub(crate) fn check_incremental(
                 .collect()
         };
         diagnostics.extend(checker.diagnostics);
-        let symbols = checker.symbols;
+        let mut symbols = checker.symbols;
+        for symbol in &mut symbols {
+            symbol.value_type = symbol.value_type.as_ref().map(Type::semantic_clone);
+        }
         namespace_exports.insert(module_id.clone(), exported_namespaces.clone());
         namespace_exports = reexports::forward(&origins, &namespace_exports);
         exports

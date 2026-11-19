@@ -80,6 +80,14 @@ impl Candidates {
         let accepts = |actual: &Type, expected: &Type, budget: &mut TypeExpansionBudget| {
             is_assignable(actual, expected, aliases, &mut HashSet::new(), budget)
         };
+        let retain = |value: Type| {
+            self.covariant
+                .iter()
+                .chain(&self.contravariant)
+                .fold(value, |value, source| {
+                    value.retaining_runtime_qualifiers(source)
+                })
+        };
         let covariant = if self.covariant.is_empty() {
             None
         } else if self
@@ -115,11 +123,11 @@ impl Candidates {
                 .iter()
                 .all(|constraint| accepts(candidate, constraint, budget))
             {
-                return Some(if preserve {
+                return Some(retain(if preserve {
                     candidate.clone()
                 } else {
                     widen(candidate)
-                });
+                }));
             }
         }
         self.contravariant
@@ -132,5 +140,6 @@ impl Candidates {
             .or_else(|| self.contravariant.first())
             .cloned()
             .or(covariant)
+            .map(retain)
     }
 }

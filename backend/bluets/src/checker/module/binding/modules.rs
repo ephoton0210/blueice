@@ -640,7 +640,19 @@ impl<'a> ModuleChecker<'a> {
                     .cloned()
                 {
                     if class.value_exported {
-                        self.bind_imported_class(&binding.local, &class, &import.span);
+                        // A completed value surface carries the class member
+                        // result facts as well as its constructor/modifiers.
+                        if let Some(value) = self
+                            .exports
+                            .values
+                            .get(resolved)
+                            .and_then(|values| values.get(&binding.imported))
+                            .cloned()
+                        {
+                            self.bind_imported_value(&binding.local, &value, &import.span);
+                        } else {
+                            self.bind_imported_class(&binding.local, &class, &import.span);
+                        }
                     } else {
                         self.type_only_classes.insert(binding.local.clone());
                         self.insert_type(

@@ -14,6 +14,7 @@ pub(super) fn literal_context(
     if !budget.consume() {
         return false;
     }
+    let value = value.semantic_type();
     match value {
         Type::Literal(_) => true,
         Type::Union(parts) | Type::Intersection(parts) => parts
@@ -38,6 +39,7 @@ pub(super) fn naked(
     active: &mut HashSet<String>,
     budget: &mut TypeExpansionBudget,
 ) -> Option<String> {
+    let value = value.semantic_type();
     match value {
         Type::Named { .. } if declared_parameter(value, parameters).is_some() => {
             Some(declared_parameter(value, parameters)?.name.clone())

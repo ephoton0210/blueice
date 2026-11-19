@@ -461,7 +461,7 @@ fn function_anchors(
     default_parameters(&function.parameters, tokens, anchors);
 }
 
-fn closing_parenthesis(tokens: &[crate::Token], open: usize) -> Option<usize> {
+pub(super) fn closing_parenthesis(tokens: &[crate::Token], open: usize) -> Option<usize> {
     let mut depth = 0usize;
     (open..tokens.len()).find(|&index| {
         if tokens[index].is("(") {

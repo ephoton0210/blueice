@@ -298,11 +298,15 @@ impl<'a> ModuleChecker<'a> {
                 &mut budget,
             );
             if let PropertyType::Found { value, .. } = found {
-                match value {
+                match value.semantic_type() {
                     Type::Function { result, .. } => {
-                        return self.materialize_result(&result, &BTreeMap::new(), &mut budget)
+                        let result = result
+                            .as_ref()
+                            .clone()
+                            .with_runtime_qualifiers(value.runtime_qualifiers());
+                        return self.materialize_result(&result, &BTreeMap::new(), &mut budget);
                     }
-                    value @ Type::GenericFunction { .. } => {
+                    Type::GenericFunction { .. } => {
                         let signatures = signatures::callable_signatures(&value, false)
                             .expect("generic function has call signature");
                         let explicit = call.generic.then(|| {
@@ -315,8 +319,8 @@ impl<'a> ModuleChecker<'a> {
                             explicit,
                         );
                     }
-                    Type::Intersection(overloads) => {
-                        if let Some(signatures) = method_overload_signatures(&overloads) {
+                    Type::Intersection(_) => {
+                        if let Some(signatures) = signatures::callable_signatures(&value, false) {
                             return self.infer_function_call(
                                 &signatures,
                                 call.arguments,
@@ -411,8 +415,23 @@ impl<'a> ModuleChecker<'a> {
                         .unwrap_or(annotation),
                     value => value,
                 };
+                let actual = self.infer_expression(value, scope);
+                if matches!(actual.semantic_type(), Type::Unknown | Type::StrictUnknown)
+                    || !actual.runtime_qualifiers().is_plain()
+                {
+                    let qualifiers =
+                        actual
+                            .runtime_qualifiers()
+                            .join(crate::parser::RuntimeQualifiers {
+                                opaque: matches!(
+                                    actual.semantic_type(),
+                                    Type::Unknown | Type::StrictUnknown
+                                ),
+                                may_readonly: false,
+                            });
+                    return annotation.clone().with_runtime_qualifiers(qualifiers);
+                }
                 if *target == Type::Never {
-                    let actual = self.infer_expression(value, scope);
                     return if self.assertion_preserves_runtime_qualifiers(&actual) {
                         actual
                     } else {
@@ -425,7 +444,6 @@ impl<'a> ModuleChecker<'a> {
                 {
                     return annotation.clone();
                 }
-                let actual = self.infer_expression(value, scope);
                 return if self.assertion_preserves_runtime_qualifiers(&actual)
                     && !self
                         .assertion_retains_parameter_projection(value, &actual, annotation, scope)

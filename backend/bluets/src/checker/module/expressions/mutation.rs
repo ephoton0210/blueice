@@ -136,7 +136,7 @@ impl<'a> ModuleChecker<'a> {
         // Bracket access on `never` has an indexed value type of `never`;
         // dotted access still reports a missing property. Check retained owner
         // readonly provenance above before applying this indexed-write rule.
-        if matches!(owner, Type::Never) && mutation.computed.is_some() {
+        if matches!(owner.semantic_type(), Type::Never) && mutation.computed.is_some() {
             if mutation.operator.is("=") {
                 let actual = self.infer_in_context(mutation.value, scope, &Type::Never);
                 if !self.is_assignable_bounded(&actual, &Type::Never, span) {

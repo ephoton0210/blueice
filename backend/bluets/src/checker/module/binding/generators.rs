@@ -38,7 +38,7 @@ impl ModuleChecker<'_> {
         let Some(annotation) = &function.return_type else {
             return open;
         };
-        let Type::Named { name, arguments } = annotation else {
+        let Type::Named { name, arguments } = annotation.semantic_type() else {
             self.refuse_generator_annotation(annotation, &function.span);
             return open;
         };

@@ -20,9 +20,10 @@ pub(super) fn declaration_type(
     if surfaces.is_empty() {
         return Ok(value.clone());
     }
+    let semantic = value.semantic_clone();
     let mut visiting = surfaces
         .iter()
-        .filter(|(_, surface)| &surface.constructor == value)
+        .filter(|(_, surface)| surface.constructor.semantic_clone() == semantic)
         .map(|(name, _)| format!("typeof {name}"))
         .collect();
     expand(value, surfaces, span, &mut visiting, &mut 8192)

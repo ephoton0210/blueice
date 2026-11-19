@@ -61,6 +61,7 @@ fn text_options(
     project: Option<&crate::Project>,
     exact_optional: bool,
 ) -> String {
+    let value = value.semantic_type();
     if let Some(display) = crate::type_operator_profiles::diagnostic(value) {
         return display.to_string();
     }
@@ -69,6 +70,7 @@ fn text_options(
     }
     let render = |value: &Type| text_options(value, depth + 1, project, exact_optional);
     match value {
+        Type::RuntimeQualified { .. } => unreachable!("semantic view has no runtime wrapper"),
         Type::Conditional(_)
         | Type::StringMapping(_)
         | Type::InferenceBarrier(_)

@@ -1,0 +1,128 @@
+{
+  "license": "MPL-2.0",
+  "typescript": "5.9.3",
+  "evidence": "immutable source67 operation-red and same-input operation-parent probes; supplemental regression only, zero compatibility inventory credit",
+  "cases": [
+    {
+      "id": "method",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare const hidden: unknown;\nconst object = hidden as {read(): number}; export const result = object.read();\n",
+      "accepts": true,
+      "declaration": "export declare const result: number;\n",
+      "diagnosticCodes": []
+    },
+    {
+      "id": "generic-method",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare const hidden: unknown;\nconst object = hidden as {read<T>(value: T): T}; export const result = object.read(1);\n",
+      "accepts": true,
+      "declaration": "export declare const result = 1;\n",
+      "diagnosticCodes": []
+    },
+    {
+      "id": "array-index",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare const hidden: unknown;\nconst array = hidden as number[]; export const result = array[0];\n",
+      "accepts": true,
+      "declaration": "export declare const result: number;\n",
+      "diagnosticCodes": []
+    },
+    {
+      "id": "tuple-index",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare const hidden: unknown;\nconst tuple = hidden as [number, string]; export const result = tuple[0];\n",
+      "accepts": true,
+      "declaration": "export declare const result: number;\n",
+      "diagnosticCodes": []
+    },
+    {
+      "id": "tuple-outside",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare const hidden: unknown;\nconst tuple = hidden as [number]; export const result = tuple[1];\n",
+      "accepts": false,
+      "declaration": null,
+      "diagnosticCodes": [
+        2493
+      ]
+    },
+    {
+      "id": "nullable-number",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare const hidden: unknown;\nconst value = hidden as number | undefined; export const result = value ?? 0;\n",
+      "accepts": true,
+      "declaration": "export declare const result: number;\n",
+      "diagnosticCodes": []
+    },
+    {
+      "id": "nullable-record",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare const hidden: unknown;\nconst value = hidden as {value: number} | undefined; export const result = value ?? {value: 0};\n",
+      "accepts": true,
+      "declaration": "export declare const result: {\n    value: number;\n};\n",
+      "diagnosticCodes": []
+    },
+    {
+      "id": "boolean-or",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare const hidden: unknown;\nconst value = hidden as boolean; export const result = value || false;\n",
+      "accepts": true,
+      "declaration": "export declare const result: boolean;\n",
+      "diagnosticCodes": []
+    },
+    {
+      "id": "boolean-and",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare const hidden: unknown;\nconst value = hidden as boolean; export const result = value && true;\n",
+      "accepts": true,
+      "declaration": "export declare const result: boolean;\n",
+      "diagnosticCodes": []
+    },
+    {
+      "id": "number-or",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare const hidden: unknown;\nconst value = hidden as number; export const result = value || 1;\n",
+      "accepts": true,
+      "declaration": "export declare const result: number;\n",
+      "diagnosticCodes": []
+    },
+    {
+      "id": "number-and",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare const hidden: unknown;\nconst value = hidden as number; export const result = value && 1;\n",
+      "accepts": true,
+      "declaration": "export declare const result: number;\n",
+      "diagnosticCodes": []
+    },
+    {
+      "id": "immediate-call",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare const hidden: unknown;\nexport const result = (hidden as () => number)();\n",
+      "accepts": true,
+      "declaration": "export declare const result: number;\n",
+      "diagnosticCodes": []
+    },
+    {
+      "id": "immediate-call-method",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare const hidden: unknown;\nexport const result = (hidden as () => number).call(undefined);\n",
+      "accepts": true,
+      "declaration": "export declare const result: number;\n",
+      "diagnosticCodes": []
+    },
+    {
+      "id": "immediate-bind-method",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare const hidden: unknown;\nexport const result = (hidden as () => number).bind(undefined);\n",
+      "accepts": true,
+      "declaration": "export declare const result: () => number;\n",
+      "diagnosticCodes": []
+    },
+    {
+      "id": "record-index",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare const hidden: unknown;\nconst value = hidden as {value: number}; export const result = value[\"value\"];\n",
+      "accepts": true,
+      "declaration": "export declare const result: number;\n",
+      "diagnosticCodes": []
+    },
+    {
+      "id": "constructor",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare const hidden: unknown;\nconst Constructor = hidden as new () => {value: number}; export const result = new Constructor();\n",
+      "accepts": true,
+      "declaration": "export declare const result: {\n    value: number;\n};\n",
+      "diagnosticCodes": []
+    },
+    {
+      "id": "iterator",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare const hidden: unknown;\nfunction* sequence(): Generator<number, number, number> {return (yield 1) + (yield 2) * 2;} const iterator = sequence(); export const result = iterator.next(1);\n",
+      "accepts": true,
+      "declaration": "export declare const result: IteratorResult<number, number>;\n",
+      "diagnosticCodes": []
+    }
+  ]
+}

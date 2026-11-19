@@ -348,6 +348,8 @@ impl ModuleChecker<'_> {
         actual: &Type,
         expected: &Type,
     ) {
+        let actual = actual.semantic_type();
+        let expected = expected.semantic_type();
         if let Some(normalized) =
             crate::checker::type_relations::normalize_more_type(actual, &self.types)
         {

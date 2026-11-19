@@ -200,6 +200,10 @@ impl<'a> ModuleChecker<'a> {
             self.dedupe_diagnostics_since(before);
             return;
         }
+        // Runtime origin restricts mutation; it does not remove callability.
+        // Keep the original value for result inference and inspect only its
+        // semantic shape when validating arguments and overloads.
+        let member_type = member_type.semantic_type().clone();
         let context_signatures = match &member_type {
             Type::Function { parameters, result } => vec![FunctionSignature {
                 parameters: parameters.clone(),

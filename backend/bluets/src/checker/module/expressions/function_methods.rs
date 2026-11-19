@@ -26,11 +26,15 @@ impl ModuleChecker<'_> {
                 }
             }
         }
-        match self.infer_expression(receiver, scope) {
+        let value = self.infer_expression(receiver, scope);
+        match value.semantic_type() {
             Type::Function { parameters, result } => Some(FunctionSignature {
-                parameters,
+                parameters: parameters.clone(),
                 type_parameters: Vec::new(),
-                return_type: *result,
+                return_type: result
+                    .as_ref()
+                    .clone()
+                    .with_runtime_qualifiers(value.runtime_qualifiers()),
             }),
             _ => None,
         }
@@ -136,9 +140,19 @@ impl ModuleChecker<'_> {
                 return true;
             }
             let actual = self.infer_expression(arguments[0], scope);
-            match actual {
-                Type::Tuple(elements) => elements.into_iter().map(|e| e.annotation).collect(),
-                Type::Array(element) if parameters.iter().all(|p| p.rest) => vec![*element],
+            match actual.semantic_type() {
+                Type::Tuple(elements) => elements
+                    .iter()
+                    .map(|e| {
+                        e.annotation
+                            .clone()
+                            .with_runtime_qualifiers(actual.runtime_qualifiers())
+                    })
+                    .collect(),
+                Type::Array(element) if parameters.iter().all(|p| p.rest) => vec![element
+                    .as_ref()
+                    .clone()
+                    .with_runtime_qualifiers(actual.runtime_qualifiers())],
                 Type::Any => return true,
                 _ => {
                     let tokens = strip_outer_parentheses(arguments[0]);

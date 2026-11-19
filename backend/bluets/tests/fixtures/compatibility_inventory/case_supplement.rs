@@ -33,6 +33,7 @@ pub fn additional(snapshot: &Snapshot, suite: &Suite) -> Result<Vec<Case>> {
     let facts = rust_facts::parse(snapshot.source(source)?)?;
     let named_array = |scope: &str| array_cases(source, array(&facts, scope, "for@0")?);
     let mut cases = match stem {
+        "assertion_results" => super::case_assertion_results::additional(snapshot)?,
         "nonnullable_awaited" => super::case_nonnullable_awaited::additional(snapshot)?,
         "string_intrinsics" => super::case_string_intrinsics::additional(snapshot)?,
         "mapped_inference" => super::case_mapped_inference::additional(snapshot)?,

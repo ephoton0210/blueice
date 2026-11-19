@@ -134,6 +134,23 @@ fn property_type_with_access(
     budget: &mut TypeExpansionBudget,
     writing: bool,
 ) -> PropertyType {
+    if let Type::RuntimeQualified { semantic, .. } = value {
+        if !budget.consume() {
+            return PropertyType::Exhausted;
+        }
+        return match property_type_with_access(
+            semantic, property, aliases, visited, budget, writing,
+        ) {
+            PropertyType::Found {
+                value: property_value,
+                readonly,
+            } => PropertyType::Found {
+                value: property_value.with_runtime_qualifiers(value.runtime_qualifiers()),
+                readonly,
+            },
+            result => result,
+        };
+    }
     if *value == Type::StrictUnknown {
         return PropertyType::Indeterminate;
     }

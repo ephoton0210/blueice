@@ -1,0 +1,187 @@
+{
+  "schema": 1,
+  "recordedAt": "2026-11-18T11:06:49.126220+00:00",
+  "conclusion": "approved-unknown-to-T-policy-correction-and-development-acceptance-passed",
+  "wholePackageComplete": false,
+  "todoChecked": false,
+  "commitOrPushPerformed": false,
+  "frozenContractChanged": false,
+  "originalExpectationChanged": false,
+  "actualCliSha256": "b2d09d2f09292be4f7640fdfdf9c39f2909f38dd4490cbb144712c34dad6d830",
+  "repairSources": {
+    "backend/bluets/src/checker/module/expressions/readonly.rs": "93d335f76b9ff91ac5b51dead63108813c40b955b57faeb974b8176ad7256134",
+    "backend/bluets/src/diagnostic.rs": "6bfc4405eb7a9e9583c1b671cde56fca26a13b4d2ac436f7a918b8036d6793ad",
+    "backend/bluets/src/bin/bluetsc/build_graph/freshness.rs": "e984af92c27624aee26e6771171cf2baca9717e830b6ef4ba841a49628fe23cd",
+    "backend/bluets/tests/assertion_results.rs": "5cf131e26f1d4d34b7d8f8183861b18009ca9f5cfc05efa0ed94ed44fec2c397"
+  },
+  "passedRustFunctions": 429,
+  "ignoredRustFunctions": 1,
+  "ignoredReason": "The Cargo default run ignores the pinned full Native contract test; its complete CLI contract and independent physical audit were subsequently run directly and passed, as separately recorded.",
+  "readonlyMutationForms": 4,
+  "cliSurfacesPerForm": 2,
+  "allErrorsAtAuthoredMutation": true,
+  "originalProjectionControlForms": 13,
+  "remainingFrozenPolicyDifferences": [
+    "unknown-cannot-acquire-parameter"
+  ],
+  "formatPassed": true,
+  "compilerAllTargetClippyPassed": true,
+  "originalToolsVerifiedUnchanged": 621,
+  "rawReports": {
+    "source68": {
+      "path": "target/assertion-result-contract-20261118-1/projection-boundary-repair-1/source68/report.json",
+      "sha256": "c2c8c524853ffedfa728d4caa4e33dc2ae69cd9a3827b5d01562a8ac99cab85b"
+    },
+    "accepted-parent": {
+      "path": "target/assertion-result-contract-20261118-1/projection-boundary-repair-1/accepted-parent/report.json",
+      "sha256": "e6d796b6247bf891d0a385e4df702049154aca2131b4be2b37b7e3d345678e9e"
+    },
+    "mutation-controls": {
+      "path": "target/assertion-result-contract-20261118-1/projection-boundary-repair-1/mutation-controls/report.json",
+      "sha256": "6c2f89f7fd8f6c5c59c1d06c545e9ab7698ec287ba32943384f059e7556174f5"
+    },
+    "repaired-projections": {
+      "path": "target/assertion-result-contract-20261118-1/projection-boundary-repair-1/repaired-projections/report.json",
+      "sha256": "8ba971758d03da3430da405769946890a5a2a574e600ef760627aef5f6231642"
+    },
+    "repaired-mutations": {
+      "path": "target/assertion-result-contract-20261118-1/projection-boundary-repair-1/repaired-mutations/report.json",
+      "sha256": "44f0759ae49e4206a15a5d09e1f3055a1b4359f559871128bbf15c879bc7f716"
+    }
+  },
+  "rawLogs": {
+    "readonly-container-red.log": "5783e145fa6e4db0d2ec4fa129a34316cdd16241a5e7406156c22bc38aa026a1",
+    "readonly-container-green.log": "319f19c613353baeedc3173c4aeff6390b01b7fd7bd52f548a1720c2f1f38001",
+    "focused.log": "507e5cedcb1d0a7f987be5f964c58ec12a866bd5951fabf3089c1420c052f665",
+    "readonly-regressions.log": "61a5b22d45623415326f8356d5bf9b7e32e74d2b4ff6fd8f80d597b3dace08ff",
+    "fmt.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "clippy.log": "1ed3cef393694ed83da9b4bedfbc4486826e80434e1ffe3352fa0f3d3b7f0504",
+    "build-cli.log": "f27d03f87fcd79b825c4d0acfe61983a6697ae7b8cdcbc3d8b32c0727a487d9b",
+    "repair-source-binding.json": "97df9c4498c0df649d15549645d2f805c02be8a17c4e910c9ee0a87d6179d991",
+    "compiler-binding.json": "3e9c48f60d85c103bdc14e05e81e5b23733e21dabcc2c805fcb5ecc616d8e09f"
+  },
+  "policyDecision": "Choose whether the single old pure-return refusal is superseded by semantic target preservation; never distinguish equivalent casts just to make the old assertion pass.",
+  "diagnosticResultPath": "target/assertion-result-contract-20261118-1/projection-boundary-repair-1/result.json",
+  "diagnosticResultSha256": "df1f6cf5ff9087a5a46b234b113ce9f21a1f52c06c191cacee6e3d030de26362",
+  "developmentCompleteAssertionContract": {
+    "conclusion": "complete-readonly-repair-assertion-contract-and-independent-audit-passed",
+    "sourceRevision": "development-manifest-sha256:39cda0208845d13abe13ac8891c102c3c81d9ea19063aaddd32ab39fb1c77a33",
+    "guardedBackendFiles": 14239,
+    "controllerPath": "target/assertion-result-contract-20261118-1/projection-boundary-repair-1/complete-contract-control.json",
+    "controllerSha256": "04f6e5be659b3796891309c15bf8c97aaa5446e4476b9a96542c4b75460292a9",
+    "reportPath": "target/assertion-result-contract-20261118-1/projection-boundary-repair-1/complete-contract/report.json",
+    "reportSha256": "2864ad84fff3a6f311453464dcfff4c78eacf83e2d353321afb5da28c0ea5860",
+    "auditPath": "target/assertion-result-contract-20261118-1/projection-boundary-repair-1/complete-contract/independent-audit.json",
+    "auditSha256": "dfbdf42797421a0a175964ec9f26e3607edf04c14c11eca019745bc0d2b97a68",
+    "counts": {
+      "semanticProducers": 816,
+      "ownerProducers": 480,
+      "semanticAccepted": 768,
+      "semanticRejected": 48,
+      "exactSemanticDeclarations": 912,
+      "completeSemanticMaps": 1824,
+      "completeSemanticSegments": 27804,
+      "consumerPrograms": 6144,
+      "consumerDirections": [
+        "native/native",
+        "native/blue",
+        "blue/native",
+        "blue/blue"
+      ],
+      "realExecutions": 768,
+      "ownerNegativeRefusalsAtAuthoredMutation": 384,
+      "ownerPositiveControls": 96,
+      "exactOwnerPositiveDeclarations": 96,
+      "completeOwnerPositiveMaps": 192,
+      "completeOwnerPositiveSegments": 3312,
+      "totalExactDeclarations": 1008,
+      "totalCompleteMaps": 2016,
+      "totalSyntaxChecks": 1008
+    },
+    "physicalFiles": 25488,
+    "physicalReads": 29520,
+    "formalNativeWorkspaceStandaloneCredit": false,
+    "wholePackageComplete": false
+  },
+  "policyImpactAnalysis": "target/assertion-result-contract-20261118-1/projection-boundary-repair-1/proposed-policy-impact-2.json",
+  "policyResolution": {
+    "status": "user-approved-applied-and-verified",
+    "approvedOn": "2026-11-19",
+    "userInstruction": "\u63a5\u53d7 unknown as T",
+    "amendment": "ASSERTION_RESULTS_POLICY_AMENDMENT.json",
+    "amendmentSha256": "e582d963cc10dc6b17fccdbcf355574610b35c81ff266c1cd0105241882fc9f1",
+    "mappedInferencePassed": 7,
+    "mappedInferenceIgnored": 0,
+    "mappedInferenceFiltered": 0,
+    "verificationRoot": "target/assertion-result-contract-20261118-1/policy-acceptance-20261119-1",
+    "wholePackageComplete": false,
+    "acceptance": {
+      "schema": 1,
+      "recordedAt": "2026-11-19T00:32:12.857741+00:00",
+      "conclusion": "approved-unknown-to-T-policy-correction-and-development-acceptance-passed",
+      "userInstruction": "\u63a5\u53d7 unknown as T",
+      "amendmentSha256": "e582d963cc10dc6b17fccdbcf355574610b35c81ff266c1cd0105241882fc9f1",
+      "compilerSha256": "b2d09d2f09292be4f7640fdfdf9c39f2909f38dd4490cbb144712c34dad6d830",
+      "sourceRevision": "development-manifest-sha256:72a6391ff6c02779ba7b0604385215dfb3de507b9298c25f4a112707ac4c042c",
+      "mappedInference": {
+        "passedFunctions": 7,
+        "ignored": 0,
+        "filtered": 0,
+        "logSha256": "2be34ccef8cdf5cafdb915212abfcee80f7f5d6357adf4533e6cb39890f3bddc"
+      },
+      "completeAssertionContract": {
+        "reportSha256": "55798d6c807f6aaaf6268c7ada93b9979aabf1b5ddb879aeb9e1900d00369ae8",
+        "auditSha256": "351a2c74d9f03d59315ddf3b0c28e552c8fef3757d78950ad9d1edeb345290d5",
+        "counts": {
+          "semanticProducers": 816,
+          "ownerProducers": 480,
+          "semanticAccepted": 768,
+          "semanticRejected": 48,
+          "exactSemanticDeclarations": 912,
+          "completeSemanticMaps": 1824,
+          "completeSemanticSegments": 27804,
+          "consumerPrograms": 6144,
+          "consumerDirections": [
+            "native/native",
+            "native/blue",
+            "blue/native",
+            "blue/blue"
+          ],
+          "realExecutions": 768,
+          "ownerNegativeRefusalsAtAuthoredMutation": 384,
+          "ownerPositiveControls": 96,
+          "exactOwnerPositiveDeclarations": 96,
+          "completeOwnerPositiveMaps": 192,
+          "completeOwnerPositiveSegments": 3312,
+          "totalExactDeclarations": 1008,
+          "totalCompleteMaps": 2016,
+          "totalSyntaxChecks": 1008
+        },
+        "physicalFiles": 25488,
+        "physicalReads": 29520
+      },
+      "tooling": {
+        "nodeTestFiles": 48,
+        "nodeTests": 311,
+        "safeHomeObservations": 92,
+        "buildsPerSafeHomeObservation": 2,
+        "resultSha256": "035dcb72a12bb9f52bae99099422a0cc8535e40b6c66cf3af831eb12727a3c35"
+      },
+      "preservation": {
+        "originalCompleteCaseObjects": 43276,
+        "originalCaseInventoryByteIdentical": true,
+        "oldFixturePathsRetained": 12224,
+        "oldFixtureFilesByteIdentical": 12220,
+        "appendOnlyAdapters": 2,
+        "explicitlyApprovedPolicyFiles": 2,
+        "originalToolsByteIdentical": 621,
+        "auditSha256": "4a6079c55ca79ef02027a9d40eab8328b04b6492e004ef871cfd3dde657d801e"
+      },
+      "rawEvidenceRoot": "target/assertion-result-contract-20261118-1/policy-acceptance-20261119-1",
+      "wholeP0JComplete": false,
+      "todoChecked": false,
+      "commitOrPushPerformed": false
+    },
+    "rawResultSha256": "b1e1076627dbeee741c360bfb75f239d4b84da120f1482c91833b67ee36ddf35"
+  }
+}

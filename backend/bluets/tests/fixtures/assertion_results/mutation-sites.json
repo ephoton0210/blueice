@@ -1,0 +1,148 @@
+{
+  "schema": 1,
+  "sourceInputSha256": "18028a54ac7c08911866ce79d523a9aec854016a8674ab872326e49c74e69260",
+  "typescript": "5.9.3",
+  "scope": "Native AST offsets of the original owner mutation sites; prefix bytes/UTF16 offsets are added per frozen representation. A return-type error does not satisfy an owner refusal.",
+  "cases": [
+    {
+      "id": "readonly-plain-assert-write",
+      "policyAccepts": false,
+      "sites": [
+        {
+          "file": "main.ts",
+          "startUtf16": 123,
+          "endUtf16": 140,
+          "startByte": 123,
+          "endByte": 140,
+          "text": "mutable.value = 2"
+        }
+      ]
+    },
+    {
+      "id": "readonly-unknown-assert-write",
+      "policyAccepts": false,
+      "sites": [
+        {
+          "file": "main.ts",
+          "startUtf16": 157,
+          "endUtf16": 174,
+          "startByte": 157,
+          "endByte": 174,
+          "text": "mutable.value = 2"
+        }
+      ]
+    },
+    {
+      "id": "unknown-input-generic-mutable-write",
+      "policyAccepts": false,
+      "sites": [
+        {
+          "file": "main.ts",
+          "startUtf16": 186,
+          "endUtf16": 203,
+          "startByte": 186,
+          "endByte": 203,
+          "text": "mutable.value = 2"
+        }
+      ]
+    },
+    {
+      "id": "unknown-input-literal-constrained-intersection-write",
+      "policyAccepts": false,
+      "sites": [
+        {
+          "file": "main.ts",
+          "startUtf16": 210,
+          "endUtf16": 227,
+          "startByte": 210,
+          "endByte": 227,
+          "text": "mutable.value = 2"
+        }
+      ]
+    },
+    {
+      "id": "mutable-assert-write-control",
+      "policyAccepts": true,
+      "sites": [
+        {
+          "file": "main.ts",
+          "startUtf16": 114,
+          "endUtf16": 131,
+          "startByte": 114,
+          "endByte": 131,
+          "text": "mutable.value = 2"
+        }
+      ]
+    },
+    {
+      "id": "opaque-call-cast-write",
+      "policyAccepts": false,
+      "sites": [
+        {
+          "file": "main.ts",
+          "startUtf16": 177,
+          "endUtf16": 194,
+          "startByte": 177,
+          "endByte": 194,
+          "text": "mutable.value = 2"
+        }
+      ]
+    },
+    {
+      "id": "opaque-call-cast-without-readonly-control",
+      "policyAccepts": true,
+      "sites": [
+        {
+          "file": "main.ts",
+          "startUtf16": 134,
+          "endUtf16": 151,
+          "startByte": 134,
+          "endByte": 151,
+          "text": "mutable.value = 2"
+        }
+      ]
+    },
+    {
+      "id": "readonly-cross-file-generic-cast-write",
+      "policyAccepts": false,
+      "sites": [
+        {
+          "file": "main.ts",
+          "startUtf16": 161,
+          "endUtf16": 178,
+          "startByte": 161,
+          "endByte": 178,
+          "text": "mutable.value = 2"
+        }
+      ]
+    },
+    {
+      "id": "readonly-cross-file-generic-class-write",
+      "policyAccepts": false,
+      "sites": [
+        {
+          "file": "main.ts",
+          "startUtf16": 176,
+          "endUtf16": 193,
+          "startByte": 176,
+          "endByte": 193,
+          "text": "mutable.value = 2"
+        }
+      ]
+    },
+    {
+      "id": "readonly-generic-cast-alias-write",
+      "policyAccepts": false,
+      "sites": [
+        {
+          "file": "main.ts",
+          "startUtf16": 241,
+          "endUtf16": 258,
+          "startByte": 241,
+          "endByte": 258,
+          "text": "mutable.value = 2"
+        }
+      ]
+    }
+  ]
+}

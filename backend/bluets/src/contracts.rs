@@ -341,6 +341,9 @@ fn lower(
     active: &mut HashSet<String>,
 ) -> Result<Contract, ContractError> {
     match value {
+        Type::RuntimeQualified { semantic, .. } => {
+            lower(semantic, named_types, definitions, active)
+        }
         Type::Predicate(predicate) => {
             lower(&predicate.runtime_type(), named_types, definitions, active)
         }

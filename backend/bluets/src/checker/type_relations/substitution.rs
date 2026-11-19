@@ -261,10 +261,22 @@ fn substitute_parameters(
 }
 
 pub(crate) fn type_identity(value: &Type) -> String {
+    if let Type::RuntimeQualified {
+        semantic,
+        opaque,
+        may_readonly,
+    } = value
+    {
+        return format!(
+            "runtime-qualified({opaque},{may_readonly},{})",
+            type_identity(semantic)
+        );
+    }
     if let Some(value) = value.string_value() {
         return format!("utf16:{:?}", value.units());
     }
     match value {
+        Type::RuntimeQualified { .. } => unreachable!("runtime qualification handled above"),
         Type::StringMapping(value) => format!(
             "string-mapping({:?},{:?},{},{},{})",
             value.operation,
@@ -362,6 +374,7 @@ pub(crate) fn type_identity(value: &Type) -> String {
 
 pub(crate) fn type_label(value: &Type) -> String {
     match value {
+        Type::RuntimeQualified { semantic, .. } => type_label(semantic),
         Type::Conditional(_)
         | Type::StringMapping(_)
         | Type::InferenceBarrier(_)

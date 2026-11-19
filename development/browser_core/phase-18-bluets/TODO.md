@@ -8,24 +8,24 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-11-17).**
+**Current BlueTS / BlueTSC compatibility status (2026-11-19).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 43,276 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 43,492 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 42,341/42,347 (99.9858%); 3 open, 3 refused observations |
-| Separate controls | 633 native-reference + 296 BlueTS owner = 929; excluded from direct agreement |
-| Case labels | 43,270 scoped closed (including controls), 3 open, 3 refused |
-| Suite inventory | 192 suites / 397 ignored Rust functions; not a case denominator |
-| Suite labels | 188 scoped closed, 1 open, 3 refused |
+| Direct agreement | 42,477/42,483 (99.9859%); 3 open, 3 refused observations |
+| Separate controls | 633 native-reference + 376 BlueTS owner = 1,009; excluded from direct agreement |
+| Case labels | 43,486 scoped closed (including controls), 3 open, 3 refused |
+| Suite inventory | 193 suites / 398 ignored Rust functions; not a case denominator |
+| Suite labels | 189 scoped closed, 1 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
-| Source refusal sites | 231 in 11 areas; condition-specific locations, not extra failing cases |
+| Source refusal sites | 233 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 43,276 recorded case expectations pass; expected differences/refusals are not
+All 43,492 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,8 +33,8 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:dc685c689478832169cc6e4904fe07d737d97d22`.
-Input graph SHA-256: `4baf31eb626a1db1279349b85832a594a376925aafaa7bd9131012177c99242e`.
+Compiler/oracle source: `backend-tree:fd642c71683fbd992d1319e5598c51f5379dc766`.
+Input graph SHA-256: `9db59b3686e4450ed197ad35ead4696fb77ae6e24fe43fe4103815566b4b3a80`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
@@ -60,11 +60,13 @@ broader G-C1 inventory row remains open for unmeasured CLI/recovery coverage;
 the finite checklist does not claim full parity. See the
 [acceptance record](PLAN.md#phase-l--g-c1-implementation).
 
-**Latest completed follow-up:** P0-G preserves higher-order generic parameters,
-callable ownership and exact retained identities, with complete declaration,
-consumer, syntax and execution checks. [Acceptance](HIGHER_ORDER_INFERENCE_ACCEPTANCE.md)
-binds Native/local/Windows, maps, projects and tooling to the measured source.
-All 22 broader rows remain open and require separate closure contracts.
+**Latest completed follow-up:** P0-J delivers semantic assertion results while
+preserving readonly and opaque runtime protection, including the approved
+`unknown as T` pure return. Its [acceptance](ASSERTION_RESULTS_ACCEPTANCE.md),
+[measurements](ASSERTION_RESULTS_MEASUREMENT.json) and
+[independent published-byte audit](ASSERTION_RESULTS_ACCEPTANCE_AUDIT.json)
+complete the frozen package. All 22 broader rows remain open and require
+separate closure contracts.
 
 ## Open gaps and implementation priority — 2026-11-11
 
@@ -146,7 +148,7 @@ Code supporting these dependencies:
 
 The [current presence witnesses](STRING_INTRINSIC_MEASUREMENT.json#/presenceInventory/corrected)
 pass all22 names in both selected profiles. These44 witnesses carry no semantic
-denominator credit; broader catalogs and compositions remain open. P0-A/B/C/D/E/F/G/H have
+denominator credit; broader catalogs and compositions remain open. P0-A/B/C/D/E/F/G/H/I have
 complete source-bound acceptance within their frozen contracts.
 
 - [x] **P0-A — NoInfer and shared candidate boundaries.** Delivered the frozen
@@ -292,6 +294,31 @@ complete source-bound acceptance within their frozen contracts.
   [Full artifact index](CONTEXTUAL_MEMBER_ARTIFACTS.json).
   Frozen primary and old G-T4
   expected outputs remain unchanged.
+
+- [x] **P0-J — Assertion result semantics with preserved runtime provenance.**
+  Assertions expose their semantic target while retaining readonly/opaque source
+  protection through calls, imports, aliases, async/generator results and joins.
+  The approved `unknown as T` pure return passes; all other projection controls
+  and actual protected-write refusals remain intact. JavaScript, declarations
+  and complete maps match the pinned TypeScript 5.9.3 contract.
+  [Completed checklist](ASSERTION_RESULTS_FOLLOWUP.md#completion-checklist) ·
+  [Acceptance](ASSERTION_RESULTS_ACCEPTANCE.md) ·
+  [Measurements](ASSERTION_RESULTS_MEASUREMENT.json).
+  Same-source acceptance passes Native193/1,113, workspace8,081/zero failures
+  (402 existing ignores, zero filters), fmt/all-target Clippy, Node319 and all
+  Python/accounting/status gates. Windows passes77 complete cohorts,82 core
+  oracles and25 path cases. Both map profiles pass55 families/298 functions and
+  8,407 configurations twice; both program-root profiles pass all14 steps and
+  defu/mitt/reproductions/interchange. All three actual compilers pass the full
+  semantic/owner, exact declaration/map, consumer and execution contract.
+  The [independent delivery audit](ASSERTION_RESULTS_ACCEPTANCE_AUDIT.json)
+  verifies all1,664,840 published source/evidence files across25 bounded archives;
+  [file/fragment ledgers and raw artifacts](ASSERTION_RESULTS_ARTIFACTS.json)
+  retain every original failure and recovery. The43,276 original case objects,
+  12,224 fixture paths and74 accepted P0-I artifacts remain preserved; only the
+  [approved expectation](ASSERTION_RESULTS_POLICY_AMENDMENT.json) and
+  [two exact recorder repairs](ASSERTION_RESULTS_ORACLE_HOST_CORRECTIONS.json)
+  are exceptions. Broader22 rows remain open and full TypeScript parity stays OFF.
 
 Each package needs frozen authored inputs and Native expectations before
 production changes, complete primary/related diagnostics and UTF-16 positions,
