@@ -39,7 +39,7 @@ pub use fragment::{Constraints, Fragment, FragmentKind, NativeForm, SelectOption
 pub use native_text::{
     input_button_label, input_range_values, select_display_size, select_options,
 };
-pub use transform::Translation;
+pub use transform::{multiply, Matrix, Translation};
 
 use blueice_css::ComputedStyle;
 use blueice_dom::{Document, NodeId};

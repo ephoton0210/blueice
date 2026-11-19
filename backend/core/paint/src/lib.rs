@@ -72,6 +72,19 @@ pub enum PaintCommand {
         radii: Radii,
     },
     PopClip,
+    /// Everything up to the matching `PopTransform` is drawn through this 2D affine matrix
+    /// (`[a, b, c, d, e, f]`: `x' = a*x + c*y + e`, `y' = b*x + d*y + f`) in document space:
+    /// a box with `transform: rotate/scale/skew/matrix` and all of its contents.
+    PushTransform {
+        matrix: [f64; 6],
+    },
+    PopTransform,
+    /// Everything up to the matching `PopBlur` is drawn as one group and blurred by a Gaussian of
+    /// standard deviation `radius` pixels (`filter: blur(radius)`).
+    PushBlur {
+        radius: f64,
+    },
+    PopBlur,
     /// A solid-filled rectangle (a box's `background-color`).
     Rect {
         rect: Rect,
@@ -216,6 +229,13 @@ pub fn dump_frame(frame: &Frame) -> String {
                 fmt_radii(radii)
             )),
             PaintCommand::PopClip => out.push_str("endclip\n"),
+            PaintCommand::PushTransform { matrix } => out.push_str(&format!(
+                "transform {}\n",
+                matrix.iter().map(|v| fmt_num(*v)).collect::<Vec<_>>().join(",")
+            )),
+            PaintCommand::PopTransform => out.push_str("endtransform\n"),
+            PaintCommand::PushBlur { radius } => out.push_str(&format!("blur {}\n", fmt_num(*radius))),
+            PaintCommand::PopBlur => out.push_str("endblur\n"),
             PaintCommand::Rect { rect, color } => {
                 out.push_str(&format!("rect {} {}\n", fmt_rect(*rect), fmt_color(*color)))
             }
@@ -759,6 +779,64 @@ fn paint_order(children: &[Fragment]) -> Vec<&Fragment> {
 
 #[allow(clippy::too_many_arguments)]
 fn paint_fragment(
+    fragment: &Fragment,
+    offset_x: f64,
+    offset_y: f64,
+    styles: &StyleMap,
+    images: &ImageMap,
+    inherited: Inherited,
+    band: Option<(f64, f64)>,
+    out: &mut Vec<PaintCommand>,
+) {
+    // `filter: blur()` applies to the box's own group, and a transform to the filtered result.
+    let blur = fragment
+        .style_node
+        .or(fragment.node)
+        .and_then(|n| styles.get(&n))
+        .and_then(|style| match style.other.get("filter") {
+            Some(Value::Unparsed(tokens)) => blur_radius(tokens),
+            _ => None,
+        });
+    let transform = fragment.matrix.map(|local| {
+        // The box's own matrix is about its top-left; paint in document space around that point.
+        let (x, y) = (offset_x + fragment.x, offset_y + fragment.y);
+        let to = [1.0, 0.0, 0.0, 1.0, x, y];
+        let back = [1.0, 0.0, 0.0, 1.0, -x, -y];
+        blueice_layout::multiply(blueice_layout::multiply(to, local), back)
+    });
+    if let Some(matrix) = transform {
+        out.push(PaintCommand::PushTransform { matrix });
+    }
+    if let Some(radius) = blur {
+        out.push(PaintCommand::PushBlur { radius });
+    }
+    paint_fragment_untransformed(fragment, offset_x, offset_y, styles, images, inherited, band, out);
+    if blur.is_some() {
+        out.push(PaintCommand::PopBlur);
+    }
+    if transform.is_some() {
+        out.push(PaintCommand::PopTransform);
+    }
+}
+
+/// The radius in pixels of the first `blur(<length>)` in a `filter` value, if it is positive.
+fn blur_radius(tokens: &[blueice_css::Token]) -> Option<f64> {
+    use blueice_css::Token;
+    let at = tokens
+        .iter()
+        .position(|t| matches!(t, Token::Ident(name) if name.eq_ignore_ascii_case("blur")))?;
+    let mut rest = tokens[at + 1..].iter().filter(|t| !matches!(t, Token::Whitespace));
+    if !matches!(rest.next(), Some(Token::LeftParen)) {
+        return None;
+    }
+    match rest.next() {
+        Some(Token::Dimension(n, unit)) if unit.eq_ignore_ascii_case("px") && *n > 0.0 => Some(*n),
+        _ => None,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn paint_fragment_untransformed(
     fragment: &Fragment,
     offset_x: f64,
     offset_y: f64,
@@ -1469,6 +1547,63 @@ mod tests {
             },
         );
         paint(&fragment, &styles)
+    }
+
+    #[test]
+    fn a_rotated_box_is_painted_between_a_push_and_a_pop_of_its_matrix() {
+        let f = paint_html(
+            "<div><p></p></div>",
+            "div { width: 40px; height: 20px; background-color: red; transform: rotate(90deg) } p { background-color: blue; height: 5px }",
+            320.0,
+        );
+        let kinds: Vec<&str> = f
+            .commands
+            .iter()
+            .map(|c| match c {
+                PaintCommand::PushTransform { .. } => "push",
+                PaintCommand::PopTransform => "pop",
+                PaintCommand::Rect { .. } => "rect",
+                _ => "other",
+            })
+            .collect();
+        assert_eq!(kinds, ["push", "rect", "rect", "pop"], "{kinds:?}");
+        let PaintCommand::PushTransform { matrix } = &f.commands[0] else { unreachable!() };
+        // About the box's centre (20, 10): that point stays, the top-left goes to the top-right.
+        let at = |x: f64, y: f64| (matrix[0] * x + matrix[2] * y + matrix[4], matrix[1] * x + matrix[3] * y + matrix[5]);
+        let (cx, cy) = at(20.0, 10.0);
+        assert!((cx - 20.0).abs() < 1e-6 && (cy - 10.0).abs() < 1e-6, "{:?}", (cx, cy));
+        let (tx, ty) = at(0.0, 0.0);
+        assert!((tx - 30.0).abs() < 1e-6 && (ty + 10.0).abs() < 1e-6, "{:?}", (tx, ty));
+    }
+
+    #[test]
+    fn a_blurred_box_is_painted_inside_a_blur_group() {
+        let f = paint_html("<div></div>", "div { width: 40px; height: 20px; background-color: red; filter: blur(5px) }", 320.0);
+        let kinds: Vec<String> = f
+            .commands
+            .iter()
+            .map(|c| match c {
+                PaintCommand::PushBlur { radius } => format!("blur{radius}"),
+                PaintCommand::PopBlur => "endblur".into(),
+                PaintCommand::Rect { .. } => "rect".into(),
+                _ => "other".into(),
+            })
+            .collect();
+        assert_eq!(kinds, ["blur5", "rect", "endblur"], "{kinds:?}");
+    }
+
+    #[test]
+    fn filters_that_are_not_a_positive_blur_paint_normally() {
+        for css in ["filter: none", "filter: blur(0px)", "filter: grayscale(1)"] {
+            let f = paint_html("<div></div>", &format!("div {{ width: 4px; height: 4px; background-color: red; {css} }}"), 100.0);
+            assert!(!f.commands.iter().any(|c| matches!(c, PaintCommand::PushBlur { .. })), "{css}");
+        }
+    }
+
+    #[test]
+    fn an_untransformed_page_has_no_transform_commands() {
+        let f = paint_html("<div></div>", "div { width: 40px; height: 20px; background-color: red; transform: translate(3px, 4px) }", 320.0);
+        assert!(!f.commands.iter().any(|c| matches!(c, PaintCommand::PushTransform { .. } | PaintCommand::PopTransform)));
     }
 
     #[test]

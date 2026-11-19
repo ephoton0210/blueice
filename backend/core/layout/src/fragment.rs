@@ -131,6 +131,11 @@ pub struct Fragment {
     /// A `transform`/`translate` not yet applied to `x`/`y` (see `transform.rs`); `None`
     /// once applied, so a finished tree never carries one.
     pub translate: Option<crate::transform::Translation>,
+    /// A rotate/scale/skew/matrix transform not yet resolved against this box's size.
+    pub transform: Option<crate::transform::Transform>,
+    /// The resolved 2D transform in this box's own coordinates (origin folded in), for painting
+    /// to apply around the box and everything inside it. Layout geometry is untransformed.
+    pub matrix: Option<crate::transform::Matrix>,
     /// A text run of right-to-left level: its characters are drawn from the right edge of the
     /// fragment, so the string stays in reading (logical) order here.
     pub rtl: bool,
@@ -174,6 +179,8 @@ impl Fragment {
             baseline: None,
             style_node: None,
             translate: None,
+            transform: None,
+            matrix: None,
             rtl: false,
             logical: 0,
             orient: TextOrient::Horizontal,

@@ -721,7 +721,7 @@ fn mark(style: &Style<'_>, fragment: &mut Fragment) {
     };
     fragment.clips = style.clips_overflow();
     fragment.hidden = !style.is_visible();
-    fragment.translate = crate::transform::translation(style);
+    (fragment.translate, fragment.transform) = crate::transform::resolve(style);
 }
 
 /// Lays out `node` as a block-level box inside the containing block `c`.

@@ -138,6 +138,18 @@ impl Pixmap {
         }
     }
 
+    fn filled(width: u32, height: u32, color: [u8; 4]) -> Self {
+        let mut pixels = Vec::with_capacity(width as usize * height as usize * 4);
+        for _ in 0..(width as usize * height as usize) {
+            pixels.extend_from_slice(&color);
+        }
+        Pixmap {
+            width,
+            height,
+            pixels,
+        }
+    }
+
     fn blank(width: u32, height: u32) -> Self {
         let mut pixels = Vec::with_capacity(width as usize * height as usize * 4);
         for _ in 0..(width as usize * height as usize) {
@@ -526,6 +538,235 @@ impl Pixmap {
 /// `frame.width` x `frame.height` canvas.
 pub fn rasterize(frame: &Frame) -> Pixmap {
     let mut pixmap = Pixmap::blank(frame.width.ceil() as u32, frame.height.ceil() as u32);
+    draw_commands(&mut pixmap, &frame.commands);
+    pixmap
+}
+
+/// `a` applied after `b`, for `[a, b, c, d, e, f]` affine matrices.
+fn multiply(a: [f64; 6], b: [f64; 6]) -> [f64; 6] {
+    [
+        a[0] * b[0] + a[2] * b[1],
+        a[1] * b[0] + a[3] * b[1],
+        a[0] * b[2] + a[2] * b[3],
+        a[1] * b[2] + a[3] * b[3],
+        a[0] * b[4] + a[2] * b[5] + a[4],
+        a[1] * b[4] + a[3] * b[5] + a[5],
+    ]
+}
+
+/// The index of the `PopBlur` that closes the `PushBlur` at `open`.
+fn matching_pop_blur(commands: &[PaintCommand], open: usize) -> usize {
+    let mut depth = 0usize;
+    for (i, command) in commands.iter().enumerate().skip(open) {
+        match command {
+            PaintCommand::PushBlur { .. } => depth += 1,
+            PaintCommand::PopBlur => {
+                depth -= 1;
+                if depth == 0 {
+                    return i;
+                }
+            }
+            _ => {}
+        }
+    }
+    commands.len()
+}
+
+/// The index of the `PopTransform` that closes the `PushTransform` at `open`.
+fn matching_pop_transform(commands: &[PaintCommand], open: usize) -> usize {
+    let mut depth = 0usize;
+    for (i, command) in commands.iter().enumerate().skip(open) {
+        match command {
+            PaintCommand::PushTransform { .. } => depth += 1,
+            PaintCommand::PopTransform => {
+                depth -= 1;
+                if depth == 0 {
+                    return i;
+                }
+            }
+            _ => {}
+        }
+    }
+    commands.len()
+}
+
+/// A group drawn on its own: premultiplied colour and coverage per pixel, 0 to 1. The group is
+/// drawn twice, over black and over white; what shows through of each recovers both (over
+/// black a pixel is colour * alpha, over white it is that plus 1 - alpha).
+struct Layer {
+    width: usize,
+    height: usize,
+    /// `r, g, b, a` per pixel, colour premultiplied by `a`.
+    data: Vec<f32>,
+}
+
+impl Layer {
+    fn render(width: u32, height: u32, group: &[PaintCommand]) -> Layer {
+        let mut over_black = Pixmap::filled(width, height, [0, 0, 0, 255]);
+        let mut over_white = Pixmap::filled(width, height, [255, 255, 255, 255]);
+        draw_commands(&mut over_black, group);
+        draw_commands(&mut over_white, group);
+        let mut data = Vec::with_capacity(width as usize * height as usize * 4);
+        for (black, white) in over_black.pixels.chunks_exact(4).zip(over_white.pixels.chunks_exact(4)) {
+            let spread: f32 = (0..3).map(|k| f32::from(white[k]) - f32::from(black[k])).sum::<f32>() / (3.0 * 255.0);
+            let alpha = (1.0 - spread).clamp(0.0, 1.0);
+            for &c in &black[..3] {
+                data.push(f32::from(c) / 255.0);
+            }
+            data.push(alpha);
+        }
+        Layer { width: width as usize, height: height as usize, data }
+    }
+
+    /// A Gaussian blur of standard deviation `sigma` pixels, over all four channels.
+    fn blur(&mut self, sigma: f64) {
+        let radius = (sigma * 3.0).ceil().max(1.0) as isize;
+        let mut kernel: Vec<f32> = (-radius..=radius)
+            .map(|i| (-((i * i) as f64) / (2.0 * sigma * sigma)).exp() as f32)
+            .collect();
+        let total: f32 = kernel.iter().sum();
+        kernel.iter_mut().for_each(|k| *k /= total);
+        let (w, h) = (self.width as isize, self.height as isize);
+        let mut scratch = vec![0.0f32; self.data.len()];
+        // Horizontal pass into `scratch`, then vertical back into `data`.
+        for y in 0..h {
+            for x in 0..w {
+                let mut acc = [0.0f32; 4];
+                for (k, weight) in kernel.iter().enumerate() {
+                    let sx = x + k as isize - radius;
+                    if sx < 0 || sx >= w {
+                        continue;
+                    }
+                    let i = ((y * w + sx) * 4) as usize;
+                    for (c, slot) in acc.iter_mut().enumerate() {
+                        *slot += self.data[i + c] * weight;
+                    }
+                }
+                let o = ((y * w + x) * 4) as usize;
+                scratch[o..o + 4].copy_from_slice(&acc);
+            }
+        }
+        for y in 0..h {
+            for x in 0..w {
+                let mut acc = [0.0f32; 4];
+                for (k, weight) in kernel.iter().enumerate() {
+                    let sy = y + k as isize - radius;
+                    if sy < 0 || sy >= h {
+                        continue;
+                    }
+                    let i = ((sy * w + x) * 4) as usize;
+                    for (c, slot) in acc.iter_mut().enumerate() {
+                        *slot += scratch[i + c] * weight;
+                    }
+                }
+                let o = ((y * w + x) * 4) as usize;
+                self.data[o..o + 4].copy_from_slice(&acc);
+            }
+        }
+    }
+
+    /// The layer's pixel at `(x, y)` as `[premultiplied rgb in 0..255, alpha]`.
+    fn texel(&self, x: i64, y: i64) -> Option<[f64; 4]> {
+        if x < 0 || y < 0 || x >= self.width as i64 || y >= self.height as i64 {
+            return None;
+        }
+        let i = (y as usize * self.width + x as usize) * 4;
+        Some([
+            f64::from(self.data[i]) * 255.0,
+            f64::from(self.data[i + 1]) * 255.0,
+            f64::from(self.data[i + 2]) * 255.0,
+            f64::from(self.data[i + 3]),
+        ])
+    }
+}
+
+/// Blends a premultiplied colour of coverage `alpha` over pixel `(x, y)`.
+fn blend_premultiplied(pixmap: &mut Pixmap, x: i64, y: i64, color: [f64; 3], alpha: f64) {
+    if alpha <= 0.002 {
+        return;
+    }
+    let i = ((y as u32 * pixmap.width + x as u32) * 4) as usize;
+    for (k, c) in color.iter().enumerate() {
+        let blended = c + f64::from(pixmap.pixels[i + k]) * (1.0 - alpha);
+        pixmap.pixels[i + k] = blended.round().clamp(0.0, 255.0) as u8;
+    }
+}
+
+/// Draws `group` blurred by a Gaussian of standard deviation `sigma`.
+fn draw_blurred(pixmap: &mut Pixmap, group: &[PaintCommand], sigma: f64, clip: PixelClip) {
+    if group.is_empty() || !(sigma.is_finite() && sigma > 0.0) {
+        return draw_commands_clipped(pixmap, group, clip);
+    }
+    let mut layer = Layer::render(pixmap.width, pixmap.height, group);
+    layer.blur(sigma);
+    for y in clip.top.max(0)..clip.bottom.min(i64::from(pixmap.height)) {
+        for x in clip.left.max(0)..clip.right.min(i64::from(pixmap.width)) {
+            if let Some([r, g, b, a]) = layer.texel(x, y) {
+                blend_premultiplied(pixmap, x, y, [r, g, b], a);
+            }
+        }
+    }
+}
+
+/// An unblurred, untransformed group: just draws it, within `clip`.
+fn draw_commands_clipped(pixmap: &mut Pixmap, group: &[PaintCommand], clip: PixelClip) {
+    let mut with_clip = vec![PaintCommand::PushClip {
+        rect: blueice_paint::Rect {
+            x: clip.left as f64,
+            y: clip.top as f64,
+            width: (clip.right - clip.left) as f64,
+            height: (clip.bottom - clip.top) as f64,
+        },
+    }];
+    with_clip.extend(group.iter().cloned());
+    with_clip.push(PaintCommand::PopClip);
+    draw_commands(pixmap, &with_clip);
+}
+
+/// Draws `group` through `matrix` onto `pixmap`, carrying its pixels across with a bilinear
+/// sample (see [`Layer`]).
+fn draw_transformed(pixmap: &mut Pixmap, group: &[PaintCommand], matrix: [f64; 6], clip: PixelClip) {
+    let [a, b, c, d, e, f] = matrix;
+    let det = a * d - b * c;
+    if group.is_empty() || !det.is_finite() || det.abs() < 1e-9 || clip.right <= clip.left || clip.bottom <= clip.top {
+        return;
+    }
+    let (w, h) = (f64::from(pixmap.width), f64::from(pixmap.height));
+    let layer = Layer::render(pixmap.width, pixmap.height, group);
+    // The destination pixels the source rectangle can reach.
+    let corners = [(0.0, 0.0), (w, 0.0), (0.0, h), (w, h)].map(|(x, y)| (a * x + c * y + e, b * x + d * y + f));
+    let min_x = corners.iter().map(|p| p.0).fold(f64::INFINITY, f64::min).floor().max(clip.left as f64) as i64;
+    let max_x = corners.iter().map(|p| p.0).fold(f64::NEG_INFINITY, f64::max).ceil().min(clip.right as f64) as i64;
+    let min_y = corners.iter().map(|p| p.1).fold(f64::INFINITY, f64::min).floor().max(clip.top as f64) as i64;
+    let max_y = corners.iter().map(|p| p.1).fold(f64::NEG_INFINITY, f64::max).ceil().min(clip.bottom as f64) as i64;
+    let (ia, ib, ic, id) = (d / det, -b / det, -c / det, a / det);
+    let (ie, i_f) = (-(ia * e + ic * f), -(ib * e + id * f));
+    for y in min_y..max_y {
+        for x in min_x..max_x {
+            let (px, py) = (x as f64 + 0.5, y as f64 + 0.5);
+            let (u, v) = (ia * px + ic * py + ie - 0.5, ib * px + id * py + i_f - 0.5);
+            let (x0, y0) = (u.floor(), v.floor());
+            let (fx, fy) = (u - x0, v - y0);
+            // Outside the source rectangle counts as transparent, so edges fade.
+            let mut sum = [0.0f64; 4];
+            for (dx, dy, weight) in [
+                (0, 0, (1.0 - fx) * (1.0 - fy)),
+                (1, 0, fx * (1.0 - fy)),
+                (0, 1, (1.0 - fx) * fy),
+                (1, 1, fx * fy),
+            ] {
+                if let Some(t) = layer.texel(x0 as i64 + dx, y0 as i64 + dy) {
+                    for (slot, value) in sum.iter_mut().zip(t) {
+                        *slot += value * weight;
+                    }
+                }
+            }
+            blend_premultiplied(pixmap, x, y, [sum[0], sum[1], sum[2]], sum[3]);
+        }
+    }
+}
+
+fn draw_commands(pixmap: &mut Pixmap, commands: &[PaintCommand]) {
     let mut clip = PixelClip {
         left: 0,
         top: 0,
@@ -535,15 +776,29 @@ pub fn rasterize(frame: &Frame) -> Pixmap {
     let mut clips = Vec::new();
     // One entry per open clip: what a rounded clip must restore when it closes.
     let mut rounds: Vec<Option<round_clip::Corners>> = Vec::new();
-    for command in &frame.commands {
+    let mut index = 0;
+    while index < commands.len() {
+        let command = &commands[index];
+        index += 1;
         match command {
+            PaintCommand::PushTransform { matrix } => {
+                let end = matching_pop_transform(commands, index - 1);
+                draw_transformed(pixmap, &commands[index..end], *matrix, clip);
+                index = end + 1;
+            }
+            PaintCommand::PopTransform | PaintCommand::PopBlur => {}
+            PaintCommand::PushBlur { radius } => {
+                let end = matching_pop_blur(commands, index - 1);
+                draw_blurred(pixmap, &commands[index..end], *radius, clip);
+                index = end + 1;
+            }
             PaintCommand::PushClip { rect } => {
                 clips.push(clip);
                 rounds.push(None);
                 clip = clip.intersect(*rect);
             }
             PaintCommand::PushRoundClip { rect, radii } => {
-                rounds.push(round_clip::Corners::save(&pixmap, *rect, radii));
+                rounds.push(round_clip::Corners::save(pixmap, *rect, radii));
                 clips.push(clip);
                 clip = clip.intersect(*rect);
             }
@@ -552,7 +807,7 @@ pub fn rasterize(frame: &Frame) -> Pixmap {
                     clip = previous;
                 }
                 if let Some(Some(corners)) = rounds.pop() {
-                    corners.restore_outside_the_arcs(&mut pixmap);
+                    corners.restore_outside_the_arcs(pixmap);
                 }
             }
             PaintCommand::Rect { rect, color } => {
@@ -629,7 +884,6 @@ pub fn rasterize(frame: &Frame) -> Pixmap {
             ),
         }
     }
-    pixmap
 }
 
 fn scale_radii(radii: blueice_paint::Radii, scale: f64) -> blueice_paint::Radii {
@@ -692,6 +946,18 @@ fn rasterize_viewport_culled(
                 radii: scale_radii(radii, scale),
             },
             PaintCommand::PopClip => PaintCommand::PopClip,
+            PaintCommand::PopTransform => PaintCommand::PopTransform,
+            PaintCommand::PopBlur => PaintCommand::PopBlur,
+            PaintCommand::PushBlur { radius } => PaintCommand::PushBlur { radius: radius * scale },
+            PaintCommand::PushTransform { matrix } => {
+                // Page space -> viewport pixels is `p' = scale * (p - (0, scroll_y))`; the
+                // matrix must act the same way on the already mapped points.
+                let view = [scale, 0.0, 0.0, scale, 0.0, -scroll_y * scale];
+                let unview = [1.0 / scale, 0.0, 0.0, 1.0 / scale, 0.0, scroll_y];
+                PaintCommand::PushTransform {
+                    matrix: multiply(multiply(view, matrix), unview),
+                }
+            }
             PaintCommand::Rect { rect: r, color } => PaintCommand::Rect {
                 rect: rect(r),
                 color,
@@ -800,7 +1066,11 @@ fn may_reach_band(command: &PaintCommand, top: f64, bottom: f64) -> bool {
     match command {
         PaintCommand::PushClip { .. }
         | PaintCommand::PushRoundClip { .. }
-        | PaintCommand::PopClip => true,
+        | PaintCommand::PopClip
+        | PaintCommand::PushTransform { .. }
+        | PaintCommand::PopTransform
+        | PaintCommand::PushBlur { .. }
+        | PaintCommand::PopBlur => true,
         PaintCommand::Rect { rect, .. }
         | PaintCommand::BorderEdge { rect, .. }
         | PaintCommand::RoundRect { rect, .. }
@@ -920,6 +1190,123 @@ mod tests {
             height,
             commands,
         }
+    }
+
+    fn rect_cmd(x: f64, y: f64, w: f64, h: f64, color: Color) -> PaintCommand {
+        PaintCommand::Rect { rect: Rect { x, y, width: w, height: h }, color }
+    }
+
+    #[test]
+    fn a_rotated_group_is_drawn_at_its_turned_position() {
+        // A 40x10 red bar at (10, 20), turned 90 degrees about its own centre (30, 25), is
+        // a 10x40 bar from (25, 5) to (35, 45).
+        let (cx, cy) = (30.0, 25.0);
+        let m = [0.0, 1.0, -1.0, 0.0, cx + cy, cy - cx];
+        let f = frame(
+            60.0,
+            60.0,
+            vec![
+                PaintCommand::PushTransform { matrix: m },
+                rect_cmd(10.0, 20.0, 40.0, 10.0, Color::Rgba(255, 0, 0, 255)),
+                PaintCommand::PopTransform,
+            ],
+        );
+        let p = rasterize(&f);
+        assert_eq!(p.get_pixel(30, 10), [255, 0, 0, 255], "inside the turned bar");
+        assert_eq!(p.get_pixel(30, 40), [255, 0, 0, 255], "inside the turned bar");
+        assert_eq!(p.get_pixel(15, 25), BACKGROUND, "where the unturned bar was");
+        assert_eq!(p.get_pixel(45, 25), BACKGROUND, "where the unturned bar was");
+    }
+
+    #[test]
+    fn a_scaled_group_grows_and_keeps_its_colour() {
+        let f = frame(
+            40.0,
+            40.0,
+            vec![
+                PaintCommand::PushTransform { matrix: [2.0, 0.0, 0.0, 2.0, 0.0, 0.0] },
+                rect_cmd(5.0, 5.0, 5.0, 5.0, Color::Rgba(0, 0, 255, 255)),
+                PaintCommand::PopTransform,
+            ],
+        );
+        let p = rasterize(&f);
+        assert_eq!(p.get_pixel(15, 15), [0, 0, 255, 255]);
+        assert_eq!(p.get_pixel(5, 5), BACKGROUND);
+        assert_eq!(p.get_pixel(25, 25), BACKGROUND);
+    }
+
+    #[test]
+    fn a_translucent_group_blends_with_what_is_behind_it() {
+        let f = frame(
+            20.0,
+            20.0,
+            vec![
+                rect_cmd(0.0, 0.0, 20.0, 20.0, Color::Rgba(0, 0, 0, 255)),
+                PaintCommand::PushTransform { matrix: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0] },
+                rect_cmd(5.0, 5.0, 10.0, 10.0, Color::Rgba(255, 255, 255, 128)),
+                PaintCommand::PopTransform,
+            ],
+        );
+        let p = rasterize(&f);
+        let [r, ..] = p.get_pixel(10, 10);
+        assert!((120..=136).contains(&r), "half white over black is mid grey, got {r}");
+        assert_eq!(p.get_pixel(2, 2), [0, 0, 0, 255]);
+    }
+
+    #[test]
+    fn a_viewport_raster_applies_a_transform_in_scrolled_scaled_space() {
+        let m = [1.0, 0.0, 0.0, 1.0, 10.0, 0.0];
+        let f = frame(
+            100.0,
+            200.0,
+            vec![
+                PaintCommand::PushTransform { matrix: m },
+                rect_cmd(0.0, 100.0, 10.0, 10.0, Color::Rgba(0, 128, 0, 255)),
+                PaintCommand::PopTransform,
+            ],
+        );
+        let p = rasterize_viewport(&f, 100.0, 40, 20, 2.0).expect("a raster");
+        // Page (10..20, 100..110) is viewport pixels (20..40, 0..20) at 2x.
+        assert_eq!(p.get_pixel(30, 10), [0, 128, 0, 255]);
+        assert_eq!(p.get_pixel(10, 10), BACKGROUND);
+    }
+
+    #[test]
+    fn a_blurred_group_spreads_its_colour_beyond_its_edge() {
+        let f = frame(
+            60.0,
+            60.0,
+            vec![
+                PaintCommand::PushBlur { radius: 3.0 },
+                rect_cmd(20.0, 20.0, 20.0, 20.0, Color::Rgba(0, 0, 0, 255)),
+                PaintCommand::PopBlur,
+            ],
+        );
+        let p = rasterize(&f);
+        let [centre, ..] = p.get_pixel(30, 30);
+        let [outside, ..] = p.get_pixel(18, 30);
+        let [far, ..] = p.get_pixel(5, 30);
+        assert!(centre < 10, "the middle stays dark, got {centre}");
+        assert!(outside < 250 && outside > 5, "the edge has bled outwards, got {outside}");
+        assert_eq!(far, 255, "far away is untouched");
+        let [on_edge, ..] = p.get_pixel(20, 30);
+        assert!((100..=155).contains(&on_edge), "a blurred edge is half way, got {on_edge}");
+    }
+
+    #[test]
+    fn a_zero_radius_blur_draws_the_group_unchanged() {
+        let f = frame(
+            20.0,
+            20.0,
+            vec![
+                PaintCommand::PushBlur { radius: 0.0 },
+                rect_cmd(5.0, 5.0, 10.0, 10.0, Color::Rgba(0, 0, 0, 255)),
+                PaintCommand::PopBlur,
+            ],
+        );
+        let p = rasterize(&f);
+        assert_eq!(p.get_pixel(10, 10), [0, 0, 0, 255]);
+        assert_eq!(p.get_pixel(4, 10), BACKGROUND);
     }
 
     #[test]
