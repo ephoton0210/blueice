@@ -41,6 +41,14 @@ pub enum GradientKind {
         x: f64,
         y: f64,
     },
+    /// Colours swept round (`conic-gradient`) a centre at (`x`, `y`) fractions of the box,
+    /// starting `from` degrees clockwise of straight up. Stop positions are fractions of a
+    /// turn (percentages, or angles over 360).
+    Conic {
+        from: f64,
+        x: f64,
+        y: f64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -158,6 +166,10 @@ fn parse_stop(part: &[Token]) -> Option<ColorStop> {
     };
     let position = rest.iter().find_map(|t| match t {
         Token::Percentage(p) => Some(StopPosition::Percent(*p)),
+        // An angle position (conic gradients): a fraction of the turn.
+        Token::Dimension(_, unit) if matches!(unit.to_ascii_lowercase().as_str(), "deg" | "grad" | "rad" | "turn") => {
+            angle_degrees(t).map(|d| StopPosition::Percent(d / 3.6))
+        }
         Token::Dimension(n, unit) => {
             Length::from_unit(*n, unit).map(|l| StopPosition::Px(l.to_px(&unit_context())))
         }
@@ -196,9 +208,11 @@ pub fn parse_gradient(tokens: &[Token]) -> Option<Gradient> {
             "-webkit-radial-gradient",
         ],
     );
+    let conic = call_args(tokens, &["conic-gradient", "repeating-conic-gradient"]);
     let (args, is_linear) = match (linear, radial) {
         (Some(a), _) => (a, true),
         (_, Some(a)) => (a, false),
+        _ if conic.is_some() => return parse_conic(conic?),
         _ => return None,
     };
     let mut parts = split_top(args, |t| *t == Token::Comma);
@@ -267,6 +281,46 @@ pub fn parse_gradient(tokens: &[Token]) -> Option<Gradient> {
     }
     let stops: Vec<ColorStop> = parts.iter().filter_map(|p| parse_stop(p)).collect();
     (stops.len() >= 2).then_some(Gradient { kind, stops })
+}
+
+/// `conic-gradient([from <angle>] [at <x> <y>], <stops>)`.
+fn parse_conic(args: &[Token]) -> Option<Gradient> {
+    let mut parts = split_top(args, |t| *t == Token::Comma);
+    let first = *parts.first()?;
+    let words: Vec<&Token> = first.iter().filter(|t| **t != Token::Whitespace).collect();
+    let is_prelude = matches!(words.first(), Some(Token::Ident(w)) if matches!(w.as_str(), "from" | "at"));
+    let (mut from, mut x, mut y) = (0.0, 0.5, 0.5);
+    if is_prelude {
+        let mut at = false;
+        let mut coords: Vec<f64> = Vec::new();
+        let mut i = 0;
+        while i < words.len() {
+            match words[i] {
+                Token::Ident(w) if w == "from" => {
+                    if let Some(a) = words.get(i + 1).and_then(|t| angle_degrees(t)) {
+                        from = a;
+                        i += 1;
+                    }
+                }
+                Token::Ident(w) if w == "at" => at = true,
+                Token::Ident(w) if at => match w.as_str() {
+                    "left" | "top" => coords.push(0.0),
+                    "right" | "bottom" => coords.push(1.0),
+                    _ => coords.push(0.5),
+                },
+                Token::Percentage(p) if at => coords.push(p / 100.0),
+                _ => {}
+            }
+            i += 1;
+        }
+        if let Some(cx) = coords.first() {
+            x = *cx;
+            y = coords.get(1).copied().unwrap_or(0.5);
+        }
+        parts.remove(0);
+    }
+    let stops: Vec<ColorStop> = parts.iter().filter_map(|p| parse_stop(p)).collect();
+    (stops.len() >= 2).then_some(Gradient { kind: GradientKind::Conic { from, x, y }, stops })
 }
 
 /// Parses a `box-shadow` value into its shadows (`None` for `none` or when
@@ -419,5 +473,16 @@ mod tests {
     #[test]
     fn a_shadow_without_two_offsets_is_ignored() {
         assert!(parse_shadows(&tokens("red"), 16.0).is_empty());
+    }
+
+    #[test]
+    fn a_conic_gradient_has_a_start_angle_a_centre_and_turn_fraction_stops() {
+        let tokens = crate::tokenizer::tokenize("conic-gradient(from 90deg at 25% 75%, red 0, blue 180deg, green)");
+        let g = parse_gradient(&tokens).expect("a gradient");
+        assert_eq!(g.kind, GradientKind::Conic { from: 90.0, x: 0.25, y: 0.75 });
+        assert_eq!(g.stops.len(), 3);
+        assert_eq!(g.stops[1].position, Some(StopPosition::Percent(50.0)));
+        let plain = parse_gradient(&crate::tokenizer::tokenize("conic-gradient(red, blue)")).unwrap();
+        assert_eq!(plain.kind, GradientKind::Conic { from: 0.0, x: 0.5, y: 0.5 });
     }
 }

@@ -85,6 +85,15 @@ pub enum PaintCommand {
         radius: f64,
     },
     PopBlur,
+    /// Everything up to the matching `PopMask` is drawn as one group whose coverage is multiplied
+    /// by a `mask-image` made of gradients over `rect` (the box's border box). `intersect` is
+    /// `mask-composite: intersect`; otherwise the layers are added.
+    PushMask {
+        rect: Rect,
+        layers: Vec<blueice_css::Gradient>,
+        intersect: bool,
+    },
+    PopMask,
     /// A solid-filled rectangle (a box's `background-color`).
     Rect {
         rect: Rect,
@@ -236,6 +245,13 @@ pub fn dump_frame(frame: &Frame) -> String {
             PaintCommand::PopTransform => out.push_str("endtransform\n"),
             PaintCommand::PushBlur { radius } => out.push_str(&format!("blur {}\n", fmt_num(*radius))),
             PaintCommand::PopBlur => out.push_str("endblur\n"),
+            PaintCommand::PushMask { rect, layers, intersect } => out.push_str(&format!(
+                "mask {} {} layers{}\n",
+                fmt_rect(*rect),
+                layers.len(),
+                if *intersect { " intersect" } else { "" }
+            )),
+            PaintCommand::PopMask => out.push_str("endmask\n"),
             PaintCommand::Rect { rect, color } => {
                 out.push_str(&format!("rect {} {}\n", fmt_rect(*rect), fmt_color(*color)))
             }
@@ -810,13 +826,71 @@ fn paint_fragment(
     if let Some(radius) = blur {
         out.push(PaintCommand::PushBlur { radius });
     }
+    let mask = fragment
+        .style_node
+        .or(fragment.node)
+        .and_then(|n| styles.get(&n))
+        .and_then(gradient_mask)
+        .map(|(layers, intersect)| PaintCommand::PushMask {
+            rect: Rect {
+                x: offset_x + fragment.x,
+                y: offset_y + fragment.y,
+                width: fragment.width,
+                height: fragment.height,
+            },
+            layers,
+            intersect,
+        });
+    let masked = mask.is_some();
+    if let Some(command) = mask {
+        out.push(command);
+    }
     paint_fragment_untransformed(fragment, offset_x, offset_y, styles, images, inherited, band, out);
+    if masked {
+        out.push(PaintCommand::PopMask);
+    }
     if blur.is_some() {
         out.push(PaintCommand::PopBlur);
     }
     if transform.is_some() {
         out.push(PaintCommand::PopTransform);
     }
+}
+
+/// The gradients of a `mask-image` made only of gradients (one per comma-separated layer), and
+/// whether `mask-composite` intersects them. A mask using pictures is applied elsewhere (the
+/// engine tints the box's colour with it).
+fn gradient_mask(style: &ComputedStyle) -> Option<(Vec<blueice_css::Gradient>, bool)> {
+    use blueice_css::Token;
+    let Some(Value::Unparsed(tokens)) = style.other.get("mask-image") else {
+        return None;
+    };
+    let mut layers = Vec::new();
+    let (mut depth, mut start) = (0usize, 0usize);
+    for (i, token) in tokens.iter().enumerate().chain(std::iter::once((tokens.len(), &Token::Comma))) {
+        match token {
+            Token::LeftParen => depth += 1,
+            Token::RightParen => depth = depth.saturating_sub(1),
+            Token::Comma if depth == 0 => {
+                let part = &tokens[start..i];
+                if part.iter().any(|t| *t != Token::Whitespace) {
+                    layers.push(blueice_css::parse_gradient(part)?);
+                }
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    if layers.is_empty() {
+        return None;
+    }
+    let intersect = match style.other.get("mask-composite") {
+        Some(Value::Keyword(k)) => k.eq_ignore_ascii_case("intersect"),
+        Some(Value::Unparsed(t)) => t.iter().any(|t| matches!(t, Token::Ident(k) if k.eq_ignore_ascii_case("intersect"))),
+        Some(Value::List(v)) => v.iter().any(|v| matches!(v, Value::Keyword(k) if k.eq_ignore_ascii_case("intersect"))),
+        _ => false,
+    };
+    Some((layers, intersect))
 }
 
 /// The radius in pixels of the first `blur(<length>)` in a `filter` value, if it is positive.
@@ -1590,6 +1664,33 @@ mod tests {
             })
             .collect();
         assert_eq!(kinds, ["blur5", "rect", "endblur"], "{kinds:?}");
+    }
+
+    #[test]
+    fn a_gradient_mask_wraps_the_box_in_a_mask_group() {
+        let f = paint_html(
+            "<div></div>",
+            "div { width: 40px; height: 20px; background-color: red; \
+             mask-image: conic-gradient(black, transparent), linear-gradient(black, transparent); mask-composite: intersect }",
+            320.0,
+        );
+        let kinds: Vec<String> = f
+            .commands
+            .iter()
+            .map(|c| match c {
+                PaintCommand::PushMask { layers, intersect, .. } => format!("mask{}{}", layers.len(), if *intersect { "i" } else { "" }),
+                PaintCommand::PopMask => "endmask".into(),
+                PaintCommand::Rect { .. } => "rect".into(),
+                _ => "other".into(),
+            })
+            .collect();
+        assert_eq!(kinds, ["mask2i", "rect", "endmask"], "{kinds:?}");
+    }
+
+    #[test]
+    fn a_picture_mask_is_not_a_gradient_mask() {
+        let f = paint_html("<div></div>", "div { width: 4px; height: 4px; background-color: red; mask-image: url(m.svg) }", 100.0);
+        assert!(!f.commands.iter().any(|c| matches!(c, PaintCommand::PushMask { .. })));
     }
 
     #[test]

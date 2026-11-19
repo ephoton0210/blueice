@@ -217,6 +217,9 @@ impl Pixmap {
         // line with the same figure); the bundled fonts keep the assumed ratio.
         let ascent = blueice_font::baseline_offset(run.font_size_px, run.bold, run.italic, run.face);
         let baseline_y = run.y + ascent;
+        // The glyphs themselves are drawn at the size the face's `size-adjust` makes of it.
+        let mut run = run;
+        run.font_size_px = blueice_font::adjusted_size(run.font_size_px, run.face);
         // A page face that lacks the weight or slant asked for is made bold by smearing each
         // glyph sideways and slanted by shearing it about the baseline.
         if run.orient != blueice_paint::TextOrient::Horizontal {
@@ -554,6 +557,27 @@ fn multiply(a: [f64; 6], b: [f64; 6]) -> [f64; 6] {
     ]
 }
 
+/// The index of the command closing the group opened at `open`, for nested `is_open`/`is_close` pairs.
+fn matching_pop(
+    commands: &[PaintCommand],
+    open: usize,
+    is_open: impl Fn(&PaintCommand) -> bool,
+    is_close: impl Fn(&PaintCommand) -> bool,
+) -> usize {
+    let mut depth = 0usize;
+    for (i, command) in commands.iter().enumerate().skip(open) {
+        if is_open(command) {
+            depth += 1;
+        } else if is_close(command) {
+            depth -= 1;
+            if depth == 0 {
+                return i;
+            }
+        }
+    }
+    commands.len()
+}
+
 /// The index of the `PopBlur` that closes the `PushBlur` at `open`.
 fn matching_pop_blur(commands: &[PaintCommand], open: usize) -> usize {
     let mut depth = 0usize;
@@ -708,6 +732,54 @@ fn draw_blurred(pixmap: &mut Pixmap, group: &[PaintCommand], sigma: f64, clip: P
     }
 }
 
+/// Draws `group` with its coverage multiplied by the gradients in `layers` over `rect`.
+fn draw_masked(
+    pixmap: &mut Pixmap,
+    group: &[PaintCommand],
+    rect: blueice_paint::Rect,
+    layers: &[blueice_css::Gradient],
+    intersect: bool,
+    clip: PixelClip,
+) {
+    if group.is_empty() {
+        return;
+    }
+    let (w, h) = (pixmap.width, pixmap.height);
+    let mut layer = Layer::render(w, h, group);
+    // Each mask layer is a gradient drawn on a transparent picture; its alpha is the mask.
+    let mut combined: Option<Vec<f32>> = None;
+    for gradient in layers {
+        let mut pixels = vec![0u8; w as usize * h as usize * 4];
+        shapes::Canvas { width: w, height: h, pixels: &mut pixels }.gradient(
+            rect,
+            &[(0.0, 0.0); 4],
+            gradient,
+            shapes::Clip { left: 0, top: 0, right: i64::from(w), bottom: i64::from(h) },
+        );
+        let alpha: Vec<f32> = pixels.chunks_exact(4).map(|p| f32::from(p[3]) / 255.0).collect();
+        combined = Some(match combined {
+            None => alpha,
+            Some(below) => below
+                .iter()
+                .zip(&alpha)
+                .map(|(b, a)| if intersect { b * a } else { a + b * (1.0 - a) })
+                .collect(),
+        });
+    }
+    if let Some(mask) = combined {
+        for (pixel, m) in layer.data.chunks_exact_mut(4).zip(mask) {
+            pixel.iter_mut().for_each(|c| *c *= m);
+        }
+    }
+    for y in clip.top.max(0)..clip.bottom.min(i64::from(h)) {
+        for x in clip.left.max(0)..clip.right.min(i64::from(w)) {
+            if let Some([r, g, b, a]) = layer.texel(x, y) {
+                blend_premultiplied(pixmap, x, y, [r, g, b], a);
+            }
+        }
+    }
+}
+
 /// An unblurred, untransformed group: just draws it, within `clip`.
 fn draw_commands_clipped(pixmap: &mut Pixmap, group: &[PaintCommand], clip: PixelClip) {
     let mut with_clip = vec![PaintCommand::PushClip {
@@ -786,7 +858,12 @@ fn draw_commands(pixmap: &mut Pixmap, commands: &[PaintCommand]) {
                 draw_transformed(pixmap, &commands[index..end], *matrix, clip);
                 index = end + 1;
             }
-            PaintCommand::PopTransform | PaintCommand::PopBlur => {}
+            PaintCommand::PopTransform | PaintCommand::PopBlur | PaintCommand::PopMask => {}
+            PaintCommand::PushMask { rect, layers, intersect } => {
+                let end = matching_pop(commands, index - 1, |c| matches!(c, PaintCommand::PushMask { .. }), |c| matches!(c, PaintCommand::PopMask));
+                draw_masked(pixmap, &commands[index..end], *rect, layers, *intersect, clip);
+                index = end + 1;
+            }
             PaintCommand::PushBlur { radius } => {
                 let end = matching_pop_blur(commands, index - 1);
                 draw_blurred(pixmap, &commands[index..end], *radius, clip);
@@ -948,6 +1025,12 @@ fn rasterize_viewport_culled(
             PaintCommand::PopClip => PaintCommand::PopClip,
             PaintCommand::PopTransform => PaintCommand::PopTransform,
             PaintCommand::PopBlur => PaintCommand::PopBlur,
+            PaintCommand::PopMask => PaintCommand::PopMask,
+            PaintCommand::PushMask { rect: r, layers, intersect } => PaintCommand::PushMask {
+                rect: rect(r),
+                layers,
+                intersect,
+            },
             PaintCommand::PushBlur { radius } => PaintCommand::PushBlur { radius: radius * scale },
             PaintCommand::PushTransform { matrix } => {
                 // Page space -> viewport pixels is `p' = scale * (p - (0, scroll_y))`; the
@@ -1070,7 +1153,9 @@ fn may_reach_band(command: &PaintCommand, top: f64, bottom: f64) -> bool {
         | PaintCommand::PushTransform { .. }
         | PaintCommand::PopTransform
         | PaintCommand::PushBlur { .. }
-        | PaintCommand::PopBlur => true,
+        | PaintCommand::PopBlur
+        | PaintCommand::PushMask { .. }
+        | PaintCommand::PopMask => true,
         PaintCommand::Rect { rect, .. }
         | PaintCommand::BorderEdge { rect, .. }
         | PaintCommand::RoundRect { rect, .. }
@@ -1307,6 +1392,102 @@ mod tests {
         let p = rasterize(&f);
         assert_eq!(p.get_pixel(10, 10), [0, 0, 0, 255]);
         assert_eq!(p.get_pixel(4, 10), BACKGROUND);
+    }
+
+    #[test]
+    fn a_conic_gradient_sweeps_its_colours_clockwise_from_the_top() {
+        let stop = |r, g, b, at| blueice_css::ColorStop {
+            color: Color::Rgba(r, g, b, 255),
+            position: Some(blueice_css::StopPosition::Percent(at)),
+        };
+        let g = blueice_css::Gradient {
+            kind: blueice_css::GradientKind::Conic { from: 0.0, x: 0.5, y: 0.5 },
+            // Hard stops: each quarter is one colour.
+            stops: vec![
+                stop(255, 0, 0, 0.0),
+                stop(255, 0, 0, 25.0),
+                stop(0, 0, 255, 25.0),
+                stop(0, 0, 255, 50.0),
+                stop(0, 128, 0, 50.0),
+                stop(0, 128, 0, 75.0),
+                stop(255, 255, 0, 75.0),
+                stop(255, 255, 0, 100.0),
+            ],
+        };
+        let f = frame(
+            40.0,
+            40.0,
+            vec![PaintCommand::Gradient {
+                rect: Rect { x: 0.0, y: 0.0, width: 40.0, height: 40.0 },
+                radii: [(0.0, 0.0); 4],
+                gradient: g,
+            }],
+        );
+        let p = rasterize(&f);
+        let dominant = |x, y| {
+            let [r, g, b, _] = p.get_pixel(x, y);
+            if r > 200 && g < 60 && b < 60 { "red" } else if b > 200 && r < 60 && g < 60 { "blue" } else if g > 100 && r < 60 && b < 60 { "green" } else if r > 200 && g > 200 && b < 80 { "yellow" } else { "other" }
+        };
+        assert_eq!(dominant(30, 8), "red", "top right quarter");
+        assert_eq!(dominant(30, 30), "blue", "bottom right quarter");
+        assert_eq!(dominant(8, 30), "green", "bottom left quarter");
+        assert_eq!(dominant(8, 8), "yellow", "top left quarter");
+    }
+
+    #[test]
+    fn a_gradient_mask_cuts_the_group_to_its_alpha() {
+        // A black box masked by a left-to-right gradient from opaque to transparent: dark on
+        // the left, fading out to the page on the right.
+        let g = blueice_css::Gradient {
+            kind: blueice_css::GradientKind::Linear(blueice_css::LinearDirection::Angle(90.0)),
+            stops: vec![
+                blueice_css::ColorStop { color: Color::Rgba(0, 0, 0, 255), position: None },
+                blueice_css::ColorStop { color: Color::Rgba(0, 0, 0, 0), position: None },
+            ],
+        };
+        let rect = Rect { x: 0.0, y: 0.0, width: 100.0, height: 10.0 };
+        let f = frame(
+            100.0,
+            10.0,
+            vec![
+                PaintCommand::PushMask { rect, layers: vec![g], intersect: false },
+                rect_cmd(0.0, 0.0, 100.0, 10.0, Color::Rgba(0, 0, 0, 255)),
+                PaintCommand::PopMask,
+            ],
+        );
+        let p = rasterize(&f);
+        let [left, ..] = p.get_pixel(2, 5);
+        let [middle, ..] = p.get_pixel(50, 5);
+        let [right, ..] = p.get_pixel(97, 5);
+        assert!(left < 30, "opaque end stays dark, got {left}");
+        assert!((90..=165).contains(&middle), "half way is mid grey, got {middle}");
+        assert!(right > 225, "transparent end shows the page, got {right}");
+    }
+
+    #[test]
+    fn intersecting_two_mask_layers_keeps_only_where_both_are_opaque() {
+        let solid = |a| blueice_css::Gradient {
+            kind: blueice_css::GradientKind::Linear(blueice_css::LinearDirection::Angle(90.0)),
+            stops: vec![
+                blueice_css::ColorStop { color: Color::Rgba(0, 0, 0, a), position: Some(blueice_css::StopPosition::Percent(0.0)) },
+                blueice_css::ColorStop { color: Color::Rgba(0, 0, 0, a), position: Some(blueice_css::StopPosition::Percent(100.0)) },
+            ],
+        };
+        let rect = Rect { x: 0.0, y: 0.0, width: 20.0, height: 20.0 };
+        let run = |intersect| {
+            let f = frame(
+                20.0,
+                20.0,
+                vec![
+                    PaintCommand::PushMask { rect, layers: vec![solid(255), solid(0)], intersect },
+                    rect_cmd(0.0, 0.0, 20.0, 20.0, Color::Rgba(0, 0, 0, 255)),
+                    PaintCommand::PopMask,
+                ],
+            );
+            rasterize(&f).get_pixel(10, 10)
+        };
+        assert_eq!(run(false), [0, 0, 0, 255], "added: an opaque layer is enough");
+        assert_eq!(run(true), BACKGROUND, "intersected: a transparent layer removes everything");
     }
 
     #[test]

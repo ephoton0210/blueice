@@ -312,6 +312,55 @@ impl Canvas<'_> {
         });
     }
 
+    /// A conic gradient, evaluated per pixel into a picture the shape is then filled from
+    /// (the rasterizer has no sweep shader). Pictures past 4096 pixels a side are skipped.
+    fn conic(&mut self, rect: Rect, path: &sk::Path, gradient: &Gradient, (from, cx, cy): (f64, f64, f64), clip: Clip) {
+        let (w, h) = (rect.width.ceil() as u32, rect.height.ceil() as u32);
+        if w == 0 || h == 0 || w > 4096 || h > 4096 {
+            return;
+        }
+        let Some(stops) = resolved_stops(gradient, 1.0) else {
+            return;
+        };
+        let Some(mut picture) = sk::Pixmap::new(w, h) else {
+            return;
+        };
+        let (ox, oy) = (rect.width * cx, rect.height * cy);
+        let from = from.to_radians();
+        let premultiplied = |c: sk::Color| [c.red() * c.alpha(), c.green() * c.alpha(), c.blue() * c.alpha(), c.alpha()];
+        let width = picture.width() as usize;
+        for (i, pixel) in picture.data_mut().chunks_exact_mut(4).enumerate() {
+            let (px, py) = ((i % width) as f64 + 0.5 - ox, (i / width) as f64 + 0.5 - oy);
+            // 0 at straight up, increasing clockwise.
+            let turn = ((px.atan2(-py) - from) / std::f64::consts::TAU).rem_euclid(1.0) as f32;
+            let at = stops.partition_point(|(p, _)| *p <= turn);
+            let value = if at == 0 {
+                premultiplied(stops[0].1)
+            } else if at >= stops.len() {
+                premultiplied(stops[stops.len() - 1].1)
+            } else {
+                let ((p0, c0), (p1, c1)) = (stops[at - 1], stops[at]);
+                let t = if p1 > p0 { (turn - p0) / (p1 - p0) } else { 1.0 };
+                let (a, b) = (premultiplied(c0), premultiplied(c1));
+                [0, 1, 2, 3].map(|k| a[k] + (b[k] - a[k]) * t)
+            };
+            for (slot, v) in pixel.iter_mut().zip(value) {
+                *slot = (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+            }
+        }
+        let pattern = sk::Pattern::new(
+            picture.as_ref(),
+            sk::SpreadMode::Pad,
+            sk::FilterQuality::Nearest,
+            1.0,
+            sk::Transform::from_translate(rect.x as f32, rect.y as f32),
+        );
+        let paint = sk::Paint { shader: pattern, anti_alias: true, ..sk::Paint::default() };
+        self.with(clip, |pm, mask| {
+            pm.fill_path(path, &paint, sk::FillRule::Winding, sk::Transform::identity(), mask)
+        });
+    }
+
     pub fn gradient(&mut self, rect: Rect, radii: &Radii, gradient: &Gradient, clip: Clip) {
         if !rect_ok(rect) {
             return;
@@ -319,6 +368,9 @@ impl Canvas<'_> {
         let Some(path) = rrect_path(rect, radii) else {
             return;
         };
+        if let GradientKind::Conic { from, x, y } = &gradient.kind {
+            return self.conic(rect, &path, gradient, (*from, *x, *y), clip);
+        }
         let (cx, cy) = (rect.x + rect.width / 2.0, rect.y + rect.height / 2.0);
         let (shader, line_length) = match &gradient.kind {
             GradientKind::Linear(direction) => {
@@ -357,6 +409,7 @@ impl Canvas<'_> {
                     length,
                 )
             }
+            GradientKind::Conic { .. } => return,
             GradientKind::Radial { circle, x, y } => {
                 let (ox, oy) = (rect.x + rect.width * x, rect.y + rect.height * y);
                 let far_x = (ox - rect.x).max(rect.x + rect.width - ox);
@@ -419,6 +472,10 @@ impl Canvas<'_> {
 
 /// Stops with every position resolved to `0..=1` along a line of `length` px.
 fn stops(gradient: &Gradient, length: f64) -> Option<Vec<sk::GradientStop>> {
+    Some(resolved_stops(gradient, length)?.into_iter().map(|(p, c)| sk::GradientStop::new(p, c)).collect())
+}
+
+fn resolved_stops(gradient: &Gradient, length: f64) -> Option<Vec<(f32, sk::Color)>> {
     let n = gradient.stops.len();
     let mut at: Vec<Option<f64>> = gradient
         .stops
@@ -464,10 +521,7 @@ fn stops(gradient: &Gradient, length: f64) -> Option<Vec<sk::GradientStop>> {
         .iter()
         .zip(at)
         .map(|(s, p)| {
-            Some(sk::GradientStop::new(
-                p?.clamp(0.0, 1.0) as f32,
-                color(s.color)?,
-            ))
+            Some((p?.clamp(0.0, 1.0) as f32, color(s.color)?))
         })
         .collect()
 }

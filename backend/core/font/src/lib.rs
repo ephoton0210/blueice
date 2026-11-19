@@ -401,6 +401,12 @@ pub fn font_for_char_in(
     Glyphs::Static(font_for_char(c, bold, italic))
 }
 
+/// `font_size_px` as the glyphs of `face` are drawn: scaled by the `size-adjust` of its
+/// `@font-face` rule.
+pub fn adjusted_size(font_size_px: f64, face: Option<web::WebFontId>) -> f64 {
+    font_size_px * face.map_or(1.0, web::size_adjust)
+}
+
 /// [`measure_text_width`] for text drawn with a page's own face (`None`: the bundled fonts).
 pub fn measure_text_width_in(
     text: &str,
@@ -425,7 +431,7 @@ pub fn measure_text_width_features(
     if text.is_empty() {
         return 0.0;
     }
-    type Key = (String, u32, bool, bool, Option<u32>, u32);
+    type Key = (String, u32, bool, bool, Option<u32>, u32, u64);
     static WIDTHS: std::sync::Mutex<Option<std::collections::HashMap<Key, f64>>> =
         std::sync::Mutex::new(None);
     // Widths are asked for again and again as a page is laid out; shaping is not free.
@@ -437,6 +443,8 @@ pub fn measure_text_width_features(
         italic,
         face.map(web::WebFontId::as_u32),
         features.as_u32(),
+        // A face's `size-adjust` can change after text in it was measured.
+        face.map_or(1.0, web::size_adjust).to_bits(),
     );
     if let Some(known) = WIDTHS.lock().ok().and_then(|m| m.as_ref().and_then(|m| m.get(&key).copied())) {
         return known;
@@ -460,6 +468,7 @@ fn measure_uncached(
     face: Option<web::WebFontId>,
     features: FeaturesId,
 ) -> f64 {
+    let font_size_px = adjusted_size(font_size_px, face);
     if let Some(glyphs) = shape_text(
         text,
         bold,
@@ -566,6 +575,7 @@ pub const ASSUMED_ASCENT_RATIO: f64 = 0.8;
 pub fn normal_line_height_in(font_size_px: f64, face: Option<web::WebFontId>) -> Option<f64> {
     let id = face?;
     let font = web::get(id)?;
+    let font_size_px = adjusted_size(font_size_px, face);
     let metrics = font.horizontal_line_metrics(font_size_px as f32)?;
     let gap = f64::from(metrics.line_gap).max(system::extra_line_gap(id) * font_size_px);
     let (a, d) = (f64::from(metrics.ascent).round(), f64::from(-metrics.descent).round());
@@ -581,10 +591,17 @@ pub fn ascent_descent_in(
     face: Option<web::WebFontId>,
 ) -> (f64, f64) {
     match face.and_then(web::get) {
-        Some(font) => match font.horizontal_line_metrics(font_size_px as f32) {
-            Some(metrics) => (f64::from(metrics.ascent).round(), f64::from(-metrics.descent).round()),
-            None => (font_size_px * 0.93, font_size_px * 0.24),
-        },
+        Some(font) => {
+            let size = adjusted_size(font_size_px, face);
+            match font.horizontal_line_metrics(size as f32) {
+                // A page's own face is taken as it is; the system's are whole pixels.
+                Some(metrics) if face.is_some_and(web::is_page_face) => {
+                    (f64::from(metrics.ascent), f64::from(-metrics.descent))
+                }
+                Some(metrics) => (f64::from(metrics.ascent).round(), f64::from(-metrics.descent).round()),
+                None => (size * 0.93, size * 0.24),
+            }
+        }
         None => ascent_descent(font_size_px, bold, italic),
     }
 }

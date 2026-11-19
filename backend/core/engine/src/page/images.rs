@@ -816,6 +816,10 @@ mod tests {
             // Developer aid: print every box overlapping `y0,y1`, with its element.
             let mut bounds = range.split(',').filter_map(|v| v.parse::<f64>().ok());
             let (y0, y1) = (bounds.next().unwrap_or(0.0), bounds.next().unwrap_or(900.0));
+            // Whole pixels round halves up, as a browser's reported geometry does.
+            fn r(v: f64) -> f64 {
+                if std::env::var("BI_FRAC").is_ok() { v } else { (v + 1e-6).round() }
+            }
             fn walk(page: &Page, f: &blueice_layout::Fragment, depth: usize, ox: f64, oy: f64, y0: f64, y1: f64) {
                 let (ax, ay) = (ox + f.x, oy + f.y);
                 if ay + f.height >= y0 && ay <= y1 && !matches!(f.kind, blueice_layout::FragmentKind::Text { .. }) {
@@ -848,10 +852,10 @@ mod tests {
                         "  ".repeat(depth),
                         name,
                         style,
-                        ax,
-                        ay,
-                        f.width,
-                        f.height,
+                        r(ax),
+                        r(ay),
+                        r(f.width),
+                        r(f.height),
                         p = if std::env::var("BI_FRAC").is_ok() { 2 } else { 0 }
                     );
                 }

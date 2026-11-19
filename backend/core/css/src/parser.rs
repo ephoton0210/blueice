@@ -671,6 +671,9 @@ pub(crate) fn is_direction_relative(property: &str) -> bool {
             | "padding-inline-end"
             | "inset-inline-start"
             | "inset-inline-end"
+            | "border-inline"
+            | "border-inline-start"
+            | "border-inline-end"
     )
 }
 
@@ -681,10 +684,16 @@ pub(crate) fn expand_logical_inline(
     value_tokens: &[Token],
     rtl: bool,
 ) -> Vec<(String, Value)> {
-    let swap = |name: &str| match name {
-        n if n.ends_with("left") => n.replace("left", "right"),
-        n if n.ends_with("right") => n.replace("right", "left"),
-        n => n.to_string(),
+    // `margin-left`, `border-left-width`, `left`: whichever segment names a side is swapped.
+    let swap = |name: &str| {
+        name.split('-')
+            .map(|part| match part {
+                "left" => "right",
+                "right" => "left",
+                other => other,
+            })
+            .collect::<Vec<_>>()
+            .join("-")
     };
     expand_property(property, value_tokens)
         .into_iter()
@@ -958,6 +967,14 @@ pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(St
         "border-right" => expand_border_sides(&["right"], value_tokens),
         "border-bottom" => expand_border_sides(&["bottom"], value_tokens),
         "border-left" => expand_border_sides(&["left"], value_tokens),
+        // Flow-relative borders: the block axis is vertical; the inline ones are resolved
+        // for the element's direction by the cascade (`is_direction_relative`).
+        "border-block" => expand_border_sides(&["top", "bottom"], value_tokens),
+        "border-block-start" => expand_border_sides(&["top"], value_tokens),
+        "border-block-end" => expand_border_sides(&["bottom"], value_tokens),
+        "border-inline" => expand_border_sides(&["left", "right"], value_tokens),
+        "border-inline-start" => expand_border_sides(&["left"], value_tokens),
+        "border-inline-end" => expand_border_sides(&["right"], value_tokens),
         "flex" => expand_flex(value_tokens),
         "flex-flow" => expand_flex_flow(value_tokens),
         "gap" | "grid-gap" => expand_pair("row-gap", "column-gap", value_tokens),
@@ -2042,6 +2059,24 @@ mod tests {
             Some(px(3.0))
         );
         assert_eq!(value_of("inset-block-start: 5px;", "top"), Some(px(5.0)));
+    }
+
+    #[test]
+    fn flow_relative_border_shorthands_set_the_physical_sides() {
+        // MDN's footer: `border-block-start: 1px solid var(--c)`.
+        assert_eq!(value_of("border-block-start: 1px solid red;", "border-top-width"), Some(px(1.0)));
+        assert_eq!(value_of("border-block-start: 1px solid red;", "border-bottom-width"), None);
+        assert_eq!(value_of("border-block-end: 2px solid red;", "border-bottom-width"), Some(px(2.0)));
+        assert_eq!(value_of("border-block: 3px solid red;", "border-top-width"), Some(px(3.0)));
+        assert_eq!(value_of("border-block: 3px solid red;", "border-bottom-style"), Some(Value::Keyword("solid".to_string())));
+        // Inline ones wait for the direction, then pick a side.
+        let expand = |css: &str, rtl: bool| {
+            let tokens = tokenize(css);
+            expand_logical_inline("border-inline-start", &tokens, rtl)
+        };
+        let names = |rtl| expand("1px solid red", rtl).into_iter().map(|(n, _)| n).collect::<Vec<_>>();
+        assert!(names(false).iter().all(|n| n.starts_with("border-left")), "{:?}", names(false));
+        assert!(names(true).iter().all(|n| n.starts_with("border-right")), "{:?}", names(true));
     }
 
     #[test]

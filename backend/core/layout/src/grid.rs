@@ -1234,7 +1234,9 @@ pub(crate) fn layout_grid(ctx: &Ctx<'_>, container: NodeId, input: &FlexInput) -
         row_gap,
         input.definite_height,
         &row_contributions,
-        false,
+        // `align-content: normal` acts as `stretch` in a grid: auto rows share a definite
+        // height's free room.
+        matches!(cstyle.keyword("align-content").unwrap_or("normal"), "normal" | "stretch"),
     );
     let mut row_y = Vec::with_capacity(row_count);
     let mut y = 0.0;
@@ -1632,6 +1634,29 @@ mod tests {
         assert_eq!(b[0].3, 50.0, "the item stretches to its fixed row");
         assert_eq!(b[2].1, 50.0);
         assert_eq!(b[2].3, 10.0, "the implicit second row is auto");
+    }
+
+    #[test]
+    fn auto_rows_stretch_to_fill_a_definite_height_so_centred_items_centre_in_it() {
+        // MDN's nav: `display:grid; height:42px; align-items:center` around a 40px item.
+        let f = grid(
+            "<i style='height:40px'></i><i style='height:30px'></i>",
+            ".g { grid-template-columns: 1fr 1fr; height: 42px; align-items: center; }",
+            200.0,
+        );
+        let b = boxes(&f);
+        assert_eq!(b[0].1, 1.0, "the 40px item is centred in the 42px row");
+        assert_eq!(b[1].1, 6.0, "the 30px item too");
+    }
+
+    #[test]
+    fn align_content_start_keeps_auto_rows_at_their_content() {
+        let f = grid(
+            "<i style='height:40px'></i>",
+            ".g { grid-template-columns: 1fr; height: 100px; align-content: start; align-items: center; }",
+            200.0,
+        );
+        assert_eq!(boxes(&f)[0].1, 0.0);
     }
 
     #[test]

@@ -40,6 +40,8 @@ pub struct FontFaceRule {
     pub stretch_max: u16,
     /// Code point ranges it covers; empty means all.
     pub unicode_ranges: Vec<(u32, u32)>,
+    /// `size-adjust` in thousandths (`95%` is 950); 1000 when absent.
+    pub size_adjust: u16,
 }
 
 /// The `@font-face` rules of `css`, in order, including those inside `@layer` and a `@supports`
@@ -395,6 +397,7 @@ fn parse_face(body: &str) -> Option<FontFaceRule> {
     let mut slant = None;
     let mut stretch = (1000, 1000);
     let mut unicode_ranges = Vec::new();
+    let mut size_adjust: u16 = 1000;
     for declaration in split_top(body, ';') {
         let Some((name, value)) = declaration.split_once(':') else { continue };
         let value = value.trim();
@@ -420,6 +423,14 @@ fn parse_face(body: &str) -> Option<FontFaceRule> {
             }
             "font-stretch" => stretch = parse_stretch(value),
             "unicode-range" => unicode_ranges = parse_ranges(value),
+            "size-adjust" => {
+                size_adjust = value
+                    .trim()
+                    .strip_suffix('%')
+                    .and_then(|v| v.trim().parse::<f64>().ok())
+                    .filter(|p| p.is_finite() && *p > 0.0)
+                    .map_or(1000, |p| (p * 10.0).round().clamp(1.0, 10_000.0) as u16)
+            }
             _ => {}
         }
     }
@@ -436,5 +447,23 @@ fn parse_face(body: &str) -> Option<FontFaceRule> {
         stretch_min: stretch.0,
         stretch_max: stretch.1,
         unicode_ranges,
+        size_adjust,
     })
+}
+
+#[cfg(test)]
+mod size_adjust_tests {
+    use super::*;
+
+    #[test]
+    fn size_adjust_is_in_thousandths_and_defaults_to_one() {
+        let faces = font_faces(
+            "@font-face{font-family:A;src:url(a.woff2);size-adjust:95%} \
+             @font-face{font-family:B;src:url(b.woff2)} \
+             @font-face{font-family:C;src:url(c.woff2);size-adjust:-3%}",
+        );
+        assert_eq!(faces[0].size_adjust, 950);
+        assert_eq!(faces[1].size_adjust, 1000);
+        assert_eq!(faces[2].size_adjust, 1000, "a nonsense value is ignored");
+    }
 }

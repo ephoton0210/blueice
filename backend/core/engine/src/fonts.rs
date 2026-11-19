@@ -474,6 +474,9 @@ pub(crate) fn fetch_linked_fonts(
             eprintln!("FONTS {} {}-{} -> {} ({first})", face.family, face.weight_min, face.weight_max, id.as_ref().map_or("not loaded".to_string(), |i| format!("face {}", i.0.as_u32())));
         }
         let Some((id, bytes)) = id else { continue };
+        if face.size_adjust != 1000 {
+            blueice_font::web::set_size_adjust(id, f64::from(face.size_adjust) / 1000.0);
+        }
         catalog.add(
             &face.family,
             CatalogFace {

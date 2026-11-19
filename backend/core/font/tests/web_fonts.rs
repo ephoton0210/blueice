@@ -341,3 +341,26 @@ fn a_face_can_tell_whether_it_slants_by_axis() {
     assert!(!web::slants_by_axis(web::register(INTER_VAR).unwrap()));
     assert!(!web::slants_by_axis(web::register(WOFF2).unwrap()));
 }
+
+#[test]
+fn a_page_faces_metrics_are_unrounded_and_follow_its_size_adjust() {
+    // Roboto is registered once for the whole test binary, so use a face of this test's own: the
+    // bold file, which no other test here sets a size-adjust on.
+    let id = web::register(WOFF2_BOLD).expect("a face");
+    let (a, d) = ascent_descent_in(16.0, false, false, Some(id));
+    assert!(web::is_page_face(id));
+    assert!(a.fract() != 0.0 || d.fract() != 0.0, "a page face's {a}/{d} are not whole pixels");
+    assert_eq!(web::size_adjust(id), 1.0);
+
+    web::set_size_adjust(id, 0.5);
+    assert_eq!(web::size_adjust(id), 0.5);
+    let (half_a, half_d) = ascent_descent_in(16.0, false, false, Some(id));
+    assert!((half_a - a / 2.0).abs() < 0.01 && (half_d - d / 2.0).abs() < 0.01, "{half_a}/{half_d} vs {a}/{d}");
+    let wide = measure_text_width_in("Hello", 16.0, false, false, Some(id));
+    web::set_size_adjust(id, 1.0);
+    let normal = measure_text_width_in("Hello", 16.0, false, false, Some(id));
+    assert!((wide - normal / 2.0).abs() < 0.5, "{wide} vs {normal}");
+    web::set_size_adjust(id, f64::NAN);
+    web::set_size_adjust(id, -1.0);
+    assert_eq!(web::size_adjust(id), 1.0, "nonsense values change nothing");
+}

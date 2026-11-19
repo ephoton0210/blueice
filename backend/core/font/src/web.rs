@@ -67,6 +67,11 @@ struct FaceEntry {
     variable: Option<VariableFile>,
     /// The face's file, for shaping with its OpenType tables (`opentype`).
     bytes: &'static [u8],
+    /// `@font-face { size-adjust }`: glyphs and line metrics are this fraction of the font size.
+    adjust: f64,
+    /// Supplied by a page (not one of the operating system's own fonts): WebKit takes such a
+    /// face's ascent and descent unrounded.
+    page: bool,
 }
 
 impl Member {
@@ -111,7 +116,7 @@ pub fn register(bytes: &[u8]) -> Option<WebFontId> {
     if bytes.is_empty() || bytes.len() > MAX_FONT_BYTES {
         return None;
     }
-    std::panic::catch_unwind(|| register_unguarded(bytes)).ok().flatten()
+    std::panic::catch_unwind(|| register_unguarded(bytes, true)).ok().flatten()
 }
 
 /// [`register`] for a font file of the operating system itself, which may be larger than a page's
@@ -120,13 +125,13 @@ pub(crate) fn register_system(bytes: &[u8]) -> Option<WebFontId> {
     if bytes.is_empty() || bytes.len() > MAX_SYSTEM_FONT_BYTES {
         return None;
     }
-    std::panic::catch_unwind(|| register_unguarded(bytes)).ok().flatten()
+    std::panic::catch_unwind(|| register_unguarded(bytes, false)).ok().flatten()
 }
 
 /// The largest system font file taken.
 const MAX_SYSTEM_FONT_BYTES: usize = 48 * 1024 * 1024;
 
-fn register_unguarded(bytes: &[u8]) -> Option<WebFontId> {
+fn register_unguarded(bytes: &[u8], page: bool) -> Option<WebFontId> {
     let sfnt = to_sfnt(bytes)?;
     let mut hasher = DefaultHasher::new();
     sfnt.hash(&mut hasher);
@@ -154,7 +159,7 @@ fn register_unguarded(bytes: &[u8]) -> Option<WebFontId> {
         return None;
     }
     let face = u32::try_from(known.faces.len()).ok()?;
-    known.faces.push(FaceEntry { font: Box::leak(Box::new(font)), variable, bytes: file });
+    known.faces.push(FaceEntry { font: Box::leak(Box::new(font)), variable, bytes: file, adjust: 1.0, page });
     let members = vec![Member { face, ranges: Vec::new(), var: Variation::NONE }];
     let id = u32::try_from(known.sets.len()).ok()?;
     known.sets.push(members.clone());
@@ -272,6 +277,38 @@ pub(crate) fn bytes_of(font: &'static fontdue::Font) -> Option<&'static [u8]> {
         .iter()
         .find(|entry| std::ptr::eq(entry.font, font))
         .map(|entry| entry.bytes)
+}
+
+/// Gives the face of `id` (a face, or a set: its first member's face) the `size-adjust` of the
+/// `@font-face` rule that declared it. Values that are not finite and positive are ignored.
+pub fn set_size_adjust(id: WebFontId, adjust: f64) {
+    if !(adjust.is_finite() && adjust > 0.0) {
+        return;
+    }
+    let Ok(mut known) = registry().lock() else { return };
+    let Some(face) = known.sets.get(id.0 as usize).and_then(|m| m.first()).map(|m| m.face) else {
+        return;
+    };
+    if let Some(entry) = known.faces.get_mut(face as usize) {
+        entry.adjust = adjust;
+    }
+}
+
+/// How large `size-adjust` makes text in set `id` (1 for none).
+pub fn size_adjust(id: WebFontId) -> f64 {
+    face_entry_of(id).map_or(1.0, |(adjust, _)| adjust)
+}
+
+/// Whether set `id`'s primary face was supplied by a page.
+pub fn is_page_face(id: WebFontId) -> bool {
+    face_entry_of(id).is_some_and(|(_, page)| page)
+}
+
+fn face_entry_of(id: WebFontId) -> Option<(f64, bool)> {
+    let known = registry().lock().ok()?;
+    let members = known.sets.get(id.0 as usize)?;
+    let primary = members.iter().find(|m| m.covers('a')).or_else(|| members.first())?;
+    known.faces.get(primary.face as usize).map(|f| (f.adjust, f.page))
 }
 
 pub fn get(id: WebFontId) -> Option<Glyphs> {
