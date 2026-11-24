@@ -5354,7 +5354,18 @@
     vibrate: () => false,
     clipboard: { writeText: () => Promise.resolve(), readText: () => Promise.resolve('') },
     permissions: { query: () => Promise.resolve({ state: 'denied', addEventListener() {} }) },
-    mediaDevices: undefined,
+    // BlueIce has no audio or video input, so a page that asks for one is refused the way a
+    // browser is when the person says no.
+    mediaDevices: (() => {
+      const target = new EventTarget();
+      return Object.assign(target, {
+        getUserMedia: () => Promise.reject(new DOMException('Permission denied', 'NotAllowedError')),
+        getDisplayMedia: () => Promise.reject(new DOMException('Permission denied', 'NotAllowedError')),
+        enumerateDevices: () => Promise.resolve([]),
+        getSupportedConstraints: () => ({}),
+        ondevicechange: null,
+      });
+    })(),
     serviceWorker: undefined,
     geolocation: { getCurrentPosition(_, err) { if (err) err({ code: 1, message: 'denied' }); }, watchPosition: () => 0, clearWatch() {} },
     connection: undefined,
@@ -5525,6 +5536,43 @@
   Object.defineProperty(document, '_id', { value: bi('root') });
   wrappers.set(document._id, document);
 
+  // Speech recognition, as Safari ships it (`webkitSpeechRecognition`). With no audio input, a
+  // recognition that starts is refused as if the person had denied the microphone: `start`, then
+  // `error` (`not-allowed`), then `end`.
+  class SpeechRecognition extends EventTarget {
+    constructor() {
+      super();
+      this.lang = ''; this.continuous = false; this.interimResults = false; this.maxAlternatives = 1;
+      this.grammars = null;
+      this.onstart = this.onerror = this.onend = this.onresult = this.onnomatch = this.onaudiostart = this.onaudioend = null;
+      this._running = false;
+    }
+    _fire(type, init) {
+      const event = Object.assign(new Event(type), init || {});
+      const handler = this['on' + type];
+      if (typeof handler === 'function') { try { handler.call(this, event); } catch (e) { reportError(e); } }
+      this.dispatchEvent(event);
+    }
+    start() {
+      if (this._running) throw new DOMException('recognition has already started.', 'InvalidStateError');
+      this._running = true;
+      setTimeout(() => {
+        if (!this._running) return;
+        this._fire('start');
+        this._fire('error', { error: 'not-allowed', message: 'Microphone access is not available in BlueIce.' });
+        this._running = false;
+        this._fire('end');
+      }, 0);
+    }
+    stop() { this._end(); }
+    abort() { this._end(); }
+    _end() {
+      if (!this._running) return;
+      this._running = false;
+      setTimeout(() => this._fire('end'), 0);
+    }
+  }
+
   const exported = {
     // events
     Event, CustomEvent, UIEvent, MouseEvent, PointerEvent, KeyboardEvent, FocusEvent, InputEvent, MessageEvent,
@@ -5547,6 +5595,7 @@
     HTMLAreaElement, HTMLMapElement, HTMLDataElement, HTMLTimeElement, HTMLModElement, HTMLParamElement,
     HTMLTrackElement, HTMLOptGroupElement, HTMLDataListElement, HTMLMeterElement, HTMLTableColElement,
     CSSRule, CSSStyleRule, CSSMediaRule, CSSFontFaceRule, CSSStyleSheet, CSSStyleDeclaration, ShadowRoot, NodeFilter, TreeWalker, NodeIterator,
+    SpeechRecognition, webkitSpeechRecognition: SpeechRecognition,
     DOMParser, XMLSerializer, IntersectionObserver, ResizeObserver, PerformanceObserver, MessageChannel, BroadcastChannel,
     URL, URLSearchParams, TextEncoder, TextDecoder, FontFace, CanvasGradient, CanvasPattern, Path2D,
     // values

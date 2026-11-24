@@ -394,6 +394,18 @@ impl<'a> Ctx<'a> {
     }
 }
 
+/// A length as WebKit keeps it: a `LayoutUnit`, a whole number of 1/64 pixels, which a computed
+/// length is truncated to (`11.2px` is `11.1875px`). Boxes sized from lengths that are not a
+/// multiple of 1/64 differ from a float layout by up to 1/64 each, enough to tip a sum over a
+/// half pixel.
+pub fn layout_unit(value: f64) -> f64 {
+    if value.is_finite() && value.abs() < 1e9 {
+        (value * 64.0).trunc() / 64.0
+    } else {
+        value
+    }
+}
+
 impl<'a> Style<'a> {
     pub fn font_size(&self) -> f64 {
         self.style.map_or(16.0, |s| s.font_size_px)
@@ -543,7 +555,7 @@ impl<'a> Style<'a> {
         } else {
             percent_base
         };
-        self.raw(property)?.to_px(&self.length_context(base))
+        self.raw(property)?.to_px(&self.length_context(base)).map(layout_unit)
     }
 
     /// Whether the property is `auto` (an unset property is not).

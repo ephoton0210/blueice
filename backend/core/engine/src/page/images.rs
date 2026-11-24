@@ -856,7 +856,7 @@ mod tests {
                         r(ay),
                         r(f.width),
                         r(f.height),
-                        p = if std::env::var("BI_FRAC").is_ok() { 2 } else { 0 }
+                        p = if std::env::var("BI_FRAC").is_ok() { 4 } else { 0 }
                     );
                 }
                 for child in &f.children {

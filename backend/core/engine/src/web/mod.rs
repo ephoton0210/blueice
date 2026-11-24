@@ -1065,6 +1065,36 @@ mod tests {
     }
 
     #[test]
+    fn speech_recognition_and_media_devices_exist_and_report_no_permission() {
+        // Safari has both. BlueIce has no audio input, so a page that asks is refused the way a
+        // browser is when the person says no: an `error` event with `not-allowed`, then `end`.
+        let mut h = host("");
+        assert_eq!(
+            log(&mut h, "console.log(typeof webkitSpeechRecognition, typeof SpeechRecognition, webkitSpeechRecognition === SpeechRecognition, typeof navigator.mediaDevices.getUserMedia, typeof navigator.mediaDevices.enumerateDevices)"),
+            "[log] function function true function function"
+        );
+        h.run(
+            "t",
+            "const r = new webkitSpeechRecognition(); r.lang = 'zh-TW'; r.continuous = false; \
+             r.onerror = (e) => console.log('error', e.error); r.onend = () => console.log('end'); r.onstart = () => console.log('start'); \
+             r.start(); \
+             navigator.mediaDevices.getUserMedia({ audio: true }).then(() => console.log('granted'), (e) => console.log('refused', e.name)); \
+             navigator.mediaDevices.enumerateDevices().then((d) => console.log('devices', d.length));",
+        )
+        .unwrap();
+        for _ in 0..5 {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            h.tick();
+        }
+        let lines = h.console().join("\n");
+        assert!(lines.contains("error not-allowed"), "{lines}");
+        assert!(lines.contains("end"), "{lines}");
+        assert!(lines.contains("refused NotAllowedError"), "{lines}");
+        assert!(lines.contains("devices 0"), "{lines}");
+        assert!(!lines.contains("granted"), "{lines}");
+    }
+
+    #[test]
     fn storage_and_cookies_persist_for_the_page() {
         let mut h = host("");
         assert_eq!(

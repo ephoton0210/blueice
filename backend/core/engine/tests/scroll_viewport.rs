@@ -64,8 +64,10 @@ fn scrolling_to_where_only_overflow_or_a_shadow_reaches_still_draws_it() {
         .expect("the overflowing box is painted");
     page.scroll_by(overflow_top + 600.0);
     let band = page.render_visible();
+    // A visible band is drawn at a whole-pixel scroll offset, and a page's offsets are fractional
+    // (layout keeps 1/64 px), so the whole page is cut at the same rounded offset.
     let expected =
-        blueice_raster::rasterize_viewport(&whole, page.scroll_y(), 800, 500, 1.0).unwrap();
+        blueice_raster::rasterize_viewport(&whole, page.scroll_y().round(), 800, 500, 1.0).unwrap();
     assert_eq!(band.pixels, expected.pixels);
     assert!(
         band.pixels.chunks(4).any(|p| p[..3] == [0xcc, 0x33, 0x33]),

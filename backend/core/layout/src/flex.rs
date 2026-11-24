@@ -118,7 +118,7 @@ fn self_sized_text_area(
     let expected = rows * style.font_size();
     style
         .px("height", container_cross.unwrap_or(f64::NAN))
-        .is_some_and(|h| (h - expected).abs() < 0.01)
+        .is_some_and(|h| (h - expected).abs() < 1.0 / 32.0)
 }
 
 impl Item {
@@ -1253,6 +1253,24 @@ mod tests {
         );
         let t = &f.children[0];
         assert!((t.height - 50.0).abs() < 0.01, "textarea height {}", t.height);
+    }
+
+    #[test]
+    fn lengths_and_shrink_to_fit_text_are_whole_64ths_of_a_pixel() {
+        // MDN's menu tab: `padding: 0 .7rem` is 11.2px, which WebKit keeps as 11.1875, around a
+        // label whose measured width is rounded up to the next 1/64.
+        let f = flex(
+            "<div class=f><div class=a>Reference</div></div>",
+            ".f { display: flex } .a { padding: 0 11.2px }",
+            400.0,
+        );
+        let a = &f.children[0];
+        let in_64ths = a.width * 64.0;
+        assert!((in_64ths - in_64ths.round()).abs() < 1e-6, "width {} is not a whole number of 1/64 px", a.width);
+        let text = a.children[0].width;
+        // The text itself is the measured float; the box rounds it up (by under 1/64).
+        let extra = a.width - (text + 22.375);
+        assert!((0.0..1.0 / 64.0).contains(&(extra + 1e-9)), "{} = {} + 2 x 11.1875 (+{extra})", a.width, text);
     }
 
     #[test]

@@ -102,7 +102,9 @@ fn content_widths_uncached(ctx: &Ctx<'_>, node: NodeId) -> (f64, f64) {
                 height: None,
             },
         );
-        placed.content_extent + pb_h
+        // A box's content width is a `LayoutUnit`: text measured to a float is rounded up to
+        // the next 1/64 pixel, as WebKit does.
+        (placed.content_extent * 64.0 - 1e-6).ceil() / 64.0 + pb_h
     };
     let max = measure(UNBOUNDED);
     (measure(0.0).min(max), max)
@@ -174,7 +176,9 @@ pub(crate) fn preferred_widths(ctx: &Ctx<'_>, node: NodeId) -> (f64, f64) {
                 height: None,
             },
         );
-        placed.content_extent + pb_h
+        // A box's content width is a `LayoutUnit`: text measured to a float is rounded up to
+        // the next 1/64 pixel, as WebKit does.
+        (placed.content_extent * 64.0 - 1e-6).ceil() / 64.0 + pb_h
     };
     // An explicit pixel width is both preferred widths.
     let explicit =

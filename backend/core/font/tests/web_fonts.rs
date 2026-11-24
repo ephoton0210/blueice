@@ -364,3 +364,17 @@ fn a_page_faces_metrics_are_unrounded_and_follow_its_size_adjust() {
     web::set_size_adjust(id, -1.0);
     assert_eq!(web::size_adjust(id), 1.0, "nonsense values change nothing");
 }
+
+#[test]
+fn a_variable_faces_advances_keep_their_fraction_of_a_font_unit() {
+    // CoreText sets text from the unrounded advances (`hmtx` plus the interpolated `HVAR` delta);
+    // rounding each glyph's to a whole unit made MDN's "Reference" 0.02px narrow, enough to tip
+    // a box over a half pixel. At an optical size between the masters the deltas are fractions.
+    let opsz = axis_of(INTER_OPSZ, b"opsz").expect("the fixture has an optical size axis");
+    let face = web::register(INTER_OPSZ).unwrap();
+    let mid = (opsz.min + (opsz.max - opsz.min) * 0.137) * 10.0;
+    let id = web::register_set_varied(&[(face, vec![], Variation { opsz: Some(mid as u16), ..Variation::NONE })]).unwrap();
+    // 2048 units to the em (Inter's), shaped at 2048px so a font unit is a pixel.
+    let width = measure_text_width_in("Reference", 2048.0, false, false, Some(id));
+    assert!((width - width.round()).abs() > 0.01, "the width {width} is a whole number of font units");
+}

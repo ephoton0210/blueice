@@ -2883,6 +2883,19 @@ mod tests {
     }
 
     #[test]
+    fn a_shrink_to_fit_inline_block_is_a_whole_number_of_64ths() {
+        // MDN's table-of-contents link: `display: inline-block; padding: 0 8px` around text.
+        let f = body(
+            "<!DOCTYPE html><div><a>Reference</a></div>",
+            "a { display: inline-block; padding: 0 8px }",
+            600.0,
+        );
+        let a = &f.children[0].children[0];
+        let in_64ths = a.width * 64.0;
+        assert!((in_64ths - in_64ths.round()).abs() < 1e-6, "width {} is not a whole number of 1/64 px", a.width);
+    }
+
+    #[test]
     fn a_select_sits_on_the_baseline_of_its_text() {
         // rust-lang.org's language menu: a 23px select in a 28.8px-line div. Its text baseline,
         // not its bottom edge, meets the line's baseline, so the line is 29px, not 32.

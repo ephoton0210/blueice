@@ -253,7 +253,7 @@ fn shape_run(
                 DrawGlyph {
                     font,
                     id: info.glyph_id as u16,
-                    advance: pos.x_advance as f32 * scale,
+                    advance: (pos.x_advance as f32 + unrounded_advance_offset(hb, info.glyph_id)) * scale,
                     dx: pos.x_offset as f32 * scale,
                     dy: pos.y_offset as f32 * scale,
                 },
@@ -265,6 +265,26 @@ fn shape_run(
         out.reverse();
     }
     out
+}
+
+/// How much more than the whole font units the shaper reports a glyph of a variable face
+/// advances: `hmtx` plus the interpolated `HVAR` delta is a fraction of a unit, which the shaper
+/// rounds and CoreText does not. Zero for a static face, one with no `HVAR`, or a default setting.
+fn unrounded_advance_offset(hb: &Face<'static>, glyph: u32) -> f32 {
+    let coords = hb.variation_coordinates();
+    if coords.is_empty() {
+        return 0.0;
+    }
+    let tables = hb.tables();
+    let (Some(hmtx), Some(hvar)) = (tables.hmtx, tables.hvar) else {
+        return 0.0;
+    };
+    let id = rustybuzz::ttf_parser::GlyphId(glyph as u16);
+    let (Some(base), Some(delta)) = (hmtx.advance(id), hvar.advance_offset(id, coords)) else {
+        return 0.0;
+    };
+    let exact = f32::from(base) + delta;
+    exact - exact.round()
 }
 
 /// `text` as glyphs, in the order they are drawn, shaped with the font's own layout tables
