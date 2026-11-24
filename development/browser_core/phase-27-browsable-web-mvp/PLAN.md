@@ -1335,3 +1335,16 @@ Still different, with the reason:
 - **`webkitSpeechRecognition`/`SpeechRecognition` and `navigator.mediaDevices`** exist, as in Safari. With no audio input, `start()` fires `start`, `error` (`not-allowed`) and `end`; `getUserMedia` rejects with `NotAllowedError`; `enumerateDevices` resolves `[]`. Google's voice-search button is therefore shown, at Safari's geometry (798,388,40,24).
 - **Google home, what still differs and why.** Safari is signed in and is served different server HTML: its page carries an extra `.KEY6ib{padding:20px 96px}` rule the HTML BlueIce is served does not (form 96..1184 vs 20..1260), and shows an avatar instead of "登入". The animated glow boxes report Safari's transformed bounds. Neither is a rendering difference.
 - **MDN, what still differs.** Only the harness: Safari reports an SVG's `className` as an object (printed empty), which mis-pairs the logo `<svg>` (class `logo__image`), and it reports geometry for the contents of closed `<details>`, which mis-pairs the left sidebar.
+
+### Sixth round: more pages against Safari (2026-11)
+
+Compared with Safari box by box at Safari's own client width (the harness reads `documentElement.clientWidth`; Safari flips between 1263 and 1280 with its scroll bar setting): **example.com 0 differences; Hacker News structurally identical** (its remaining rows are the front page re-ranked between the two fetches); MDN main content, footer and total height identical; Google differs only in signed-in server HTML.
+
+Fixed this round (each with a test, root cause in the commit messages): system `navigator.language(s)` and `Accept-Language`; WebKit's text-field width/padding model and `monospace` = Menlo; LayoutUnit line heights and single-precision `vh`; quirks-mode line-height quirk and `form { margin-bottom: 1em }`; line-end spaces inside inline boxes; a stretched flex item takes the line's cross size even when its content is taller (bbc.com's 32px header logo).
+
+Open, with the specific cause found (not interpretation differences, all missing or wrong features):
+- **github.com** (body 8504 vs 9310): the marketing page is built on CSS container queries. `container-type: size`, `cqw`/`cqh` units inside `min(calc(100cqw - ...), calc((100cqh - ...) * 984 / 840))`, and `@container` are not implemented, so `FeatureGridVisual__image` is its natural 1476px wide instead of 374px, and `<video>` sizes (`aspect-ratio: 1600/1078; width: 100%`) are not resolved.
+- **bbc.com** (body 12582 vs 12309): card images are 16:9 here and square in Safari: `<img src=grey-placeholder.png class="hide-when-no-script">` plus a lazy `srcset` image, both `width: 100%`. The ratio of the placeholder (and of images still to load) is not taken the way WebKit does.
+- **en.wikipedia.org**: the closed main-menu dropdown (`vector-dropdown-content`, `vector-main-menu`) takes 71px here and 192px in Safari: a shrink-to-fit width of hidden content. Not visible, but the hidden geometry differs. The article body has not been analysed yet.
+- **rust-lang.org**: the nav is 1px off to the right of the brand because `div.brand`'s flex share is 0.84px wider here (165.84 vs 165); every `li`/`ul` width matches to 1/64.
+- Not implemented: `mask-size`/`mask-position`/`mask-repeat`, `mask-mode: luminance`, `backdrop-filter`, 3D transforms, `repeating-conic-gradient` repeats.

@@ -861,7 +861,7 @@ pub(crate) fn layout_flex(ctx: &Ctx<'_>, container: NodeId, input: &FlexInput) -
                 let margins = items[i].margin_cross(row, true).unwrap_or(0.0)
                     + items[i].margin_cross(row, false).unwrap_or(0.0);
                 let stretched = (cross_size - margins).max(0.0);
-                if (stretched - items[i].cross).abs() > 0.01 && stretched > items[i].cross {
+                if (stretched - items[i].cross).abs() > 0.01 {
                     let used = items[i].used;
                     helper.lay_out(&mut items[i], used, Some(stretched));
                     items[i].cross = stretched;
@@ -1271,6 +1271,21 @@ mod tests {
         // The text itself is the measured float; the box rounds it up (by under 1/64).
         let extra = a.width - (text + 22.375);
         assert!((0.0..1.0 / 64.0).contains(&(extra + 1e-9)), "{} = {} + 2 x 11.1875 (+{extra})", a.width, text);
+    }
+
+    #[test]
+    fn a_stretched_item_is_the_lines_cross_size_even_when_its_content_is_taller() {
+        // bbc.com's header logo: `.c { display:flex; height:32px }` around an auto-height item
+        // holding a 44px box. A single line with a definite height is that tall, the item is
+        // stretched (here shrunk) to it and its content overflows; an item with a `min-height`
+        // keeps it.
+        let f = flex(
+            "<div class=f><div class=a><div class=tall></div></div><div class=b><div class=tall></div></div></div>",
+            ".f { display: flex; height: 32px } .tall { height: 44px } .b { min-height: 40px }",
+            300.0,
+        );
+        assert_eq!(f.children[0].height, 32.0, "stretched down to the line");
+        assert_eq!(f.children[1].height, 40.0, "but not below its min-height");
     }
 
     #[test]
