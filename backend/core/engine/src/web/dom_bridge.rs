@@ -969,6 +969,7 @@ impl DomState {
                 }
             }
             "viewport" => format!("[{},{}]", self.viewport.0, self.viewport.1).into(),
+            "languages" => serde_json::to_string(blueice_net::system_languages()).unwrap_or_else(|_| "[\"en-US\"]".into()).into(),
             "media" => {
                 let env = blueice_css::MediaEnvironment {
                     width: self.viewport.0,

@@ -653,12 +653,14 @@ impl<'a> Style<'a> {
     /// The border-box edges for padding/border, resolved against the
     /// containing block width.
     pub fn padding(&self, cb_width: f64) -> Edges {
-        Edges {
-            top: self.side("padding-top", cb_width).max(0.0),
-            right: self.side("padding-right", cb_width).max(0.0),
-            bottom: self.side("padding-bottom", cb_width).max(0.0),
-            left: self.side("padding-left", cb_width).max(0.0),
-        }
+        // A text field's default padding (a quarter and a half em) is whole pixels in WebKit.
+        let whole = self.ctx.tag(self.node).is_some_and(|t| t == "input")
+            && matches!(self.raw("padding-top"), Some(Value::Length(blueice_css::Length::Em(e))) if (*e - 0.25).abs() < 1e-9);
+        let side = |name: &str| {
+            let v = self.side(name, cb_width).max(0.0);
+            if whole { v.floor() } else { v }
+        };
+        Edges { top: side("padding-top"), right: side("padding-right"), bottom: side("padding-bottom"), left: side("padding-left") }
     }
 
     /// Border widths; a side with no style (or `none`/`hidden`) has no width.

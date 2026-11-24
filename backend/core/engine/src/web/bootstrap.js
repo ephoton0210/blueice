@@ -5315,6 +5315,7 @@
   };
 
   // ----------------------------------------------------------------- window
+  const systemLanguages = (() => { try { const l = JSON.parse(bi('languages')); return Array.isArray(l) && l.length ? l : ['en-US']; } catch (_) { return ['en-US']; } })();
   const navigatorApi = {
     userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) BlueIce/1.0 Safari/537.36',
     appName: 'Netscape',
@@ -5324,8 +5325,8 @@
     productSub: '20030107',
     vendor: 'BlueIce',
     platform: 'Linux x86_64',
-    language: 'en-US',
-    languages: ['en-US', 'en'],
+    language: systemLanguages[0] || 'en-US',
+    languages: Object.freeze(systemLanguages.slice()),
     onLine: true,
     cookieEnabled: true,
     doNotTrack: null,

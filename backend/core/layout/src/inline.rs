@@ -1042,6 +1042,10 @@ fn paints_own_box(style: &Style<'_>) -> bool {
 /// `line-height` in pixels for text in `style`: a number scales the font
 /// size, a length or percentage is used as is, and `normal` is 1.2 em.
 fn line_height_of(style: &Style<'_>) -> f64 {
+    crate::ctx::layout_unit(line_height_unsnapped(style))
+}
+
+fn line_height_unsnapped(style: &Style<'_>) -> f64 {
     let font_size = style.font_size();
     match style.style.and_then(|s| s.line_height.as_ref()) {
         Some(blueice_css::Value::Number(n)) => n * font_size,
@@ -1195,6 +1199,13 @@ fn into_chunks(pieces: &[Piece]) -> Vec<Chunk> {
                 }
                 _ => break,
             }
+        }
+        // A chunk of nothing but the (zero-width) ends of inline boxes is what follows a last
+        // space in `<a> <img> </a>`: that space is at the end of the line and takes no room.
+        if chunk.lead > 0.0
+            && chunk.items.iter().all(|&i| matches!(pieces[i], Piece::Edge { .. } | Piece::Strut(_) | Piece::Mark(_)))
+        {
+            chunk.lead = 0.0;
         }
     }
     chunks
@@ -1723,17 +1734,16 @@ pub(crate) fn layout_run_around(
         }
 
         // ---- vertical metrics ----
-        // The line-height quirk: in quirks mode a line of only pictures (and spaces) does not
-        // carry the block's strut, so the pictures alone set its height.
+        // The line-height quirk: in quirks mode a line with nothing of the block's own text on it
+        // (only pictures, or the text of inline boxes such as a smaller `<span>`) does not carry
+        // the block's strut, so what is on it alone sets its height.
         let strutless = ctx.doc.quirks_mode()
-            && line
-                .items
-                .iter()
-                .any(|item| matches!(item, LineItem::Piece(i) if matches!(pieces[*i], Piece::Atomic(_))))
-            && !line
-                .items
-                .iter()
-                .any(|item| matches!(item, LineItem::Piece(i) if matches!(pieces[*i], Piece::Word { .. })));
+            && line.items.iter().any(|item| {
+                matches!(item, LineItem::Piece(i) if matches!(pieces[*i], Piece::Atomic(_) | Piece::Word { .. }))
+            })
+            && !line.items.iter().any(|item| {
+                matches!(item, LineItem::Piece(i) if matches!(&pieces[*i], Piece::Word { style_node, .. } if *style_node == container))
+            });
         let mut max_above = if strutless { 0.0 } else { strut_above };
         let mut max_below = if strutless { 0.0 } else { strut_below };
         let mut tall = 0.0f64;
@@ -2231,7 +2241,7 @@ mod tests {
         let lines = &f.children[0].children;
         assert_eq!(lines.len(), 4, "a, b, blank, c");
         assert!(lines[2].children.is_empty());
-        assert_eq!(lines[3].y, 3.0 * 19.2);
+        assert_eq!(lines[3].y, 3.0 * 19.1875, "a default line is 19.2px, kept as 19.1875 (a whole number of 1/64)");
     }
 
     const HE1: &str = "\u{5d0}\u{5d1}\u{5d2}";
@@ -2695,6 +2705,35 @@ mod tests {
     }
 
     #[test]
+    fn in_quirks_mode_a_line_with_only_a_smaller_inline_boxs_text_has_no_strut() {
+        // Hacker News' footer: `<center><span class=yclinks>links</span><br><br>` in Verdana 13px
+        // with the span at 8pt. WebKit's line-height quirk: the first line, with no text of the
+        // block's own, is as tall as the span alone (13), the line with only the `<br>` is a full
+        // strut (16): 29 in all, where standards mode is two full lines.
+        let height = |doctype: &str| {
+            let f = body(
+                &format!("{doctype}<html><body><div><span>links</span><br><br></div></body></html>"),
+                "div { font-size: 20px } span { font-size: 10px }",
+                600.0,
+            );
+            f.children[0].height
+        };
+        let (quirks, standards) = (height(""), height("<!DOCTYPE html>"));
+        assert!(quirks < standards - 5.0, "quirks {quirks} vs standards {standards}");
+        // Text of the block's own on the line keeps the strut in both.
+        let own = |doctype: &str| {
+            body(
+                &format!("{doctype}<html><body><div>x <span>links</span><br><br></div></body></html>"),
+                "div { font-size: 20px } span { font-size: 10px }",
+                600.0,
+            )
+            .children[0]
+                .height
+        };
+        assert_eq!(own(""), own("<!DOCTYPE html>"));
+    }
+
+    #[test]
     fn a_right_float_container_shrinks_to_what_its_float_needs() {
         // python.org's header: a `float: right` box holding a right float and inline content.
         let f = body(
@@ -2750,7 +2789,7 @@ mod tests {
             f.children.iter().find_map(first_line)
         }
         let height = first_line(&f).expect("a line");
-        assert!((height - 23.2).abs() < 0.01, "line height {height}");
+        assert!((height - 23.2).abs() < 0.02, "line height {height}");
     }
 
     #[test]
@@ -2893,6 +2932,21 @@ mod tests {
         let a = &f.children[0].children[0];
         let in_64ths = a.width * 64.0;
         assert!((in_64ths - in_64ths.round()).abs() < 1e-6, "width {} is not a whole number of 1/64 px", a.width);
+    }
+
+    #[test]
+    fn a_line_height_is_a_whole_number_of_64ths_so_lines_stack_as_webkit_stacks_them() {
+        // example.com: `line-height: 1.6` at 16px is 25.6, which WebKit keeps as 25.59375, so two
+        // lines are 51.1875 and not 51.2.
+        let f = body(
+            "<!DOCTYPE html><p>aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa</p>",
+            "p { font: 16px/1.6 sans-serif; width: 120px }",
+            600.0,
+        );
+        let p = &f.children[0];
+        let lines = p.children.iter().filter(|c| matches!(c.kind, FragmentKind::Line)).count();
+        assert!(lines >= 2, "{lines}");
+        assert_eq!(p.height, 25.59375 * lines as f64);
     }
 
     #[test]
@@ -3048,6 +3102,25 @@ mod tests {
         // the padding sits to the right of the text, inside the box
         assert!((bg.x + bg.width - (word.x + word.width + 10.0)).abs() < 0.01);
         assert!((bg.x - word.x).abs() < 0.01);
+    }
+
+    #[test]
+    fn an_inline_box_around_a_picture_does_not_include_the_spaces_at_the_line_ends() {
+        // rust-lang.org's logo: `<a>\n  <img width=80>\n</a>`. The spaces inside the link sit at
+        // the start and end of the line, where they take no room, so the link is as wide as the
+        // picture (80), not 80 plus the two spaces.
+        let f = body(
+            "<div><a style='background:red'>\n  <img width=80 height=10>\n</a></div>",
+            "",
+            600.0,
+        );
+        let line = only_line(&f);
+        let bg = line
+            .children
+            .iter()
+            .find(|c| c.kind == FragmentKind::Block)
+            .expect("a painted inline box");
+        assert_eq!(bg.width, 80.0, "the link's box is the picture's width");
     }
 
     #[test]

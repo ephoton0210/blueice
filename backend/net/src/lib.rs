@@ -207,6 +207,16 @@ pub fn canonical_http_origin(url: &str) -> Result<String, FetchError> {
     Ok(format!("{scheme}://{}{port}", host.to_ascii_lowercase()))
 }
 
+mod languages;
+pub use languages::{accept_language, system_languages};
+
+/// The `Accept-Language` every request carries unless the page set its own: the person's
+/// languages, as a browser sends them.
+fn accept_language_value() -> &'static str {
+    static VALUE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    VALUE.get_or_init(|| accept_language(system_languages()))
+}
+
 /// What BlueIce calls itself to a server: a browser-style string that names BlueIce. The same
 /// string is what a page's scripts read as `navigator.userAgent` (a test holds the two
 /// together), so a page is told one thing about who is asking, not one by its requests and
@@ -233,6 +243,7 @@ pub fn fetch(url: &str) -> Result<FetchedPage, FetchError> {
 
     let mut response = default_agent()
         .get(url)
+        .header("Accept-Language", accept_language_value())
         .call()
         .map_err(|e| FetchError::Request(e.to_string()))?;
     // MVP simplification: report the requested URL, not the post-
@@ -306,6 +317,7 @@ pub fn fetch_subresource_hop(url: &str, max_bytes: usize) -> Result<SubresourceH
     let agent = navigation_transport::agent(ResponseCancellation::default());
     let mut response = agent
         .get(url)
+        .header("Accept-Language", accept_language_value())
         .call()
         .map_err(|error| FetchError::Request(error.to_string()))?;
     if let Some((location, status)) = redirect_target(url, &response)? {
@@ -410,6 +422,9 @@ pub fn fetch_script_request_hop(
     let mut builder = ureq::http::Request::builder()
         .method(method.as_str())
         .uri(request.url.as_str());
+    if !request.headers.iter().any(|(name, _)| name.eq_ignore_ascii_case("accept-language")) {
+        builder = builder.header("Accept-Language", accept_language_value());
+    }
     for (name, value) in &request.headers {
         if !forbidden_request_header(name) {
             builder = builder.header(name.as_str(), value.as_str());
@@ -479,9 +494,10 @@ pub fn fetch_navigation_request_hop(request: &NavigationRequest) -> Result<Fetch
         agent
             .post(url)
             .header("Content-Type", content_type)
+            .header("Accept-Language", accept_language_value())
             .send(request.body())
     } else {
-        agent.get(url).call()
+        agent.get(url).header("Accept-Language", accept_language_value()).call()
     }
     .map_err(|error| FetchError::Request(error.to_string()))?;
     if let Some((location, status)) = redirect_target(url, &response)? {
@@ -537,6 +553,25 @@ mod tests {
             stream.write_all(response.as_bytes()).unwrap();
         });
         format!("http://{addr}")
+    }
+
+    #[test]
+    fn a_page_request_carries_the_systems_accept_language() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let seen = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let n = stream.read(&mut buf).unwrap();
+            stream
+                .write_all(b"HTTP/1.0 200 OK\r\nContent-Type: text/html\r\nContent-Length: 2\r\n\r\nhi")
+                .unwrap();
+            String::from_utf8_lossy(&buf[..n]).to_string()
+        });
+        fetch(&format!("http://{addr}/")).unwrap();
+        let request = seen.join().unwrap().to_ascii_lowercase();
+        let expected = format!("accept-language: {}", accept_language(system_languages()).to_ascii_lowercase());
+        assert!(request.contains(&expected), "{request}");
     }
 
     #[test]

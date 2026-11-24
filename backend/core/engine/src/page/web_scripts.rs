@@ -1559,7 +1559,7 @@ mod tests {
             seen = line;
         }
         assert_eq!(
-            seen, "[log] 1259.2 false,true",
+            seen, "[log] 1259.1875 false,true",
             "the scroll offset is clamped to the page"
         );
     }

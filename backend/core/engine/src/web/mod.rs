@@ -1060,7 +1060,10 @@ mod tests {
         let mut h = host("");
         assert_eq!(
             log(&mut h, "console.log(btoa('hello'), atob('aGVsbG8='), new TextEncoder().encode('é').length, new TextDecoder().decode(new TextEncoder().encode('日本')), JSON.stringify(structuredClone({ a: [1, { b: 2 }] })), typeof localStorage.getItem('x'), CSS.escape('a.b'), matchMedia('(min-width: 600px)').matches, typeof performance.now(), navigator.language)"),
-            "[log] aGVsbG8= hello 2 日本 {\"a\":[1,{\"b\":2}]} object a\\.b true number en-US"
+            format!(
+                "[log] aGVsbG8= hello 2 日本 {{\"a\":[1,{{\"b\":2}}]}} object a\\.b true number {}",
+                blueice_net::system_languages()[0]
+            )
         );
     }
 
@@ -1092,6 +1095,18 @@ mod tests {
         assert!(lines.contains("refused NotAllowedError"), "{lines}");
         assert!(lines.contains("devices 0"), "{lines}");
         assert!(!lines.contains("granted"), "{lines}");
+    }
+
+    #[test]
+    fn navigator_language_is_the_systems_not_a_fixed_one() {
+        // A page like example.com picks its paragraph by `navigator.languages`; a browser
+        // reports the person's own, as `Accept-Language` does.
+        let mut h = host("");
+        let languages = blueice_net::system_languages();
+        assert_eq!(
+            log(&mut h, "console.log(navigator.language, JSON.stringify(navigator.languages), Array.isArray(navigator.languages), Object.isFrozen(navigator.languages))"),
+            format!("[log] {} {} true true", languages[0], serde_json::to_string(languages).unwrap())
+        );
     }
 
     #[test]

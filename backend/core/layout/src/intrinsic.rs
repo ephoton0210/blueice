@@ -78,7 +78,7 @@ fn content_widths_uncached(ctx: &Ctx<'_>, node: NodeId) -> (f64, f64) {
     let padding = style.padding(0.0);
     let border = style.border(0.0);
     let pb_h = padding.horizontal() + border.horizontal();
-    if let Some(w) = drop_down_width(ctx, node, &style) {
+    if let Some(w) = drop_down_width(ctx, node, &style).or_else(|| text_field_width(ctx, node, &style)) {
         return (w + pb_h, w + pb_h);
     }
     // A picture has no content to measure: its size is both widths.
@@ -108,6 +108,87 @@ fn content_widths_uncached(ctx: &Ctx<'_>, node: NodeId) -> (f64, f64) {
     };
     let max = measure(UNBOUNDED);
     (measure(0.0).min(max), max)
+}
+
+/// `system-ui` (San Francisco) average character width in pixels at a font size, measured in
+/// Safari: its optical size changes the advances, so it is not a fixed fraction of the size.
+const SYSTEM_UI_AVERAGE: [(f64, f64); 13] = [
+    (9.0, 5.8359375), (10.0, 6.41640625), (11.0, 6.99375), (12.0, 7.55859375), (13.0, 8.1125),
+    (13.333, 8.30078125), (14.0, 8.66796875), (15.0, 9.2140625), (16.0, 9.765625), (17.0, 10.2765625),
+    (18.0, 10.87968750), (20.0, 12.03828125), (24.0, 14.72734375),
+];
+
+fn system_ui_average(px: f64) -> f64 {
+    let table = &SYSTEM_UI_AVERAGE;
+    if px <= table[0].0 {
+        return table[0].1 / table[0].0 * px;
+    }
+    for pair in table.windows(2) {
+        let ((x0, y0), (x1, y1)) = (pair[0], pair[1]);
+        if px <= x1 {
+            return y0 + (y1 - y0) * (px - x0) / (x1 - x0);
+        }
+    }
+    let (x, y) = table[table.len() - 1];
+    y / x * px
+}
+
+/// The families WebKit does not trust the font's own average character width for when it sizes a
+/// text field (matched on the name the page wrote): there the field is `size` average characters
+/// plus 2px, with no allowance for the widest glyph.
+const UNTRUSTED_AVERAGE_FAMILIES: [&str; 34] = [
+    "american typewriter", "arial hebrew", "chalkboard", "cochin", "corsiva hebrew", "courier",
+    "euphemia ucas", "geneva", "gill sans", "hei", "helvetica", "hoefler text", "inaimathi", "kai",
+    "lucida grande", "marker felt", "monaco", "mshtakan", "new peninsula", "osaka", "raanana",
+    "stheiti", "symbol", "times", "apple braille", "apple ligothic", "apple lisung", "apple symbols",
+    "applegothic", "applemyungjo", "#gungseo", "#headlinea", "#pcmyungjo", "#pilgi",
+];
+
+/// The content width of a text field with no width of its own: `size` (20 by default)
+/// characters, as WebKit counts them. In a font it trusts, that is `size` average characters
+/// rounded up, plus the room by which the widest glyph exceeds the average, plus 2px; in the
+/// other families the average is the font's real one and only the 2px is added.
+pub(crate) fn text_field_width(ctx: &Ctx<'_>, node: NodeId, style: &crate::ctx::Style<'_>) -> Option<f64> {
+    if ctx.tag(node) != Some("input")
+        || blueice_css::is_pseudo_node(node)
+        || style.raw("width").is_some_and(|_| !style.is_auto("width"))
+    {
+        return None;
+    }
+    let kind = ctx.attr(node, "type").map(str::to_ascii_lowercase);
+    if !matches!(kind.as_deref(), None | Some("" | "text" | "search" | "email" | "url" | "tel" | "password")) {
+        return None;
+    }
+    let chars = ctx
+        .attr(node, "size")
+        .and_then(|v| v.trim().parse::<u32>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(20);
+    let n = f64::from(chars);
+    let px = style.font_size();
+    let family = match style.raw("font-family") {
+        Some(blueice_css::Value::Keyword(list)) => list.split(',').next().unwrap_or("").trim().trim_matches(['"', '\'']).to_string(),
+        _ => String::from("system-ui"),
+    };
+    let ceil64 = |v: f64| (v * 64.0 - 1e-6).ceil() / 64.0;
+    let system = matches!(family.as_str(), "system-ui" | "-apple-system" | "blinkmacsystemfont" | "ui-sans-serif" | "san francisco");
+    if system {
+        return Some(ceil64(n * system_ui_average(px)) + 2.0);
+    }
+    if UNTRUSTED_AVERAGE_FAMILIES.contains(&family.as_str()) {
+        let average = match family.as_str() {
+            "helvetica" => 0.55615 * px,
+            "times" => 0.5 * px,
+            "courier" => 0.6 * px,
+            _ => blueice_font::control_char_widths(style.style.is_some_and(|s| s.is_bold()), style.style.is_some_and(|s| s.is_italic()), style.web_face(), px)
+                .map_or(0.6 * px, |(avg, _)| avg),
+        };
+        return Some(ceil64(n * average) + 2.0);
+    }
+    match blueice_font::control_char_widths(style.style.is_some_and(|s| s.is_bold()), style.style.is_some_and(|s| s.is_italic()), style.web_face(), px) {
+        Some((avg, max)) => Some(ceil64(n * avg) + (max - avg).max(0.0) + 2.0),
+        None => Some(ceil64(n * system_ui_average(px)) + 2.0),
+    }
 }
 
 /// The content width of a drop-down (`<select>`) with no width of its own: its longest option's
@@ -185,7 +266,7 @@ pub(crate) fn preferred_widths(ctx: &Ctx<'_>, node: NodeId) -> (f64, f64) {
         style
             .px("width", f64::NAN)
             .map(|w| if style.is_border_box() { w } else { w + pb_h });
-    let drop_down = drop_down_width(ctx, node, &style).map(|w| w + pb_h);
+    let drop_down = drop_down_width(ctx, node, &style).or_else(|| text_field_width(ctx, node, &style)).map(|w| w + pb_h);
     let result = match explicit.or(drop_down) {
         Some(w) => (w, w),
         None => {

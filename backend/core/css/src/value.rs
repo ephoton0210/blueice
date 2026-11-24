@@ -33,6 +33,13 @@ pub enum Length {
     Vmax(f64),
 }
 
+/// `n` viewport units of a viewport side, as WebKit works it out: one unit is the side over 100
+/// in single precision, and `n` of them are that times `n` (848px: 25vh is 211.99998, not 212).
+fn viewport_units(n: f64, side: f64) -> f64 {
+    let unit = (side / 100.0) as f32;
+    f64::from(unit * n as f32)
+}
+
 /// What a length needs to become pixels: the element's and root's font size,
 /// the viewport, and what a percentage is a percentage of. `percent_base` is
 /// NaN where a percentage is indeterminate (e.g. height of an auto-height box).
@@ -74,10 +81,10 @@ impl Length {
             Length::Em(n) => n * ctx.font_size,
             Length::Zero => 0.0,
             Length::Rem(n) => n * ctx.root_font_size,
-            Length::Vw(n) => n * ctx.viewport_width / 100.0,
-            Length::Vh(n) => n * ctx.viewport_height / 100.0,
-            Length::Vmin(n) => n * ctx.viewport_width.min(ctx.viewport_height) / 100.0,
-            Length::Vmax(n) => n * ctx.viewport_width.max(ctx.viewport_height) / 100.0,
+            Length::Vw(n) => viewport_units(n, ctx.viewport_width),
+            Length::Vh(n) => viewport_units(n, ctx.viewport_height),
+            Length::Vmin(n) => viewport_units(n, ctx.viewport_width.min(ctx.viewport_height)),
+            Length::Vmax(n) => viewport_units(n, ctx.viewport_width.max(ctx.viewport_height)),
         }
     }
 }
@@ -194,6 +201,22 @@ mod tests {
 
     fn value_of(css: &str) -> Option<Value> {
         parse_value(&tokenize(css))
+    }
+
+    #[test]
+    fn viewport_units_are_worked_out_in_single_precision_as_webkit_does() {
+        let ctx = LengthContext {
+            font_size: 16.0,
+            root_font_size: 16.0,
+            viewport_width: 1280.0,
+            viewport_height: 848.0,
+            percent_base: f64::NAN,
+        };
+        // 848 / 100 is 8.48 in f32, a hair under; times 25 it is 211.99998 and not 212.
+        let vh = Length::Vh(25.0).to_px(&ctx);
+        assert!(vh < 212.0 && vh > 211.9999, "{vh}");
+        assert_eq!(Length::Vw(50.0).to_px(&ctx), 640.0, "a viewport that divides exactly stays exact");
+        assert!((Length::Vh(100.0).to_px(&ctx) - 848.0).abs() < 1e-3);
     }
 
     #[test]

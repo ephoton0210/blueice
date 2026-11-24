@@ -378,3 +378,16 @@ fn a_variable_faces_advances_keep_their_fraction_of_a_font_unit() {
     let width = measure_text_width_in("Reference", 2048.0, false, false, Some(id));
     assert!((width - width.round()).abs() > 0.01, "the width {width} is a whole number of font units");
 }
+
+#[test]
+fn a_text_fields_character_widths_come_from_os2_and_head() {
+    // DejaVu Sans: xAvgCharWidth 1038 and a head box 4173 wide, over 2048 units to the em.
+    let face = web::register(TTF).expect("a face");
+    let (avg, max) = blueice_font::control_char_widths(false, false, Some(face), 2048.0).expect("widths");
+    assert!(avg > 900.0 && avg < 1300.0, "average {avg}");
+    assert!(max > avg * 2.0, "the box {max} is much wider than the average {avg}");
+    let (small_avg, small_max) = blueice_font::control_char_widths(false, false, Some(face), 16.0).unwrap();
+    assert_eq!(small_avg, (avg * 16.0 / 2048.0).round());
+    assert_eq!(small_max, (max * 16.0 / 2048.0).round());
+    assert_eq!(small_avg.fract(), 0.0, "whole pixels");
+}

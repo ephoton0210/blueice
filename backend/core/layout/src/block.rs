@@ -877,7 +877,8 @@ fn layout_block_level_uncached(
         None => style.px("width", cbw).map(to_content_w),
     };
     if specified_width.is_none() {
-        specified_width = crate::intrinsic::drop_down_width(ctx, node, &style);
+        specified_width = crate::intrinsic::drop_down_width(ctx, node, &style)
+            .or_else(|| crate::intrinsic::text_field_width(ctx, node, &style));
     }
     let (mut content_width, width_determined) = match specified_width {
         Some(w) => (clamp_width(w), true),
@@ -1653,6 +1654,61 @@ mod tests {
         assert_eq!(button.children[0].y, 8.0, "content sits in the middle of the button");
     }
 
+    /// The border-box width of the first `<input>` in a body.
+    fn input_width(html: &str, css: &str) -> f64 {
+        let f = body_fragment(html, css, 800.0);
+        fn find(f: &Fragment, out: &mut Option<f64>) {
+            if matches!(f.kind, FragmentKind::NativeControl { .. }) && out.is_none() {
+                *out = Some(f.width);
+            }
+            for c in &f.children {
+                find(c, out);
+            }
+        }
+        let mut width = None;
+        find(&f, &mut width);
+        width.expect("an input")
+    }
+
+    #[test]
+    fn a_system_ui_text_field_is_sized_by_its_character_count_and_font_size() {
+        // Measured in Safari: size=20 at 11px is 141.875 of content, size=5 is 36.96875, and at
+        // 16px 197.3125; the box adds 2 x 5 padding and 2 x 2 border (2/8 at 16px).
+        let w = |css: &str, size: &str| input_width(&format!("<input type=text {size}>"), css);
+        assert_eq!(w("input{font:11px system-ui}", "size=20"), 141.875 + 14.0);
+        assert_eq!(w("input{font:11px system-ui}", "size=5"), 36.96875 + 14.0);
+        assert_eq!(w("input{font:11px system-ui}", ""), 141.875 + 14.0, "the default is 20");
+        assert_eq!(w("input{font:16px system-ui}", "size=20"), 197.3125 + 20.0);
+    }
+
+    #[test]
+    fn a_text_fields_padding_is_a_quarter_and_a_half_em_in_whole_pixels() {
+        // 11px -> 2/5, 13.333px -> 3/6, 16px -> 4/8 (WebKit's, measured).
+        let h = |css: &str| {
+            let f = body_fragment("<input type=text>", css, 800.0);
+            fn find(f: &Fragment, out: &mut Option<(f64, f64)>) {
+                if matches!(f.kind, FragmentKind::NativeControl { .. }) && out.is_none() {
+                    *out = Some((f.width, f.height));
+                }
+                for c in &f.children {
+                    find(c, out);
+                }
+            }
+            let mut found = None;
+            find(&f, &mut found);
+            found.expect("an input")
+        };
+        let (w11, _) = h("input{font:11px system-ui}");
+        let (w16, _) = h("input{font:16px system-ui}");
+        assert_eq!(w11, 141.875 + 2.0 * 5.0 + 4.0);
+        assert_eq!(w16, 197.3125 + 2.0 * 8.0 + 4.0);
+    }
+
+    #[test]
+    fn an_authors_width_still_wins_over_the_character_count() {
+        assert_eq!(input_width("<input type=text size=5>", "input{font:11px system-ui;width:200px}"), 214.0);
+    }
+
     #[test]
     fn a_flex_item_svg_keeps_the_size_its_attributes_give() {
         // MDN's search button: a flex row holding a 24x24 `svg` (and a `::before` box).
@@ -2170,7 +2226,7 @@ mod tests {
         assert_eq!(h("div { min-height: 100vh; }"), 720.0);
         assert_eq!(
             h("div { min-height: 50%; }"),
-            19.2,
+            19.1875,
             "a percentage min-height with an auto-height parent is ignored"
         );
     }
@@ -2204,7 +2260,7 @@ mod tests {
             ".i { height: 50%; }",
         );
         assert_eq!(
-            f.children[0].children[0].height, 19.2,
+            f.children[0].children[0].height, 19.1875,
             "auto parent: height behaves as auto"
         );
     }
@@ -2213,12 +2269,12 @@ mod tests {
     fn border_styles_decide_whether_a_border_takes_space() {
         let f = contained("<div>x</div>", "div { border: 4px solid red; }");
         assert_eq!(f.children[0].width, 800.0);
-        assert_eq!(f.children[0].height, 19.2 + 8.0);
+        assert_eq!(f.children[0].height, 19.1875 + 8.0);
         let f = contained(
             "<div>x</div>",
             "div { border-width: 4px; border-style: none; }",
         );
-        assert_eq!(f.children[0].height, 19.2, "no style, no border");
+        assert_eq!(f.children[0].height, 19.1875, "no style, no border");
     }
 
     #[test]

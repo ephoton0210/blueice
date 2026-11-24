@@ -52,6 +52,7 @@ mod opentype;
 mod shape;
 mod variable;
 pub use opentype::{
+    control_char_widths,
     char_advances, face_supports_feature, is_complex, register_features, shape_for_drawing, shape_text, starts_rtl,
     vertical_cell, vertical_glyph, vertical_glyphs, DrawGlyph, FeaturesId, VerticalCell, VerticalGlyph,
 };

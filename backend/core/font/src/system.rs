@@ -61,7 +61,11 @@ fn family_files(name: &str) -> Option<Family> {
             "/System/Library/Fonts/Supplemental/Times New Roman Italic.ttf",
             "/System/Library/Fonts/Supplemental/Times New Roman Bold Italic.ttf",
         ],
-        "courier" | "monospace" | "ui-monospace" => &["/System/Library/Fonts/Courier.ttc"],
+        "courier" => &["/System/Library/Fonts/Courier.ttc"],
+        // Safari draws `monospace` in Menlo (measured: 8.028px a character at 13.333px) and
+        // `ui-monospace` in SF Mono (8.24px).
+        "monospace" => &["/System/Library/Fonts/Menlo.ttc"],
+        "ui-monospace" => &["/System/Library/Fonts/SFNSMono.ttf"],
         "courier new" => &[
             "/System/Library/Fonts/Supplemental/Courier New.ttf",
             "/System/Library/Fonts/Supplemental/Courier New Bold.ttf",
@@ -83,7 +87,7 @@ fn family_files(name: &str) -> Option<Family> {
         ],
         _ => return None,
     };
-    let legacy = matches!(name, "helvetica" | "sans-serif" | "times" | "serif" | "ui-serif" | "courier" | "monospace" | "ui-monospace");
+    let legacy = matches!(name, "helvetica" | "sans-serif" | "times" | "serif" | "ui-serif" | "courier");
     Some(Family { files, legacy })
 }
 
@@ -407,9 +411,13 @@ pub fn fallback_glyphs(c: char) -> Option<crate::Glyphs> {
 mod tests {
     use super::*;
 
+    /// The system-font switch is the process's, so a test that flips it holds this meanwhile.
+    static SWITCH: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn off_by_default_and_when_on_cjk_text_comes_from_the_systems_face() {
         // One test, because the switch is the process's.
+        let _switch = SWITCH.lock().unwrap_or_else(|e| e.into_inner());
         assert!(!enabled());
         assert!(face_for(Some("Helvetica"), 400, false, 160, None).is_none());
         assert!(fallback_glyphs('關').is_none(), "off: the bundled CJK face draws it");
@@ -430,6 +438,7 @@ mod tests {
         if !std::path::Path::new("/System/Library/Fonts/Helvetica.ttc").exists() {
             return; // not macOS
         }
+        let _switch = SWITCH.lock().unwrap_or_else(|e| e.into_inner());
         set_enabled(true);
         let id = face_for(Some("system-ui"), 400, false, 130, None);
         set_enabled(false);
@@ -439,11 +448,32 @@ mod tests {
     }
 
     #[test]
+    fn monospace_is_menlo_and_ui_monospace_is_sf_mono() {
+        // Safari at 13.333px: ten zeros are 80.28px in `monospace` (Menlo) and 82.42px in
+        // `ui-monospace` (SF Mono); `Courier` is its own face.
+        if !std::path::Path::new("/System/Library/Fonts/Menlo.ttc").exists() {
+            return; // not macOS
+        }
+        let _switch = SWITCH.lock().unwrap_or_else(|e| e.into_inner());
+        set_enabled(true);
+        let width = |name: &str| {
+            let id = face_for(Some(name), 400, false, 133, None);
+            id.map_or(0.0, |id| crate::measure_text_width_in("0000000000", 13.3333, false, false, Some(id)))
+        };
+        let (mono, ui, courier) = (width("monospace"), width("ui-monospace"), width("courier"));
+        set_enabled(false);
+        assert!((mono - 80.28).abs() < 0.1, "monospace {mono}");
+        assert!((ui - 82.42).abs() < 0.1, "ui-monospace {ui}");
+        assert!((courier - 80.0).abs() < 0.1, "courier {courier}");
+    }
+
+    #[test]
     fn a_chinese_pages_sans_serif_is_pingfang_with_its_latin_letters() {
         // Safari: `sans-serif` on a zh-TW page is PingFang TC; "Google" is 46.28px at 14px there.
         if pingfang("PingFang TC").is_none() {
             return; // not macOS, or the font asset is not downloaded
         }
+        let _switch = SWITCH.lock().unwrap_or_else(|e| e.into_inner());
         set_enabled(true);
         let chinese = face_for(Some("sans-serif"), 400, false, 140, Some("zh-TW"));
         let plain = face_for(Some("sans-serif"), 400, false, 140, Some("en"));

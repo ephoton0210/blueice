@@ -2249,7 +2249,7 @@ mod tests {
                     x: 0.0,
                     y: 0.0,
                     width: 320.0,
-                    height: 19.2
+                    height: 19.1875
                 },
                 color: Color::Rgba(255, 0, 0, 255)
             }
@@ -2261,7 +2261,7 @@ mod tests {
                     x: 0.0,
                     y: 0.0,
                     width: 320.0,
-                    height: 19.2
+                    height: 19.1875
                 },
                 color: Color::Rgba(0, 0, 255, 255)
             }

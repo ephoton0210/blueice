@@ -881,6 +881,10 @@ input, textarea, select {
   background-color: #ffffff;
 }
 textarea { width: 14.27em; height: 2.3636em; padding: 2px 5px; border-width: 1px; }
+/* A text field is as wide as its `size` characters of its font (layout works that out), with
+ * padding of a quarter and a half em, in whole pixels. */
+input:not([type]), input[type=""], input[type="text"], input[type="search"], input[type="email"],
+input[type="url"], input[type="tel"], input[type="password"] { width: auto; padding: 0.25em 0.5em; }
 /* A drop-down is as wide as its longest option (layout reads the labels) and one line tall, not a text field's size. */
 select { box-sizing: border-box; width: auto; height: auto; padding: 0; border: 1px solid #444444; }
 /* A closed disclosure widget shows only its summary. */
@@ -963,7 +967,7 @@ button, input, select, textarea { writing-mode: horizontal-tb; }
 /// What a quirks-mode document adds to the UA stylesheet: a table does not inherit the text
 /// properties of what surrounds it (the "tables inherit" quirk), so a `<center>`/`text-align` on an
 /// ancestor does not reach its cells' text.
-const QUIRKS_STYLESHEET_SOURCE: &str = "table { text-align: initial; line-height: normal; white-space: normal; font-weight: normal; font-style: normal; font-variant: normal; }";
+const QUIRKS_STYLESHEET_SOURCE: &str = "table { text-align: initial; line-height: normal; white-space: normal; font-weight: normal; font-style: normal; font-variant: normal; } form { margin-bottom: 1em; }";
 
 pub fn ua_stylesheet() -> Vec<Rule> {
     parse(UA_STYLESHEET_SOURCE)
@@ -1738,6 +1742,18 @@ mod tests {
         // an author rule on the table still wins over the quirk
         let authored = style_of(page, "table { text-align: right }", "td");
         assert_eq!(authored.text_align.as_deref(), Some("right"));
+    }
+
+    #[test]
+    fn a_form_in_quirks_mode_has_a_bottom_margin_of_one_em() {
+        // WebKit's quirks.css: `form { margin-bottom: 1em }`; Hacker News' footer relies on it.
+        let page = "<form style='font-size: 20px'>x</form>";
+        let quirky = style_of(page, "", "form");
+        assert_eq!(quirky.other.get("margin-bottom"), Some(&Value::Length(Length::Em(1.0))));
+        let standard = style_of(&format!("<!doctype html>{page}"), "", "form");
+        assert_ne!(standard.other.get("margin-bottom"), Some(&Value::Length(Length::Em(1.0))));
+        let authored = style_of(page, "form { margin-bottom: 3px }", "form");
+        assert_eq!(authored.other.get("margin-bottom"), Some(&Value::Length(Length::Px(3.0))));
     }
 
     fn style_of(html: &str, css: &str, tag: &str) -> ComputedStyle {

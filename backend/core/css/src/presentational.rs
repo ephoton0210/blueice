@@ -102,15 +102,6 @@ pub(crate) fn hints(doc: &Document, node: NodeId) -> Vec<Declaration> {
     // A text field's `size` (characters) and a text area's `cols`/`rows` give its content box:
     // the average character is 0.6357em of the control font and a text area keeps a 1.55em
     // scrollbar, as measured in Safari.
-    if tag == "input" {
-        let textual = !matches!(
-            attr("type").map(|t| t.to_ascii_lowercase()).as_deref(),
-            Some("checkbox" | "radio" | "hidden" | "submit" | "button" | "reset" | "image" | "range" | "color" | "file")
-        );
-        if let (true, Some(n)) = (textual, attr("size").and_then(positive_integer)) {
-            css.push_str(&format!("width:{:.4}em;", f64::from(n) * 0.6357 + 0.18));
-        }
-    }
     if tag == "textarea" {
         if let Some(n) = attr("cols").and_then(positive_integer) {
             css.push_str(&format!("width:{:.4}em;", f64::from(n) * 0.6357 + 1.55));

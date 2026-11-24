@@ -99,37 +99,36 @@ format already reuses for every other #paint-bearing fixture).
 "
 #paint
 text 8.0,22.0 "Welcome" #000000 32.0 bold normal
-text 8.0,81.6 "This" #000000 16.0 normal normal
-text 45.8,81.6 "is" #000000 16.0 normal normal
-text 63.6,81.6 "bold" #000000 16.0 bold normal
-text 108.1,81.6 "and" #000000 16.0 normal normal
-text 143.3,81.6 "italic" #000000 16.0 normal italic
-text 186.6,81.6 "text" #000000 16.0 normal normal
-text 223.3,81.6 "with" #000000 16.0 normal normal
-text 262.3,81.6 "a" #000000 16.0 normal normal
-text 277.2,81.6 "link" #0000ee 16.0 normal normal
+text 8.0,81.5 "This" #000000 16.0 normal normal
+text 45.8,81.5 "is" #000000 16.0 normal normal
+text 63.6,81.5 "bold" #000000 16.0 bold normal
+text 108.1,81.5 "and" #000000 16.0 normal normal
+text 143.3,81.5 "italic" #000000 16.0 normal italic
+text 186.6,81.5 "text" #000000 16.0 normal normal
+text 223.3,81.5 "with" #000000 16.0 normal normal
+text 262.3,81.5 "a" #000000 16.0 normal normal
+text 277.2,81.5 "link" #0000ee 16.0 normal normal
 rect 277.2,98.3 28.3x1.0 #0000ee
-text 305.5,81.6 "." #000000 16.0 normal normal
-text 32.2,116.8 "•" #000000 16.0 normal normal
-text 48.0,116.8 "one" #000000 16.0 normal normal
-text 32.2,136.0 "•" #000000 16.0 normal normal
-text 48.0,136.0 "two" #000000 16.0 normal normal
-rect 8.0,170.9 304.0x31.9 #eeeeee
-border 8.0,170.9 304.0x1.0 #333333
-border 311.0,170.9 1.0x31.9 #333333
-border 8.0,201.8 304.0x1.0 #333333
-border 8.0,170.9 1.0x31.9 #333333
-text 13.0,176.2 "Name" #000000 16.0 normal normal
-rect 65.3,176.6 155.8x21.2 #ffffff
-border 65.3,176.6 155.8x2.0 #d4d4d4
-border 219.1,176.6 2.0x21.2 #d4d4d4
-border 65.3,195.8 155.8x2.0 #d4d4d4
+text 305.5,81.5 "." #000000 16.0 normal normal
+text 32.2,116.7 "•" #000000 16.0 normal normal
+text 48.0,116.7 "one" #000000 16.0 normal normal
+text 32.2,135.9 "•" #000000 16.0 normal normal
+text 48.0,135.9 "two" #000000 16.0 normal normal
+rect 8.0,170.8 304.0x47.9 #eeeeee
+border 8.0,170.8 304.0x1.0 #333333
+border 311.0,170.8 1.0x47.9 #333333
+border 8.0,217.8 304.0x1.0 #333333
+border 8.0,170.8 1.0x47.9 #333333
+text 13.0,176.1 "Name" #000000 16.0 normal normal
+rect 65.3,176.6 155.9x21.2 #ffffff
+border 65.3,176.6 155.9x2.0 #d4d4d4
+border 219.2,176.6 2.0x21.2 #d4d4d4
+border 65.3,195.8 155.9x2.0 #d4d4d4
 border 65.3,176.6 2.0x21.2 #d4d4d4
-clip 72.3,180.6 141.8x13.2
+clip 72.3,180.6 141.9x13.2
 text 72.3,180.8 "" #000000 11.0 normal normal
 text 72.3,180.8 "Your name" #757575 11.0 normal normal
 endclip
 roundrect 226.2,178.6 31.3x18.2 5.0x5.0/5.0x5.0/5.0x5.0/5.0x5.0 #ffffff
 roundborder 226.2,178.6 31.3x18.2 5.0x5.0/5.0x5.0/5.0x5.0/5.0x5.0 2.0 #d4d4d4
-text 234.2,180.8 "Go" #000000 11.0 normal normal
-
+text 234.3,180.8 "Go" #000000 11.0 normal normal

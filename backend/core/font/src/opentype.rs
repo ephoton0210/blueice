@@ -144,6 +144,19 @@ pub fn face_supports_feature(bold: bool, italic: bool, face: Option<WebFontId>, 
         .is_some_and(|gsub| gsub.features.index(rustybuzz::ttf_parser::Tag::from_bytes(&tag)).is_some())
 }
 
+/// The two widths WebKit sizes a text field by, for the face that draws 'x' in this style: the
+/// font's average character width (`OS/2` `xAvgCharWidth`) and the width of its bounding box
+/// (`head`), each scaled to `px` and rounded to whole pixels. `None` for a face with no `OS/2`.
+pub fn control_char_widths(bold: bool, italic: bool, face: Option<WebFontId>, px: f64) -> Option<(f64, f64)> {
+    let hb = face_of(font_for_char_in('x', bold, italic, face))?;
+    let upm = f64::from(hb.units_per_em());
+    let os2 = hb.raw_face().table(rustybuzz::ttf_parser::Tag::from_bytes(b"OS/2"))?;
+    let avg = i16::from_be_bytes([*os2.get(2)?, *os2.get(3)?]);
+    let bbox = hb.global_bounding_box();
+    let width = f64::from(i32::from(bbox.x_max) - i32::from(bbox.x_min));
+    Some(((f64::from(avg) * px / upm).round(), (width * px / upm).round()))
+}
+
 /// A parsed face for shaping, kept for the life of the process.
 struct Shaper(&'static Face<'static>);
 
