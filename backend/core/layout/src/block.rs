@@ -1705,6 +1705,17 @@ mod tests {
     }
 
     #[test]
+    fn a_text_fields_width_follows_the_family_the_page_chose() {
+        // A family WebKit does not trust the average of (Helvetica, Times, Courier, ...) is
+        // `size` average characters plus 2px; `system-ui` takes the measured averages. The page's
+        // own family is read, not the default: at 16px Times is 8px an average character.
+        let w = |css: &str| input_width("<input type=text size=20>", css);
+        assert_eq!(w("input{font:16px times}"), 20.0 * 8.0 + 2.0 + 20.0);
+        assert_eq!(w("input{font:16px courier}"), (20.0_f64 * 9.6).ceil() + 2.0 + 20.0);
+        assert_ne!(w("input{font:16px times}"), w("input{font:16px system-ui}"));
+    }
+
+    #[test]
     fn an_authors_width_still_wins_over_the_character_count() {
         assert_eq!(input_width("<input type=text size=5>", "input{font:11px system-ui;width:200px}"), 214.0);
     }

@@ -570,9 +570,9 @@ pub fn baseline_offset(
 /// The share of the font size above the baseline in a box of bundled-font text.
 pub const ASSUMED_ASCENT_RATIO: f64 = 0.8;
 
-/// What `line-height: normal` comes to in a face: the ascent, the descent and the line gap, each
-/// rounded to whole pixels and added, as WebKit does. `None` for the bundled fonts (they are
-/// 1.2 em).
+/// What `line-height: normal` comes to in a face: the ascent, the descent and the line gap (0.15 em
+/// more in a "legacy" system family, which CoreText gives that), each rounded to whole pixels and
+/// added, as WebKit does. `None` for the bundled fonts (they are 1.2 em).
 pub fn normal_line_height_in(font_size_px: f64, face: Option<web::WebFontId>) -> Option<f64> {
     let id = face?;
     let font = web::get(id)?;
@@ -583,8 +583,11 @@ pub fn normal_line_height_in(font_size_px: f64, face: Option<web::WebFontId>) ->
     Some(a + d + gap.round())
 }
 
-/// [`ascent_descent`] of a page's own face (`None`: the bundled fonts). A face's are whole
-/// pixels, as WebKit rounds them.
+/// [`ascent_descent`] of a page's own face (`None`: the bundled fonts): what its text reaches
+/// above and below the baseline, which is also the box an inline element takes. A face's own are
+/// used as they are, unrounded, as WebKit does, except in a legacy system family (Helvetica,
+/// Times, Courier): there the box is the whole `line-height: normal` line, the descent keeps its
+/// fraction (to 1/64, a half rounding up) and the ascent is what is left. Measured in Safari.
 pub fn ascent_descent_in(
     font_size_px: f64,
     bold: bool,
@@ -595,11 +598,17 @@ pub fn ascent_descent_in(
         Some(font) => {
             let size = adjusted_size(font_size_px, face);
             match font.horizontal_line_metrics(size as f32) {
-                // A page's own face is taken as it is; the system's are whole pixels.
-                Some(metrics) if face.is_some_and(web::is_page_face) => {
-                    (f64::from(metrics.ascent), f64::from(-metrics.descent))
+                Some(metrics) => {
+                    let (a, d) = (f64::from(metrics.ascent), f64::from(-metrics.descent));
+                    let legacy = face.is_some_and(|id| system::extra_line_gap(id) > 0.0);
+                    if !legacy {
+                        return (a, d);
+                    }
+                    let height = normal_line_height_in(font_size_px, face).unwrap_or(a + d);
+                    let half = (d - d.floor() - 0.5).abs() < 1e-6;
+                    let descent = if half { d.ceil() } else { (d * 64.0 - 1e-6).ceil() / 64.0 };
+                    (height - descent, descent)
                 }
-                Some(metrics) => (f64::from(metrics.ascent).round(), f64::from(-metrics.descent).round()),
                 None => (size * 0.93, size * 0.24),
             }
         }

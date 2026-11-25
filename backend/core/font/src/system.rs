@@ -333,6 +333,9 @@ pub fn face_for(
     };
     families.split(',').find_map(|family| {
         let family = family.trim().trim_matches(|c| c == '"' || c == '\'').trim().to_ascii_lowercase();
+        // Safari picks the fixed-pitch font per script: a page with a language gets Menlo, one with
+        // none gets Courier.
+        let family = if family == "monospace" && lang.is_none_or(str::is_empty) { "courier".to_string() } else { family };
         // Safari draws the generic sans-serif of a Chinese page with PingFang, Latin letters too.
         if family == "sans-serif" {
             if let Some(variant) = pingfang_for(lang) {
@@ -457,7 +460,7 @@ mod tests {
         let _switch = SWITCH.lock().unwrap_or_else(|e| e.into_inner());
         set_enabled(true);
         let width = |name: &str| {
-            let id = face_for(Some(name), 400, false, 133, None);
+            let id = face_for(Some(name), 400, false, 133, Some("en"));
             id.map_or(0.0, |id| crate::measure_text_width_in("0000000000", 13.3333, false, false, Some(id)))
         };
         let (mono, ui, courier) = (width("monospace"), width("ui-monospace"), width("courier"));
@@ -465,6 +468,71 @@ mod tests {
         assert!((mono - 80.28).abs() < 0.1, "monospace {mono}");
         assert!((ui - 82.42).abs() < 0.1, "ui-monospace {ui}");
         assert!((courier - 80.0).abs() < 0.1, "courier {courier}");
+    }
+
+    #[test]
+    fn the_generic_monospace_is_menlo_on_a_page_with_a_language_and_courier_without_one() {
+        // Safari picks the fixed-pitch font per script: a document with `lang="en"` gets Menlo
+        // (8.028px a character at 13.333px), one with no language gets Courier (8.0px).
+        if !std::path::Path::new("/System/Library/Fonts/Menlo.ttc").exists() {
+            return; // not macOS
+        }
+        let _switch = SWITCH.lock().unwrap_or_else(|e| e.into_inner());
+        set_enabled(true);
+        let width = |lang: Option<&str>| {
+            let id = face_for(Some("monospace"), 400, false, 133, lang).expect("a face");
+            crate::measure_text_width_in("0000000000", 13.3333, false, false, Some(id))
+        };
+        let (with_lang, without) = (width(Some("en")), width(None));
+        set_enabled(false);
+        assert!((with_lang - 80.28).abs() < 0.1, "lang=en: {with_lang}");
+        assert!((without - 80.0).abs() < 0.1, "no lang: {without}");
+    }
+
+    #[test]
+    fn system_fonts_have_the_line_metrics_safari_measures() {
+        // Measured in Safari, `font: <px>/normal <family>` with `<span>xg</span>` and a zero-height
+        // inline-block on the baseline: the line's height, and the baseline's distance from its top.
+        // Helvetica, Courier and Times are CoreText's "legacy" families: the content area is the
+        // whole line (ascent plus descent plus 0.15em, rounded) and the descent is kept fractional.
+        // Every other family keeps its real, unrounded ascent and descent, centred in the line.
+        if !std::path::Path::new("/System/Library/Fonts/Menlo.ttc").exists() {
+            return; // not macOS
+        }
+        let _switch = SWITCH.lock().unwrap_or_else(|e| e.into_inner());
+        set_enabled(true);
+        // (family, px, line height, baseline)
+        let rows: [(&str, f64, f64, f64); 12] = [
+            ("helvetica", 10.0, 12.0, 9.6875),
+            ("helvetica", 16.0, 18.0, 14.3125),
+            ("helvetica", 24.0, 28.0, 22.4688),
+            ("courier", 16.0, 18.0, 14.0625),
+            ("courier", 32.0, 37.0, 29.125),
+            ("times", 10.0, 13.0, 10.0),
+            ("times", 14.0, 17.0, 13.0),
+            ("times", 16.0, 18.0, 14.0),
+            ("arial", 16.0, 18.0, 14.5469),
+            ("menlo", 16.0, 19.0, 15.0313),
+            ("georgia", 16.0, 19.0, 15.0781),
+            ("verdana", 16.0, 19.0, 15.8594),
+        ];
+        let mut wrong = Vec::new();
+        for (family, px, line, baseline) in rows {
+            let id = face_for(Some(family), 400, false, (px * 10.0) as u16, None);
+            let Some(id) = id else {
+                wrong.push(format!("{family}: no face"));
+                continue;
+            };
+            let h = crate::normal_line_height_in(px, Some(id)).unwrap_or(0.0);
+            let (a, d) = crate::ascent_descent_in(px, false, false, Some(id));
+            // The baseline in a line of normal height: half-leading plus ascent.
+            let base = (h - (a + d)) / 2.0 + a;
+            if (h - line).abs() > 0.01 || (base - baseline).abs() > 0.03 {
+                wrong.push(format!("{family} {px}px: line {h} base {base:.4}, Safari {line} {baseline}"));
+            }
+        }
+        set_enabled(false);
+        assert!(wrong.is_empty(), "{wrong:#?}");
     }
 
     #[test]

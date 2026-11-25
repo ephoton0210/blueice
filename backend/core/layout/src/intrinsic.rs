@@ -166,10 +166,12 @@ pub(crate) fn text_field_width(ctx: &Ctx<'_>, node: NodeId, style: &crate::ctx::
         .unwrap_or(20);
     let n = f64::from(chars);
     let px = style.font_size();
-    let family = match style.raw("font-family") {
-        Some(blueice_css::Value::Keyword(list)) => list.split(',').next().unwrap_or("").trim().trim_matches(['"', '\'']).to_string(),
-        _ => String::from("system-ui"),
-    };
+    let family = style
+        .style
+        .and_then(|s| s.font_family.as_deref())
+        .map_or_else(|| String::from("system-ui"), |list| {
+            list.split(',').next().unwrap_or("").trim().trim_matches(['"', '\'']).to_ascii_lowercase()
+        });
     let ceil64 = |v: f64| (v * 64.0 - 1e-6).ceil() / 64.0;
     let system = matches!(family.as_str(), "system-ui" | "-apple-system" | "blinkmacsystemfont" | "ui-sans-serif" | "san francisco");
     if system {

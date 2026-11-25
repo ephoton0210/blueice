@@ -408,7 +408,11 @@ pub(crate) fn layout_table(ctx: &Ctx<'_>, table: NodeId, input: &TableInput) -> 
         cb_height: None,
         root: false,
     };
-    for &caption in &captions {
+    // `caption-side: bottom` captions go under the rows; the rest above them.
+    let (bottom_captions, top_captions): (Vec<NodeId>, Vec<NodeId>) = captions
+        .iter()
+        .partition(|&&c| ctx.style(c).keyword("caption-side") == Some("bottom"));
+    for &caption in &top_captions {
         let placed = layout_block_level(
             ctx,
             caption,
@@ -579,7 +583,32 @@ pub(crate) fn layout_table(ctx: &Ctx<'_>, table: NodeId, input: &TableInput) -> 
         result.children.push(group);
     }
     result.children.extend(loose);
-    result.height = total_height;
+    // Captions on the bottom side follow the rows.
+    let mut below = total_height;
+    for &caption in &bottom_captions {
+        let placed = layout_block_level(
+            ctx,
+            caption,
+            &caption_constraint,
+            Forced {
+                width: Some(table_width),
+                height: None,
+            },
+        );
+        let mut fragment = placed.fragment;
+        fragment.x = 0.0;
+        fragment.y = below;
+        below += fragment.height;
+        result
+            .pending_abs
+            .extend(placed.pending_abs.into_iter().map(|p| PendingAbs {
+                node: p.node,
+                x: p.x,
+                y: p.y + fragment.y,
+            }));
+        result.children.push(fragment);
+    }
+    result.height = below;
     result
 }
 
@@ -815,6 +844,23 @@ mod tests {
         let c = cells(&f);
         assert_eq!(c[0].1, 15.0);
         assert_eq!(f.height.round(), 35.0);
+    }
+
+    #[test]
+    fn a_caption_with_caption_side_bottom_sits_below_the_rows() {
+        // Wikipedia's thumbnails: `figure { display: table }` with a `figcaption { display:
+        // table-caption; caption-side: bottom }` after the picture.
+        let html = "<table><caption style='caption-side:bottom'><i style='height:15px'></i></caption>\
+            <tr><td><i style='width:50px;height:20px'></i></td></tr></table>";
+        let f = table(html, "", 800.0);
+        let caption = f
+            .children
+            .iter()
+            .find(|c| matches!(c.kind, crate::fragment::FragmentKind::Block) && c.height == 15.0)
+            .expect("the caption");
+        let rows_bottom = f.height - 15.0;
+        assert_eq!(caption.y, rows_bottom, "below the rows, not above them");
+        assert!(rows_bottom >= 20.0, "the rows keep their own height: {rows_bottom}");
     }
 
     #[test]
