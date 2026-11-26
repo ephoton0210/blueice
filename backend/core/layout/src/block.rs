@@ -547,7 +547,7 @@ fn list_marker(
         }
     };
     let font_size = style.font_size();
-    let bold = style.style.is_some_and(|s| s.is_bold());
+    let bold = style.text_bold();
     let italic = style.style.is_some_and(|s| s.is_italic());
     let rtl = style.is_rtl();
     // In a right-to-left list the marker hangs off the right edge, and "1." reads ".1".
@@ -982,7 +982,7 @@ fn layout_block_level_uncached(
                 blueice_font::measure_text_width_in(
                     label,
                     style.font_size(),
-                    style.style.is_some_and(|s| s.is_bold()),
+                    style.text_bold(),
                     style.style.is_some_and(|s| s.is_italic()),
                     style.web_face(),
                 )
@@ -1167,7 +1167,7 @@ fn layout_block_level_uncached(
         let control_font = crate::native_text::ControlFont {
             size: font_size,
             line_height,
-            bold: style.style.is_some_and(|s| s.is_bold()),
+            bold: style.text_bold(),
             italic: style.style.is_some_and(|s| s.is_italic()),
             face: style.web_face(),
         };

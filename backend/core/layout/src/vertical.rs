@@ -330,7 +330,7 @@ fn split_runs(
         Some(s) if orient == TextOrient::Upright => upright_length(
             run,
             s.font_size(),
-            s.style.is_some_and(|st| st.is_bold()),
+            s.text_bold(),
             s.style.is_some_and(|st| st.is_italic()),
             s.web_face(),
             s.style
@@ -340,7 +340,7 @@ fn split_runs(
         Some(s) => blueice_font::measure_text_width_in(
             run,
             s.font_size(),
-            s.style.is_some_and(|st| st.is_bold()),
+            s.text_bold(),
             s.style.is_some_and(|st| st.is_italic()),
             s.web_face(),
         ),

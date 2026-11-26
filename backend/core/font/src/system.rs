@@ -410,12 +410,14 @@ pub fn fallback_glyphs(c: char) -> Option<crate::Glyphs> {
     glyphs.has_glyph(c).then_some(glyphs)
 }
 
+/// The system-font switch is the process's, so a test that flips it holds this meanwhile, and a
+/// test whose answer depends on which face draws CJK text holds it too.
+#[cfg(test)]
+pub(crate) static SWITCH: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// The system-font switch is the process's, so a test that flips it holds this meanwhile.
-    static SWITCH: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
     fn off_by_default_and_when_on_cjk_text_comes_from_the_systems_face() {

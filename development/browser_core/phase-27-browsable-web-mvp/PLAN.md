@@ -1355,3 +1355,13 @@ Open, with the specific cause found (not interpretation differences, all missing
 - `<select>` width is `ceil` of the widest option plus the arrow, as WebKit computes it. This (not shaping) is the 1px in rust-lang.org's language selector; re-verify live.
 - A grid item that is a scroll container has an automatic minimum size of 0 (BBC's carousel row no longer widens its grid track).
 - Still open, causes known: BBC carousel card images are 180x101 where Safari shows 180x180 (flex-column `height:100%` with lazy images); Wikipedia closed-dropdown widths; GitHub container queries; `mask-size/position/repeat`, `mask-mode`, `backdrop-filter`, 3D transforms.
+
+### Eighth round: rust-lang.org matches Safari box by box (2026-11-26)
+
+rust-lang.org now has 0 differences from Safari (175 matched elements at 1280 wide). Three causes, each found by measuring Safari on a lab page first:
+
+- **Fonts the page declares are fetched only when the text needs them.** The page declares Fira Sans as 7 styles x 7 unicode-range subsets (49 `@font-face`s) and `FontLimits.faces` is 24, so the last-declared ExtraBold faces were dropped and `font-weight: 800` fell back to SemiBold (headings 1.4 px narrow). A face whose `unicode-range` covers no character of the document is no longer fetched (`covers_document`), as a browser would not fetch it.
+- **Synthetic bold widens each glyph.** A page face without the weight asked for is drawn heavier by the engine, and Safari also advances every glyph by 1/36 em (measured 12 to 96 px: 0.0278 em, exactly proportional to size). Layout now decides `bold` for a page face the way paint does (`Style::text_bold`, from `-blueice-web-synth`), so a real bold face is not widened.
+- **`<select>` width** is `ceil` of the widest option (see the seventh round), which was the rust-lang nav's 1 px.
+
+Also fixed: a latent test race (the vertical-text test drew CJK through whichever face the process-wide system-font switch selected; it now holds the same lock as the tests that flip it).

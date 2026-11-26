@@ -268,7 +268,7 @@ struct TextProps {
 impl TextProps {
     fn of(style: &Style<'_>) -> TextProps {
         let (bold, italic, face) = (
-            style.style.is_some_and(|s| s.is_bold()),
+            style.text_bold(),
             style.style.is_some_and(|s| s.is_italic()),
             style.web_face(),
         );
@@ -280,7 +280,7 @@ impl TextProps {
         TextProps {
             font_size: style.font_size(),
             synthesized_small_caps,
-            bold: style.style.is_some_and(|s| s.is_bold()),
+            bold: style.text_bold(),
             italic: style.style.is_some_and(|s| s.is_italic()),
             face: style.web_face(),
             letter_spacing: style.px("letter-spacing", f64::NAN).unwrap_or(0.0),
@@ -744,7 +744,7 @@ fn atomic_for(ctx: &Ctx<'_>, node: NodeId, cb_width: f64) -> Atomic {
         matches!(ctx.tag(node), Some("select" | "input" | "button")).then(|| {
             let (ascent, descent) = blueice_font::ascent_descent_in(
                 style.font_size(),
-                style.style.is_some_and(|s| s.is_bold()),
+                style.text_bold(),
                 style.style.is_some_and(|s| s.is_italic()),
                 style.web_face(),
             );
@@ -1063,7 +1063,7 @@ fn text_extent(style: &Style<'_>) -> (f64, f64) {
     let line_height = line_height_of(style);
     let (ascent, descent) = blueice_font::ascent_descent_in(
         style.font_size(),
-        style.style.is_some_and(|s| s.is_bold()),
+        style.text_bold(),
         style.style.is_some_and(|s| s.is_italic()),
         style.web_face(),
     );
@@ -2081,7 +2081,7 @@ pub(crate) fn layout_run_around(
                 let border = style.border(content_width);
                 let (ascent, descent) = blueice_font::ascent_descent_in(
                     style.font_size(),
-                    style.style.is_some_and(|s| s.is_bold()),
+                    style.text_bold(),
                     style.style.is_some_and(|s| s.is_italic()),
                     style.web_face(),
                 );
@@ -2190,6 +2190,31 @@ mod tests {
         let (ba, bd) = blueice_font::ascent_descent(16.0, false, false);
         assert!((a - ba).abs() > 0.01 || (d - bd).abs() > 0.01);
         assert!((own.height - plain.height).abs() < 3.0);
+    }
+
+    #[test]
+    fn bold_text_in_a_face_without_bold_is_widened_by_the_synthesis_and_a_real_bold_is_not() {
+        let face = blueice_font::web::register(ROBOTO).expect("a face");
+        // `.s` lacks the bold the style asks for (synthesis flag 1), `.r` has it.
+        let f = body(
+            "<p class=s>Hello</p><p class=r>Hello</p>",
+            &format!(
+                "p {{ font-weight: bold; -blueice-web-font: {}; }} .s {{ -blueice-web-synth: 1 }}",
+                face.as_u32()
+            ),
+            800.0,
+        );
+        let width = |i: usize| match &f.children[i].children[0].children[0].kind {
+            FragmentKind::Text(_) => f.children[i].children[0].children[0].width,
+            _ => panic!("text expected"),
+        };
+        let plain = blueice_font::measure_text_width_in("Hello", 16.0, false, false, Some(face));
+        assert!((width(1) - plain).abs() < 0.01, "a real bold is measured as it is: {} {plain}", width(1));
+        assert!(
+            (width(0) - plain - 5.0 * 16.0 * 0.0278).abs() < 0.05,
+            "each glyph advances 0.0278 em further: {} {plain}",
+            width(0)
+        );
     }
 
     #[test]

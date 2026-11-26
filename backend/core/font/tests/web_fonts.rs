@@ -391,3 +391,18 @@ fn a_text_fields_character_widths_come_from_os2_and_head() {
     assert_eq!(small_max, (max * 16.0 / 2048.0).round());
     assert_eq!(small_avg.fract(), 0.0, "whole pixels");
 }
+
+/// Safari makes a page face bold that has no bold of its own by drawing it heavier and widening
+/// each glyph's advance by 0.0278 em (measured: "Why Rust?" in Alfa Slab One 48px is 284.2 wide
+/// regular and 296 bold, 148/296/592 at 24/48/96px).
+#[test]
+fn a_synthetically_bold_page_face_advances_each_glyph_a_little_further() {
+    let face = web::register(WOFF2).expect("roboto registers");
+    let regular = measure_text_width_in("Why Rust?", 48.0, false, false, Some(face));
+    let bold = measure_text_width_in("Why Rust?", 48.0, true, false, Some(face));
+    let extra = bold - regular;
+    assert!((extra - 9.0 * 48.0 * 0.0278).abs() < 0.05, "{regular} -> {bold}");
+    let double = measure_text_width_in("Why Rust?", 96.0, true, false, Some(face))
+        - measure_text_width_in("Why Rust?", 96.0, false, false, Some(face));
+    assert!((double - 2.0 * extra).abs() < 0.1, "{double}");
+}

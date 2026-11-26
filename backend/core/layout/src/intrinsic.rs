@@ -182,12 +182,12 @@ pub(crate) fn text_field_width(ctx: &Ctx<'_>, node: NodeId, style: &crate::ctx::
             "helvetica" => 0.55615 * px,
             "times" => 0.5 * px,
             "courier" => 0.6 * px,
-            _ => blueice_font::control_char_widths(style.style.is_some_and(|s| s.is_bold()), style.style.is_some_and(|s| s.is_italic()), style.web_face(), px)
+            _ => blueice_font::control_char_widths(style.text_bold(), style.style.is_some_and(|s| s.is_italic()), style.web_face(), px)
                 .map_or(0.6 * px, |(avg, _)| avg),
         };
         return Some(ceil64(n * average) + 2.0);
     }
-    match blueice_font::control_char_widths(style.style.is_some_and(|s| s.is_bold()), style.style.is_some_and(|s| s.is_italic()), style.web_face(), px) {
+    match blueice_font::control_char_widths(style.text_bold(), style.style.is_some_and(|s| s.is_italic()), style.web_face(), px) {
         Some((avg, max)) => Some(ceil64(n * avg) + (max - avg).max(0.0) + 2.0),
         None => Some(ceil64(n * system_ui_average(px)) + 2.0),
     }
@@ -203,7 +203,7 @@ pub(crate) fn drop_down_width(ctx: &Ctx<'_>, node: NodeId, style: &crate::ctx::S
         return None;
     }
     let (bold, italic) = (
-        style.style.is_some_and(|s| s.is_bold()),
+        style.text_bold(),
         style.style.is_some_and(|s| s.is_italic()),
     );
     let widest = crate::native_text::select_options(ctx.doc, node)

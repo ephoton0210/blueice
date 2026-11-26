@@ -520,6 +520,16 @@ impl<'a> Style<'a> {
         }
     }
 
+    /// Whether text is measured and drawn bold: the style's weight, or, in a page's own face, only
+    /// what that face lacks of it (`-blueice-web-synth`), which the engine makes up by widening
+    /// every glyph and drawing it heavier. Paint decides the same way, so the two agree.
+    pub fn text_bold(&self) -> bool {
+        if self.web_face().is_none() {
+            return self.style.is_some_and(|s| s.is_bold());
+        }
+        matches!(self.raw("-blueice-web-synth"), Some(Value::Number(n)) if (*n as u32) & 1 != 0)
+    }
+
     /// `direction: rtl`.
     pub fn is_rtl(&self) -> bool {
         self.keyword("direction") == Some("rtl")

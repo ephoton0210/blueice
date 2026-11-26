@@ -430,6 +430,27 @@ fn load(
     None
 }
 
+/// Every code point of the text in `doc`.
+fn document_code_points(doc: &blueice_dom::Document) -> std::collections::HashSet<u32> {
+    use blueice_dom::NodeData;
+    let mut out = std::collections::HashSet::new();
+    let mut stack = vec![doc.root()];
+    while let Some(node) = stack.pop() {
+        if let NodeData::Text { data } = doc.data(node) {
+            out.extend(data.chars().map(u32::from));
+        }
+        stack.extend(doc.children(node));
+    }
+    out
+}
+
+/// Whether a face with these `unicode-range`s can draw any of the page's text: a face that
+/// covers only Cyrillic is not fetched for a page with none, as a browser fetches a face only when
+/// text needs it. No range means every character.
+fn covers_document(ranges: &[(u32, u32)], chars: &std::collections::HashSet<u32>) -> bool {
+    ranges.is_empty() || ranges.iter().any(|&(lo, hi)| chars.iter().any(|c| (lo..=hi).contains(c)))
+}
+
 /// Fetches and decodes the fonts `html` and its fetched stylesheets ask for. `review` answers
 /// whether one absolute URL may be requested.
 pub(crate) fn fetch_linked_fonts(
@@ -445,10 +466,11 @@ pub(crate) fn fetch_linked_fonts(
     };
     let mut wanted: Vec<(FontFaceRule, Url)> = Vec::new();
     let mut feature_values = blueice_css::FeatureValues::default();
+    let text = document_code_points(&doc);
     for (css, sheet_base) in sheets(&doc, linked, &base) {
         feature_values.merge(blueice_css::font_feature_values(&css));
         for face in blueice_css::font_faces(&css) {
-            if wanted.len() < limits.faces {
+            if wanted.len() < limits.faces && covers_document(&face.unicode_ranges, &text) {
                 wanted.push((face, sheet_base.clone()));
             }
         }
@@ -820,6 +842,21 @@ mod tests {
         assert_eq!(drawn_by(&c, "s", 'A'), font_of(id_of(BOLD)));
         assert_eq!(drawn_by(&c, "s", 'a'), font_of(id_of(REGULAR)));
         assert_eq!(drawn_by(&c, "s", '7'), bundled('7'), "covered by no face: the bundled font");
+    }
+
+    #[test]
+    fn a_face_is_fetched_only_when_its_ranges_cover_text_of_the_document() {
+        let doc = blueice_html::parse("<p>Why Rust? \u{e9}</p><p>no script <b>here</b></p>");
+        let chars = document_code_points(&doc);
+        let latin = [(0x0000, 0x00FF), (0x0131, 0x0131)];
+        let cyrillic = [(0x0400, 0x045F), (0x0490, 0x0491)];
+        let greek = [(0x0370, 0x03FF)];
+        assert!(covers_document(&[], &chars), "no unicode-range means every character");
+        assert!(covers_document(&latin, &chars));
+        assert!(!covers_document(&cyrillic, &chars));
+        assert!(!covers_document(&greek, &chars));
+        let russian = blueice_html::parse("<p>\u{41f}\u{440}\u{438}\u{432}\u{435}\u{442}</p>");
+        assert!(covers_document(&cyrillic, &document_code_points(&russian)));
     }
 
     #[test]

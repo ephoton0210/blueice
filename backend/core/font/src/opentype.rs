@@ -186,6 +186,15 @@ fn static_face_of(font: &'static fontdue::Font) -> Option<&'static Face<'static>
     parsed.map(|s| s.0)
 }
 
+/// How much further each glyph advances when a page's face is made bold by the engine because it
+/// has no bold of its own: Safari widens every advance by this fraction of the em (measured on
+/// 12 to 96px text, 1/36 em, where the extra is exactly proportional to the size).
+const SYNTHETIC_BOLD_ADVANCE_EM: f32 = 0.0278;
+
+fn synthetic_bold_extra(bold: bool, face: Option<WebFontId>, px: f32) -> f32 {
+    if bold && face.is_some() { px * SYNTHETIC_BOLD_ADVANCE_EM } else { 0.0 }
+}
+
 /// `text` as glyphs, in the order they are drawn, with the font's default features: see
 /// [`shape_text`].
 pub fn shape_for_drawing(
@@ -330,7 +339,18 @@ pub fn shape_text(
     for (font, start, end) in runs {
         let hb = face_of(font)?;
         let shaped = shape_run(font, hb, &text[start..end], &settings, px, rtl, false);
-        shaped_runs.push(shaped.into_iter().map(|(g, _)| g).collect());
+        let extra = synthetic_bold_extra(bold, face, px);
+        shaped_runs.push(
+            shaped
+                .into_iter()
+                .map(|(mut g, _)| {
+                    if g.advance > 0.0 {
+                        g.advance += extra;
+                    }
+                    g
+                })
+                .collect(),
+        );
     }
     // A right-to-left line is drawn from its last run to its first.
     if rtl {
@@ -378,7 +398,8 @@ pub fn char_advances(
         let base = first_char.get(&start).copied().unwrap_or(0);
         for (glyph, source) in shape_run(font, hb, &text[start..end], &settings, px, rtl, false) {
             if let Some(slot) = out.get_mut(base + source) {
-                *slot += f64::from(glyph.advance);
+                let extra = if glyph.advance > 0.0 { synthetic_bold_extra(bold, face, px) } else { 0.0 };
+                *slot += f64::from(glyph.advance + extra);
             }
         }
     }
@@ -631,6 +652,8 @@ mod tests {
 
     #[test]
     fn upright_text_takes_the_fonts_proportional_vertical_widths_when_asked() {
+        // Which face draws the CJK text depends on the system-font switch.
+        let _switch = crate::system::SWITCH.lock().unwrap_or_else(|e| e.into_inner());
         let text = "\u{300C}\u{3042}\u{3002}\u{300D}";
         let total = |features: FeaturesId| -> f32 {
             vertical_glyphs(text, false, false, None, features, 100.0)
