@@ -290,6 +290,37 @@ fn expand_flex(tokens: &[Token]) -> Vec<(String, Value)> {
 
 /// Two-value shorthands (`gap`, `overflow`, `flex-flow`, `place-*`): one
 /// value sets both longhands, two set them in order.
+/// `aspect-ratio`: `auto`, a ratio (`16 / 9`, `1.5`), or `auto` followed by one. A ratio is stored
+/// as its number (width over height); `auto` first makes it a list of `auto` and that number, for
+/// the box that has an intrinsic ratio of its own to keep it.
+fn expand_aspect_ratio(tokens: &[Token]) -> Vec<(String, Value)> {
+    let mut auto = false;
+    let mut numbers: Vec<f64> = Vec::new();
+    for t in tokens {
+        match t {
+            Token::Whitespace | Token::Delim('/') => {}
+            Token::Ident(k) if k.eq_ignore_ascii_case("auto") => auto = true,
+            Token::Number(n) => numbers.push(*n),
+            _ => return vec![],
+        }
+    }
+    let ratio = match numbers.as_slice() {
+        [] if auto => return vec![("aspect-ratio".to_string(), Value::Keyword("auto".to_string()))],
+        [w] => *w,
+        [w, h] if *h > 0.0 => w / h,
+        _ => return vec![],
+    };
+    if !ratio.is_finite() || ratio <= 0.0 {
+        return vec![];
+    }
+    let value = if auto {
+        Value::List(vec![Value::Keyword("auto".to_string()), Value::Number(ratio)])
+    } else {
+        Value::Number(ratio)
+    };
+    vec![("aspect-ratio".to_string(), value)]
+}
+
 fn expand_pair(first: &str, second: &str, tokens: &[Token]) -> Vec<(String, Value)> {
     let values: Option<Vec<Value>> = components(tokens)
         .iter()
@@ -977,6 +1008,7 @@ pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(St
         "border-inline-end" => expand_border_sides(&["right"], value_tokens),
         "flex" => expand_flex(value_tokens),
         "flex-flow" => expand_flex_flow(value_tokens),
+        "aspect-ratio" => expand_aspect_ratio(value_tokens),
         "gap" | "grid-gap" => expand_pair("row-gap", "column-gap", value_tokens),
         "overflow" => expand_pair("overflow-x", "overflow-y", value_tokens),
         "place-items" => expand_pair("align-items", "justify-items", value_tokens),
@@ -1906,11 +1938,23 @@ mod tests {
     }
 
     #[test]
-    fn unknown_multi_component_values_become_lists() {
+    fn aspect_ratio_is_a_ratio_auto_or_both() {
+        let ratio = |css: &str| value_of(&format!("aspect-ratio: {css};"), "aspect-ratio");
+        assert_eq!(ratio("16 / 9"), Some(Value::Number(16.0 / 9.0)));
+        assert_eq!(ratio("16/9"), Some(Value::Number(16.0 / 9.0)));
+        assert_eq!(ratio("1.5"), Some(Value::Number(1.5)));
+        assert_eq!(ratio("auto"), Some(Value::Keyword("auto".to_string())));
         assert_eq!(
-            value_of("aspect-ratio: 16 9;", "aspect-ratio"),
-            Some(Value::List(vec![Value::Number(16.0), Value::Number(9.0)]))
+            ratio("auto 4 / 3"),
+            Some(Value::List(vec![Value::Keyword("auto".to_string()), Value::Number(4.0 / 3.0)]))
         );
+        assert_eq!(ratio("1 / 0"), None, "a zero height is invalid");
+        assert_eq!(ratio("0"), None);
+        assert_eq!(ratio("wide"), None);
+    }
+
+    #[test]
+    fn unknown_multi_component_values_become_lists() {
         assert_eq!(
             value_of("margin-trim: block inline;", "margin-trim"),
             Some(Value::List(vec![

@@ -160,8 +160,12 @@ fn has_block_descendant(ctx: &Ctx<'_>, node: NodeId) -> bool {
             || (display == Display::Inline && !is_replaced_tag(tag))
         {
             has_block_descendant(ctx, child)
+        } else if is_replaced_tag(tag) && display == Display::Inline {
+            // A picture left inline is on the line like a letter.
+            false
         } else {
-            !display.is_atomic_inline() && !is_replaced_tag(tag)
+            // A picture made `display: block` is a block in the inline (bbc.com's logos).
+            !display.is_atomic_inline()
         }
     })
 }
@@ -780,7 +784,7 @@ fn layout_block_level_uncached(
         && ctx.tag(node).is_some_and(is_replaced_tag)
         && !blueice_css::is_pseudo_node(node)
     {
-        if let Some((_, h)) = crate::inline::replaced_size(ctx, node, &style, cbw) {
+        if let Some((_, h)) = crate::inline::replaced_size(ctx, node, &style, cbw, c.cb_height) {
             forced.height = Some(h + pb_v);
         }
     }
@@ -791,7 +795,7 @@ fn layout_block_level_uncached(
         && ctx.tag(node).is_some_and(is_replaced_tag)
         && !blueice_css::is_pseudo_node(node)
     {
-        if let Some((w, h)) = crate::inline::replaced_size(ctx, node, &style, cbw) {
+        if let Some((w, h)) = crate::inline::replaced_size(ctx, node, &style, cbw, c.cb_height) {
             let sized = Forced {
                 width: Some(w + pb_h),
                 height: forced.height.or(Some(h + pb_v)),
@@ -880,6 +884,17 @@ fn layout_block_level_uncached(
         specified_width = crate::intrinsic::drop_down_width(ctx, node, &style)
             .or_else(|| crate::intrinsic::text_field_width(ctx, node, &style));
     }
+    // A `<button>` with `width: auto` is as wide as its content whatever its display: one made
+    // `display: block`, `flex` or `grid` does not stretch to its container.
+    if specified_width.is_none()
+        && ctx.tag(node) == Some("button")
+        && !blueice_css::is_pseudo_node(node)
+        && matches!(style.display(), Display::Block | Display::Flex | Display::Grid)
+    {
+        let (min, max) = crate::intrinsic::preferred_widths(ctx, node);
+        let room = (cbw - margin_left - margin_right).max(0.0);
+        specified_width = Some((max.min(room.max(min)) - pb_h).max(0.0));
+    }
     let (mut content_width, width_determined) = match specified_width {
         Some(w) => (clamp_width(w), true),
         None => {
@@ -916,6 +931,21 @@ fn layout_block_level_uncached(
         .px("min-height", height_base)
         .map(to_content_h)
         .unwrap_or(0.0);
+    // `aspect-ratio` on a box whose height is auto: its content-box height is at least the ratio's
+    // (content never shrinks below itself, as `min-height: auto` has it). A picture is sized
+    // above, where its own ratio is known.
+    let min_height = match style.aspect_ratio() {
+        Some((ratio, _))
+            if specified_height.is_none()
+                && !ctx.tag(node).is_some_and(is_replaced_tag)
+                && !blueice_css::is_pseudo_node(node) =>
+        {
+            let box_width = content_width + if style.is_border_box() { pb_h } else { 0.0 };
+            let box_height = box_width / ratio;
+            min_height.max(if style.is_border_box() { (box_height - pb_v).max(0.0) } else { box_height })
+        }
+        _ => min_height,
+    };
     let max_height = style.px("max-height", height_base).map(to_content_h);
     let clamp_height = |h: f64| {
         let h = max_height.map_or(h, |m| h.min(m));
@@ -1627,6 +1657,120 @@ mod tests {
         let inside = drawn(p_in).expect("the slotted paragraph is drawn");
         assert_eq!(inside.1, 10.0, "inside the shadow div's padding");
         assert!(drawn(p_out).is_none(), "a child that names no slot is not drawn");
+    }
+
+    #[test]
+    fn a_block_level_picture_inside_an_inline_link_leaves_no_line_gap_under_it() {
+        // bbc.com's logos: `<div><a href><svg style="display:block"></svg></a></div>`. The picture
+        // is a block in an inline, so the link's box is split around it and no line is made.
+        for html in [
+            "<!doctype html><div><a href='#'><svg width=105 height=30 style='display:block'></svg></a></div>",
+            "<!doctype html><div><span><img width=105 height=30 style='display:block'></span></div>",
+        ] {
+            let f = body_fragment(html, "", 400.0);
+            assert_eq!(f.children[0].height, 30.0, "{html}");
+        }
+        // An inline picture is still on a line, with the room under it a baseline leaves.
+        let f = body_fragment("<!doctype html><div><a href='#'><svg width=105 height=30></svg></a></div>", "", 400.0);
+        assert!(f.children[0].height > 30.0);
+    }
+
+    #[test]
+    fn a_block_level_button_is_as_wide_as_its_content_not_its_container() {
+        // bbc.com's "BBC in other languages": `<button>` made `display: flex`. A button with
+        // `width: auto` shrinks to fit whatever its display, and `width` still wins.
+        for display in ["block", "flex", "grid"] {
+            let f = body_fragment(
+                &format!("<!doctype html><button style='display:{display}'>Go</button>"),
+                "",
+                400.0,
+            );
+            let w = f.children[0].width;
+            assert!(w > 10.0 && w < 120.0, "{display}: {w}");
+        }
+        let f = body_fragment(
+            "<!doctype html><button style='display:flex;width:300px'>Go</button>",
+            "",
+            400.0,
+        );
+        assert_eq!(f.children[0].width, 300.0);
+        // A long label still wraps inside the container rather than overflowing it.
+        let long = "word ".repeat(200);
+        let f = body_fragment(&format!("<!doctype html><button style='display:flex'>{long}</button>"), "", 400.0);
+        assert!(f.children[0].width <= 400.0);
+    }
+
+    #[test]
+    fn a_grid_items_picture_with_a_percentage_height_gives_the_grid_the_width_its_ratio_makes() {
+        // bbc.com's logo again: an `h1` grid, 26px tall and as wide as its content, holding an svg
+        // of ratio 104:27 with `width: auto; height: 100%`. The grid is 26 * 104 / 27 wide, not
+        // the 104 the picture would be at its own size.
+        let f = body_fragment(
+            "<!doctype html><div style='display:inline-grid;height:27px'><svg style='display:block;width:auto;height:100%;-blueice-intrinsic-size:100 54'></svg></div>",
+            "",
+            400.0,
+        );
+        let grid = &f.children[0].children[0];
+        let svg = &grid.children[0];
+        assert_eq!((svg.width, svg.height), (50.0, 27.0), "{} x {}", grid.width, grid.height);
+        assert_eq!(grid.width, 50.0);
+    }
+
+    #[test]
+    fn a_pictures_percentage_height_is_a_share_of_its_containing_blocks_height() {
+        // bbc.com's logo: `.row svg { width: auto; height: 100% }` in a 26px-tall grid.
+        for html in [
+            "<!doctype html><div style='height:50px'><svg viewBox='0 0 100 50' style='display:block;width:auto;height:100%'></svg></div>",
+            "<!doctype html><div style='height:50px;display:grid'><svg viewBox='0 0 100 50' style='display:block;width:auto;height:100%'></svg></div>",
+            "<!doctype html><div style='height:50px'><img style='display:block;height:50%'></div>",
+        ] {
+            let f = body_fragment(html, "", 400.0);
+            let picture = &f.children[0].children[0];
+            let expect = if html.contains("height:50%") { 25.0 } else { 50.0 };
+            assert_eq!(picture.height, expect, "{html}");
+        }
+    }
+
+    #[test]
+    fn aspect_ratio_sizes_a_box_and_a_picture_from_their_width() {
+        // A picture takes its height from the ratio the style gives it, over the one it has.
+        let f = body_fragment(
+            "<img style='display:block;width:200px;-blueice-intrinsic-size:100 100;aspect-ratio:2/1'>",
+            "",
+            400.0,
+        );
+        assert_eq!((f.children[0].width, f.children[0].height), (200.0, 100.0));
+        // `auto` first keeps the picture's own ratio when it has one, and is the ratio when not.
+        let f = body_fragment(
+            "<img style='display:block;width:200px;-blueice-intrinsic-size:100 100;aspect-ratio:auto 2/1'>",
+            "",
+            400.0,
+        );
+        assert_eq!(f.children[0].height, 200.0);
+        let f = body_fragment(
+            "<img style='display:block;width:200px;aspect-ratio:auto 2/1'>",
+            "",
+            400.0,
+        );
+        assert_eq!(f.children[0].height, 100.0);
+        // An empty box is as tall as its ratio says; content taller than that wins.
+        let f = body_fragment("<div id=a style='width:200px;aspect-ratio:2/1'></div>", "", 400.0);
+        assert_eq!(f.children[0].height, 100.0);
+        let f = body_fragment(
+            "<div style='width:200px;aspect-ratio:2/1'><div style='height:150px'></div></div>",
+            "",
+            400.0,
+        );
+        assert_eq!(f.children[0].height, 150.0);
+        // Padding is outside the content box unless the box is `border-box`.
+        let f = body_fragment("<div style='width:200px;padding:10px;aspect-ratio:2/1'></div>", "", 400.0);
+        assert_eq!(f.children[0].height, 120.0);
+        let f = body_fragment(
+            "<div style='width:200px;padding:10px;box-sizing:border-box;aspect-ratio:2/1'></div>",
+            "",
+            400.0,
+        );
+        assert_eq!(f.children[0].height, 100.0);
     }
 
     #[test]

@@ -550,12 +550,13 @@ pub(crate) fn replaced_size(
     node: NodeId,
     style: &Style<'_>,
     cb_width: f64,
+    cb_height: Option<f64>,
 ) -> Option<(f64, f64)> {
     if !ctx.writing.get().is_vertical() {
-        return replaced_page_size(ctx, node, style, cb_width);
+        return replaced_page_size(ctx, node, style, cb_width, cb_height);
     }
     let turned = ctx.writing.replace(crate::ctx::Writing::Horizontal);
-    let size = replaced_page_size(ctx, node, style, cb_width);
+    let size = replaced_page_size(ctx, node, style, cb_width, cb_height);
     ctx.writing.set(turned);
     size.map(|(w, h)| (h, w))
 }
@@ -566,6 +567,7 @@ fn replaced_page_size(
     node: NodeId,
     style: &Style<'_>,
     cb_width: f64,
+    cb_height: Option<f64>,
 ) -> Option<(f64, f64)> {
     let tag = ctx.tag(node)?;
     let default = match tag {
@@ -599,20 +601,31 @@ fn replaced_page_size(
     let natural = intrinsic.unwrap_or(default);
     // An explicit CSS `auto` overrides the attribute (a presentational hint).
     let css_width = style.px("width", cb_width);
-    let css_height = style.px("height", f64::NAN);
+    let css_height = style.px("height", cb_height.unwrap_or(f64::NAN));
     let width = css_width.or(attr_w.filter(|_| !style.is_auto("width")));
     let height = css_height.or(attr_h.filter(|_| !style.is_auto("height")));
     // A single known dimension keeps the aspect ratio of the attributes, or of
     // the image itself.
-    let ratio = match (attr_w, attr_h) {
+    let own_ratio = match (attr_w, attr_h) {
         (Some(w), Some(h)) if h > 0.0 && w > 0.0 => Some(w / h),
         _ => intrinsic.map(|(w, h)| w / h),
+    };
+    // `aspect-ratio` replaces the picture's own ratio; `auto` first only stands in for a picture
+    // that has none.
+    let css_ratio = style.aspect_ratio();
+    let ratio = match css_ratio {
+        Some((r, false)) => Some(r),
+        Some((r, true)) => own_ratio.or(Some(r)),
+        None => own_ratio,
     };
     let (width, height) = match (width, height) {
         (Some(w), Some(h)) => (w, Some(h)),
         (Some(w), None) => (w, ratio.map(|r| w / r)),
         (None, Some(h)) => (ratio.map_or(natural.0, |r| h * r), Some(h)),
-        (None, None) => (natural.0, Some(natural.1)),
+        (None, None) => match css_ratio {
+            Some((r, false)) => (natural.0, Some(natural.0 / r)),
+            _ => (natural.0, Some(natural.1)),
+        },
     };
     let clamped = style
         .px("max-width", cb_width)
@@ -675,7 +688,7 @@ fn atomic_for(ctx: &Ctx<'_>, node: NodeId, cb_width: f64) -> Atomic {
     let mut pending = Vec::new();
     let mut fragment;
     let mut line_baseline = None;
-    if let Some((width, height)) = replaced_size(ctx, node, &style, cb_width) {
+    if let Some((width, height)) = replaced_size(ctx, node, &style, cb_width, None) {
         fragment = Fragment {
             node: Some(node),
             width: width + pb_h,

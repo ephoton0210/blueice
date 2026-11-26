@@ -83,7 +83,15 @@ fn content_widths_uncached(ctx: &Ctx<'_>, node: NodeId) -> (f64, f64) {
     }
     // A picture has no content to measure: its size is both widths.
     if ctx.tag(node).is_some_and(crate::block::is_replaced_tag) {
-        if let Some((w, _)) = crate::inline::replaced_size(ctx, node, &style, f64::NAN) {
+        // A percentage height is a share of the parent's content height when that is definite
+        // (a logo `height: 100%` in a fixed-height grid): it sets the width through the ratio.
+        let parent_height = ctx.parent(node).and_then(|p| {
+            let ps = ctx.style(p);
+            let h = ps.px("height", f64::NAN)?;
+            let pb_v = ps.padding(0.0).vertical() + ps.border(0.0).vertical();
+            Some(if ps.is_border_box() { (h - pb_v).max(0.0) } else { h })
+        });
+        if let Some((w, _)) = crate::inline::replaced_size(ctx, node, &style, f64::NAN, parent_height) {
             return (w + pb_h, w + pb_h);
         }
     }

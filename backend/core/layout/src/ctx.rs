@@ -530,6 +530,19 @@ impl<'a> Style<'a> {
         matches!(self.raw("-blueice-web-synth"), Some(Value::Number(n)) if (*n as u32) & 1 != 0)
     }
 
+    /// `aspect-ratio` as `(width / height, auto)`: `auto` set means a box that has a ratio of its
+    /// own keeps it and this one is only the fallback. `None` for `auto` alone or no declaration.
+    pub fn aspect_ratio(&self) -> Option<(f64, bool)> {
+        match self.raw("aspect-ratio") {
+            Some(Value::Number(r)) if *r > 0.0 => Some((*r, false)),
+            Some(Value::List(parts)) => match parts.as_slice() {
+                [Value::Keyword(k), Value::Number(r)] if k == "auto" && *r > 0.0 => Some((*r, true)),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     /// `direction: rtl`.
     pub fn is_rtl(&self) -> bool {
         self.keyword("direction") == Some("rtl")

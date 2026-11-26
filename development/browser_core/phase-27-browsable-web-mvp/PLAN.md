@@ -1374,3 +1374,15 @@ bbc.com is live news, so two loads never agree; the comparison now serves one sa
 - **`align-content` and `justify-content` on a grid** (`center`, `end`, `space-between/around/evenly`) were not implemented; bbc's lead story centres its track group.
 - **A page that declares more `@font-face` than the limit** (bbc: 35, rust-lang: 49) lost its last-declared faces. Faces are now fetched only for the families the page uses and the scripts its text needs, used families first, limit 48.
 - Still open on bbc.com: a 3 px upward drift from y=5028 on, the logo box (40 high in Safari, 43 here) and the `h1` width (100 vs 104).
+
+## Tenth round: aspect-ratio, block-level pictures, button width (bbc.com)
+
+Found by comparing the saved bbc.com snapshot with Safari box by box.
+
+- `aspect-ratio` (`<ratio>`, `auto`, `auto <ratio>`) is parsed and applied: a replaced element's CSS ratio overrides its own, and a non-replaced box gets a minimum height from its width. This was the 168.73px BBC card image height.
+- A block-level picture inside an inline link no longer leaves a line gap under it (block-in-inline).
+- A `button` with `display: block/flex/grid` and `width: auto` is shrink-to-fit, as in WebKit.
+- A replaced element's percentage `height` resolves against its containing block's (or grid area's) definite height; intrinsic sizing uses the parent's definite height as the basis.
+- Closes the Ninth round's open items: the 3px drift, the logo box and the h1 width.
+
+Still open: Wikipedia closed-dropdown widths, GitHub container queries, `mask-size/position/repeat`, `mask-mode`, `backdrop-filter`, 3D transforms.
