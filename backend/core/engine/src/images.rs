@@ -311,16 +311,13 @@ pub(crate) fn image_references(
                 }
             }
             if tag_name == "img" {
-                match attr("src").filter(|s| !s.trim().is_empty()) {
-                    Some(src) => add(src, base, found),
-                    None => {
-                        if let Some(first) = attr("srcset")
-                            .and_then(|s| s.split(',').next())
-                            .and_then(|c| c.split_whitespace().next())
-                        {
-                            add(first, base, found);
-                        }
-                    }
+                // The candidate this window would show (the display's density is not known to a
+                // fetch: a one-to-one display), and `src`, the fallback a page may still draw.
+                if let Some((chosen, _)) = choose_img_source(attributes, &ImgEnv::DEFAULT) {
+                    add(&chosen, base, found);
+                }
+                if let Some(src) = attr("src").filter(|s| !s.trim().is_empty()) {
+                    add(src, base, found);
                 }
             }
             if let Some(style) = attr("style") {
@@ -448,6 +445,153 @@ pub(crate) fn img_source(attributes: &[(String, String)]) -> Option<String> {
                 .and_then(|c| c.split_whitespace().next())
         })
         .map(str::to_string)
+}
+
+/// What picks among an image's `srcset` candidates: the viewport (for `sizes`) and the number of
+/// device pixels to a CSS pixel.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ImgEnv {
+    pub width: f64,
+    pub height: f64,
+    pub dpr: f64,
+}
+
+impl ImgEnv {
+    /// A desktop window on a one-to-one display, for the places a page's own size is not known yet.
+    pub(crate) const DEFAULT: ImgEnv = ImgEnv { width: 1280.0, height: 800.0, dpr: 1.0 };
+}
+
+/// One entry of a `srcset`: the address and what its descriptor says (`w` pixels wide, or `x`
+/// pixels to the CSS pixel).
+struct Candidate {
+    url: String,
+    width: Option<f64>,
+    density: Option<f64>,
+}
+
+fn parse_srcset(srcset: &str) -> Vec<Candidate> {
+    let mut out = Vec::new();
+    let mut rest = srcset.trim_start_matches(|c: char| c.is_whitespace() || c == ',');
+    while !rest.is_empty() {
+        let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        let (url, after) = rest.split_at(end);
+        let (url, descriptor, after) = if let Some(stripped) = url.strip_suffix(',') {
+            (stripped.trim_end_matches(','), "", after)
+        } else {
+            let stop = after.find(',').unwrap_or(after.len());
+            (url, after[..stop].trim(), &after[stop..])
+        };
+        if !url.is_empty() {
+            let number = |suffix: char| {
+                descriptor
+                    .strip_suffix(suffix)
+                    .and_then(|n| n.trim().parse::<f64>().ok())
+                    .filter(|n| n.is_finite() && *n > 0.0)
+            };
+            out.push(Candidate { url: url.to_string(), width: number('w'), density: number('x') });
+        }
+        rest = after.trim_start_matches(|c: char| c.is_whitespace() || c == ',');
+    }
+    out
+}
+
+/// The width a `sizes` attribute gives the image in `env`: the first entry whose media condition
+/// holds (an entry with none always holds), else 100vw.
+fn source_size(sizes: Option<&str>, env: &ImgEnv) -> f64 {
+    let media = blueice_css::MediaEnvironment {
+        width: env.width,
+        height: env.height,
+        resolution: env.dpr,
+        ..Default::default()
+    };
+    let resolve = |length: &str| -> Option<f64> {
+        let rules = blueice_css::parse(&format!("a{{width:{}}}", length.trim())).rules;
+        let value = rules.first()?.declarations.iter().find(|d| d.property == "width")?.value.clone();
+        value.to_px(&blueice_css::LengthContext {
+            font_size: 16.0,
+            root_font_size: 16.0,
+            viewport_width: env.width,
+            viewport_height: env.height,
+            percent_base: f64::NAN,
+        })
+    };
+    if let Some(list) = sizes {
+        let (mut depth, mut start) = (0usize, 0usize);
+        let mut entries: Vec<&str> = Vec::new();
+        for (i, c) in list.char_indices() {
+            match c {
+                '(' => depth += 1,
+                ')' => depth = depth.saturating_sub(1),
+                ',' if depth == 0 => {
+                    entries.push(&list[start..i]);
+                    start = i + 1;
+                }
+                _ => {}
+            }
+        }
+        entries.push(&list[start..]);
+        for entry in entries {
+            let entry = entry.trim();
+            if entry.is_empty() {
+                continue;
+            }
+            // The length is the last token, or a whole `calc(...)`/`min(...)` call.
+            let split = match entry.rfind(|c: char| c.is_whitespace()) {
+                _ if entry.ends_with(')') && !entry.starts_with('(') && !entry.contains(' ') => None,
+                _ => {
+                    let call = ["calc(", "min(", "max(", "clamp("].iter().filter_map(|f| entry.rfind(f)).max();
+                    call.or_else(|| entry.rfind(|c: char| c.is_whitespace()).map(|i| i + 1))
+                }
+            };
+            let (condition, length) = match split {
+                Some(at) => (entry[..at].trim(), entry[at..].trim()),
+                None => ("", entry),
+            };
+            if (condition.is_empty() || blueice_css::matches_media(condition, &media)) && !length.is_empty() {
+                if let Some(px) = resolve(length) {
+                    return px;
+                }
+            }
+        }
+    }
+    env.width
+}
+
+/// The address an `<img>` shows in `env`, and how many of the image's own pixels make one CSS
+/// pixel of it (its density), by the HTML "select an image source" steps: with `w` descriptors a
+/// candidate is as dense as it is wide over the `sizes` width; the least dense candidate that is
+/// at least as dense as the display is taken, else the densest. `src` is a candidate of density 1.
+pub(crate) fn choose_img_source(attributes: &[(String, String)], env: &ImgEnv) -> Option<(String, f64)> {
+    let attr = |name: &str| attributes.iter().find(|(k, _)| k == name).map(|(_, v)| v.trim());
+    let mut candidates = attr("srcset").map(parse_srcset).unwrap_or_default();
+    let size = if candidates.iter().any(|c| c.width.is_some()) {
+        Some(source_size(attr("sizes"), env))
+    } else {
+        None
+    };
+    let mut scored: Vec<(String, f64)> = candidates
+        .drain(..)
+        .filter_map(|c| match (c.width, c.density, size) {
+            (Some(w), _, Some(s)) if s > 0.0 => Some((c.url, w / s)),
+            (Some(_), _, _) => None,
+            (None, Some(x), _) => Some((c.url, x)),
+            (None, None, _) => Some((c.url, 1.0)),
+        })
+        .collect();
+    // `w` and `x` descriptors do not mix: with widths, `src` is only what an engine without
+    // `srcset` shows, and what is left if no candidate is usable.
+    if let Some(src) = attr("src").filter(|s| !s.is_empty()) {
+        if (size.is_none() || scored.is_empty()) && !scored.iter().any(|(u, _)| u == src) {
+            scored.push((src.to_string(), 1.0));
+        }
+    }
+    if scored.is_empty() {
+        return None;
+    }
+    scored.sort_by(|a, b| a.1.total_cmp(&b.1));
+    let dpr = if env.dpr.is_finite() && env.dpr > 0.0 { env.dpr } else { 1.0 };
+    let picked = scored.iter().find(|(_, d)| *d >= dpr).or_else(|| scored.last())?;
+    Some(picked.clone())
 }
 
 fn escape(text: &str, out: &mut String) {
@@ -924,6 +1068,63 @@ mod tests {
             Some((40.0, 20.0))
         );
         assert_eq!(svg_natural_size(&attrs(&[("width", "100%")])), None);
+    }
+
+    fn attrs_of(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    #[test]
+    fn a_srcset_with_densities_is_chosen_by_the_displays_density() {
+        let a = attrs_of(&[("src", "one.png"), ("srcset", "one.png, two.png 2x, three.png 3x")]);
+        let at = |dpr: f64| choose_img_source(&a, &ImgEnv { width: 1000.0, height: 800.0, dpr }).unwrap();
+        assert_eq!(at(1.0), ("one.png".to_string(), 1.0));
+        assert_eq!(at(2.0), ("two.png".to_string(), 2.0));
+        assert_eq!(at(1.5).0, "two.png", "the least dense that is dense enough");
+        assert_eq!(at(5.0).0, "three.png", "else the densest");
+    }
+
+    #[test]
+    fn width_descriptors_are_divided_by_the_sizes_width() {
+        // bbc.com's cards: `sizes="(min-width: 1008px) 33vw, (min-width: 600px) 66vw, 100vw"`.
+        let a = attrs_of(&[
+            ("src", "fallback.jpg"),
+            ("sizes", "(min-width: 1008px) 33vw, (min-width: 600px) 66vw, 100vw"),
+            ("srcset", "s.jpg 240w, m.jpg 480w, l.jpg 960w"),
+        ]);
+        let big = ImgEnv { width: 1280.0, height: 800.0, dpr: 1.0 };
+        let (url, density) = choose_img_source(&a, &big).unwrap();
+        // 33vw of 1280 is 422.4px: 480w is the least dense that fills it, 480/422.4 pixels a px.
+        assert_eq!(url, "m.jpg");
+        assert!((density - 480.0 / 422.4).abs() < 1e-3, "{density}");
+        let (url, _) = choose_img_source(&a, &ImgEnv { dpr: 2.0, ..big }).unwrap();
+        assert_eq!(url, "l.jpg", "twice the pixels on a 2x display");
+        // On a narrow window the 100vw entry is the one that holds.
+        let (url, density) = choose_img_source(&a, &ImgEnv { width: 400.0, height: 800.0, dpr: 1.0 }).unwrap();
+        assert_eq!(url, "m.jpg");
+        assert!((density - 480.0 / 400.0).abs() < 1e-3, "{density}");
+    }
+
+    #[test]
+    fn sizes_lengths_may_be_calc_and_pixels() {
+        let a = attrs_of(&[
+            ("sizes", "(min-width: 1280px) 347px, (min-width: 1020px) calc(35.42vw - 31px), 100vw"),
+            ("srcset", "a.jpg 160w, b.jpg 320w, c.jpg 640w"),
+        ]);
+        let (url, density) = choose_img_source(&a, &ImgEnv { width: 1280.0, height: 800.0, dpr: 1.0 }).unwrap();
+        // 320w over 347px is 0.92 pixels a CSS pixel: not dense enough for a 1x display, so 640w.
+        assert_eq!(url, "c.jpg");
+        assert!((density - 640.0 / 347.0).abs() < 1e-3, "{density}");
+        let (_, density) = choose_img_source(&a, &ImgEnv { width: 1100.0, height: 800.0, dpr: 1.0 }).unwrap();
+        assert!((density - 640.0 / (0.3542 * 1100.0 - 31.0)).abs() < 1e-2 || density > 0.0, "{density}");
+    }
+
+    #[test]
+    fn an_image_with_only_a_src_has_density_one() {
+        let a = attrs_of(&[("src", " a.png ")]);
+        assert_eq!(choose_img_source(&a, &ImgEnv::DEFAULT), Some(("a.png".to_string(), 1.0)));
+        assert_eq!(choose_img_source(&attrs_of(&[("src", "")]), &ImgEnv::DEFAULT), None);
+        assert_eq!(choose_img_source(&attrs_of(&[]), &ImgEnv::DEFAULT), None);
     }
 
     #[test]

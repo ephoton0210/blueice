@@ -1716,6 +1716,38 @@ mod tests {
     }
 
     #[test]
+    fn a_drop_downs_width_is_its_widest_option_rounded_up_to_a_whole_pixel() {
+        // WebKit's RenderMenuList: `m_optionsWidth = (int)ceilf(widest option)`, so rust-lang.org's
+        // language picker is 136px, not 135.16.
+        let w = |label: &str| {
+            input_width_of(
+                &format!("<select><option>{label}</option></select>"),
+                "select{font:16px sans-serif;border:0;padding:0}",
+            )
+        };
+        for label in ["Español", "English (US)", "Deutsch"] {
+            let width = w(label);
+            assert_eq!(width, width.round(), "{label}: {width}");
+        }
+    }
+
+    /// The border-box width of the first native control of any kind in a body.
+    fn input_width_of(html: &str, css: &str) -> f64 {
+        let f = body_fragment(html, css, 800.0);
+        fn find(f: &Fragment, out: &mut Option<f64>) {
+            if matches!(f.kind, FragmentKind::NativeControl { .. }) && out.is_none() {
+                *out = Some(f.width);
+            }
+            for c in &f.children {
+                find(c, out);
+            }
+        }
+        let mut width = None;
+        find(&f, &mut width);
+        width.expect("a control")
+    }
+
+    #[test]
     fn an_authors_width_still_wins_over_the_character_count() {
         assert_eq!(input_width("<input type=text size=5>", "input{font:11px system-ui;width:200px}"), 214.0);
     }

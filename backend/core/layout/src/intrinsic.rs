@@ -209,7 +209,9 @@ pub(crate) fn drop_down_width(ctx: &Ctx<'_>, node: NodeId, style: &crate::ctx::S
     let widest = crate::native_text::select_options(ctx.doc, node)
         .iter()
         .map(|option| blueice_font::measure_text_width_in(&option.label, style.font_size(), bold, italic, style.web_face()))
-        .fold(0.0f64, f64::max);
+        .fold(0.0f64, f64::max)
+        // A menu list's options width is whole pixels, rounded up.
+        .ceil();
     // Room for the arrow, unless the page draws its own (`appearance: none`).
     let appearance_none = style
         .raw("appearance")

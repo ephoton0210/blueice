@@ -810,6 +810,13 @@ fn content_widths(ctx: &Ctx<'_>, container: NodeId, source: &Source) -> (f64, f6
                 let w = if style.is_border_box() { w } else { w + pb };
                 return (w.min(min.max(w)), w);
             }
+            // A grid item whose overflow is not visible is a scroll container: its automatic
+            // minimum size is 0, so its content cannot widen the track it is in.
+            let scrolls = ["overflow-x"].iter().any(|p| matches!(style.keyword(p), Some("hidden" | "scroll" | "auto" | "clip")));
+            if scrolls && style.raw("min-width").is_none_or(|_| style.is_auto("min-width")) {
+                let pb = style.padding(0.0).horizontal() + style.border(0.0).horizontal();
+                return (pb, max);
+            }
             (min, max)
         }
         Source::Text(nodes) => {
@@ -1657,6 +1664,21 @@ mod tests {
             200.0,
         );
         assert_eq!(boxes(&f)[0].1, 0.0);
+    }
+
+    #[test]
+    fn a_scroll_container_item_does_not_widen_an_auto_track_past_the_container() {
+        // bbc.com's carousel: a `display:grid` section whose one auto column holds a
+        // `display:flex; overflow:scroll` row of wide cards. A scroll container's automatic minimum
+        // size is 0, so the column is the section's width and the cards overflow it.
+        let f = grid(
+            "<div class=s><b></b><b></b><b></b></div>",
+            ".g { width: 300px } .s { display: flex; overflow: scroll } \
+             b { display: block; width: 200px; height: 10px; flex: none }",
+            800.0,
+        );
+        let b = boxes(&f);
+        assert_eq!(b[0].2, 300.0, "the scroll container fills the track, not the content: {b:?}");
     }
 
     #[test]

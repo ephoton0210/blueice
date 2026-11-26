@@ -93,11 +93,26 @@ impl Page {
             } = self.doc.data(node)
             {
                 if tag_name == "img" {
-                    if let Some(loaded) =
-                        img_source(attributes).and_then(|s| self.linked_images.get(&s))
+                    // The candidate this window and display would show; one that was not fetched
+                    // falls back to what was (the default window's choice, then `src`).
+                    let env = crate::images::ImgEnv {
+                        width: self.viewport_width,
+                        height: self.viewport_height,
+                        dpr: self.media_environment().resolution,
+                    };
+                    let chosen = crate::images::choose_img_source(attributes, &env)
+                        .filter(|(url, _)| self.linked_images.contains_key(url))
+                        .or_else(|| {
+                            crate::images::choose_img_source(attributes, &crate::images::ImgEnv::DEFAULT)
+                                .filter(|(url, _)| self.linked_images.contains_key(url))
+                        })
+                        .or_else(|| img_source(attributes).map(|s| (s, 1.0)));
+                    if let Some((loaded, density)) =
+                        chosen.and_then(|(s, d)| self.linked_images.get(&s).map(|l| (l, d)))
                     {
                         images.content.insert(node, loaded.image.clone());
-                        sizes.push((node, loaded.natural));
+                        // A picture's natural size is its pixels over its density.
+                        sizes.push((node, (loaded.natural.0 / density, loaded.natural.1 / density)));
                     }
                 } else if tag_name == "canvas" {
                     let dim = |name: &str, default: f64| {
@@ -391,6 +406,32 @@ mod tests {
     }
 
     #[test]
+    fn an_img_with_width_descriptors_is_as_wide_as_its_sizes_say() {
+        // 400px page, `sizes="50vw"`: the picture is 200px wide however many pixels it has (a
+        // 10px-wide file at 10/200 of a pixel a pixel... so the candidate that fills 200px is the
+        // widest, and its natural size is the `sizes` width).
+        let mut page = Page::new(400.0, 300.0);
+        page.pending_linked_images.insert("small.svg".to_string(), loaded(RED_SVG));
+        page.load_html_str(
+            "<body style='margin:0'><img sizes='50vw' srcset='small.svg 10w' src='small.svg'></body>",
+            None,
+        );
+        let sizes: Vec<_> = image_commands(&page).iter().map(|r| (r.2, r.3)).collect();
+        // 10 pixels over a 200px source size: 0.05 pixels to a CSS pixel, so 200 x 120.
+        assert_eq!(sizes, vec![(200.0, 120.0)]);
+    }
+
+    #[test]
+    fn an_img_with_a_density_descriptor_is_that_many_times_smaller() {
+        let mut page = Page::new(400.0, 300.0);
+        page.pending_linked_images.insert("two.svg".to_string(), loaded(RED_SVG));
+        page.load_html_str("<body style='margin:0'><img srcset='two.svg 2x'></body>", None);
+        let sizes: Vec<_> = image_commands(&page).iter().map(|r| (r.2, r.3)).collect();
+        // The display is one-to-one, so the only candidate is taken at its own density: 2x.
+        assert_eq!(sizes, vec![(5.0, 3.0)]);
+    }
+
+    #[test]
     fn an_img_without_its_picture_keeps_its_attributes_and_paints_nothing() {
         let mut page = Page::new(400.0, 300.0);
         page.load_html_str(
@@ -599,6 +640,16 @@ mod tests {
         );
         let height: f64 = std::env::var("BI_HEIGHT").ok().and_then(|h| h.parse().ok()).unwrap_or(900.0);
         let mut page = Page::new(width, height);
+        // Developer aid: BI_DPR=2 pretends the display is a Retina one (the media resolution and
+        // the density `srcset` is chosen by), as the Safari being compared against is.
+        if let Some(dpr) = std::env::var("BI_DPR").ok().and_then(|v| v.parse::<f64>().ok()) {
+            page.display_viewport = Some(blueice_ipc::viewport::DisplayViewport {
+                width,
+                height,
+                device_scale: 1.0,
+                backing_scale: Some(dpr),
+            });
+        }
         let scripts = std::env::var("BI_SCRIPTS").is_ok();
         if scripts {
             page.set_web_scripts(true);

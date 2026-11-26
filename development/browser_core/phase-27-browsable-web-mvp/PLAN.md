@@ -1348,3 +1348,10 @@ Open, with the specific cause found (not interpretation differences, all missing
 - **en.wikipedia.org**: the closed main-menu dropdown (`vector-dropdown-content`, `vector-main-menu`) takes 71px here and 192px in Safari: a shrink-to-fit width of hidden content. Not visible, but the hidden geometry differs. The article body has not been analysed yet.
 - **rust-lang.org**: the nav is 1px off to the right of the brand because `div.brand`'s flex share is 0.84px wider here (165.84 vs 165); every `li`/`ul` width matches to 1/64.
 - Not implemented: `mask-size`/`mask-position`/`mask-repeat`, `mask-mode: luminance`, `backdrop-filter`, 3D transforms, `repeating-conic-gradient` repeats.
+
+### Seventh round: images, selects, scrolling grid items (2026-11-26)
+
+- `srcset`/`sizes` now picks a candidate by device pixel ratio (`choose_img_source`, `ImgEnv`); the natural size is scaled by the chosen density. `w` and `x` descriptors do not mix: with widths, `src` is only a fallback.
+- `<select>` width is `ceil` of the widest option plus the arrow, as WebKit computes it. This (not shaping) is the 1px in rust-lang.org's language selector; re-verify live.
+- A grid item that is a scroll container has an automatic minimum size of 0 (BBC's carousel row no longer widens its grid track).
+- Still open, causes known: BBC carousel card images are 180x101 where Safari shows 180x180 (flex-column `height:100%` with lazy images); Wikipedia closed-dropdown widths; GitHub container queries; `mask-size/position/repeat`, `mask-mode`, `backdrop-filter`, 3D transforms.
