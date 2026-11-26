@@ -25,7 +25,7 @@ pub(crate) struct FontLimits {
 }
 
 pub(crate) const DEFAULT_FONT_LIMITS: FontLimits = FontLimits {
-    faces: 24,
+    faces: 48,
     redirects: 3,
 };
 
@@ -430,6 +430,49 @@ fn load(
     None
 }
 
+/// `css` with every `@font-face` block removed, lowercased: what is left is where a page *uses*
+/// its families (`font-family`, `font`), as opposed to declaring them.
+fn text_outside_font_faces(css: &str) -> String {
+    let lower = css.to_ascii_lowercase();
+    let mut out = String::with_capacity(lower.len());
+    let mut rest = lower.as_str();
+    while let Some(at) = rest.find("@font-face") {
+        out.push_str(&rest[..at]);
+        let after = &rest[at..];
+        // The block runs to the brace that closes the one it opens.
+        let mut depth = 0usize;
+        let mut end = after.len();
+        for (i, c) in after.char_indices() {
+            match c {
+                '{' => depth += 1,
+                '}' => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        end = i + 1;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        rest = &after[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Whether `used` (see [`text_outside_font_faces`]) names `family`, which is lowercased.
+fn family_is_referenced(used: &str, family: &str) -> bool {
+    if family.is_empty() {
+        return false;
+    }
+    let word = |c: char| c.is_alphanumeric() || c == '-' || c == '_';
+    used.match_indices(family).any(|(at, _)| {
+        !used[..at].chars().next_back().is_some_and(word)
+            && !used[at + family.len()..].chars().next().is_some_and(word)
+    })
+}
+
 /// Every code point of the text in `doc`.
 fn document_code_points(doc: &blueice_dom::Document) -> std::collections::HashSet<u32> {
     use blueice_dom::NodeData;
@@ -467,14 +510,25 @@ pub(crate) fn fetch_linked_fonts(
     let mut wanted: Vec<(FontFaceRule, Url)> = Vec::new();
     let mut feature_values = blueice_css::FeatureValues::default();
     let text = document_code_points(&doc);
+    let mut used_css = String::new();
+    let mut declared: Vec<(FontFaceRule, Url)> = Vec::new();
     for (css, sheet_base) in sheets(&doc, linked, &base) {
         feature_values.merge(blueice_css::font_feature_values(&css));
+        used_css.push_str(&text_outside_font_faces(&css));
+        used_css.push('\n');
         for face in blueice_css::font_faces(&css) {
-            if wanted.len() < limits.faces && covers_document(&face.unicode_ranges, &text) {
-                wanted.push((face, sheet_base.clone()));
+            if covers_document(&face.unicode_ranges, &text) {
+                declared.push((face, sheet_base.clone()));
             }
         }
     }
+    // Markup carries styles too (`style=` attributes, inline `<style>` already above).
+    used_css.push_str(&text_outside_font_faces(html));
+    // Past the limit it is the families the page uses that are fetched, not the first declared.
+    let (used, unused): (Vec<_>, Vec<_>) = declared
+        .into_iter()
+        .partition(|(face, _)| family_is_referenced(&used_css, &face.family));
+    wanted.extend(used.into_iter().chain(unused).take(limits.faces));
     let diag = std::env::var_os("BI_DIAG").is_some();
     if diag {
         eprintln!("FONTS {} @font-face rules wanted", wanted.len());
@@ -857,6 +911,22 @@ mod tests {
         assert!(!covers_document(&greek, &chars));
         let russian = blueice_html::parse("<p>\u{41f}\u{440}\u{438}\u{432}\u{435}\u{442}</p>");
         assert!(covers_document(&cyrillic, &document_code_points(&russian)));
+    }
+
+    #[test]
+    fn families_the_page_uses_come_before_those_it_only_declares() {
+        let css = "@font-face{font-family:'BBC Reith Serif';src:url(a.woff2)} \
+                   @font-face{font-family:Unused;src:url(b.woff2)} \
+                   h2{font-family:'BBC Reith Serif',Georgia,serif} \
+                   p { font: 16px/1.2 Helvetica }";
+        let used = text_outside_font_faces(css);
+        assert!(family_is_referenced(&used, "bbc reith serif"));
+        assert!(family_is_referenced(&used, "helvetica"));
+        assert!(!family_is_referenced(&used, "unused"), "a declaration alone is not a use");
+        // Nested braces in other rules do not end the scan early.
+        let nested = text_outside_font_faces("@media (min-width:1px){@font-face{font-family:X;src:url(x)}} a{font-family:Y}");
+        assert!(family_is_referenced(&nested, "y"));
+        assert!(!family_is_referenced(&nested, "x"));
     }
 
     #[test]

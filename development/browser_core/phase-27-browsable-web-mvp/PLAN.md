@@ -1365,3 +1365,12 @@ rust-lang.org now has 0 differences from Safari (175 matched elements at 1280 wi
 - **`<select>` width** is `ceil` of the widest option (see the seventh round), which was the rust-lang nav's 1 px.
 
 Also fixed: a latent test race (the vertical-text test drew CJK through whichever face the process-wide system-font switch selected; it now holds the same lock as the tests that flip it).
+
+### Ninth round: bbc.com against Safari on a saved copy (2026-11-26)
+
+bbc.com is live news, so two loads never agree; the comparison now serves one saved copy of the HTML to both browsers (a lab page with a `<base>`), and pairs elements by tag, class and ordinal (`pair.py`). Differences against Safari went from 453 to 155. Causes found by bisecting the real markup, each with a test:
+
+- **A grid item's `width: 100%` was measured against the whole grid** instead of its own area, so its text wrapped less than when placed and the row came out a line short (`grid::a_percentage_width_item_is_measured_against_its_own_grid_area`).
+- **`align-content` and `justify-content` on a grid** (`center`, `end`, `space-between/around/evenly`) were not implemented; bbc's lead story centres its track group.
+- **A page that declares more `@font-face` than the limit** (bbc: 35, rust-lang: 49) lost its last-declared faces. Faces are now fetched only for the families the page uses and the scripts its text needs, used families first, limit 48.
+- Still open on bbc.com: a 3 px upward drift from y=5028 on, the logo box (40 high in Safari, 43 here) and the `h1` width (100 vs 104).

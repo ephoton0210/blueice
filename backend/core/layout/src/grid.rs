@@ -538,6 +538,25 @@ struct Contribution {
     max: f64,
 }
 
+/// Where the first track starts and how much each gap grows when the tracks (with their gaps) fill
+/// less than the container: `align-content` for rows, `justify-content` for columns. `free` is the
+/// container's room less the tracks'; none is distributed when it is negative or there is no room.
+/// `normal`/`stretch` (the auto tracks already took the room) and `start` leave everything where it is.
+fn distribute_content(mode: &str, free: f64, tracks: usize) -> (f64, f64) {
+    if free <= 0.0 || tracks == 0 {
+        return (0.0, 0.0);
+    }
+    let gaps = tracks.saturating_sub(1) as f64;
+    match mode {
+        "end" | "flex-end" => (free, 0.0),
+        "center" => (free / 2.0, 0.0),
+        "space-between" if tracks > 1 => (0.0, free / gaps),
+        "space-around" => (free / tracks as f64 / 2.0, free / tracks as f64),
+        "space-evenly" => (free / (tracks as f64 + 1.0), free / (tracks as f64 + 1.0)),
+        _ => (0.0, 0.0),
+    }
+}
+
 fn size_tracks(
     tracks: &[Track],
     gap: f64,
@@ -1191,16 +1210,23 @@ pub(crate) fn layout_grid(ctx: &Ctx<'_>, container: NodeId, input: &FlexInput) -
         .zip(&col_collapsed)
         .map(|(s, &c)| if c { 0.0 } else { s })
         .collect();
+    let used_columns: f64 = col_size.iter().sum::<f64>()
+        + col_gap * col_collapsed.iter().filter(|c| !**c).count().saturating_sub(1) as f64;
+    let (col_start, col_extra) = distribute_content(
+        cstyle.keyword("justify-content").unwrap_or("normal"),
+        col_avail.map_or(0.0, |w| w - used_columns),
+        col_count,
+    );
     let mut col_x = Vec::with_capacity(col_count);
-    let mut x = 0.0;
+    let mut x = col_start;
     for (i, w) in col_size.iter().enumerate() {
         col_x.push(x);
         x += w;
         if i + 1 < col_count && !col_collapsed[i] {
-            x += col_gap;
+            x += col_gap + col_extra;
         }
     }
-    let total_width = x;
+    let total_width = x - col_start;
     let area_width = |item: &GridItem| -> f64 {
         let end = item.col + item.col_span;
         let mut w = col_x[end - 1] + col_size[end - 1] - col_x[item.col];
@@ -1216,11 +1242,13 @@ pub(crate) fn layout_grid(ctx: &Ctx<'_>, container: NodeId, input: &FlexInput) -
         let area_w = area_width(item);
         let margins = item.margin(1) + item.margin(3);
         let forced_w = fit_width(ctx, container, item, area_w - margins);
+        // Percentages in the item resolve against its own area, as they do when it is placed.
+        let cb_of_item = Constraint { cb_width: area_w, ..cb_for_measure };
         let (fragment, _) = lay_out(
             ctx,
             container,
             &item.source,
-            &cb_for_measure,
+            &cb_of_item,
             forced_w,
             None,
         );
@@ -1245,16 +1273,22 @@ pub(crate) fn layout_grid(ctx: &Ctx<'_>, container: NodeId, input: &FlexInput) -
         // height's free room.
         matches!(cstyle.keyword("align-content").unwrap_or("normal"), "normal" | "stretch"),
     );
+    let used_rows: f64 = row_size.iter().sum::<f64>() + row_gap * row_count.saturating_sub(1) as f64;
+    let (row_start, row_extra) = distribute_content(
+        cstyle.keyword("align-content").unwrap_or("normal"),
+        input.definite_height.map_or(0.0, |h| h - used_rows),
+        row_count,
+    );
     let mut row_y = Vec::with_capacity(row_count);
-    let mut y = 0.0;
+    let mut y = row_start;
     for (i, h) in row_size.iter().enumerate() {
         row_y.push(y);
         y += h;
         if i + 1 < row_count {
-            y += row_gap;
+            y += row_gap + row_extra;
         }
     }
-    let total_height = y;
+    let total_height = y - row_start;
 
     // ---- place items ----
     let mut max_right = 0.0f64;
@@ -1664,6 +1698,56 @@ mod tests {
             200.0,
         );
         assert_eq!(boxes(&f)[0].1, 0.0);
+    }
+
+    #[test]
+    fn align_content_distributes_the_rows_in_a_taller_container() {
+        // bbc.com's lead story: a one-row grid of 40px in a 100px container, `align-content: center`.
+        let at = |value: &str| {
+            let f = grid(
+                "<i style='height:40px'></i><i style='height:40px'></i>",
+                &format!(".g {{ grid-template-columns: 1fr; grid-template-rows: 40px 40px; height: 100px; align-content: {value} }}"),
+                200.0,
+            );
+            boxes(&f).iter().map(|b| b.1).collect::<Vec<_>>()
+        };
+        assert_eq!(at("start"), vec![0.0, 40.0]);
+        assert_eq!(at("end"), vec![20.0, 60.0]);
+        assert_eq!(at("center"), vec![10.0, 50.0]);
+        assert_eq!(at("space-between"), vec![0.0, 60.0]);
+        assert_eq!(at("space-around"), vec![5.0, 55.0]);
+        assert_eq!(at("space-evenly"), vec![7.0, 53.0]);
+    }
+
+    #[test]
+    fn justify_content_distributes_the_columns_in_a_wider_container() {
+        let at = |value: &str| {
+            let f = grid(
+                "<i style='height:10px'></i><i style='height:10px'></i>",
+                &format!(".g {{ grid-template-columns: 40px 40px; width: 100px; justify-content: {value} }}"),
+                400.0,
+            );
+            boxes(&f).iter().map(|b| b.0).collect::<Vec<_>>()
+        };
+        assert_eq!(at("start"), vec![0.0, 40.0]);
+        assert_eq!(at("end"), vec![20.0, 60.0]);
+        assert_eq!(at("center"), vec![10.0, 50.0]);
+        assert_eq!(at("space-between"), vec![0.0, 60.0]);
+    }
+
+    #[test]
+    fn a_percentage_width_item_is_measured_against_its_own_grid_area() {
+        // bbc.com's cards: a grid item with `width: 100%` holds wrapping text. The row must be as
+        // tall as the item is once laid out in its area (not as it measured against the whole
+        // container's width, where the text wraps less).
+        let f = grid(
+            "<i></i><i style='width:100%'>aaaa aaaa aaaa aaaa</i>",
+            ".g { grid-template-columns: 20px 100px; width: 400px; column-gap: 0 } i { font-size: 16px; line-height: 20px }",
+            400.0,
+        );
+        let b = boxes(&f);
+        assert!(b[1].3 >= 40.0, "the text wraps in its 100px area: {b:?}");
+        assert_eq!(f.height, b[1].3, "the row is as tall as the item laid out in its area: {b:?} {}", f.height);
     }
 
     #[test]
