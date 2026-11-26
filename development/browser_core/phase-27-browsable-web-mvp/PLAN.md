@@ -1385,4 +1385,6 @@ Found by comparing the saved bbc.com snapshot with Safari box by box.
 - A replaced element's percentage `height` resolves against its containing block's (or grid area's) definite height; intrinsic sizing uses the parent's definite height as the basis.
 - Closes the Ninth round's open items: the 3px drift, the logo box and the h1 width.
 
-Still open: Wikipedia closed-dropdown widths, GitHub container queries, `mask-size/position/repeat`, `mask-mode`, `backdrop-filter`, 3D transforms.
+`mask-size/position/repeat` were already implemented (picture masks are sized, placed and repeated by their own properties; `a_mask_image_shapes_the_background_colour` covers them), so the earlier open lists were stale on that point.
+
+Still open: Wikipedia closed-dropdown widths (hidden geometry only, nothing visible differs), GitHub container queries, `mask-mode`, `backdrop-filter`, 3D transforms.
