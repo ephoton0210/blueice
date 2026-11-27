@@ -1730,6 +1730,18 @@ mod tests {
     }
 
     #[test]
+    fn the_ch_unit_is_the_width_of_a_zero_in_the_elements_font() {
+        // github.com's hero heading: `inline-size: 16ch`. `ch` was half an em whatever the font.
+        let zero = blueice_font::measure_text_width_in("0", 16.0, false, false, None);
+        let f = body_fragment("<!doctype html><div style='width:10ch'></div>", "", 400.0);
+        assert!((f.children[0].width - 10.0 * zero).abs() < 0.2, "{} vs {}", f.children[0].width, 10.0 * zero);
+        assert!((zero - 8.0).abs() > 0.5, "the test font's zero is not half an em ({zero})");
+        let bold = blueice_font::measure_text_width_in("0", 32.0, true, false, None);
+        let g = body_fragment("<!doctype html><div style='width:2ch;font:bold 32px sans-serif'></div>", "", 400.0);
+        assert!((g.children[0].width - 2.0 * bold).abs() < 0.2, "{}", g.children[0].width);
+    }
+
+    #[test]
     fn width_keywords_size_a_block_by_its_content() {
         // github.com's sign-up row: `inline-size: max-content` on a flex container.
         let probe = |width: &str| {

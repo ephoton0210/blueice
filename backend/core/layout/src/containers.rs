@@ -48,7 +48,7 @@ fn visit(
                 Some(Value::Keyword(k)) if k == "size" || k == "inline-size"
             );
             if is_container && !sizes.contains_key(&node) {
-                let context = LengthContext {
+                let context = LengthContext { zero_advance: 0.0,
                     font_size: style.font_size_px,
                     root_font_size: environment.2,
                     viewport_width: environment.0,

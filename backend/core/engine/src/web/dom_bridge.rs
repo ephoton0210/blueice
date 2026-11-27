@@ -1529,7 +1529,7 @@ fn css_text(value: &Value) -> String {
         Value::Percentage(p) => format!("{p}%"),
         Value::Length(l) => format!(
             "{}px",
-            l.to_px(&blueice_css::LengthContext {
+            l.to_px(&blueice_css::LengthContext { zero_advance: 0.0,
                 font_size: 16.0,
                 root_font_size: 16.0,
                 viewport_width: 1280.0,

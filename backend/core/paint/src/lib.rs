@@ -347,7 +347,7 @@ const BORDER_SIDES: [&str; 4] = ["top", "right", "bottom", "left"];
 /// A border width in pixels: any length unit resolves against the element's own
 /// font size (`1px`, `0.1em`, `calc(...)`).
 fn length_px(value: &Value, font_size: f64) -> Option<f64> {
-    value.to_px(&blueice_css::LengthContext {
+    value.to_px(&blueice_css::LengthContext { zero_advance: 0.0,
         font_size,
         root_font_size: 16.0,
         viewport_width: 1280.0,

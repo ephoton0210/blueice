@@ -555,10 +555,22 @@ impl<'a> Style<'a> {
         }
     }
 
+    /// The advance of a zero in this element's font: what one `ch` is.
+    pub fn zero_advance(&self) -> f64 {
+        blueice_font::measure_text_width_in(
+            "0",
+            self.font_size(),
+            self.text_bold(),
+            self.style.is_some_and(|s| s.is_italic()),
+            self.web_face(),
+        )
+    }
+
     /// The context lengths of this element resolve in; `percent_base` is NaN
     /// where a percentage is indeterminate.
     pub fn length_context(&self, percent_base: f64) -> LengthContext {
         LengthContext {
+            zero_advance: self.zero_advance(),
             font_size: self.font_size(),
             root_font_size: self.ctx.root_font_size,
             viewport_width: self.ctx.viewport_width,

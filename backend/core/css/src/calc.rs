@@ -288,7 +288,7 @@ mod tests {
     use crate::tokenizer::tokenize;
 
     fn ctx() -> LengthContext {
-        LengthContext {
+        LengthContext { zero_advance: 0.0,
             font_size: 20.0,
             root_font_size: 16.0,
             viewport_width: 1000.0,

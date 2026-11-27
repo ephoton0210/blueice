@@ -417,7 +417,7 @@ fn fold_math(tokens: &[Token], env: &MediaEnvironment) -> Option<Vec<Token>> {
         }
         let end = end?;
         let calc = crate::calc::parse_calc(&tokens[i..=end])?;
-        let px = calc.to_px(&crate::value::LengthContext {
+        let px = calc.to_px(&crate::value::LengthContext { zero_advance: 0.0,
             font_size: 16.0,
             root_font_size: 16.0,
             viewport_width: env.width,

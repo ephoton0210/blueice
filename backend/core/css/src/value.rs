@@ -26,6 +26,8 @@ pub enum Length {
     Zero,
     /// Relative to the root element's font size.
     Rem(f64),
+    /// The advance of a zero in the element's font (`ch`); half an em where that is not known.
+    Ch(f64),
     /// Percent of the viewport width/height/smaller/larger side, per unit.
     Vw(f64),
     Vh(f64),
@@ -60,17 +62,20 @@ pub struct LengthContext {
     pub viewport_width: f64,
     pub viewport_height: f64,
     pub percent_base: f64,
+    /// The advance of a zero in the element's font, in pixels; 0 where the caller cannot measure it.
+    pub zero_advance: f64,
 }
 
 impl Length {
     /// The length for `n` written with `unit`. Absolute units become pixels at
-    /// the CSS reference density; `ex` and `ch` are approximated as half an em.
+    /// the CSS reference density; `ex` is approximated as half an em; `ch` is measured where the context can.
     pub fn from_unit(n: f64, unit: &str) -> Option<Length> {
         Some(match unit.to_ascii_lowercase().as_str() {
             "px" => Length::Px(n),
             "em" => Length::Em(n),
             "rem" => Length::Rem(n),
-            "ex" | "ch" => Length::Em(n * 0.5),
+            "ex" => Length::Em(n * 0.5),
+            "ch" => Length::Ch(n),
             "vw" | "svw" | "lvw" | "dvw" => Length::Vw(n),
             "vh" | "svh" | "lvh" | "dvh" => Length::Vh(n),
             "vmin" | "svmin" | "lvmin" | "dvmin" => Length::Vmin(n),
@@ -97,6 +102,7 @@ impl Length {
             Length::Em(n) => n * ctx.font_size,
             Length::Zero => 0.0,
             Length::Rem(n) => n * ctx.root_font_size,
+            Length::Ch(n) => n * if ctx.zero_advance > 0.0 { ctx.zero_advance } else { ctx.font_size * 0.5 },
             Length::Vw(n) => viewport_units(n, ctx.viewport_width),
             Length::Vh(n) => viewport_units(n, ctx.viewport_height),
             Length::Vmin(n) => viewport_units(n, ctx.viewport_width.min(ctx.viewport_height)),
@@ -226,7 +232,7 @@ mod tests {
 
     #[test]
     fn viewport_units_are_worked_out_in_single_precision_as_webkit_does() {
-        let ctx = LengthContext {
+        let ctx = LengthContext { zero_advance: 0.0,
             font_size: 16.0,
             root_font_size: 16.0,
             viewport_width: 1280.0,
@@ -263,12 +269,12 @@ mod tests {
         assert_eq!(value_of("2rem"), Some(Value::Length(Length::Rem(2.0))));
         assert_eq!(value_of("1in"), Some(Value::Length(Length::Px(96.0))));
         assert_eq!(value_of("12pt"), Some(Value::Length(Length::Px(16.0))));
-        assert_eq!(value_of("2ch"), Some(Value::Length(Length::Em(1.0))));
+        assert_eq!(value_of("2ch"), Some(Value::Length(Length::Ch(2.0))));
         assert_eq!(value_of("3furlongs"), None);
     }
 
     fn ctx() -> LengthContext {
-        LengthContext {
+        LengthContext { zero_advance: 0.0,
             font_size: 10.0,
             root_font_size: 16.0,
             viewport_width: 800.0,

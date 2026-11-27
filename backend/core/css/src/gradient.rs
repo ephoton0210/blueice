@@ -180,7 +180,7 @@ fn parse_stop(part: &[Token]) -> Option<ColorStop> {
 }
 
 fn unit_context() -> LengthContext {
-    LengthContext {
+    LengthContext { zero_advance: 0.0,
         font_size: 16.0,
         root_font_size: 16.0,
         viewport_width: 1280.0,
@@ -326,7 +326,7 @@ fn parse_conic(args: &[Token]) -> Option<Gradient> {
 /// Parses a `box-shadow` value into its shadows (`None` for `none` or when
 /// nothing parses). Lengths resolve against `font_size` for `em`.
 pub fn parse_shadows(tokens: &[Token], font_size: f64) -> Vec<Shadow> {
-    let ctx = LengthContext {
+    let ctx = LengthContext { zero_advance: 0.0,
         font_size,
         ..unit_context()
     };

@@ -1402,4 +1402,6 @@ Not done: size containment layout effects (`container-type: size` does not yet i
 - A percentage `flex-basis` (`flex: 1` is `1 1 0%`) is `content` while the container is measured for max-content, so a `min-width: 0` item no longer collapses to nothing.
 - Lab reproduction `/tmp/lab/ctas.html`: sign-up row 215px against Safari's 214px.
 
-github.com is still not equal: the page is 8863px tall against Safari's 8473px. The hero `h1` wraps to three lines (448px) where Safari has two (526px): the heading text is about 28% wider here. Cause not yet found (suspects: Mona Sans / Hubot Sans variable axes, `text-wrap: balance`). The eyebrow banner arrow icon is 16px against 24px.
+- `ch` is the advance of a zero in the element's own font (`Length::Ch`, `LengthContext::zero_advance`, measured by layout); it was half an em. github.com's hero `h1` (`inline-size: 16ch`) now wraps to two lines, 123px tall, as in Safari. Its width is 530px against Safari's 526px (0.28px per `ch`: not yet explained).
+
+github.com is still not equal: the page is 8801px tall against Safari's 8473px. The eyebrow banner arrow icon is 16px against 24px, and the sign-up row is 680px wide against 737px. `ex` is still half an em.

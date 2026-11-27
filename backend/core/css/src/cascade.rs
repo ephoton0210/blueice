@@ -823,7 +823,7 @@ fn compute_style_for(
     let mut style = ComputedStyle::initial();
     style.custom = custom;
 
-    let font_context = LengthContext {
+    let font_context = LengthContext { zero_advance: 0.0,
         font_size: parent.font_size_px,
         root_font_size,
         viewport_width: environment.viewport_width,

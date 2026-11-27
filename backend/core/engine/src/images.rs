@@ -507,7 +507,7 @@ fn source_size(sizes: Option<&str>, env: &ImgEnv) -> f64 {
     let resolve = |length: &str| -> Option<f64> {
         let rules = blueice_css::parse(&format!("a{{width:{}}}", length.trim())).rules;
         let value = rules.first()?.declarations.iter().find(|d| d.property == "width")?.value.clone();
-        value.to_px(&blueice_css::LengthContext {
+        value.to_px(&blueice_css::LengthContext { zero_advance: 0.0,
             font_size: 16.0,
             root_font_size: 16.0,
             viewport_width: env.width,
@@ -617,7 +617,7 @@ fn css_value(value: &blueice_css::Value) -> Option<String> {
         Value::Number(n) => n.to_string(),
         Value::Length(l) => format!(
             "{}px",
-            l.to_px(&blueice_css::LengthContext {
+            l.to_px(&blueice_css::LengthContext { zero_advance: 0.0,
                 font_size: 16.0,
                 root_font_size: 16.0,
                 viewport_width: 1280.0,
