@@ -57,6 +57,9 @@ pub enum PseudoClass {
     },
     Not(Vec<ComplexSelector>),
     Is(Vec<ComplexSelector>),
+    /// `:has(<relative selector list>)`: the element has a relative (a descendant, child, next
+    /// or later sibling) matching one of them.
+    Has(Vec<RelativeSelector>),
     /// Like `:is()` but contributes no specificity.
     Where(Vec<ComplexSelector>),
     /// `:host` and `:host(<selector>)`: an element that carries a shadow root (and matches the
@@ -73,6 +76,14 @@ pub enum PseudoClass {
     /// A valid state that no static document is ever in (`:hover`, `:focus`,
     /// `:active`, `:visited`, `:target`, ...).
     Never,
+}
+
+/// One argument of `:has()`: a selector read from the element it is asked of, through a leading
+/// combinator (`> a`, `+ a`, `~ a`; a descendant when none is written).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RelativeSelector {
+    pub combinator: Combinator,
+    pub selector: ComplexSelector,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -201,6 +212,11 @@ pub fn specificity(selector: &ComplexSelector) -> Specificity {
                     SimpleSelector::Pseudo(PseudoClass::Not(list) | PseudoClass::Is(list)) => {
                         list.iter().map(specificity).max().unwrap_or((0, 0, 0))
                     }
+                    SimpleSelector::Pseudo(PseudoClass::Has(list)) => list
+                        .iter()
+                        .map(|r| specificity(&r.selector))
+                        .max()
+                        .unwrap_or((0, 0, 0)),
                     SimpleSelector::Pseudo(_) => (0, 1, 0),
                     SimpleSelector::PseudoElement(_) => (0, 0, 1),
                 },
@@ -443,6 +459,25 @@ fn parse_nth(tokens: &[Token]) -> Option<(i64, i64)> {
     }
 }
 
+/// The argument of `:has()`: comma separated selectors, each optionally led by a combinator.
+fn parse_relative_list(tokens: &[Token]) -> Option<Vec<RelativeSelector>> {
+    let mut out = Vec::new();
+    for part in split_commas(tokens) {
+        let part = trim_whitespace(part);
+        let (combinator, rest) = match part.first() {
+            Some(Token::Delim('>')) => (Combinator::Child, &part[1..]),
+            Some(Token::Delim('+')) => (Combinator::NextSibling, &part[1..]),
+            Some(Token::Delim('~')) => (Combinator::SubsequentSibling, &part[1..]),
+            _ => (Combinator::Descendant, part),
+        };
+        out.push(RelativeSelector {
+            combinator,
+            selector: parse_complex_selector(rest)?,
+        });
+    }
+    (!out.is_empty()).then_some(out)
+}
+
 fn parse_pseudo(name: &str, args: Option<&[Token]>) -> Option<PseudoClass> {
     let name = name.to_ascii_lowercase();
     let list = |args: &[Token]| {
@@ -476,6 +511,7 @@ fn parse_pseudo(name: &str, args: Option<&[Token]>) -> Option<PseudoClass> {
         ("not", Some(args)) => PseudoClass::Not(list(args)?),
         ("is" | "matches" | "-webkit-any" | "-moz-any", Some(args)) => PseudoClass::Is(list(args)?),
         ("where", Some(args)) => PseudoClass::Where(list(args)?),
+        ("has", Some(args)) => PseudoClass::Has(parse_relative_list(args)?),
         ("host", None) => PseudoClass::Host(Vec::new()),
         ("host", Some(args)) => PseudoClass::Host(list(args)?),
         (
@@ -685,6 +721,7 @@ fn pseudo_matches(doc: &Document, node: NodeId, pseudo: &PseudoClass) -> bool {
             of_type,
         } => position(doc, node, *from_end, *of_type).is_some_and(|p| nth_matches(*a, *b, p)),
         PseudoClass::Not(list) => !list.iter().any(|s| matches(doc, node, s)),
+        PseudoClass::Has(list) => list.iter().any(|relative| has_relative(doc, node, relative)),
         PseudoClass::Is(list) | PseudoClass::Where(list) => {
             list.iter().any(|s| matches(doc, node, s))
         }
@@ -797,6 +834,64 @@ pub fn matches_pseudo_element(doc: &Document, node: NodeId, selector: &ComplexSe
     }
     compound_matches_with(doc, node, &selector.compounds[n - 1], true)
         && matches_from(doc, selector, n - 1, node)
+}
+
+/// The elements a combinator reaches from `node`: its children, its descendants, the next
+/// element sibling or every later one.
+fn related(doc: &Document, node: NodeId, combinator: Combinator, out: &mut Vec<NodeId>) {
+    fn element(doc: &Document, n: NodeId) -> bool {
+        matches!(doc.data(n), NodeData::Element { .. }) && !is_comment(doc, n)
+    }
+    match combinator {
+        Combinator::Child => out.extend(doc.children(node).filter(|c| element(doc, *c))),
+        Combinator::Descendant => {
+            let mut stack: Vec<NodeId> = doc.children(node).collect();
+            stack.reverse();
+            while let Some(n) = stack.pop() {
+                if element(doc, n) {
+                    out.push(n);
+                }
+                let at = stack.len();
+                stack.extend(doc.children(n));
+                stack[at..].reverse();
+            }
+        }
+        Combinator::NextSibling | Combinator::SubsequentSibling => {
+            let mut next = doc.next_sibling(node);
+            while let Some(n) = next {
+                if element(doc, n) {
+                    out.push(n);
+                    if combinator == Combinator::NextSibling {
+                        break;
+                    }
+                }
+                next = doc.next_sibling(n);
+            }
+        }
+    }
+}
+
+/// Whether a selector read forwards matches: `node` already matches `compounds[i]`, and the
+/// rest of the chain must be found among the elements its combinators reach.
+fn matches_forward(doc: &Document, selector: &ComplexSelector, i: usize, node: NodeId) -> bool {
+    if i + 1 == selector.compounds.len() {
+        return true;
+    }
+    let mut candidates = Vec::new();
+    related(doc, node, selector.combinators[i], &mut candidates);
+    candidates.into_iter().any(|c| {
+        compound_matches(doc, c, &selector.compounds[i + 1]) && matches_forward(doc, selector, i + 1, c)
+    })
+}
+
+/// `:has()` for one relative selector.
+fn has_relative(doc: &Document, node: NodeId, relative: &RelativeSelector) -> bool {
+    let mut first = Vec::new();
+    related(doc, node, relative.combinator, &mut first);
+    first.into_iter().any(|c| {
+        compound_matches(doc, c, &relative.selector.compounds[0])
+            && matches_forward(doc, &relative.selector, 0, c)
+    })
 }
 
 /// A comment node (kept as an element named `#comment`): no selector matches it.
@@ -1359,10 +1454,44 @@ mod tests {
         assert_eq!(hits(&doc, &kids, ":focus-visible"), Vec::<usize>::new());
         assert!(selectors("p::first-line").is_empty());
         assert!(selectors("p:before-ish").is_empty(), "unknown pseudo-class");
-        assert!(
-            selectors("p:has(a)").is_empty(),
-            ":has is not supported yet"
+    }
+
+    #[test]
+    fn has_matches_an_element_by_what_it_contains_or_precedes() {
+        let doc = blueice_html::parse(
+            "<div id=a><span><svg></svg></span><p>t</p></div><div id=b><span>x</span><i></i></div>",
         );
+        let all = |css: &str| -> Vec<String> {
+            let list = selectors(css);
+            assert!(!list.is_empty(), "{css:?} should parse");
+            let mut out = Vec::new();
+            fn walk(doc: &Document, n: NodeId, list: &[ComplexSelector], out: &mut Vec<String>) {
+                if let NodeData::Element { tag_name, attributes } = doc.data(n) {
+                    if list.iter().any(|s| matches(doc, n, s)) {
+                        let id = attributes.iter().find(|(k, _)| k == "id").map(|(_, v)| v.as_str());
+                        out.push(id.unwrap_or(tag_name).to_string());
+                    }
+                }
+                for c in doc.children(n) {
+                    walk(doc, c, list, out);
+                }
+            }
+            walk(&doc, doc.root(), &list, &mut out);
+            out
+        };
+        // GitHub's eyebrow banner: `:has(> svg)` is the span that directly holds the icon.
+        assert_eq!(all(":has(> svg)"), vec!["span"]);
+        assert_eq!(all("div:has(svg)"), vec!["a"], "any depth");
+        assert_eq!(all("div:has(> svg)"), Vec::<String>::new(), "not a child");
+        assert_eq!(all("span:has(+ p)"), vec!["span"]);
+        assert_eq!(all("span:has(~ i)"), vec!["span"], "only the second div's span precedes an i");
+        assert_eq!(all("p:has(~ i)"), Vec::<String>::new());
+        assert_eq!(all("span:has(~ p)"), vec!["span"]);
+        assert_eq!(all("div:has(> span > svg, > i)"), vec!["a", "b"], "a list, and a chain");
+        assert_eq!(all("div:not(:has(svg))"), vec!["b"]);
+        assert!(selectors(":has()").is_empty());
+        // The most specific argument counts.
+        assert_eq!(specificity(&one("p:has(.a, #b)")), (1, 0, 1));
     }
 
     #[test]

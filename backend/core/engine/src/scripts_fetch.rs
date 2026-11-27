@@ -333,6 +333,98 @@ fn module_seeds(doc: &blueice_dom::Document, base: &Url) -> Vec<Url> {
     out
 }
 
+/// The page's import map: `<script type="importmap">`'s `imports`, each address resolved
+/// against the document base. Entries whose address is not an http(s) URL are dropped.
+pub(crate) fn import_map(doc: &blueice_dom::Document, base: &Url) -> Vec<(String, Url)> {
+    use blueice_dom::{NodeData, NodeId};
+    fn walk(doc: &blueice_dom::Document, node: NodeId, base: &Url, out: &mut Vec<(String, Url)>) {
+        if let NodeData::Element { tag_name, attributes } = doc.data(node) {
+            let importmap = tag_name == "script"
+                && attributes
+                    .iter()
+                    .any(|(k, v)| k == "type" && v.trim().eq_ignore_ascii_case("importmap"));
+            if importmap {
+                let mut text = String::new();
+                for child in doc.children(node) {
+                    if let NodeData::Text { data } = doc.data(child) {
+                        text.push_str(data);
+                    }
+                }
+                if let Ok(serde_json::Value::Object(root)) = serde_json::from_str(&text) {
+                    if let Some(serde_json::Value::Object(imports)) = root.get("imports") {
+                        for (name, address) in imports {
+                            let Some(address) = address.as_str() else { continue };
+                            if let Ok(url) = base.join(address) {
+                                if matches!(url.scheme(), "http" | "https") {
+                                    out.push((name.clone(), url));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for child in doc.children(node) {
+            walk(doc, child, base, out);
+        }
+    }
+    let mut out = Vec::new();
+    walk(doc, doc.root(), base, &mut out);
+    out
+}
+
+/// A module's own `import.meta.url` as the string literal of its address. BlueJS gives
+/// `import.meta` no fields, and bundlers (webpack's automatic public path, `new URL(x,
+/// import.meta.url)`) cannot run without it; the engine fetched the module, so it knows the URL.
+pub(crate) fn bind_import_meta_url(text: String, url: &Url) -> String {
+    if !text.contains("import.meta.url") {
+        return text;
+    }
+    let mut u = url.clone();
+    u.set_fragment(None);
+    let literal = serde_json::Value::String(u.to_string()).to_string();
+    text.replace("import.meta.url", &literal)
+}
+
+/// What the import map says a bare specifier means: an exact entry, or the longest
+/// trailing-slash entry that prefixes it. Relative, absolute and URL specifiers are not mapped.
+pub(crate) fn mapped_specifier(map: &[(String, Url)], specifier: &str) -> Option<Url> {
+    if specifier.starts_with("./")
+        || specifier.starts_with("../")
+        || specifier.starts_with('/')
+        || specifier.contains("://")
+    {
+        return None;
+    }
+    if let Some((_, url)) = map.iter().find(|(name, _)| name == specifier) {
+        return Some(url.clone());
+    }
+    map.iter()
+        .filter(|(name, _)| name.ends_with('/') && specifier.starts_with(name.as_str()))
+        .max_by_key(|(name, _)| name.len())
+        .and_then(|(name, url)| url.join(&specifier[name.len()..]).ok())
+}
+
+/// The module that stands under a mapped bare specifier's name: it re-exports everything of
+/// the real module (`key`), so the real one is still evaluated once however it is named.
+pub(crate) fn alias_source(key: &str, target: Option<&str>) -> String {
+    let has_default = target
+        .and_then(|text| blueice_bluejs::parse_module(text).ok())
+        .is_some_and(|module| {
+            module.exports.iter().any(|entry| {
+                matches!(entry,
+                    blueice_bluejs::ExportEntry::Local { export_name, .. }
+                    | blueice_bluejs::ExportEntry::Indirect { export_name, .. }
+                    if export_name == "default")
+            })
+        });
+    let mut source = format!("export * from \"{key}\";\n");
+    if has_default {
+        source.push_str(&format!("export {{ default }} from \"{key}\";\n"));
+    }
+    source
+}
+
 /// Limits for a page's module graph.
 #[derive(Clone, Copy)]
 pub(crate) struct ModuleLimits {
@@ -370,6 +462,8 @@ pub(crate) fn fetch_linked_modules(
         return LinkedModules::new();
     };
     let mut frontier: Vec<Url> = module_seeds(&doc, &base);
+    let map = import_map(&doc, &base);
+    let aliases = std::cell::RefCell::new(Vec::<(String, Url)>::new());
     // Literal dynamic imports of inline scripts and fetched classic scripts.
     let mut texts: Vec<(Url, String)> = classic
         .iter()
@@ -407,6 +501,11 @@ pub(crate) fn fetch_linked_modules(
             }
         }
         for spec in specs {
+            if let Some(url) = mapped_specifier(&map, &spec) {
+                frontier.push(url.clone());
+                aliases.borrow_mut().push((spec, url));
+                continue;
+            }
             if spec.starts_with("./")
                 || spec.starts_with("../")
                 || spec.starts_with('/')
@@ -457,10 +556,28 @@ pub(crate) fn fetch_linked_modules(
             let Some(text) = text else { continue };
             total += text.len();
             if total > limits.bytes_total {
-                return modules;
+                return finish_aliases(modules, &aliases.borrow(), &document);
             }
+            let text = bind_import_meta_url(text, &url);
             scan(&url, &text, &mut frontier, true);
             modules.insert(module_key(&url, &document), text);
+        }
+    }
+    let result = finish_aliases(modules, &aliases.borrow(), &document);
+    result
+}
+
+/// Adds, under each mapped bare specifier's own name, a module re-exporting the real one.
+fn finish_aliases(
+    mut modules: LinkedModules,
+    aliases: &[(String, Url)],
+    document: &Url,
+) -> LinkedModules {
+    for (name, url) in aliases {
+        let key = module_key(url, document);
+        if modules.contains_key(&key) && !modules.contains_key(name) {
+            let shim = alias_source(&key, modules.get(&key).map(String::as_str));
+            modules.insert(name.clone(), shim);
         }
     }
     modules
@@ -551,5 +668,42 @@ mod tests {
             .map(|u| u.path().to_string())
             .collect();
         assert_eq!(urls, vec!["/a.js", "/p.js", "/c.js", "/r.js"]);
+    }
+
+    #[test]
+    fn an_import_map_names_bare_specifiers_and_prefixes() {
+        let doc = blueice_html::parse(
+            r#"<script type="importmap">{"imports":{"react":"https://cdn.example/react-1.js","react-dom/client":"/assets/rdc.js","lib/":"https://cdn.example/lib/"}}</script>"#,
+        );
+        let base = Url::parse("https://h.example/p").unwrap();
+        let map = import_map(&doc, &base);
+        let target = |spec: &str| mapped_specifier(&map, spec).map(|u| u.to_string());
+        assert_eq!(target("react").as_deref(), Some("https://cdn.example/react-1.js"));
+        assert_eq!(target("react-dom/client").as_deref(), Some("https://h.example/assets/rdc.js"));
+        assert_eq!(target("lib/a/b.js").as_deref(), Some("https://cdn.example/lib/a/b.js"));
+        assert_eq!(target("vue"), None);
+        // Relative and absolute specifiers are never the map's business here.
+        assert_eq!(target("./react"), None);
+    }
+
+    #[test]
+    fn an_import_map_alias_re_exports_the_mapped_module() {
+        let with_default = "export default 1; export const a = 2;";
+        let without = "export const a = 2;";
+        let shim = alias_source("/assets/m.js", Some(with_default));
+        assert!(shim.contains("export * from \"/assets/m.js\""));
+        assert!(shim.contains("export { default } from \"/assets/m.js\""));
+        let shim = alias_source("/assets/m.js", Some(without));
+        assert!(!shim.contains("default"));
+    }
+
+    #[test]
+    fn a_fetched_module_sees_its_own_address_as_import_meta_url() {
+        let url = Url::parse("https://cdn.example/a/b.js#x").unwrap();
+        assert_eq!(
+            bind_import_meta_url("const u = new URL('./c.js', import.meta.url);".into(), &url),
+            "const u = new URL('./c.js', \"https://cdn.example/a/b.js\");"
+        );
+        assert_eq!(bind_import_meta_url("noop()".into(), &url), "noop()");
     }
 }
