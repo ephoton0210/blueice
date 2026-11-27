@@ -492,6 +492,9 @@ pub(crate) fn layout_flex(ctx: &Ctx<'_>, container: NodeId, input: &FlexInput) -
                 helper.natural_height(item, column_width)
             }
         };
+        // Measuring for max-content hands the container an unlimited main size: a percentage
+        // basis of that is not a size, it is `content`.
+        let container_main = container_main.filter(|m| *m < crate::intrinsic::UNBOUNDED / 2.0);
         let base = match basis_value {
             Some(Value::Keyword(k)) if k == "content" => content_size(item),
             Some(Value::Keyword(k)) if k == "auto" => match specified_main {

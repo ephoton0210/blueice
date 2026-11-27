@@ -159,7 +159,8 @@ const UNTRUSTED_AVERAGE_FAMILIES: [&str; 34] = [
 pub(crate) fn text_field_width(ctx: &Ctx<'_>, node: NodeId, style: &crate::ctx::Style<'_>) -> Option<f64> {
     if ctx.tag(node) != Some("input")
         || blueice_css::is_pseudo_node(node)
-        || style.raw("width").is_some_and(|_| !style.is_auto("width"))
+        // A percentage width is cyclic while the field's own width is measured: it is `auto`.
+        || style.px("width", f64::NAN).is_some()
     {
         return None;
     }

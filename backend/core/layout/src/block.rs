@@ -884,6 +884,22 @@ fn layout_block_level_uncached(
         specified_width = crate::intrinsic::drop_down_width(ctx, node, &style)
             .or_else(|| crate::intrinsic::text_field_width(ctx, node, &style));
     }
+    // `width: max-content | min-content | fit-content` size the box by its content.
+    if specified_width.is_none() {
+        let keyword = style.keyword("width").map(|k| {
+            k.trim_start_matches("-webkit-").trim_start_matches("-moz-")
+        });
+        if let Some(kind @ ("max-content" | "min-content" | "fit-content" | "fit-available")) = keyword {
+            let (min, max) = crate::intrinsic::preferred_widths(ctx, node);
+            let room = (cbw - margin_left - margin_right).max(0.0);
+            let border_box = match kind {
+                "max-content" => max,
+                "min-content" => min,
+                _ => max.min(room.max(min)),
+            };
+            specified_width = Some((border_box - pb_h).max(0.0));
+        }
+    }
     // A `<button>` with `width: auto` is as wide as its content whatever its display: one made
     // `display: block`, `flex` or `grid` does not stretch to its container.
     if specified_width.is_none()
@@ -1673,6 +1689,66 @@ mod tests {
         // An inline picture is still on a line, with the room under it a baseline leaves.
         let f = body_fragment("<!doctype html><div><a href='#'><svg width=105 height=30></svg></a></div>", "", 400.0);
         assert!(f.children[0].height > 30.0);
+    }
+
+    #[test]
+    fn a_text_field_with_a_percentage_width_still_brings_its_default_width_to_a_max_content_row() {
+        // github.com's sign-up form: `.ctas { width: max-content }` over an `<input style="width:100%">`.
+        let f = body_fragment(
+            "<!doctype html><div style='display:flex;width:max-content'><input style='display:flex;width:100%;border:0'></div>",
+            "",
+            1000.0,
+        );
+        assert!(f.children[0].width > 100.0, "{}", f.children[0].width);
+    }
+
+    #[test]
+    fn a_flexing_item_with_a_percentage_basis_counts_for_its_content_in_a_max_content_row() {
+        // Primer's TextInput: `input { display:flex; flex:1; width:100% }` inside a flex wrapper.
+        for item in ["flex:1", "flex:auto", "flex:1 1 0%"] {
+            let f = body_fragment(
+                &format!("<!doctype html><div style='display:flex;width:max-content'><span style='display:flex'><input style='display:flex;{item};width:100%;border:0'></span></div>"),
+                "",
+                1000.0,
+            );
+            assert!(f.children[0].width > 100.0, "{item}: {}", f.children[0].width);
+        }
+    }
+
+    #[test]
+    fn github_sign_up_row_is_as_wide_as_its_field_and_button() {
+        let html = "<!doctype html>\
+            <div class=ctas><form class=form><section class=field><span class=wrap><input></span></section><button>Go</button></form><a class=b>Try</a></div>";
+        let css = ".ctas{display:flex;align-items:stretch;gap:12px;width:max-content;max-width:100%} \
+            .form{display:flex;flex-direction:column;flex:auto;width:auto;padding:4px;border:1px solid #888} \
+            .field{flex:auto;width:100%;min-width:0;position:relative;display:block} \
+            .wrap{display:flex}.wrap input{display:flex;flex:1;width:100%;border:0;padding:16px 12px 0 16px;min-width:0;box-sizing:border-box;height:41px} \
+            a.b{display:block;height:53px;flex:auto}";
+        let f = body_fragment(html, css, 1263.0);
+        let ctas = f.children.iter().map(|c| c.width).collect::<Vec<_>>();
+        assert!(ctas[0] > 205.0 && ctas[0] < 220.0, "{ctas:?}");
+    }
+
+    #[test]
+    fn width_keywords_size_a_block_by_its_content() {
+        // github.com's sign-up row: `inline-size: max-content` on a flex container.
+        let probe = |width: &str| {
+            let f = body_fragment(
+                &format!("<!doctype html><div style='display:flex;width:{width}'><span style='width:100px'></span><span style='width:60px'></span></div>"),
+                "",
+                400.0,
+            );
+            f.children[0].width
+        };
+        assert_eq!(probe("max-content"), 160.0);
+        assert_eq!(probe("fit-content"), 160.0);
+        assert_eq!(probe("auto"), 400.0);
+        let f = body_fragment("<!doctype html><div style='width:min-content'>aa bb</div>", "", 400.0);
+        assert!(f.children[0].width < 60.0, "{}", f.children[0].width);
+        // fit-content never exceeds the room while the content can wrap
+        let long = "word ".repeat(200);
+        let wide = body_fragment(&format!("<!doctype html><div style='width:fit-content'>{long}</div>"), "", 400.0);
+        assert_eq!(wide.children[0].width, 400.0);
     }
 
     #[test]

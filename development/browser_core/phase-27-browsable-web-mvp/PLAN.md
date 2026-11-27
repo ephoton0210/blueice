@@ -1394,3 +1394,12 @@ Still open: Wikipedia closed-dropdown widths (hidden geometry only, nothing visi
 `container-type`/`container-name`/`container`, `@container` (name, range syntax, and/or/not, nested) and `cqw/cqh/cqi/cqb/cqmin/cqmax` (also inside `calc/min/max/clamp`) are implemented. `Rule.containers` carries the conditions; `cascade_with_containers` matches against container content-box sizes that `blueice_layout::container_content_sizes` reads from the laid-out tree; the page loop recascades and relays out when they change (at most 4 extra passes). A page with any container restyles in full, never incrementally.
 
 Not done: size containment layout effects (`container-type: size` does not yet ignore the intrinsic size or make a containing block for positioned descendants), container sizes on the script and print paths, vertical writing modes for `cqi/cqb`, cq units inside unparsed values (grid templates, gradients, transforms). github.com has not yet been compared live against Safari.
+
+## Twelfth round: github.com sign-up row
+
+- `width`/`inline-size: max-content | min-content | fit-content` (and `-webkit-`/`-moz-` forms) size a block by its content; they were ignored (the box filled its container).
+- A text field with a percentage `width` still contributes its default width to a max-content measurement (the percentage is cyclic, so it is `auto`).
+- A percentage `flex-basis` (`flex: 1` is `1 1 0%`) is `content` while the container is measured for max-content, so a `min-width: 0` item no longer collapses to nothing.
+- Lab reproduction `/tmp/lab/ctas.html`: sign-up row 215px against Safari's 214px.
+
+github.com is still not equal: the page is 8863px tall against Safari's 8473px. The hero `h1` wraps to three lines (448px) where Safari has two (526px): the heading text is about 28% wider here. Cause not yet found (suspects: Mona Sans / Hubot Sans variable axes, `text-wrap: balance`). The eyebrow banner arrow icon is 16px against 24px.
