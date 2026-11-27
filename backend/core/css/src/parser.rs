@@ -37,6 +37,10 @@ pub struct Rule {
     /// The `@container` conditions this rule sits inside, outermost first; it applies only
     /// where every one holds against the element's query containers. Empty for an ordinary rule.
     pub containers: Vec<ContainerQuery>,
+    /// The cascade layer the rule belongs to, as its dotted path (`outer.inner`); `None` for an
+    /// unlayered rule, which beats every layered one. A rule with no selectors only marks the
+    /// layer's place in the order (`@layer a, b;`).
+    pub layer: Option<String>,
 }
 
 /// One `@container [name] <condition>` prelude.
@@ -765,6 +769,15 @@ pub(crate) fn is_direction_relative(property: &str) -> bool {
             | "border-inline"
             | "border-inline-start"
             | "border-inline-end"
+            | "border-inline-width"
+            | "border-inline-style"
+            | "border-inline-color"
+            | "border-inline-start-width"
+            | "border-inline-start-style"
+            | "border-inline-start-color"
+            | "border-inline-end-width"
+            | "border-inline-end-style"
+            | "border-inline-end-color"
     )
 }
 
@@ -815,6 +828,24 @@ fn logical_longhands(property: &str) -> Option<&'static [&'static str]> {
         "inset-inline-end" => &["right"],
         "inset-block-start" => &["top"],
         "inset-block-end" => &["bottom"],
+        "border-inline-width" => &["border-left-width", "border-right-width"],
+        "border-block-width" => &["border-top-width", "border-bottom-width"],
+        "border-inline-start-width" => &["border-left-width"],
+        "border-inline-end-width" => &["border-right-width"],
+        "border-block-start-width" => &["border-top-width"],
+        "border-block-end-width" => &["border-bottom-width"],
+        "border-inline-style" => &["border-left-style", "border-right-style"],
+        "border-block-style" => &["border-top-style", "border-bottom-style"],
+        "border-inline-start-style" => &["border-left-style"],
+        "border-inline-end-style" => &["border-right-style"],
+        "border-block-start-style" => &["border-top-style"],
+        "border-block-end-style" => &["border-bottom-style"],
+        "border-inline-color" => &["border-left-color", "border-right-color"],
+        "border-block-color" => &["border-top-color", "border-bottom-color"],
+        "border-inline-start-color" => &["border-left-color"],
+        "border-inline-end-color" => &["border-right-color"],
+        "border-block-start-color" => &["border-top-color"],
+        "border-block-end-color" => &["border-bottom-color"],
         "inline-size" => &["width"],
         "block-size" => &["height"],
         "min-inline-size" => &["min-width"],
@@ -1270,6 +1301,38 @@ fn matching_brace(tokens: &[Token]) -> Option<usize> {
     None
 }
 
+/// The layer names in an `@layer` prelude: comma separated, each a dotted path.
+fn layer_names(prelude: &[Token]) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut current = String::new();
+    for token in prelude {
+        match token {
+            Token::Ident(part) => current.push_str(part),
+            Token::Delim('.') => current.push('.'),
+            Token::Comma if !current.is_empty() => {
+                names.push(std::mem::take(&mut current));
+            }
+            _ => {}
+        }
+    }
+    if !current.is_empty() {
+        names.push(current);
+    }
+    names
+}
+
+/// A new name for an anonymous layer, which no other rule can reopen.
+fn anonymous_layer() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    format!("\u{0}anonymous-{}", NEXT.fetch_add(1, Ordering::Relaxed))
+}
+
+/// A rule with nothing in it that gives `name` its place in the layer order.
+fn layer_marker(name: String) -> Rule {
+    Rule { selectors: Vec::new(), declarations: Vec::new(), scope: None, containers: Vec::new(), layer: Some(name) }
+}
+
 fn skip_at_rule(tokens: &[Token], start: usize) -> usize {
     let mut i = start;
     let mut depth = 0usize;
@@ -1342,29 +1405,48 @@ fn parse_rules_in(
                 }
                 i = end;
             }
-            Token::AtKeyword(name)
-                if name.eq_ignore_ascii_case("layer") || name.eq_ignore_ascii_case("supports") =>
-            {
-                // `@layer` has no ordering effect yet: its rules join the
-                // sheet in source order. `@supports` includes its block only
-                // when the engine really supports the condition.
+            Token::AtKeyword(name) if name.eq_ignore_ascii_case("layer") => {
+                let end = skip_at_rule(tokens, i + 1);
+                let open = tokens[i + 1..end]
+                    .iter()
+                    .position(|t| *t == Token::LeftBrace)
+                    .map(|v| i + 1 + v);
+                let prelude = &tokens[i + 1..open.unwrap_or(end)];
+                let names = layer_names(prelude);
+                match open {
+                    // `@layer a, b;` only fixes the order of the layers.
+                    None => rules.extend(names.into_iter().map(layer_marker)),
+                    Some(open) => {
+                        if depth < 64 && tokens.get(end.saturating_sub(1)) == Some(&Token::RightBrace) {
+                            // A block with no name is an anonymous layer of its own.
+                            let name = names.into_iter().next().unwrap_or_else(anonymous_layer);
+                            rules.push(layer_marker(name.clone()));
+                            for mut rule in parse_rules_in(&tokens[open + 1..end - 1], environment, depth + 1) {
+                                rule.layer = Some(match rule.layer.take() {
+                                    Some(inner) => format!("{name}.{inner}"),
+                                    None => name.clone(),
+                                });
+                                rules.push(rule);
+                            }
+                        }
+                    }
+                }
+                i = end;
+            }
+            Token::AtKeyword(name) if name.eq_ignore_ascii_case("supports") => {
+                // `@supports` includes its block only when the engine really supports the
+                // condition.
                 let end = skip_at_rule(tokens, i + 1);
                 let open = tokens[i + 1..end]
                     .iter()
                     .position(|t| *t == Token::LeftBrace)
                     .map(|v| i + 1 + v);
                 if let Some(open) = open {
-                    let wanted = name.eq_ignore_ascii_case("layer")
-                        || crate::supports::condition_holds(&tokens[i + 1..open]);
-                    if wanted
+                    if crate::supports::condition_holds(&tokens[i + 1..open])
                         && depth < 64
                         && tokens.get(end.saturating_sub(1)) == Some(&Token::RightBrace)
                     {
-                        rules.extend(parse_rules_in(
-                            &tokens[open + 1..end - 1],
-                            environment,
-                            depth + 1,
-                        ));
+                        rules.extend(parse_rules_in(&tokens[open + 1..end - 1], environment, depth + 1));
                     }
                 }
                 i = end;
@@ -1410,6 +1492,7 @@ fn parse_rules_in(
                         declarations: parse_declarations(body_tokens),
                         scope: None,
                         containers: Vec::new(),
+                        layer: None,
                     });
                 }
                 i = body_start + close_offset + 1;
@@ -1880,11 +1963,22 @@ mod tests {
     }
 
     #[test]
-    fn layer_blocks_are_flattened_and_a_bare_layer_statement_is_ignored() {
+    fn layer_blocks_keep_their_rules_with_the_layer_path_and_a_statement_only_orders() {
         let rules = parse(
             "@layer base, utilities; @layer base { p { color: red; } @layer inner { b { color: blue; } } } i { color: green; }",
         );
-        assert_eq!(rules.len(), 3, "p, b (nested layer) and i");
+        let styled: Vec<_> = rules
+            .iter()
+            .filter(|r| !r.selectors.is_empty())
+            .map(|r| r.layer.as_deref())
+            .collect();
+        assert_eq!(styled, [Some("base"), Some("base.inner"), None], "p, b (nested layer) and i");
+        let markers: Vec<_> = rules
+            .iter()
+            .filter(|r| r.selectors.is_empty())
+            .filter_map(|r| r.layer.as_deref())
+            .collect();
+        assert_eq!(markers[..2], ["base", "utilities"], "the statement fixes the order");
     }
 
     #[test]
@@ -2265,6 +2359,24 @@ mod tests {
         let names = |rtl| expand("1px solid red", rtl).into_iter().map(|(n, _)| n).collect::<Vec<_>>();
         assert!(names(false).iter().all(|n| n.starts_with("border-left")), "{:?}", names(false));
         assert!(names(true).iter().all(|n| n.starts_with("border-right")), "{:?}", names(true));
+    }
+
+    #[test]
+    fn logical_border_width_style_and_color_longhands_expand_to_the_sides() {
+        // GitHub's hero zeroes its frame with `border-inline-width` / `border-block-start-width`.
+        assert_eq!(value_of("border-block-start-width: 0;", "border-top-width"), Some(Value::Length(Length::Zero)));
+        assert_eq!(value_of("border-block-width: 2px;", "border-bottom-width"), Some(px(2.0)));
+        assert_eq!(
+            expand_logical_inline("border-inline-width", &tokenize("0"), false),
+            [
+                ("border-left-width".to_string(), Value::Length(Length::Zero)),
+                ("border-right-width".to_string(), Value::Length(Length::Zero))
+            ]
+        );
+        assert_eq!(
+            expand_logical_inline("border-inline-start-width", &tokenize("3px"), true),
+            [("border-right-width".to_string(), px(3.0))]
+        );
     }
 
     #[test]

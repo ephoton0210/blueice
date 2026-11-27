@@ -215,6 +215,8 @@ fn resolve_color(value: &Value, inherited_color: Color) -> Option<Color> {
 
 struct Matched<'a> {
     origin: Origin,
+    /// The rule's cascade layer, by order of first mention; `None` when unlayered.
+    layer: Option<u32>,
     specificity: Specificity,
     source_order: usize,
     declaration: &'a Declaration,
@@ -428,6 +430,9 @@ struct RuleIndex<'a> {
 struct IndexedRule<'a> {
     origin: Origin,
     source_order: usize,
+    /// The place of the rule's cascade layer in the layer order (first mention first); `None`
+    /// for an unlayered rule.
+    layer: Option<u32>,
     rule: &'a Rule,
 }
 
@@ -441,12 +446,19 @@ impl<'a> RuleIndex<'a> {
             universal: Vec::new(),
             structure: Default::default(),
         };
+        // Layers are ordered by where they are first named, across every sheet.
+        let mut layer_order: HashMap<&'a str, u32> = HashMap::new();
         for (origin, rules) in stylesheets {
             for (source_order, rule) in rules.iter().enumerate() {
                 let id = index.rules.len() as u32;
+                let layer = rule.layer.as_deref().map(|name| {
+                    let next = layer_order.len() as u32;
+                    *layer_order.entry(name).or_insert(next)
+                });
                 index.rules.push(IndexedRule {
                     origin: *origin,
                     source_order,
+                    layer,
                     rule,
                 });
                 for selector in &rule.selectors {
@@ -658,6 +670,7 @@ fn compute_style_for(
         for decl in &indexed.rule.declarations {
             matched.push(Matched {
                 origin: indexed.origin,
+                layer: indexed.layer,
                 specificity: spec,
                 source_order: indexed.source_order,
                 declaration: decl,
@@ -678,6 +691,7 @@ fn compute_style_for(
             i,
             Matched {
                 origin: Origin::Author,
+                layer: None,
                 specificity: (0, 0, 0),
                 source_order: 0,
                 declaration: decl,
@@ -702,6 +716,7 @@ fn compute_style_for(
     for decl in &inline_declarations {
         matched.push(Matched {
             origin: Origin::Author,
+            layer: None,
             specificity: (u32::MAX, 0, 0),
             source_order: usize::MAX,
             declaration: decl,
@@ -723,9 +738,21 @@ fn compute_style_for(
         } else {
             origin_rank
         };
+        // Layers: a normal declaration in a later layer wins and an unlayered one beats every
+        // layer; `!important` reverses that (an earlier layer wins, unlayered is weakest).
+        // Element-attached styles (`style=""`) sit above the layers either way.
+        let attached = m.specificity.0 == u32::MAX;
+        let layer_rank = match (m.layer, m.declaration.important) {
+            _ if attached => u32::MAX,
+            (None, false) => u32::MAX - 1,
+            (Some(order), false) => order,
+            (None, true) => 0,
+            (Some(order), true) => u32::MAX - 1 - order,
+        };
         (
             m.declaration.important,
             effective_origin_rank,
+            layer_rank,
             m.specificity,
             m.source_order,
         )
@@ -1147,6 +1174,48 @@ mod tests {
         });
         doc.append_child(parent, id);
         id
+    }
+
+    #[test]
+    fn an_unlayered_rule_beats_a_layered_one_whatever_the_order_or_specificity() {
+        // github.com: primer's `@layer primer-brand { .fullWidth { width: 100% } }` is linked
+        // before the page's own sheet, and loses to it though the page's rule is plainer.
+        let mut doc = Document::new();
+        let root = doc.root();
+        let p = elem(&mut doc, root, "p", &[("id", "x"), ("class", "a")]);
+        for css in [
+            "@layer base { #x { color: red } } .a { color: blue }",
+            ".a { color: blue } @layer base { #x { color: red } }",
+        ] {
+            let sheet = parse(css);
+            let styles = cascade(&doc, &[(Origin::Author, &sheet)]);
+            assert_eq!(styles[&p].color, Color::Rgba(0, 0, 255, 255), "{css}");
+        }
+    }
+
+    #[test]
+    fn a_later_layer_beats_an_earlier_one_and_important_reverses_that() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let p = elem(&mut doc, root, "p", &[("id", "x")]);
+        let red = Color::Rgba(255, 0, 0, 255);
+        let blue = Color::Rgba(0, 0, 255, 255);
+        let check = |css: &str, want: Color| {
+            let sheet = parse(css);
+            let styles = cascade(&doc, &[(Origin::Author, &sheet)]);
+            assert_eq!(styles[&p].color, want, "{css}");
+        };
+        // declared order is the layer order, even when a layer's rules come later
+        check("@layer a, b; @layer b { p { color: blue } } @layer a { #x { color: red } }", blue);
+        check("@layer b { p { color: blue } } @layer a { p { color: red } }", red);
+        // a layer reopened keeps its first place
+        check("@layer a { p { color: red } } @layer b { p { color: blue } } @layer a { p { color: red } }", blue);
+        // important: the earlier layer wins, and layered beats unlayered
+        check("@layer a, b; @layer a { p { color: red !important } } @layer b { p { color: blue !important } }", red);
+        check("@layer a { p { color: red !important } } p { color: blue !important }", red);
+        // nested and anonymous layers
+        check("@layer outer { @layer inner { p { color: red } } } p { color: blue }", blue);
+        check("@layer { p { color: red } } @layer { p { color: blue } }", blue);
     }
 
     #[test]

@@ -185,6 +185,7 @@ pub(crate) fn append_finished_animations(tokens: &[Token], rules: &mut Vec<Rule>
                     extra.push(Rule {
                         scope: rule.scope,
                         containers: rule.containers.clone(),
+                        layer: rule.layer.clone(),
                         selectors: rule.selectors.clone(),
                         declarations: frame
                             .iter()
