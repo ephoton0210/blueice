@@ -1387,4 +1387,10 @@ Found by comparing the saved bbc.com snapshot with Safari box by box.
 
 `mask-size/position/repeat` were already implemented (picture masks are sized, placed and repeated by their own properties; `a_mask_image_shapes_the_background_colour` covers them), so the earlier open lists were stale on that point.
 
-Still open: Wikipedia closed-dropdown widths (hidden geometry only, nothing visible differs), GitHub container queries, `mask-mode`, `backdrop-filter`, 3D transforms.
+Still open: Wikipedia closed-dropdown widths (hidden geometry only, nothing visible differs), GitHub live check after container queries, `mask-mode`, `backdrop-filter`, 3D transforms.
+
+## Eleventh round: container queries
+
+`container-type`/`container-name`/`container`, `@container` (name, range syntax, and/or/not, nested) and `cqw/cqh/cqi/cqb/cqmin/cqmax` (also inside `calc/min/max/clamp`) are implemented. `Rule.containers` carries the conditions; `cascade_with_containers` matches against container content-box sizes that `blueice_layout::container_content_sizes` reads from the laid-out tree; the page loop recascades and relays out when they change (at most 4 extra passes). A page with any container restyles in full, never incrementally.
+
+Not done: size containment layout effects (`container-type: size` does not yet ignore the intrinsic size or make a containing block for positioned descendants), container sizes on the script and print paths, vertical writing modes for `cqi/cqb`, cq units inside unparsed values (grid templates, gradients, transforms). github.com has not yet been compared live against Safari.

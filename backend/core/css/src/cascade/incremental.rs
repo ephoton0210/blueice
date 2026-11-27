@@ -27,6 +27,11 @@ use crate::selector::{Combinator, ComplexSelector, PseudoClass, SimpleSelector};
 use blueice_dom::{Before, Changes};
 use std::collections::HashSet;
 
+/// Whether a style makes its element a query container.
+fn is_container(style: &ComputedStyle) -> bool {
+    matches!(style.other.get("container-type"), Some(Value::Keyword(k)) if k == "size" || k == "inline-size")
+}
+
 /// How the rules look at a node's place among its siblings.
 #[derive(Debug, Default, Clone, Copy)]
 pub(super) struct StructureUse {
@@ -119,7 +124,7 @@ fn compute_with_pseudo(
     doc: &Document,
     node: NodeId,
     index: &RuleIndex<'_>,
-    environment: &Environment,
+    environment: &Environment<'_>,
     parent_style: Option<&ComputedStyle>,
     root_font_size: f64,
 ) -> (ComputedStyle, [Option<ComputedStyle>; 2]) {
@@ -131,6 +136,7 @@ fn compute_with_pseudo(
         parent_style,
         root_font_size,
         None,
+        &None,
     )
     .expect("an element always has a style");
     let pseudo = [PseudoElement::Before, PseudoElement::After].map(|which| {
@@ -142,6 +148,7 @@ fn compute_with_pseudo(
             Some(&style),
             root_font_size,
             Some(which),
+            &None,
         )
         .filter(|p| matches!(p.other.get("content"), Some(Value::Unparsed(_))))
     });
@@ -151,7 +158,7 @@ fn compute_with_pseudo(
 struct Restyle<'a> {
     doc: &'a Document,
     index: &'a RuleIndex<'a>,
-    environment: &'a Environment,
+    environment: &'a Environment<'a>,
     styles: &'a HashMap<NodeId, ComputedStyle>,
     /// New styles; `None` removes the entry.
     overlay: HashMap<NodeId, Option<ComputedStyle>>,
@@ -284,11 +291,18 @@ pub fn cascade_incremental_report(
     if doc.has_shadow_roots() {
         return false;
     }
+    // Query containers make a style depend on a measured size of an ancestor, which this
+    // path does not track: restyle the page in full whenever it has any.
+    if styles.values().any(is_container) {
+        return false;
+    }
     let index = RuleIndex::build(stylesheets);
     let uses = index.structure;
+    let no_containers = ContainerSizes::new();
     let environment = Environment {
         viewport_width,
         viewport_height,
+        containers: &no_containers,
     };
 
     // (node, force the whole subtree)
@@ -409,6 +423,9 @@ pub fn cascade_incremental_report(
         return false;
     }
     let overlay = restyle.overlay;
+    if overlay.values().flatten().any(is_container) {
+        return false;
+    }
     let mut differing = Vec::new();
     for (id, style) in overlay {
         match style {

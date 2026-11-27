@@ -61,7 +61,7 @@ impl FrozenPrintDocument {
             &env,
             &self.linked_styles,
         );
-        let mut styles = cascade_with_viewport(
+        let mut styles = blueice_css::cascade_with_viewport(
             &self.doc,
             &[(Origin::Ua, &self.ua), (Origin::Author, &author)],
             width,

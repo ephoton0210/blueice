@@ -20,6 +20,7 @@ mod bidi;
 pub use bidi::{visual_runs, visual_text};
 mod block;
 mod cache;
+mod containers;
 mod ctx;
 mod flex;
 mod float;
@@ -35,6 +36,7 @@ mod vertical;
 
 pub use block::update_select_option_bounds;
 pub use cache::LayoutCache;
+pub use containers::container_content_sizes;
 pub use fragment::{Constraints, Fragment, FragmentKind, NativeForm, SelectOption, TextOrient};
 pub use native_text::{
     input_button_label, input_range_values, select_display_size, select_options,

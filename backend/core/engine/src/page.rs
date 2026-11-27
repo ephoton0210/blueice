@@ -24,10 +24,15 @@ use crate::gatekeeper_settings_page::{
     gatekeeper_settings_html, is_gatekeeper_settings_url, GatekeeperSettingsSource,
     GatekeeperSettingsView, SettingsNotice,
 };
-use blueice_css::{cascade_with_viewport, ua_stylesheet, ComputedStyle, Origin, Rule};
+use blueice_css::{cascade_with_containers, ua_stylesheet, ComputedStyle, Origin, Rule};
 use blueice_dom::{Document, NodeData, NodeId};
 use blueice_ipc::gatekeeper::GatekeeperSettingsChange;
 use blueice_ipc::{AiSnapshot, NodeAction};
+/// How many times a page is re-cascaded and laid out again because its query containers
+/// changed size, before it is left as it is (containers whose rules resize each other need not
+/// settle).
+const MAX_CONTAINER_PASSES: usize = 4;
+
 use blueice_layout::{layout_with_cache, Constraints, Fragment, LayoutCache};
 use blueice_paint::{Color, Frame, PaintCommand, Rect};
 use blueice_raster::{rasterize, Pixmap};
@@ -57,6 +62,9 @@ pub struct Page {
     /// (and drops exactly what its changes may have affected); a full cascade, and every
     /// `relayout` that did not come through one, starts over.
     layout_cache: LayoutCache,
+    /// The content-box size of each query container (`container-type`) that `styles` was
+    /// last cascaded against; `@container` rules and `cq*` units depend on it.
+    container_sizes: blueice_css::ContainerSizes,
     /// How many layout passes reused something from the cache's last pass.
     layout_reuse: u32,
     fragment: Fragment,
@@ -201,6 +209,7 @@ impl Page {
             style_epoch: None,
             restyle_counts: (0, 0),
             layout_cache: LayoutCache::default(),
+            container_sizes: blueice_css::ContainerSizes::new(),
             layout_reuse: 0,
             fragment: Fragment::empty_block(),
             ua: ua_stylesheet(),
@@ -375,7 +384,28 @@ impl Page {
         self.relayout_keeping_cache();
     }
 
+    /// Lays the page out, and again for as long as its query containers come out a different
+    /// size than the styles were cascaded against: a container's size is only known after
+    /// layout, and the `@container` rules and `cq*` units inside it depend on that size.
     fn relayout_keeping_cache(&mut self) {
+        self.layout_pass();
+        for _ in 0..MAX_CONTAINER_PASSES {
+            let measured = blueice_layout::container_content_sizes(
+                &self.styles,
+                &self.fragment,
+                self.viewport_width,
+                self.viewport_height,
+            );
+            if measured == self.container_sizes {
+                break;
+            }
+            self.container_sizes = measured;
+            self.recascade();
+            self.layout_pass();
+        }
+    }
+
+    fn layout_pass(&mut self) {
         let profile = std::env::var("BI_PROFILE_LAYOUT").is_ok();
         let started = std::time::Instant::now();
         self.native_undo.prune(&self.doc);
@@ -424,11 +454,12 @@ impl Page {
             &self.linked_styles,
         );
         let collected = started.elapsed();
-        self.styles = cascade_with_viewport(
+        self.styles = cascade_with_containers(
             &self.doc,
             &[(Origin::Ua, &self.ua), (Origin::Author, &author)],
             self.viewport_width,
             self.viewport_height,
+            &self.container_sizes,
         );
         let cascaded = started.elapsed();
         let rule_count = author.len();

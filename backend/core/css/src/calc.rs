@@ -31,6 +31,29 @@ enum Term {
 }
 
 impl Calc {
+    /// Calls `f` on every length in the tree, so a caller can resolve units that need
+    /// context the cascade holds (container query units).
+    pub fn map_lengths(&mut self, f: &mut impl FnMut(&mut Length)) {
+        match self {
+            Calc::Number(_) | Calc::Percent(_) => {}
+            Calc::Length(length) => f(length),
+            Calc::Sum(a, b) | Calc::Difference(a, b) | Calc::Product(a, b) | Calc::Quotient(a, b) => {
+                a.map_lengths(f);
+                b.map_lengths(f);
+            }
+            Calc::Min(items) | Calc::Max(items) => {
+                for item in items {
+                    item.map_lengths(f);
+                }
+            }
+            Calc::Clamp(a, b, c) => {
+                a.map_lengths(f);
+                b.map_lengths(f);
+                c.map_lengths(f);
+            }
+        }
+    }
+
     /// The pixel value, or `None` when it is not a length (a bare number
     /// result), divides by zero, or needs a percentage base that does not exist.
     pub fn to_px(&self, ctx: &LengthContext) -> Option<f64> {

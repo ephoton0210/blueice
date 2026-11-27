@@ -42,7 +42,8 @@ mod vars;
 
 pub use calc::Calc;
 pub use cascade::{
-    cascade, cascade_incremental, cascade_incremental_report, cascade_with_viewport,
+    cascade, cascade_incremental, cascade_incremental_report, cascade_with_containers,
+    cascade_with_viewport, ContainerSizes,
     is_pseudo_node, pseudo_kind, pseudo_node_id, pseudo_owner, pseudo_text_node_id, ua_stylesheet,
     ComputedStyle, Origin,
 };
@@ -58,7 +59,7 @@ pub use font_features::{
     TextFeatures,
 };
 pub use font_face::{face_descriptors, font_faces, FaceDescriptors, FontFaceRule, FontSource};
-pub use parser::{Declaration, Rule};
+pub use parser::{ContainerQuery, Declaration, Rule};
 pub use selector::{
     matches, matches_pseudo_element, with_scope, ComplexSelector, Compound, PseudoElement, SelectorKey,
     SimpleSelector,

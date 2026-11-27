@@ -1540,3 +1540,84 @@ fn an_inline_elements_bounds_cover_all_its_words_and_lines() {
     assert!(wrapped.height > 30.0, "{wrapped:?}");
     assert!(wrapped.width > 100.0, "{wrapped:?}");
 }
+
+/// The rectangles a page paints in `rgb`.
+fn rects_of_color(page: &mut Page, rgb: (u8, u8, u8)) -> Vec<blueice_paint::Rect> {
+    page.render()
+        .commands
+        .iter()
+        .filter_map(|c| match c {
+            PaintCommand::Rect {
+                rect,
+                color: blueice_css::Color::Rgba(r, g, b, _),
+            } if (*r, *g, *b) == rgb => Some(*rect),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn container_query_units_and_rules_follow_the_containers_laid_out_size() {
+    let mut page = Page::new(1000.0, 600.0);
+    page.load_html_str(
+        r#"<style>
+            #c { container-type: inline-size; width: 400px; }
+            #t { width: 50cqw; height: 10px; background: #00ff00; }
+            @container (min-width: 300px) { #t { background: #ff0000; } }
+        </style><div id="c"><div id="t"></div></div>"#,
+        Some("about:blank".to_string()),
+    );
+    let red = rects_of_color(&mut page, (255, 0, 0));
+    assert_eq!(red.len(), 1, "the container query matched once its width was known");
+    assert_eq!(red[0].width, 200.0, "50cqw of a 400px container");
+    assert!(rects_of_color(&mut page, (0, 255, 0)).is_empty());
+}
+
+#[test]
+fn a_container_query_that_fails_leaves_the_base_rule() {
+    let mut page = Page::new(1000.0, 600.0);
+    page.load_html_str(
+        r#"<style>
+            #c { container-type: inline-size; width: 200px; }
+            #t { width: 100cqw; height: 10px; background: #00ff00; }
+            @container (min-width: 300px) { #t { background: #ff0000; } }
+        </style><div id="c"><div id="t"></div></div>"#,
+        Some("about:blank".to_string()),
+    );
+    let green = rects_of_color(&mut page, (0, 255, 0));
+    assert_eq!(green.len(), 1);
+    assert_eq!(green[0].width, 200.0);
+    assert!(rects_of_color(&mut page, (255, 0, 0)).is_empty());
+}
+
+#[test]
+fn a_container_sized_by_its_own_query_result_settles() {
+    // The container's width comes from a percentage of the viewport; a query on it widens a
+    // child and the page lays out again until nothing changes.
+    let mut page = Page::new(1000.0, 600.0);
+    page.load_html_str(
+        r#"<style>
+            #c { container-type: inline-size; width: 50%; }
+            #t { height: 10px; width: 10px; background: #00ff00; }
+            @container (min-width: 400px) { #t { width: 25cqw; background: #ff0000; } }
+        </style><div id="c"><div id="t"></div></div>"#,
+        Some("about:blank".to_string()),
+    );
+    let red = rects_of_color(&mut page, (255, 0, 0));
+    assert_eq!(red.len(), 1);
+    assert_eq!(red[0].width, 123.0, "25cqw of 492px (50% of 984px, inside the body margins)");
+}
+
+#[test]
+fn a_size_container_gives_height_units_a_height_to_resolve_against() {
+    let mut page = Page::new(1000.0, 600.0);
+    page.load_html_str(
+        r#"<style>
+            #c { container-type: size; width: 400px; height: 300px; }
+            #t { width: 10cqh; height: 10px; background: #ff0000; }
+        </style><div id="c"><div id="t"></div></div>"#,
+        Some("about:blank".to_string()),
+    );
+    let red = rects_of_color(&mut page, (255, 0, 0));
+    assert_eq!(red[0].width, 30.0);
+}

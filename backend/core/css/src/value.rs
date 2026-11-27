@@ -31,11 +31,21 @@ pub enum Length {
     Vh(f64),
     Vmin(f64),
     Vmax(f64),
+    /// Percent of the nearest query container's content box: width, height, inline size,
+    /// block size, and the smaller/larger of the last two. The cascade turns these into pixels
+    /// against the container it finds; one that survives (no container) falls back to the
+    /// small viewport, as the specification says.
+    Cqw(f64),
+    Cqh(f64),
+    Cqi(f64),
+    Cqb(f64),
+    Cqmin(f64),
+    Cqmax(f64),
 }
 
 /// `n` viewport units of a viewport side, as WebKit works it out: one unit is the side over 100
 /// in single precision, and `n` of them are that times `n` (848px: 25vh is 211.99998, not 212).
-fn viewport_units(n: f64, side: f64) -> f64 {
+pub(crate) fn viewport_units(n: f64, side: f64) -> f64 {
     let unit = (side / 100.0) as f32;
     f64::from(unit * n as f32)
 }
@@ -65,6 +75,12 @@ impl Length {
             "vh" | "svh" | "lvh" | "dvh" => Length::Vh(n),
             "vmin" | "svmin" | "lvmin" | "dvmin" => Length::Vmin(n),
             "vmax" | "svmax" | "lvmax" | "dvmax" => Length::Vmax(n),
+            "cqw" => Length::Cqw(n),
+            "cqh" => Length::Cqh(n),
+            "cqi" => Length::Cqi(n),
+            "cqb" => Length::Cqb(n),
+            "cqmin" => Length::Cqmin(n),
+            "cqmax" => Length::Cqmax(n),
             "in" => Length::Px(n * 96.0),
             "cm" => Length::Px(n * 96.0 / 2.54),
             "mm" => Length::Px(n * 96.0 / 25.4),
@@ -85,6 +101,11 @@ impl Length {
             Length::Vh(n) => viewport_units(n, ctx.viewport_height),
             Length::Vmin(n) => viewport_units(n, ctx.viewport_width.min(ctx.viewport_height)),
             Length::Vmax(n) => viewport_units(n, ctx.viewport_width.max(ctx.viewport_height)),
+            // With no container to resolve against, the small viewport stands in.
+            Length::Cqw(n) | Length::Cqi(n) => viewport_units(n, ctx.viewport_width),
+            Length::Cqh(n) | Length::Cqb(n) => viewport_units(n, ctx.viewport_height),
+            Length::Cqmin(n) => viewport_units(n, ctx.viewport_width.min(ctx.viewport_height)),
+            Length::Cqmax(n) => viewport_units(n, ctx.viewport_width.max(ctx.viewport_height)),
         }
     }
 }

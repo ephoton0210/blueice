@@ -110,6 +110,17 @@ pub(crate) fn matches_tokens(tokens: &[Token], env: &MediaEnvironment) -> bool {
     }
     query_truth(&tokens[start..], env) == Truth::Yes
 }
+/// Whether a container query's condition holds for a container whose content box is
+/// `width` by `height`. (An empty container still has a size: a zero is nudged up so the
+/// environment check, which a viewport of zero fails, lets it through.)
+pub(crate) fn matches_container_condition(tokens: &[Token], width: f64, height: f64) -> bool {
+    let env = MediaEnvironment {
+        width: width.max(0.001),
+        height: height.max(0.001),
+        ..MediaEnvironment::default()
+    };
+    matches_tokens(tokens, &env)
+}
 fn query_truth(tokens: &[Token], env: &MediaEnvironment) -> Truth {
     let mut tokens = tokens;
     let mut negate = false;

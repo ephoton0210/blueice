@@ -34,6 +34,66 @@ pub struct Rule {
     /// The shadow root whose tree this rule is scoped to (a `<style>` inside a shadow root): it
     /// styles that tree's nodes and the host, and nothing in the document around it.
     pub scope: Option<blueice_dom::NodeId>,
+    /// The `@container` conditions this rule sits inside, outermost first; it applies only
+    /// where every one holds against the element's query containers. Empty for an ordinary rule.
+    pub containers: Vec<ContainerQuery>,
+}
+
+/// One `@container [name] <condition>` prelude.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ContainerQuery {
+    /// The container name the query is restricted to.
+    pub name: Option<String>,
+    /// The condition, its `inline-size`/`block-size` features already written as `width`/`height`.
+    pub condition: Vec<Token>,
+    /// The condition asks about the block axis (height), which only a `size` container has.
+    pub needs_block: bool,
+}
+
+/// Splits the prelude of `@container` (everything before its `{`) into name and condition.
+fn parse_container_prelude(prelude: &[Token]) -> Option<ContainerQuery> {
+    let tokens = trim_ws(prelude);
+    let (name, rest) = match tokens {
+        [Token::Ident(word), rest @ ..]
+            if !["not", "and", "or"].iter().any(|k| word.eq_ignore_ascii_case(k))
+                && !word.eq_ignore_ascii_case("none") =>
+        {
+            (Some(word.clone()), trim_ws(rest))
+        }
+        _ => (None, tokens),
+    };
+    if rest.is_empty() {
+        return None;
+    }
+    let mut needs_block = false;
+    let condition: Vec<Token> = rest
+        .iter()
+        .map(|t| match t {
+            Token::Ident(word) => {
+                let lower = word.to_ascii_lowercase();
+                let renamed = match lower.as_str() {
+                    "inline-size" => "width".to_string(),
+                    "min-inline-size" => "min-width".to_string(),
+                    "max-inline-size" => "max-width".to_string(),
+                    "block-size" => "height".to_string(),
+                    "min-block-size" => "min-height".to_string(),
+                    "max-block-size" => "max-height".to_string(),
+                    _ => return t.clone(),
+                };
+                needs_block |= renamed.ends_with("height");
+                Token::Ident(renamed)
+            }
+            other => other.clone(),
+        })
+        .collect();
+    needs_block |= condition
+        .iter()
+        .any(|t| matches!(t, Token::Ident(w) if w.to_ascii_lowercase().ends_with("height")));
+    Some(ContainerQuery {
+        name,
+        condition,
+        needs_block,
+    })
 }
 
 /// Properties whose value is a length/percentage/keyword, for which a
@@ -1006,6 +1066,7 @@ pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(St
         "border-inline" => expand_border_sides(&["left", "right"], value_tokens),
         "border-inline-start" => expand_border_sides(&["left"], value_tokens),
         "border-inline-end" => expand_border_sides(&["right"], value_tokens),
+        "container" => expand_container(value_tokens),
         "flex" => expand_flex(value_tokens),
         "flex-flow" => expand_flex_flow(value_tokens),
         "aspect-ratio" => expand_aspect_ratio(value_tokens),
@@ -1064,6 +1125,20 @@ pub(crate) fn expand_property(property: &str, value_tokens: &[Token]) -> Vec<(St
             }
         }
     }
+}
+
+/// `container: <name>+ [/ <type>]`.
+fn expand_container(tokens: &[Token]) -> Vec<(String, Value)> {
+    let parts = split_on(trim_ws(tokens), |t| *t == Token::Delim('/'));
+    if parts.len() > 2 {
+        return vec![];
+    }
+    let mut out = expand_property("container-name", parts[0]);
+    out.extend(match parts.get(1) {
+        Some(kind) => expand_property("container-type", kind),
+        None => vec![("container-type".to_string(), Value::Keyword("normal".to_string()))],
+    });
+    out
 }
 
 /// The `;`-separated declarations of a block, skipping nested rules
@@ -1294,6 +1369,28 @@ fn parse_rules_in(
                 }
                 i = end;
             }
+            Token::AtKeyword(name) if name.eq_ignore_ascii_case("container") => {
+                let end = skip_at_rule(tokens, i + 1);
+                let open = tokens[i + 1..end]
+                    .iter()
+                    .position(|t| *t == Token::LeftBrace)
+                    .map(|v| i + 1 + v);
+                if let Some(open) = open {
+                    if depth < 64 && tokens.get(end.saturating_sub(1)) == Some(&Token::RightBrace)
+                    {
+                        // A prelude that is not a container query drops the whole block.
+                        if let Some(query) = parse_container_prelude(&tokens[i + 1..open]) {
+                            for mut rule in
+                                parse_rules_in(&tokens[open + 1..end - 1], environment, depth + 1)
+                            {
+                                rule.containers.insert(0, query.clone());
+                                rules.push(rule);
+                            }
+                        }
+                    }
+                }
+                i = end;
+            }
             Token::AtKeyword(_) => i = skip_at_rule(tokens, i + 1),
             _ => {
                 let Some(brace) = tokens[i..].iter().position(|t| *t == Token::LeftBrace) else {
@@ -1312,6 +1409,7 @@ fn parse_rules_in(
                         selectors,
                         declarations: parse_declarations(body_tokens),
                         scope: None,
+                        containers: Vec::new(),
                     });
                 }
                 i = body_start + close_offset + 1;
@@ -1857,11 +1955,57 @@ mod tests {
     }
 
     #[test]
-    fn container_and_property_at_rules_are_skipped() {
+    fn property_at_rules_are_skipped_and_container_rules_keep_their_condition() {
         let rules = parse(
             "@container (min-width: 10px) { p { color: red; } } @property --x { syntax: '*'; inherits: false; } b { color: blue; }",
         );
+        assert_eq!(rules.len(), 2);
+        assert_eq!(rules[0].containers.len(), 1);
+        assert_eq!(rules[0].containers[0].name, None);
+        assert!(rules[1].containers.is_empty());
+    }
+
+    #[test]
+    fn a_named_container_query_nests_and_renames_logical_features() {
+        let rules = parse(
+            "@container card (min-inline-size: 10px) { @container (height > 5px) { p { color: red; } } }",
+        );
         assert_eq!(rules.len(), 1);
+        let queries = &rules[0].containers;
+        assert_eq!(queries.len(), 2);
+        assert_eq!(queries[0].name.as_deref(), Some("card"));
+        assert!(!queries[0].needs_block);
+        assert!(queries[0]
+            .condition
+            .contains(&Token::Ident("min-width".to_string())));
+        assert_eq!(queries[1].name, None);
+        assert!(queries[1].needs_block);
+    }
+
+    #[test]
+    fn container_properties_and_the_shorthand_parse() {
+        assert_eq!(
+            value_of("container-type: inline-size", "container-type"),
+            Some(Value::Keyword("inline-size".to_string()))
+        );
+        assert_eq!(
+            value_of("container: card / size", "container-name"),
+            Some(Value::Keyword("card".to_string()))
+        );
+        assert_eq!(
+            value_of("container: card / size", "container-type"),
+            Some(Value::Keyword("size".to_string()))
+        );
+        assert_eq!(
+            value_of("container: card", "container-type"),
+            Some(Value::Keyword("normal".to_string()))
+        );
+    }
+
+    #[test]
+    fn container_query_units_parse() {
+        assert_eq!(value_of("width: 50cqw", "width"), Some(Value::Length(Length::Cqw(50.0))));
+        assert_eq!(value_of("width: 5cqmin", "width"), Some(Value::Length(Length::Cqmin(5.0))));
     }
 
     // ---- custom properties, var(), multi-value properties and shorthands ----

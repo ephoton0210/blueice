@@ -243,6 +243,31 @@ pub fn cascade_with_viewport(
     viewport_width: f64,
     viewport_height: f64,
 ) -> HashMap<NodeId, ComputedStyle> {
+    cascade_with_containers(
+        doc,
+        stylesheets,
+        viewport_width,
+        viewport_height,
+        &ContainerSizes::new(),
+    )
+}
+
+/// The content-box size (width, height) of each query container, by element, as the last
+/// layout measured it.
+pub type ContainerSizes = HashMap<NodeId, (f64, f64)>;
+
+/// [`cascade_with_viewport`] that also knows how big the page's query containers are
+/// (`container-type`): `@container` rules apply, and `cq*` units resolve, against those
+/// sizes. A container missing from `containers` has no known size yet, so a query against
+/// it does not hold and its units fall back to the viewport. The caller measures layout,
+/// passes the sizes back in, and repeats until they stop changing.
+pub fn cascade_with_containers(
+    doc: &Document,
+    stylesheets: &[(Origin, &[Rule])],
+    viewport_width: f64,
+    viewport_height: f64,
+    containers: &ContainerSizes,
+) -> HashMap<NodeId, ComputedStyle> {
     // Quirks mode adds the UA rules that old pages were written against.
     let quirks = doc.quirks_mode().then(|| parse(QUIRKS_STYLESHEET_SOURCE));
     let mut with_quirks: Vec<(Origin, &[Rule])> = stylesheets.to_vec();
@@ -255,6 +280,7 @@ pub fn cascade_with_viewport(
     let environment = Environment {
         viewport_width,
         viewport_height,
+        containers,
     };
     cascade_subtree(
         doc,
@@ -263,15 +289,127 @@ pub fn cascade_with_viewport(
         &environment,
         None,
         16.0,
+        &None,
         &mut styles,
     );
     styles
 }
 
 #[derive(Clone, Copy)]
-struct Environment {
+struct Environment<'a> {
     viewport_width: f64,
     viewport_height: f64,
+    containers: &'a ContainerSizes,
+}
+
+/// A query container above the element being styled, nearest first through `parent`.
+struct ContainerLink {
+    names: Vec<String>,
+    /// `container-type: size`: the block axis can be queried too.
+    block: bool,
+    size: Option<(f64, f64)>,
+    parent: ContainerChain,
+}
+
+type ContainerChain = Option<std::rc::Rc<ContainerLink>>;
+
+/// `chain` with `node`'s own container (when its style makes it one) in front.
+fn extend_chain(
+    chain: &ContainerChain,
+    node: NodeId,
+    style: &ComputedStyle,
+    environment: &Environment<'_>,
+) -> ContainerChain {
+    let block = match style.other.get("container-type") {
+        Some(Value::Keyword(k)) if k == "size" => true,
+        Some(Value::Keyword(k)) if k == "inline-size" => false,
+        _ => return chain.clone(),
+    };
+    let names = match style.other.get("container-name") {
+        Some(Value::Keyword(k)) if k != "none" => vec![k.clone()],
+        Some(Value::List(list)) => list
+            .iter()
+            .filter_map(|v| match v {
+                Value::Keyword(k) => Some(k.clone()),
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    Some(std::rc::Rc::new(ContainerLink {
+        names,
+        block,
+        size: environment.containers.get(&node).copied(),
+        parent: chain.clone(),
+    }))
+}
+
+/// Whether `query` holds for the nearest container above that it can ask: one with a
+/// matching name (when it names one) and the axis it queries.
+fn container_query_holds(query: &crate::parser::ContainerQuery, chain: &ContainerChain) -> bool {
+    let mut link = chain.as_deref();
+    while let Some(candidate) = link {
+        let named = query.name.as_ref().is_none_or(|wanted| {
+            candidate.names.iter().any(|n| n.eq_ignore_ascii_case(wanted))
+        });
+        if named && (candidate.block || !query.needs_block) {
+            return match candidate.size {
+                Some((width, height)) => {
+                    crate::media::matches_container_condition(&query.condition, width, height)
+                }
+                None => false,
+            };
+        }
+        link = candidate.parent.as_deref();
+    }
+    false
+}
+
+/// Replaces the container query units in `value` with pixels of the nearest container that
+/// has the axis (inline for `cqw`/`cqi`, block for `cqh`/`cqb`, each independently for
+/// `cqmin`/`cqmax`). A unit with no such container takes the viewport's side instead.
+fn resolve_container_units(value: &mut Value, chain: &ContainerChain, environment: &Environment<'_>) {
+    use crate::value::{viewport_units, Length};
+    let axis = |block: bool| -> Option<f64> {
+        let mut link = chain.as_deref();
+        while let Some(candidate) = link {
+            if let (Some((w, h)), true) = (candidate.size, candidate.block || !block) {
+                return Some(if block { h } else { w });
+            }
+            link = candidate.parent.as_deref();
+        }
+        None
+    };
+    let mut resolve = |length: &mut Length| {
+        let (n, side) = match *length {
+            Length::Cqw(n) | Length::Cqi(n) => {
+                (n, Some(axis(false).unwrap_or(environment.viewport_width)))
+            }
+            Length::Cqh(n) | Length::Cqb(n) => {
+                (n, Some(axis(true).unwrap_or(environment.viewport_height)))
+            }
+            Length::Cqmin(n) | Length::Cqmax(n) => {
+                let inline = axis(false).unwrap_or(environment.viewport_width);
+                let block = axis(true).unwrap_or(environment.viewport_height);
+                let smaller = matches!(length, Length::Cqmin(_));
+                (n, Some(if smaller { inline.min(block) } else { inline.max(block) }))
+            }
+            _ => return,
+        };
+        if let Some(side) = side {
+            *length = Length::Px(viewport_units(n, side));
+        }
+    };
+    match value {
+        Value::Length(length) => resolve(length),
+        Value::List(items) => {
+            for item in items {
+                resolve_container_units(item, chain, environment);
+            }
+        }
+        Value::Calc(calc) => calc.map_lengths(&mut resolve),
+        _ => {}
+    }
 }
 
 /// Every rule once, with the buckets that find the rules that can match an
@@ -365,17 +503,20 @@ impl<'a> RuleIndex<'a> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cascade_subtree(
     doc: &Document,
     node: NodeId,
     index: &RuleIndex<'_>,
-    environment: &Environment,
+    environment: &Environment<'_>,
     parent_style: Option<&ComputedStyle>,
     root_font_size: f64,
+    chain: &ContainerChain,
     styles: &mut HashMap<NodeId, ComputedStyle>,
 ) {
     let is_element = matches!(doc.data(node), NodeData::Element { .. });
     let mut child_root_font_size = root_font_size;
+    let mut own_chain = chain.clone();
     let own_style = if is_element {
         let style = compute_style_for(
             doc,
@@ -385,11 +526,13 @@ fn cascade_subtree(
             parent_style,
             root_font_size,
             None,
+            chain,
         )
         .expect("an element always has a style");
         if doc.parent(node) == Some(doc.root()) {
             child_root_font_size = style.font_size_px;
         }
+        own_chain = extend_chain(chain, node, &style, environment);
         // `::before` / `::after` get a style of their own, under ids no DOM
         // node has, when a rule gives them `content`.
         for which in [PseudoElement::Before, PseudoElement::After] {
@@ -401,6 +544,7 @@ fn cascade_subtree(
                 Some(&style),
                 root_font_size,
                 Some(which),
+                &own_chain,
             ) {
                 if matches!(pseudo.other.get("content"), Some(Value::Unparsed(_))) {
                     styles.insert(pseudo_node_id(node, which), pseudo);
@@ -421,6 +565,7 @@ fn cascade_subtree(
             environment,
             own_style.as_ref(),
             child_root_font_size,
+            &own_chain,
             styles,
         );
     }
@@ -456,14 +601,16 @@ fn is_inherited(property: &str) -> bool {
     INHERITED_PROPERTIES.contains(&property) || OTHER_INHERITED_PROPERTIES.contains(&property)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn compute_style_for(
     doc: &Document,
     node: NodeId,
     index: &RuleIndex<'_>,
-    environment: &Environment,
+    environment: &Environment<'_>,
     parent_style: Option<&ComputedStyle>,
     root_font_size: f64,
     pseudo: Option<PseudoElement>,
+    chain: &ContainerChain,
 ) -> Option<ComputedStyle> {
     let mut matched: Vec<Matched> = Vec::new();
     for rule_id in index.candidates(doc, node) {
@@ -473,6 +620,14 @@ fn compute_style_for(
             if doc.tree_root(node) != scope && doc.shadow_root(node) != Some(scope) {
                 continue;
             }
+        }
+        if !indexed
+            .rule
+            .containers
+            .iter()
+            .all(|query| container_query_holds(query, chain))
+        {
+            continue;
         }
         let best_specificity = indexed
             .rule
@@ -659,6 +814,10 @@ fn compute_style_for(
                 reset.insert(property);
             }
         }
+    }
+
+    for value in winners.values_mut() {
+        resolve_container_units(value, chain, environment);
     }
 
     let mut style = ComputedStyle::initial();
@@ -2087,5 +2246,179 @@ mod tests {
             "descendant chain keyed on its rightmost class"
         );
         assert_eq!(get("b").other["height"], px(6.0), "same rule through #y");
+    }
+
+    // ---- container queries ----
+
+    fn all_elements(doc: &Document) -> Vec<NodeId> {
+        let mut out = Vec::new();
+        let mut stack = vec![doc.root()];
+        while let Some(n) = stack.pop() {
+            if matches!(doc.data(n), NodeData::Element { .. }) {
+                out.push(n);
+            }
+            let mut kids: Vec<NodeId> = doc.children(n).collect();
+            kids.reverse();
+            stack.extend(kids);
+        }
+        out
+    }
+
+    fn container_page(css: &str) -> (Document, NodeId, NodeId) {
+        let doc = blueice_html::parse(
+            "<div id=c><section id=mid><p id=t>x</p></section></div>",
+        );
+        let find = |id: &str| {
+            all_elements(&doc).into_iter()
+                .find(|n| matches!(doc.data(*n), NodeData::Element { attributes, .. } if attributes.iter().any(|(k, v)| k == "id" && v == id)))
+                .unwrap()
+        };
+        let (c, t) = (find("c"), find("t"));
+        let _ = css;
+        (doc, c, t)
+    }
+
+    fn container_cascade(
+        css: &str,
+        sizes: &[(&str, (f64, f64))],
+    ) -> (HashMap<NodeId, ComputedStyle>, NodeId) {
+        let (doc, c, t) = container_page(css);
+        let rules = parse(css);
+        let mut map = ContainerSizes::new();
+        for (_, size) in sizes {
+            map.insert(c, *size);
+        }
+        let styles = cascade_with_containers(&doc, &[(Origin::Author, &rules)], 1000.0, 800.0, &map);
+        (styles, t)
+    }
+
+    const CONTAINER_CSS: &str = "#c { container-type: inline-size } \
+        @container (min-width: 300px) { p { color: #ff0000 } } p { width: 50cqw }";
+
+    #[test]
+    fn a_container_rule_applies_when_the_ancestor_container_is_wide_enough() {
+        let (styles, t) = container_cascade(CONTAINER_CSS, &[("c", (400.0, 10.0))]);
+        assert_eq!(styles[&t].color, Color::Rgba(255, 0, 0, 255));
+        assert_eq!(styles[&t].other["width"], px(200.0));
+    }
+
+    #[test]
+    fn a_container_rule_does_not_apply_when_the_container_is_too_narrow() {
+        let (styles, t) = container_cascade(CONTAINER_CSS, &[("c", (200.0, 10.0))]);
+        assert_ne!(styles[&t].color, Color::Rgba(255, 0, 0, 255));
+        assert_eq!(styles[&t].other["width"], px(100.0));
+    }
+
+    #[test]
+    fn with_no_measured_size_a_query_fails_and_cq_units_use_the_viewport() {
+        let (styles, t) = container_cascade(CONTAINER_CSS, &[]);
+        assert_ne!(styles[&t].color, Color::Rgba(255, 0, 0, 255));
+        assert_eq!(styles[&t].other["width"], px(500.0));
+    }
+
+    #[test]
+    fn no_container_at_all_means_no_match_and_viewport_units() {
+        let (styles, t) = container_cascade(
+            "@container (min-width: 1px) { p { color: #ff0000 } } p { width: 10cqh }",
+            &[("c", (400.0, 10.0))],
+        );
+        assert_ne!(styles[&t].color, Color::Rgba(255, 0, 0, 255));
+        assert_eq!(styles[&t].other["width"], px(80.0));
+    }
+
+    #[test]
+    fn an_inline_size_container_has_no_block_axis_so_height_queries_skip_it() {
+        let (styles, t) = container_cascade(
+            "#c { container-type: inline-size } @container (min-height: 5px) { p { color: #ff0000 } } p { height: 10cqh }",
+            &[("c", (400.0, 100.0))],
+        );
+        assert_ne!(styles[&t].color, Color::Rgba(255, 0, 0, 255));
+        assert_eq!(styles[&t].other["height"], px(80.0), "cqh falls back to the viewport");
+    }
+
+    #[test]
+    fn a_size_container_answers_height_queries_and_cqh() {
+        let (styles, t) = container_cascade(
+            "#c { container-type: size } @container (min-height: 50px) { p { color: #ff0000 } } p { height: calc(10cqh + 1px) }",
+            &[("c", (400.0, 100.0))],
+        );
+        assert_eq!(styles[&t].color, Color::Rgba(255, 0, 0, 255));
+        assert_eq!(styles[&t].other["height"], Value::Calc(crate::Calc::Sum(
+            Box::new(crate::Calc::Length(Length::Px(10.0))),
+            Box::new(crate::Calc::Length(Length::Px(1.0))),
+        )));
+    }
+
+    #[test]
+    fn a_named_query_skips_containers_with_other_names() {
+        let doc = blueice_html::parse("<div id=outer><div id=inner><p id=t>x</p></div></div>");
+        let find = |id: &str| {
+            all_elements(&doc).into_iter()
+                .find(|n| matches!(doc.data(*n), NodeData::Element { attributes, .. } if attributes.iter().any(|(k, v)| k == "id" && v == id)))
+                .unwrap()
+        };
+        let (outer, inner, t) = (find("outer"), find("inner"), find("t"));
+        let rules = parse(
+            "#outer { container: wide / inline-size } #inner { container: narrow / inline-size } \
+             @container wide (min-width: 500px) { p { color: #ff0000 } }",
+        );
+        let mut map = ContainerSizes::new();
+        map.insert(outer, (800.0, 0.0));
+        map.insert(inner, (100.0, 0.0));
+        let styles = cascade_with_containers(&doc, &[(Origin::Author, &rules)], 1000.0, 800.0, &map);
+        assert_eq!(styles[&t].color, Color::Rgba(255, 0, 0, 255));
+    }
+
+    #[test]
+    fn the_container_itself_is_not_matched_by_its_own_query() {
+        let doc = blueice_html::parse("<div id=c>x</div>");
+        let c = all_elements(&doc).into_iter()
+            .find(|n| matches!(doc.data(*n), NodeData::Element { tag_name, .. } if tag_name == "div"))
+            .unwrap();
+        let rules = parse("div { container-type: size } @container (min-width: 1px) { div { color: #ff0000 } }");
+        let mut map = ContainerSizes::new();
+        map.insert(c, (400.0, 100.0));
+        let styles = cascade_with_containers(&doc, &[(Origin::Author, &rules)], 1000.0, 800.0, &map);
+        assert_ne!(styles[&c].color, Color::Rgba(255, 0, 0, 255));
+    }
+
+    #[test]
+    fn nested_container_rules_need_every_condition() {
+        let css = "#c { container-type: inline-size } \
+            @container (min-width: 100px) { @container (max-width: 300px) { p { color: #ff0000 } } }";
+        let (inside, t) = container_cascade(css, &[("c", (200.0, 0.0))]);
+        assert_eq!(inside[&t].color, Color::Rgba(255, 0, 0, 255));
+        let (outside, t) = container_cascade(css, &[("c", (400.0, 0.0))]);
+        assert_ne!(outside[&t].color, Color::Rgba(255, 0, 0, 255));
+    }
+
+    #[test]
+    fn range_syntax_and_not_work_in_a_container_condition() {
+        let css = "#c { container-type: inline-size } \
+            @container (200px <= width < 500px) { p { color: #ff0000 } } \
+            @container not (width > 300px) { p { width: 7px } }";
+        let (styles, t) = container_cascade(css, &[("c", (250.0, 0.0))]);
+        assert_eq!(styles[&t].color, Color::Rgba(255, 0, 0, 255));
+        assert_eq!(styles[&t].other["width"], px(7.0));
+        let (styles, t) = container_cascade(css, &[("c", (600.0, 0.0))]);
+        assert_ne!(styles[&t].color, Color::Rgba(255, 0, 0, 255));
+        assert!(!styles[&t].other.contains_key("width"));
+    }
+
+    #[test]
+    fn a_page_with_containers_is_never_restyled_incrementally() {
+        let mut doc = blueice_html::parse("<div id=c style=\"container-type:size\"><p>x</p></div>");
+        let ua = ua_stylesheet();
+        let sheets: [(Origin, &[Rule]); 1] = [(Origin::Ua, &ua)];
+        let mut styles = cascade(&doc, &sheets);
+        doc.take_changes();
+        let p = all_elements(&doc).into_iter()
+            .find(|n| matches!(doc.data(*n), NodeData::Element { tag_name, .. } if tag_name == "p"))
+            .unwrap();
+        if let NodeData::Element { attributes, .. } = doc.data_mut(p) {
+            attributes.push(("class".to_string(), "k".to_string()));
+        }
+        let changes = doc.take_changes();
+        assert!(!cascade_incremental(&doc, &sheets, 1280.0, 720.0, &mut styles, &changes));
     }
 }
