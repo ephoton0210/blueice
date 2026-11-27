@@ -465,12 +465,6 @@ impl Parser {
     ) -> usize {
         let edit_start = self.tokens[index].start;
         let type_start = index + 1;
-        let end_index = find_balanced_delimiter(
-            &self.tokens,
-            type_start,
-            end,
-            &[";", ",", ")", "]", "}", "&&", "||", "as", "satisfies"],
-        );
         // Assertions are erased, but their named types still need lexical
         // resolution. Parse through the same type grammar as annotations.
         let saved_index = self.index;
@@ -480,6 +474,10 @@ impl Parser {
         } else {
             self.parse_type_until(&[";", ",", ")", "]", "}", "&&", "||", "as", "satisfies"])
         };
+        // The type grammar owns its commas and nested callable delimiters.
+        // A runtime delimiter scan would stop inside Record<K, V>, leaving
+        // the rest of the target behind as apparent JavaScript values.
+        let end_index = self.index.min(end);
         self.type_assertions.insert(edit_start, annotation);
         self.index = saved_index;
         self.edits.push(TextEdit {

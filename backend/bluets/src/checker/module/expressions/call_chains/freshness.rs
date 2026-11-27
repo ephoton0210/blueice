@@ -25,7 +25,7 @@ impl ModuleChecker<'_> {
         if call.explicit.is_some() {
             return Some(false);
         }
-        let arguments = split_call_arguments(call.arguments)?;
+        let arguments = self.call_arguments(call.arguments)?;
         let actuals = self
             .expanded_call_argument_types_for(&arguments, scope, &signatures)
             .ok()?;

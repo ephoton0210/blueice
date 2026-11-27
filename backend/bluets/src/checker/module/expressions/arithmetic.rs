@@ -24,13 +24,15 @@ impl<'a> ModuleChecker<'a> {
             self.check_arithmetic_operators(alternate, scope, span);
             return;
         }
-        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["??"], generic_call) {
+        if let Some((left, _, right)) = self.expression_binary_parts(tokens, &["??"], generic_call)
+        {
             self.check_arithmetic_operators(left, scope, span);
             self.check_arithmetic_operators(right, scope, span);
             return;
         }
         for operators in [&["||"][..], &["&&"][..]] {
-            if let Some((left, _, right)) = top_level_binary_parts(tokens, operators, generic_call)
+            if let Some((left, _, right)) =
+                self.expression_binary_parts(tokens, operators, generic_call)
             {
                 self.check_arithmetic_operators(left, scope, span);
                 self.check_arithmetic_operators(right, scope, span);
@@ -39,7 +41,7 @@ impl<'a> ModuleChecker<'a> {
         }
         for operators in [&["|"][..], &["^"][..], &["&"][..]] {
             if let Some((left, operator, right)) =
-                top_level_binary_parts(tokens, operators, generic_call)
+                self.expression_binary_parts(tokens, operators, generic_call)
             {
                 self.check_arithmetic_operators(left, scope, span);
                 self.check_arithmetic_operators(right, scope, span);
@@ -53,7 +55,7 @@ impl<'a> ModuleChecker<'a> {
             }
         }
         if let Some((left, operator, right)) =
-            top_level_binary_parts(tokens, &["===", "!=="], generic_call)
+            self.expression_binary_parts(tokens, &["===", "!=="], generic_call)
         {
             self.check_arithmetic_operators(left, scope, span);
             self.check_arithmetic_operators(right, scope, span);
@@ -66,13 +68,13 @@ impl<'a> ModuleChecker<'a> {
             return;
         }
         if let Some((left, _, right)) =
-            top_level_binary_parts(tokens, &["==", "!=", "<", ">", "<=", ">="], generic_call)
+            self.expression_binary_parts(tokens, &["==", "!=", "<", ">", "<=", ">="], generic_call)
         {
             self.check_arithmetic_operators(left, scope, span);
             self.check_arithmetic_operators(right, scope, span);
             return;
         }
-        if let Some((left, operator, right)) = top_level_shift_parts(tokens, generic_call) {
+        if let Some((left, operator, right)) = self.expression_shift_parts(tokens, generic_call) {
             self.check_arithmetic_operators(left, scope, span);
             self.check_arithmetic_operators(right, scope, span);
             self.check_known_numeric_operands(
@@ -87,11 +89,11 @@ impl<'a> ModuleChecker<'a> {
         // its left side, which would be as deep as the chain is long.
         for operators in [&["+", "-"][..], &["*", "/", "%"][..]] {
             if let Some((mut rest, operator, last)) =
-                top_level_binary_parts(tokens, operators, generic_call)
+                self.expression_binary_parts(tokens, operators, generic_call)
             {
                 let mut chain = vec![(operator, last)];
                 while let Some((left, operator, operand)) =
-                    top_level_binary_parts(rest, operators, generic_call)
+                    self.expression_binary_parts(rest, operators, generic_call)
                 {
                     chain.push((operator, operand));
                     rest = left;
@@ -124,7 +126,8 @@ impl<'a> ModuleChecker<'a> {
                 return;
             }
         }
-        if let Some((left, operator, right)) = top_level_binary_parts(tokens, &["**"], generic_call)
+        if let Some((left, operator, right)) =
+            self.expression_binary_parts(tokens, &["**"], generic_call)
         {
             self.check_arithmetic_operators(left, scope, span);
             self.check_arithmetic_operators(right, scope, span);

@@ -1,0 +1,303 @@
+{
+  "schemaVersion": 1,
+  "package": "P0-K",
+  "conclusion": "finite-implementation-and-matching-evidence-accepted-after-final-review",
+  "acceptedParent": "b45a2a211470a8cfb738d79d45900de4abff20a7",
+  "sourceRevision": "backend-tree:f37bddc3ad3d842b3dcf261e7c6e6fedcca1290e",
+  "frozenContractSha256": "28d5d5f985ba00dc2cd6e5067032628aef4a246448e11f67a7cd68a95ba194a8",
+  "technicalAndEvidenceRequirementsComplete": true,
+  "requirements": [
+    {
+      "requirement": "All 124 primary observations match Native verdicts and complete primary/related diagnostics with UTF-16 positions; all 12 separate control diagnostics remain unchanged.",
+      "status": "proved",
+      "evidence": [
+        "complete-primary-and-control-results-on-all-four-actual-compilers"
+      ]
+    },
+    {
+      "requirement": "All 96 accepted primary inventories and exact declarations match; emitted JavaScript parses; 192 isolated consumers and 8 executions pass; no outputs on rejected inputs.",
+      "status": "proved",
+      "evidence": [
+        "exact-declarations-consumers-executions-complete-map-and-syntax-gates"
+      ]
+    },
+    {
+      "requirement": "Correctly count real commas and trailing commas; retain generic/as/satisfies target ownership, lexical type checking, unknown-as-T pure returns, readonly/opaque mutation refusals, expansion budgets and selected source/noEmit boundaries.",
+      "status": "proved",
+      "evidence": [
+        "source-review-public-regressions-and-original-assertion-owner-budget-contracts"
+      ]
+    },
+    {
+      "requirement": "All existing Native/local workspace/fmt/all-target Clippy, Windows x86_64 82-core and applicable original cohorts, map, project and tooling gates pass on the final source.",
+      "status": "proved",
+      "evidence": [
+        "complete-local-and-Windows-gates"
+      ]
+    },
+    {
+      "requirement": "Retain frozen originals, discovery failures, previous case identities and policy expectations; publish implementation plus matching measurements and byte-auditable evidence.",
+      "status": "proved",
+      "evidence": [
+        "all-source-and-raw-evidence-bytes-independently-reconstructed"
+      ]
+    }
+  ],
+  "deliveryRequirement": {
+    "requirement": "Check TODO only after completion; commit coherent implementation and measurement together, then automatically push.",
+    "status": "ready-for-authorized-coherent-commit-and-automatic-push",
+    "actualDeliveryAuthority": "Git history and remote branch; this pre-commit record does not claim a commit or push already happened"
+  },
+  "proofs": {
+    "ERASED_TYPE_REGIONS_CONTRACT.json": {
+      "path": "ERASED_TYPE_REGIONS_CONTRACT.json",
+      "sha256": "28d5d5f985ba00dc2cd6e5067032628aef4a246448e11f67a7cd68a95ba194a8"
+    },
+    "ERASED_TYPE_REGIONS_ACCEPTANCE_AUDIT.json": {
+      "path": "ERASED_TYPE_REGIONS_ACCEPTANCE_AUDIT.json",
+      "sha256": "715a7c88d26c18f151eea980d528fe3d2c8207da40de4db55c688a3957eae0f0"
+    },
+    "ERASED_TYPE_REGIONS_MEASUREMENT.json": {
+      "path": "ERASED_TYPE_REGIONS_MEASUREMENT.json",
+      "sha256": "66f5e6bcfc0357dbb3e0f5aec36f6b0e8bb1af5d7b650a5a160b9d73ca015363"
+    },
+    "ERASED_TYPE_REGIONS_ARTIFACTS.json": {
+      "path": "ERASED_TYPE_REGIONS_ARTIFACTS.json",
+      "sha256": "ae47d4999eaeae6be473de8dc831a66c7a5ab10abaea64da03fb7a41112aeed0"
+    },
+    "ERASED_TYPE_REGIONS_OPEN_LAYOUT_OBSERVATIONS.json": {
+      "path": "ERASED_TYPE_REGIONS_OPEN_LAYOUT_OBSERVATIONS.json",
+      "sha256": "8237a167e0ac7538a4855e258b9d8c4b8dded9c5bdde73f4fba94c97ae17709e"
+    }
+  },
+  "actualCompilers": {
+    "native": "f1f4a15464039cd58981c31a5c51224b4936be2bffff33cfd430afcdfec245e9",
+    "workspace": "559e2ce7183c7b180a9c70ed501f04189c7df087353193823b38af7f7cd56f7f",
+    "standalone": "470922d6d9d32d9f36bfe3364f5b6451a8019e99baf357f973956a93a56a029f",
+    "windows-x86_64": "7aaf514b9034a812ad0681b878d85ee17aae15f091bb1fab5e7ac06a63b97170"
+  },
+  "sourceReview": {
+    "compilerToolAuxiliaryFilesUnchanged": 14880,
+    "allInputsAlsoMatchWindowsManifest": true,
+    "reviewedImplementationFiles": 24,
+    "requiredChanges": [],
+    "rustSourceModules": 586,
+    "maximumModuleLines": 1477
+  },
+  "native": {
+    "suites": 194,
+    "functions": 1118,
+    "failed": 0,
+    "ignored": 0,
+    "filtered": 0
+  },
+  "workspace": {
+    "passed": 8086,
+    "failed": 0,
+    "ignored": 403,
+    "filtered": 0,
+    "executables": 739
+  },
+  "windows": {
+    "cohorts": 78,
+    "coreOracles": 82,
+    "pathCases": 25,
+    "sourceFiles": 14972,
+    "compilerMachine": 34404,
+    "archiveSha256": "d9d9352aa656caf245a6ac562292d635de093b99a0c8d8ba03139caf3763e763",
+    "openExactLayout": {
+      "native": {
+        "archiveEntry": "results-erased-type-regions-source2tools2w1/erased-type-regions/native/result.json",
+        "reportSha256": "1fe50777cfb4dbaa73d0674be0346a7d2c6ff2f673f922ca45c27be21a0fa518",
+        "affectedObservations": 52,
+        "repairCredit": 0,
+        "differencesRetainedInFullRawReport": true
+      },
+      "legacy": {
+        "archiveEntry": "results-erased-type-regions-source2tools2w1/erased-type-regions/legacy/result.json",
+        "reportSha256": "f61799a158870a8dd4fcf6039f58e1dcfddff1819015cd5d0c27a2dc3732ed38",
+        "affectedObservations": 52,
+        "repairCredit": 0,
+        "differencesRetainedInFullRawReport": true
+      }
+    }
+  },
+  "mapsAndPrograms": {
+    "mapProfiles": 2,
+    "familiesPerProfile": 55,
+    "functionsPerProfile": 298,
+    "configurationsPerProfile": 8407,
+    "buildsPerConfiguration": 2,
+    "originalNativeCorrections": 572,
+    "programProfiles": 2,
+    "completeStepsPerProfile": 14,
+    "projects": [
+      "defu",
+      "mitt",
+      "reproductions",
+      "interchange"
+    ]
+  },
+  "tooling": {
+    "nodeFiles": 48,
+    "nodeTests": 322,
+    "allFinalDocumentationAndStagedChecksPassed": true,
+    "finalChecks": {
+      "accounting": {
+        "label": "accounting",
+        "command": [
+          "python3",
+          "-B",
+          "development/browser_core/phase-18-bluets/tools/account_inventory_rows.py",
+          "--check"
+        ],
+        "startedAt": "2026-11-27T00:31:59.090783+00:00",
+        "pid": 72846,
+        "exitCode": 0,
+        "finishedAt": "2026-11-27T00:31:59.917154+00:00",
+        "stdoutSha256": "6d47c574d6ba0749fa15045ec31ae1682d8d4cd589d4d1ea806687976eff6e56",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "status": {
+        "label": "status",
+        "command": [
+          "python3",
+          "-B",
+          "development/browser_core/phase-18-bluets/tools/check_compatibility_status.py",
+          "--check"
+        ],
+        "startedAt": "2026-11-27T00:31:59.090341+00:00",
+        "pid": 72844,
+        "exitCode": 0,
+        "finishedAt": "2026-11-27T00:31:59.964959+00:00",
+        "stdoutSha256": "15369a59ba9bc0f7c61fd1397430cd9f87b259b5c75842a14789c69200c43ef0",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "format": {
+        "label": "format",
+        "command": [
+          "cargo",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        "startedAt": "2026-11-27T00:31:59.092371+00:00",
+        "pid": 72847,
+        "exitCode": 0,
+        "finishedAt": "2026-11-27T00:32:05.043603+00:00",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "whitespace": {
+        "label": "whitespace",
+        "command": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "startedAt": "2026-11-27T00:31:59.090389+00:00",
+        "pid": 72845,
+        "exitCode": 0,
+        "finishedAt": "2026-11-27T00:32:00.377814+00:00",
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "check-staged-verified-tree": {
+        "label": "check-staged-verified-tree",
+        "command": [
+          "/Users/ephoton/git/blueice-bluets/target/debug/examples/compatibility_inventory",
+          "--check-staged"
+        ],
+        "checkerSha256": "9a2b56c60c201c95ab161df6d800ece0168de6de59b5955bfffc148baf81b3a6",
+        "startedAt": "2026-11-27T00:35:33.528729+00:00",
+        "pid": 77328,
+        "exitCode": 0,
+        "finishedAt": "2026-11-27T00:35:46.547613+00:00",
+        "stdoutSha256": "b303f1a51d4171af7dc7899a66c14e693796fb7844115e753cfe34fc7320221a",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "check-cases-staged-verified-tree": {
+        "label": "check-cases-staged-verified-tree",
+        "command": [
+          "/Users/ephoton/git/blueice-bluets/target/debug/examples/compatibility_inventory",
+          "--check-cases-staged"
+        ],
+        "checkerSha256": "9a2b56c60c201c95ab161df6d800ece0168de6de59b5955bfffc148baf81b3a6",
+        "startedAt": "2026-11-27T00:35:33.528732+00:00",
+        "pid": 77327,
+        "exitCode": 0,
+        "finishedAt": "2026-11-27T00:35:46.795077+00:00",
+        "stdoutSha256": "a66dd48892bf4a71d8b6e9e6bd9ad71701d15a4ac854455c98f4650cb555ab64",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  },
+  "publishedEvidence": {
+    "conclusion": "all-archive-fragments-and-complete-file-bytes-independently-verified",
+    "archives": 15,
+    "files": 593878,
+    "fragments": 593981,
+    "bytes": 3346851924,
+    "requiredHashesVerified": 593878,
+    "wholeP0JComplete": false,
+    "sourceRevision": "backend-tree:f37bddc3ad3d842b3dcf261e7c6e6fedcca1290e",
+    "artifactIndexSha256": "ae47d4999eaeae6be473de8dc831a66c7a5ab10abaea64da03fb7a41112aeed0",
+    "recordedAt": "2026-11-27T00:29:43.934904+00:00"
+  },
+  "preservation": {
+    "originalCaseObjects": 43492,
+    "addedCases": 136,
+    "totalCases": 43628,
+    "originalNativeExpectationsUnchanged": true,
+    "discoveryControlsRemainOpen": 12,
+    "exactLayoutObservationsPerLocalProfileRemainOpen": 52,
+    "broaderFeatureRowsRemainOpen": 22,
+    "fullTypeScriptParity": false,
+    "failedSourceAndOrchestrationAttemptsPreserved": true,
+    "originalWorkspaceAndWindowsTestsNotRestarted": true
+  },
+  "historicalSnapshotPolicy": "Acceptance, measurement and artifact JSON retain their original pre-review pending/false fields and hashes. This later dated record accepts only the finite P0-K technical/evidence contract. Git records subsequent delivery.",
+  "statusDocumentScope": {
+    "fullCaseMeasurementPlatform": "darwin-arm64",
+    "newWindowsScope": "78 compiler cohorts plus82 core oracles and25 path cases; no all-platform full-case claim",
+    "fourGeneratedStatusBlocksUnchanged": true,
+    "CLAUDEChange": "Only the required generated P0-K status block differs from HEAD; outside-block bytes equal HEAD, confirmed against the archived status-write receipt."
+  },
+  "finalCheckRecovery": {
+    "missingTreeRecreated": {
+      "conclusion": "original-frozen-backend-tree-recreated-byte-identically-from-the-verified-staged-index",
+      "priorCatFileExit": 128,
+      "priorCatFileStderr": "fatal: git cat-file: could not get object info\n",
+      "stagedRootTree": "12b1b905fe01b6f7cabdba8d65e4f0db26a2910a",
+      "backendTree": "f37bddc3ad3d842b3dcf261e7c6e6fedcca1290e",
+      "expectedBackendTree": "f37bddc3ad3d842b3dcf261e7c6e6fedcca1290e",
+      "compilerOrToolChanges": [],
+      "checksChanged": false,
+      "recordedAt": "2026-11-27T00:35:19.223433+00:00"
+    },
+    "inventoryCheckerRecompiled": {
+      "command": [
+        "cargo",
+        "rustc",
+        "-p",
+        "blueice-bluets",
+        "--example",
+        "compatibility_inventory",
+        "--locked",
+        "--",
+        "-C",
+        "metadata=p0k_final_review_20261127"
+      ],
+      "reason": "Force recompilation of only this source-inspection example; bind the actual final checker instead of relying on cached artifact identity",
+      "startedAt": "2026-11-27T00:34:13.831643+00:00",
+      "pid": 75567,
+      "exitCode": 0,
+      "finishedAt": "2026-11-27T00:34:17.439901+00:00",
+      "executableSha256": "9a2b56c60c201c95ab161df6d800ece0168de6de59b5955bfffc148baf81b3a6"
+    },
+    "noCompilerOrFixtureOrVerifierRequirementsChanged": true,
+    "initialFailedCheckLogsRetained": true
+  },
+  "recordedAt": "2026-11-27T00:37:45.736811+00:00"
+}

@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "package": "P0-K",
+  "status": "frozen-before-production-changes",
+  "acceptedParent": "b45a2a211470a8cfb738d79d45900de4abff20a7",
+  "scope": "Parser-owned erased type regions in shared call argument traversal; exact diagnostics and declarations.",
+  "authorities": {
+    "cases.json": "c46ed859fbb282ffd05c4a53934011d49c68c0fad349e8c947adc4f7980007ab",
+    "reference.json": "d13bb2455e2db07a8ba3a27ec26d458c5474201ca5f7f500df4b02ed6f0fccfd",
+    "FROZEN.json": "06175ef6c7c5f0599eb07762793c52f3eb0b26ae52eb09125c6a67907b0b074c",
+    "discovery-controls.json": "70dda280722a7a325e13a370263267a68f15b983d66eec0f3811798266be1b31"
+  },
+  "counts": {
+    "originalForms": 34,
+    "profiles": 4,
+    "nativeObservationsRetained": 136,
+    "primaryObservations": 124,
+    "primaryAccepted": 96,
+    "primaryRejected": 28,
+    "separateDiscoveryControls": 12,
+    "positiveAndNegativeConsumers": 192,
+    "executions": 8
+  },
+  "notRepairCredit": {
+    "constructor-as-argument": "Existing ambient-class parser refusal; general ambient classes remain open under G-T9.",
+    "relational-comma-control": "Existing multi-variable declaration refusal; retain original diagnostics without call-repair credit.",
+    "shift-comma-control": "Existing multi-variable declaration refusal; retain original diagnostics without call-repair credit."
+  },
+  "mapPolicy": {
+    "compareAndRetainAllNativeMapDifferences": true,
+    "required": "Complete JSON maps must decode, generated/source coordinates must be valid UTF-16 coordinates in the owned graph. Existing full 55-family/298-function/572-correction regression gate remains required.",
+    "open": "Newly observed exact mapping differences, including the unchanged satisfies-alias control, remain open and must be enumerated; this package does not claim arbitrary exact Native mapping parity."
+  },
+  "completion": [
+    "All 124 primary observations match Native verdicts and complete primary/related diagnostics with UTF-16 positions; all 12 separate control diagnostics remain unchanged.",
+    "All 96 accepted primary inventories and exact declarations match; emitted JavaScript parses; 192 isolated consumers and 8 executions pass; no outputs on rejected inputs.",
+    "Correctly count real commas and trailing commas; retain generic/as/satisfies target ownership, lexical type checking, unknown-as-T pure returns, readonly/opaque mutation refusals, expansion budgets and selected source/noEmit boundaries.",
+    "All existing Native/local workspace/fmt/all-target Clippy, Windows x86_64 82-core and applicable original cohorts, map, project and tooling gates pass on the final source.",
+    "Retain frozen originals, discovery failures, previous case identities and policy expectations; publish implementation plus matching measurements and byte-auditable evidence.",
+    "Check TODO only after completion; commit coherent implementation and measurement together, then automatically push."
+  ]
+}

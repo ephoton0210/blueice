@@ -186,7 +186,7 @@ impl<'a> ModuleChecker<'a> {
             );
             return;
         }
-        let Some(arguments) = split_call_arguments(call.arguments) else {
+        let Some(arguments) = self.call_arguments(call.arguments) else {
             return;
         };
         for argument in &arguments {

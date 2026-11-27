@@ -89,7 +89,8 @@ impl ModuleChecker<'_> {
         scope: &BTreeMap<String, Type>,
         span: &SourceSpan,
     ) -> bool {
-        let Some((target, _, value)) = top_level_binary_parts(tokens, &["="], |_| false) else {
+        let Some((target, _, value)) = self.expression_binary_parts(tokens, &["="], |_| false)
+        else {
             return false;
         };
         let Some((receiver, _)) = member_access_target(target) else {

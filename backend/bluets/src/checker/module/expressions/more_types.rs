@@ -238,6 +238,45 @@ impl ModuleChecker<'_> {
                         &mut HashSet::new(),
                         &mut budget,
                     );
+                    if matches!(expected, Type::IndexedRecord { .. }) {
+                        if let Type::Record(fields) = &actual {
+                            for field in fields {
+                                let PropertyType::Found { value, .. } = property_type(
+                                    &expected,
+                                    &field.name,
+                                    &self.types,
+                                    &mut HashSet::new(),
+                                    &mut budget,
+                                ) else {
+                                    continue;
+                                };
+                                let point = SourceSpan::new(
+                                    &self.module.id,
+                                    field.span.start,
+                                    field.span.start + field.name.len(),
+                                );
+                                if !self.is_assignable_bounded(&field.value, &value, &point) {
+                                    self.typescript_type_error(
+                                        &point,
+                                        "satisfies indexed property is incompatible".into(),
+                                        DiagnosticCode::TypeMismatch,
+                                        2322,
+                                        vec![
+                                            crate::diagnostic::type_text::render_in(
+                                                &field.value,
+                                                self.project,
+                                            ),
+                                            crate::diagnostic::type_text::render_in(
+                                                &value,
+                                                self.project,
+                                            ),
+                                        ],
+                                    );
+                                    return true;
+                                }
+                            }
+                        }
+                    }
                     if let (Type::Record(actual), Type::Record(expected)) = (&actual, &expected) {
                         if let Some(field) = actual
                             .iter()

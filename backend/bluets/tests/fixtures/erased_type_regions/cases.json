@@ -1,0 +1,283 @@
+{
+  "schemaVersion": 1,
+  "acceptedParent": "b45a2a211470a8cfb738d79d45900de4abff20a7",
+  "scope": "P0-K parser-owned erased type boundaries in call arguments; broader rows open; no tuple/conditional repair credit",
+  "profiles": [
+    {
+      "id": "es5-esm",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "ESNext",
+        "lib": [
+          "ES5"
+        ],
+        "strict": true,
+        "types": [],
+        "declaration": true,
+        "declarationMap": true,
+        "sourceMap": true,
+        "noEmitOnError": true,
+        "alwaysStrict": true,
+        "rootDir": ".",
+        "outDir": "out"
+      }
+    },
+    {
+      "id": "es5-cjs",
+      "compilerOptions": {
+        "target": "ES5",
+        "module": "CommonJS",
+        "lib": [
+          "ES5"
+        ],
+        "strict": true,
+        "types": [],
+        "declaration": true,
+        "declarationMap": true,
+        "sourceMap": true,
+        "noEmitOnError": true,
+        "alwaysStrict": true,
+        "rootDir": ".",
+        "outDir": "out"
+      }
+    },
+    {
+      "id": "es2022-esm",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "lib": [
+          "ES5"
+        ],
+        "strict": true,
+        "types": [],
+        "declaration": true,
+        "declarationMap": true,
+        "sourceMap": true,
+        "noEmitOnError": true,
+        "alwaysStrict": true,
+        "rootDir": ".",
+        "outDir": "out"
+      }
+    },
+    {
+      "id": "es2022-cjs",
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "lib": [
+          "ES5"
+        ],
+        "strict": true,
+        "types": [],
+        "declaration": true,
+        "declarationMap": true,
+        "sourceMap": true,
+        "noEmitOnError": true,
+        "alwaysStrict": true,
+        "rootDir": ".",
+        "outDir": "out"
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "as-record-argument",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function take<T>(value: T): T;\nexport const result = take({count: 1} as Record<string, number>);\n",
+      "positive": "const accepted: Record<string, number> = result;\n",
+      "negative": "const rejected: never = result;\n"
+    },
+    {
+      "id": "as-nested-record-argument",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function take<T>(value: T): T;\nexport const result = take({inner: {count: 1}} as Record<string, Record<string, number>>);\n",
+      "positive": "const accepted: Record<string, Record<string, number>> = result;\n",
+      "negative": "const rejected: never = result;\n"
+    },
+    {
+      "id": "satisfies-contextual-callback",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function take<T>(value: T): T;\nexport const result = take({read: value => value.toString()} satisfies Record<string, (value: number) => string>);\n",
+      "positive": "const accepted: string = result.read(1);\n",
+      "negative": "const rejected: never = result;\n"
+    },
+    {
+      "id": "satisfies-parenthesized-callback",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function take<T>(value: T): T;\nexport const result = take(({read: (value: number) => value.toString()} satisfies Record<string, (value: number) => string>));\n",
+      "positive": "const accepted: string = result.read(1);\n",
+      "negative": "const rejected: never = result;\n"
+    },
+    {
+      "id": "generic-call-argument",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function take<T>(value: T): T;\ndeclare function pair<A, B>(a: A, b: B): [A, B];\nexport const result = take(pair<number, string>(1, \"a\"));\n",
+      "positive": "const accepted: [number, string] = result;\n",
+      "negative": "const rejected: never = result;\n"
+    },
+    {
+      "id": "generic-nested-call-argument",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function take<T>(value: T): T;\ndeclare function pair<A, B>(a: A, b: B): [A, B];\nexport const result = take(pair<Record<string, number>, string>({count: 1}, \"a\"));\n",
+      "positive": "const accepted: [Record<string, number>, string] = result;\n",
+      "negative": "const rejected: never = result;\n"
+    },
+    {
+      "id": "as-second-of-two-arguments",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function second<A, B>(a: A, b: B): B;\nexport const result = second(0, {count: 1} as Record<string, number>);\n",
+      "positive": "const accepted: Record<string, number> = result;\n",
+      "negative": "const rejected: never = result;\n"
+    },
+    {
+      "id": "as-first-of-two-arguments",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function first<A, B>(a: A, b: B): A;\nexport const result = first({count: 1} as Record<string, number>, \"end\");\n",
+      "positive": "const accepted: Record<string, number> = result;\n",
+      "negative": "const rejected: never = result;\n"
+    },
+    {
+      "id": "as-trailing-comma",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function take<T>(value: T): T;\nexport const result = take({count: 1} as Record<string, number>,);\n",
+      "positive": "const accepted: Record<string, number> = result;\n",
+      "negative": "const rejected: never = result;\n"
+    },
+    {
+      "id": "satisfies-generic-binder",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function take<T>(value: T): T;\nexport const result = take({read: <T>(value: T): T => value} satisfies Record<string, <T>(value: T) => T>);\n",
+      "positive": "const accepted: number = result.read(1);\n",
+      "negative": "const rejected: never = result;\n"
+    },
+    {
+      "id": "member-as-argument",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare const reader: {take<T>(value: T): T};\nexport const result = reader.take({count: 1} as Record<string, number>);\n",
+      "positive": "const accepted: Record<string, number> = result;\n",
+      "negative": "const rejected: never = result;\n"
+    },
+    {
+      "id": "indexed-as-argument",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare const readers: {take<T>(value: T): T};\nexport const result = readers[\"take\"]({count: 1} as Record<string, number>);\n",
+      "positive": "const accepted: Record<string, number> = result;\n",
+      "negative": "const rejected: never = result;\n"
+    },
+    {
+      "id": "returned-call-as-argument",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function create(): <T>(value: T) => T;\nexport const result = create()({count: 1} as Record<string, number>);\n",
+      "positive": "const accepted: Record<string, number> = result;\n",
+      "negative": "const rejected: never = result;\n"
+    },
+    {
+      "id": "constructor-as-argument",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare class Box<T> {value: T; constructor(value: T);}\nexport const result = new Box({count: 1} as Record<string, number>);\n",
+      "positive": "const accepted: Record<string, number> = result.value;\n",
+      "negative": "const rejected: never = result;\n"
+    },
+    {
+      "id": "call-method-as-argument",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function read(value: Record<string, number>): number;\nexport const result = read.call(undefined, {count: 1} as Record<string, number>);\n",
+      "positive": "const accepted: number = result;\n",
+      "negative": "const rejected: never = result;\n"
+    },
+    {
+      "id": "return-as-argument",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function take<T>(value: T): T;\nexport function result() { return take({count: 1} as Record<string, number>); }\n",
+      "positive": "const accepted: Record<string, number> = result();\n",
+      "negative": "const rejected: never = result;\n"
+    },
+    {
+      "id": "arrow-as-argument",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function take<T>(value: T): T;\nexport const result = () => take({count: 1} as Record<string, number>);\n",
+      "positive": "const accepted: Record<string, number> = result();\n",
+      "negative": "const rejected: never = result;\n"
+    },
+    {
+      "id": "imported-as-argument",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nimport {take} from \"./dep.js\";\nimport type {Bag} from \"./dep.js\";\nexport const result = take({count: 1} as Bag<string, number>);\n",
+      "positive": "const accepted: Record<string, number> = result;\n",
+      "negative": "const rejected: never = result;\n",
+      "files": {
+        "dep.ts": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport type Bag<K extends string, V> = Record<K, V>;\nexport declare function take<T>(value: T): T;\n"
+      }
+    },
+    {
+      "id": "qualified-generic-call",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nimport * as dep from \"./dep.js\";\ndeclare function take<T>(value: T): T;\nexport const result = take(dep.pair<number, string>(1, \"a\"));\n",
+      "positive": "const accepted: [number, string] = result;\n",
+      "negative": "const rejected: never = result;\n",
+      "files": {
+        "dep.ts": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport declare function pair<A, B>(a: A, b: B): [A, B];\n"
+      }
+    },
+    {
+      "id": "parenthesized-as",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function take<T>(value: T): T;\nexport const result = take((({count: 1} as Record<string, number>)));\n",
+      "positive": "const accepted: Record<string, number> = result;\n",
+      "negative": "const rejected: never = result;\n"
+    },
+    {
+      "id": "as-chain",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function take<T>(value: T): T;\nexport const result = take({count: 1} as Record<string, number> as {count: number});\n",
+      "positive": "const accepted: number = result.count;\n",
+      "negative": "const rejected: never = result;\n"
+    },
+    {
+      "id": "satisfies-alias-control",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function take<T>(value: T): T;\ntype Handler = Record<string, (value: number) => string>;\nexport const result = take({read: (value: number) => value.toString()} satisfies Handler);\n",
+      "positive": "const accepted: string = result.read(1);\n",
+      "negative": "const rejected: never = result;\n"
+    },
+    {
+      "id": "relational-comma-control",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function pair(a: boolean, b: boolean): [boolean, boolean];\ndeclare const a: number, b: number, c: number, d: number;\nexport const result = pair(a < b, c > d);\n",
+      "positive": "const accepted: [boolean, boolean] = result;\n",
+      "negative": "const rejected: never = result;\n"
+    },
+    {
+      "id": "shift-comma-control",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function pair(a: number, b: number): [number, number];\ndeclare const a: number, b: number;\nexport const result = pair(a << 1, b >> 1);\n",
+      "positive": "const accepted: [number, number] = result;\n",
+      "negative": "const rejected: never = result;\n"
+    },
+    {
+      "id": "unknown-pure-return-control",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport function result<T>(value: unknown): T { return value as T; }\n",
+      "positive": "const accepted: number = result<number>(1);\n",
+      "negative": "const rejected: never = result;\n"
+    },
+    {
+      "id": "runtime-as-record",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction take<T>(value: T): T { return value; }\nexport const result = take({count: 7} as Record<string, number>);\n",
+      "positive": "const accepted: number = result.count;\n",
+      "negative": "const rejected: never = result;\n",
+      "runtime": "if (m.result.count !== 7) throw new Error(\"assertion changed runtime operand\");"
+    },
+    {
+      "id": "runtime-satisfies-callback",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction take<T>(value: T): T { return value; }\nexport const result = take({read: (value: number) => value.toString()} satisfies Record<string, (value: number) => string>);\n",
+      "positive": "const accepted: string = result.read(1);\n",
+      "negative": "const rejected: never = result;\n",
+      "runtime": "if (m.result.read(7) !== \"7\") throw new Error(\"satisfies changed runtime operand\");"
+    },
+    {
+      "id": "as-unknown-target",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function take<T>(value: T): T;\nexport const result = take({count: 1} as Missing<string, number>);\n"
+    },
+    {
+      "id": "as-runtime-type-name",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function take<T>(value: T): T;\nexport const result = take(string, {count: 1} as Record<string, number>);\n"
+    },
+    {
+      "id": "as-extra-runtime-argument",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function take<T>(value: T): T;\nexport const result = take({count: 1} as Record<string, number>, 2);\n"
+    },
+    {
+      "id": "satisfies-wrong-property",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function take<T>(value: T): T;\nexport const result = take({count: \"bad\"} satisfies Record<string, number>);\n"
+    },
+    {
+      "id": "generic-wrong-runtime-argument",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function take<T>(value: T): T;\ndeclare function pair<A, B>(a: A, b: B): [A, B];\nexport const result = take(pair<number, string>(\"bad\", \"a\"));\n"
+    },
+    {
+      "id": "unbound-runtime-after-assertion",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function take<T>(value: T): T;\nexport const result = take({count: 1} as Record<string, number>, missingRuntime);\n"
+    },
+    {
+      "id": "readonly-member-control",
+      "source": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\ndeclare function consume(value: Readonly<Record<string, number>>): number;\ndeclare const value: Readonly<Record<string, number>>;\nexport const result = consume(value);\nvalue.count = 1;\n"
+    }
+  ]
+}

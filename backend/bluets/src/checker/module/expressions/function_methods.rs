@@ -52,7 +52,7 @@ impl ModuleChecker<'_> {
             return Some(Type::Any);
         }
         if member == "bind" {
-            let count = split_call_arguments(arguments)?.len().saturating_sub(1);
+            let count = self.call_arguments(arguments)?.len().saturating_sub(1);
             return Some(Type::Function {
                 parameters: signature
                     .parameters
@@ -78,7 +78,7 @@ impl ModuleChecker<'_> {
         let Some(signature) = self.method_signature(receiver, member, scope) else {
             return false;
         };
-        let Some(arguments) = split_call_arguments(arguments) else {
+        let Some(arguments) = self.call_arguments(arguments) else {
             return true;
         };
         if !self.checking.strict_bind_call_apply {
@@ -161,7 +161,7 @@ impl ModuleChecker<'_> {
                     {
                         let mut items = tokens[1..].to_vec();
                         items.last_mut().expect("array has closing bracket").text = ")".to_string();
-                        split_call_arguments(&items)
+                        self.call_arguments(&items)
                             .unwrap_or_default()
                             .iter()
                             .map(|a| self.infer_expression(a, scope))

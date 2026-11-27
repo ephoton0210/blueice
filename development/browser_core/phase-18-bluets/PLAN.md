@@ -9,24 +9,24 @@
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-11-19).**
+**Current BlueTS / BlueTSC compatibility status (2026-11-20).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 43,492 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 43,628 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 42,477/42,483 (99.9859%); 3 open, 3 refused observations |
+| Direct agreement | 42,601/42,619 (99.9578%); 11 open, 7 refused observations |
 | Separate controls | 633 native-reference + 376 BlueTS owner = 1,009; excluded from direct agreement |
-| Case labels | 43,486 scoped closed (including controls), 3 open, 3 refused |
-| Suite inventory | 193 suites / 398 ignored Rust functions; not a case denominator |
-| Suite labels | 189 scoped closed, 1 open, 3 refused |
+| Case labels | 43,610 scoped closed (including controls), 11 open, 7 refused |
+| Suite inventory | 194 suites / 399 ignored Rust functions; not a case denominator |
+| Suite labels | 189 scoped closed, 2 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 233 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 43,492 recorded case expectations pass; expected differences/refusals are not
+All 43,628 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -34,13 +34,16 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:fd642c71683fbd992d1319e5598c51f5379dc766`.
-Input graph SHA-256: `9db59b3686e4450ed197ad35ead4696fb77ae6e24fe43fe4103815566b4b3a80`.
+Compiler/oracle source: `backend-tree:f37bddc3ad3d842b3dcf261e7c6e6fedcca1290e`.
+Input graph SHA-256: `746733a70c04e76f4668cdc889735e5e772443d4dc2933c22ad566c200156335`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
 
 <!-- END CURRENT BLUETS STATUS -->
+
+**Same-source Windows follow-up (2026-11-26):** P0-K source `backend-tree:f37bddc3ad3d842b3dcf261e7c6e6fedcca1290e` passes all **78 compiler cohorts, 82 core oracles and 25 path cases** on the Windows x86_64 VM. The [acceptance](ERASED_TYPE_REGIONS_ACCEPTANCE.md), [measurements](ERASED_TYPE_REGIONS_MEASUREMENT.json) and [final review](ERASED_TYPE_REGIONS_FINAL_REVIEW.json) bind the actual compiler and full source. This is a finite Windows regression profile; the full 43,628-case measurement above retains its darwin-arm64 scope. All 22 broader rows remain open.
+
 
 **P0-H accepted (2026-11-17):** owner-selected roots compile as one closed
 program with shared legal script declarations, complete generation identity
@@ -18920,3 +18923,30 @@ host recovery and the exact two recorder repairs remain documented and preserved
 The original43,276 case objects and prior P0-I evidence remain intact;216 measured
 primary/control additions bring N to43,492. All22 broader feature rows remain
 open and full TypeScript parity stays OFF.
+
+### P0-K — Parser-owned erased type regions — 2026-11-27
+
+The shared runtime call traversal now uses parser-owned type ranges for generic,
+`as` and `satisfies` operands. Type-list commas no longer become runtime
+arguments; complete-call handling avoids duplicate nested diagnostics, and
+ES5 emission removes a final runtime call separator. The existing approved
+`unknown as T` return, owner mutation boundaries and bounded contextual
+inference remain covered.
+
+The [frozen contract](ERASED_TYPE_REGIONS_CONTRACT.json) passes all 124 primary
+observations, exact declarations, 192 consumers, eight executions, 208 complete
+maps and 104 syntax checks per actual compiler/surface. Same-source acceptance
+includes 194 Native suites / 1,118 functions, the complete workspace with
+8,086 passes / zero failures, format and workspace all-target warnings-denied
+Clippy, both original map and program/project profiles, and 322 Node tests.
+Windows x86_64 passes 78 complete cohorts, 82 core oracles and 25 path cases.
+
+[Measurements](ERASED_TYPE_REGIONS_MEASUREMENT.json),
+[acceptance](ERASED_TYPE_REGIONS_ACCEPTANCE.md) and
+[final review](ERASED_TYPE_REGIONS_FINAL_REVIEW.json) bind the exact sources,
+actual compilers and all 593,878 source/evidence files in 15 bounded archives.
+The 12 separate discovery controls and 52 exact output observations per profile
+remain open. All 43,492 original case objects remain; 136 additions give
+43,628. All 22 broader feature rows remain open and full TypeScript parity
+stays OFF. Tuple cardinality and conditional contravariant inference remain
+separate next P0 packages.

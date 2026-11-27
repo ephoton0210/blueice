@@ -155,7 +155,7 @@ impl ModuleChecker<'_> {
         {
             return None;
         }
-        let arguments = split_call_arguments(arguments)?;
+        let arguments = self.call_arguments(arguments)?;
         let actuals = self
             .expanded_call_argument_types_for(&arguments, scope, &signatures)
             .ok()?;

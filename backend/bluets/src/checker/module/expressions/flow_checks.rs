@@ -42,35 +42,43 @@ impl ModuleChecker<'_> {
         scope: &BTreeMap<String, Type>,
         span: &SourceSpan,
     ) {
-        if direct_call_parts(tokens).is_some()
-            && tokens
-                .iter()
-                .position(|token| token.is("("))
-                .and_then(|open| super::super::super::scopes::targets::close(tokens, open))
-                == tokens.len().checked_sub(1)
-        {
-            return;
-        }
+        // A callable type argument can contain the first `(` in the source.
+        // Validate the parser-owned runtime argument tail instead of treating
+        // that static parameter list as the outer call's opening delimiter.
+        let complete_call = direct_call_parts(tokens)
+            .is_some_and(|call| self.call_arguments(call.arguments).is_some());
         let execution = self
             .scopes
             .as_ref()
             .map(|scopes| scopes.flow_execution(span.start));
         for (index, token) in tokens.iter().enumerate() {
+            let opening = if self
+                .module
+                .generic_call_type_arguments
+                .contains_key(&token.start)
+            {
+                explicit_generic_call_close(tokens, index).map(|close| close + 1)
+            } else {
+                Some(index + 1)
+            };
             if token.kind != TokenKind::Identifier
-                || !tokens.get(index + 1).is_some_and(|token| token.is("("))
+                || (index == 0 && complete_call)
+                || !opening
+                    .and_then(|open| tokens.get(open))
+                    .is_some_and(|token| token.is("("))
                 || index.checked_sub(1).is_some_and(|previous| {
                     tokens[previous].is(".")
                         || tokens[previous].is("?.")
                         || tokens[previous].is("new")
                 })
-                || self
-                    .scopes
-                    .as_ref()
-                    .is_some_and(|scopes| Some(scopes.flow_execution(token.start)) != execution)
+                || self.scopes.as_ref().is_some_and(|scopes| {
+                    scopes.erased(token) || Some(scopes.flow_execution(token.start)) != execution
+                })
             {
                 continue;
             }
-            let Some(end) = super::super::super::scopes::targets::close(tokens, index + 1) else {
+            let Some(end) = super::super::super::scopes::targets::close(tokens, opening.unwrap())
+            else {
                 continue;
             };
             let call_span = SourceSpan::new(&span.module, token.start, tokens[end].end);

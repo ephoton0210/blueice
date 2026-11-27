@@ -19,9 +19,8 @@ mod resolution_inputs;
 mod runner;
 pub(super) use runner::run;
 
-// Ordinary build cleanup now preserves changed obsolete regular outputs while
-// explicit incremental publication keeps complete-generation refusal.
-const STATE_VERSION: u8 = 131;
+// Recheck retained calls after parser-owned static-region semantics change.
+const STATE_VERSION: u8 = 132;
 const STATE_PRODUCER: &str = "bluetsc";
 const MAX_STATE_BYTES: u64 = 8 * 1024 * 1024;
 

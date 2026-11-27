@@ -13,6 +13,9 @@ use serde_json::Value;
 pub fn primary(snapshot: &Snapshot, suite: &Suite) -> Result<Option<Vec<Case>>> {
     let file = suite.harness.rsplit('/').next().ok_or("invalid harness")?;
     let stem = file.strip_suffix(".rs").ok_or("not a Rust harness")?;
+    if stem == "erased_type_regions" {
+        return super::case_erased_type_regions::primary(snapshot).map(Some);
+    }
     if stem == "assertion_results" {
         return super::case_assertion_results::primary(snapshot).map(Some);
     }

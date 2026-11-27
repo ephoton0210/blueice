@@ -1,0 +1,152 @@
+{
+  "schema": 1,
+  "sourceRevision": "backend-tree:f37bddc3ad3d842b3dcf261e7c6e6fedcca1290e",
+  "acceptedParent": "b45a2a211470a8cfb738d79d45900de4abff20a7",
+  "localAuditSha256": "934358b526a06accd2419b5b3c277f6d429d9ef308933d89bf3eafa94fce211b",
+  "windowsAuditSha256": "6006cfd66b0851c818a73b99b76ef9192cff05d500627959cac347aa97a67980",
+  "receipt": {
+    "schema": 1,
+    "conclusion": "complete-evidence-packed-not-accepted",
+    "archives": [
+      {
+        "path": "ERASED_TYPE_REGIONS_EVIDENCE_001.tar.gz",
+        "bytes": 50473178,
+        "sha256": "9c552581794a2f311ff9d83d9537d5369fd13eba89aa226488f2e9d0c7a6363d",
+        "members": 15030
+      },
+      {
+        "path": "ERASED_TYPE_REGIONS_EVIDENCE_002.tar.gz",
+        "bytes": 51601356,
+        "sha256": "816999c8b752cb4b5362f2049e20628b26c4dec4d77488318f0dacd7e5375812",
+        "members": 4
+      },
+      {
+        "path": "ERASED_TYPE_REGIONS_EVIDENCE_003.tar.gz",
+        "bytes": 50148721,
+        "sha256": "6f670bdeae65bbb199b36449e4963aa8371aadc28b9d1aa302174db425c6eb9c",
+        "members": 3
+      },
+      {
+        "path": "ERASED_TYPE_REGIONS_EVIDENCE_004.tar.gz",
+        "bytes": 59929555,
+        "sha256": "0f7d233593713efe8421bae8dc700e970b8670bf12771450116344ddd18ed88c",
+        "members": 4
+      },
+      {
+        "path": "ERASED_TYPE_REGIONS_EVIDENCE_005.tar.gz",
+        "bytes": 56053941,
+        "sha256": "3eeef8983bdf2544a4ff68ff7e93a6ccb40f42f9023cfd27067ca65635848efe",
+        "members": 4
+      },
+      {
+        "path": "ERASED_TYPE_REGIONS_EVIDENCE_006.tar.gz",
+        "bytes": 52107157,
+        "sha256": "aa6543977ae783dfd47acc5de543d310a19c029baf610c6a60068e90d8e7d602",
+        "members": 75
+      },
+      {
+        "path": "ERASED_TYPE_REGIONS_EVIDENCE_007.tar.gz",
+        "bytes": 50064803,
+        "sha256": "af8facb22fe63a793a71f20ea8699b682f68c7de1fb9c9c622e12ca7aa05f483",
+        "members": 101027
+      },
+      {
+        "path": "ERASED_TYPE_REGIONS_EVIDENCE_008.tar.gz",
+        "bytes": 57139158,
+        "sha256": "e695aa758e567b95959b5d3dd1021e79fb46f5a283917163d003b95bd7bcf17c",
+        "members": 121241
+      },
+      {
+        "path": "ERASED_TYPE_REGIONS_EVIDENCE_009.tar.gz",
+        "bytes": 50005707,
+        "sha256": "e5536911ea1b3398973d6ea3223a5f7dac578d23af14078189ecd2334731053d",
+        "members": 10639
+      },
+      {
+        "path": "ERASED_TYPE_REGIONS_EVIDENCE_010.tar.gz",
+        "bytes": 51268177,
+        "sha256": "fbc6df9a103adc1d380bd3d101ebd035f86962be92eafcd6f8fd76b916edc168",
+        "members": 123316
+      },
+      {
+        "path": "ERASED_TYPE_REGIONS_EVIDENCE_011.tar.gz",
+        "bytes": 53759702,
+        "sha256": "86f420153f73c28e1c6a91329861144cc68c665f9afb31f3fc3d559da04ba5d2",
+        "members": 14062
+      },
+      {
+        "path": "ERASED_TYPE_REGIONS_EVIDENCE_012.tar.gz",
+        "bytes": 51095847,
+        "sha256": "69bb4dd644b3b8f2dc65c7652b4a6f6eb50a6e482bd50b33fe4a842baa2e99cc",
+        "members": 56325
+      },
+      {
+        "path": "ERASED_TYPE_REGIONS_EVIDENCE_013.tar.gz",
+        "bytes": 50699841,
+        "sha256": "4f09898b71db6245f4a5871da0e04917e0562435110397137c8b052cce2d6b4f",
+        "members": 3892
+      },
+      {
+        "path": "ERASED_TYPE_REGIONS_EVIDENCE_014.tar.gz",
+        "bytes": 54474785,
+        "sha256": "0e539cb297e73500e9b39c1552aa76ae3a1cf14961748ccddee05bbfe61407f2",
+        "members": 7
+      },
+      {
+        "path": "ERASED_TYPE_REGIONS_EVIDENCE_015.tar.gz",
+        "bytes": 38852839,
+        "sha256": "daf67b98ece04ebc8cabd097647f83bf42ca6c2fca235dddb065ce10d0f0b7cf",
+        "members": 148352
+      }
+    ],
+    "fileCount": 593878,
+    "fragmentCount": 593981,
+    "sourceBytes": 3346851924,
+    "fileLedger": {
+      "path": "ERASED_TYPE_REGIONS_EVIDENCE_FILES.jsonl.gz",
+      "sha256": "d1912b8f7375158180e3973cc1a5c4dacfa27e9d52549d6a80300263f32d5ef1"
+    },
+    "fragmentLedger": {
+      "path": "ERASED_TYPE_REGIONS_EVIDENCE_FRAGMENTS.jsonl.gz",
+      "sha256": "c821950b1f2888442502aa6f2c0be1ce6981771997d0c5de91bb72b951c2a09a"
+    },
+    "partLimitExclusive": 67108864,
+    "maximumFragmentBytes": 16777216,
+    "wholeP0JComplete": false
+  },
+  "collection": {
+    "path": "ERASED_TYPE_REGIONS_COLLECTION.json.gz",
+    "sha256": "6dfc33ae70c7b3a3f302da652522ad00a5ff9c5de9b6f6137278e6efb5da3e81"
+  },
+  "symbolicLinks": {
+    "path": "ERASED_TYPE_REGIONS_SYMBOLIC_LINKS.json",
+    "sha256": "85c0e13c1fbf6a16c090445638efaa6f42a81bd597ea0805246e6fb41c80e5d2"
+  },
+  "nestedClosedFailureAudit": {
+    "conclusion": "all-archive-fragments-and-complete-file-bytes-independently-verified",
+    "archives": 5,
+    "files": 207149,
+    "fragments": 207176,
+    "bytes": 678996060,
+    "requiredHashesVerified": 207149,
+    "wholeP0JComplete": false,
+    "observedAt": "2026-11-19T22:34:25.877921+00:00",
+    "sourceRevision": "mixed-terminal-failures-no-acceptance-credit",
+    "collectionSha256": "9d5551e71c96daf9abeda5deedba7871c76db3f09022a41c4c838cb2e05f7c33",
+    "symbolicLinksSha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+    "wholeP0KComplete": false
+  },
+  "publishedByteAudit": {
+    "conclusion": "all-archive-fragments-and-complete-file-bytes-independently-verified",
+    "archives": 15,
+    "files": 593878,
+    "fragments": 593981,
+    "bytes": 3346851924,
+    "requiredHashesVerified": 593878,
+    "wholeP0JComplete": false
+  },
+  "artifactRequirementsSatisfied": true,
+  "wholeP0KComplete": false,
+  "recordedAt": "2026-11-26T05:13:12.991996+00:00",
+  "scope": "Complete implementation and matching runtime/measurement bytes. Final source review and TODO completion precede the coherent commit; broad TypeScript parity remains OFF."
+}

@@ -91,6 +91,28 @@ pub(super) fn lower(module: &Module, kind: ModuleKind, edits: &mut Vec<TextEdit>
     let Ok(tokens) = crate::lex(&module.id, &module.source) else {
         return;
     };
+    // A final call/parameter separator supplies no runtime value. Native drops
+    // it when printing the list, and ES5 cannot parse it. Keep existing owned
+    // replacements intact; static type-list commas disappear with their type.
+    let trailing_separators = tokens
+        .windows(2)
+        .filter_map(|pair| {
+            let [comma, close] = pair else {
+                return None;
+            };
+            (comma.is(",")
+                && close.is(")")
+                && !edits
+                    .iter()
+                    .any(|edit| edit.start <= comma.start && comma.end <= edit.end))
+            .then(|| TextEdit {
+                start: comma.start,
+                end: comma.end,
+                replacement: String::new(),
+            })
+        })
+        .collect::<Vec<_>>();
+    edits.extend(trailing_separators);
     for (open, operand, close) in assertion_groups(module, &tokens) {
         let Some(assertion) = edits.iter_mut().find(|edit| {
             edit.replacement.is_empty()

@@ -388,7 +388,7 @@ impl<'a> ScopeModel<'a> {
             .map_or(0, |index| self.scope_ranges[index].1)
     }
 
-    fn erased(&self, token: &Token) -> bool {
+    pub(in crate::checker) fn erased(&self, token: &Token) -> bool {
         let end = self
             .erased_ranges
             .partition_point(|(start, _)| *start <= token.start);

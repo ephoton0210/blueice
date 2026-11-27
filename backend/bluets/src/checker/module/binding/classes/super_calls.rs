@@ -253,7 +253,7 @@ impl ModuleChecker<'_> {
         if binding.inherited {
             return;
         }
-        let Some(arguments) = split_call_arguments(arguments) else {
+        let Some(arguments) = self.call_arguments(arguments) else {
             return;
         };
         let substitutions = super::heritage::heritage_substitutions(

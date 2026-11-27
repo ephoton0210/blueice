@@ -44,6 +44,13 @@ impl<'a> ModuleChecker<'a> {
         expected: &Type,
     ) -> Type {
         let tokens = strip_outer_parentheses(tokens);
+        // An assertion supplies its own semantic result and satisfies supplies
+        // its own operand context. A closing brace in the erased target does
+        // not make the complete expression an object literal in the caller's
+        // context (for example, `value as Record<K, V> as { count: number }`).
+        if erased_assertion_operand(tokens).is_some() {
+            return self.infer_expression(tokens, scope);
+        }
         if let Some(literal) = self.enum_literal_for(tokens, expected) {
             return literal;
         }
@@ -102,7 +109,7 @@ impl<'a> ModuleChecker<'a> {
             }
             for operator in ["||", "&&", "??"] {
                 if let Some((left, _, right)) =
-                    top_level_binary_parts(tokens, &[operator], |start| {
+                    self.expression_binary_parts(tokens, &[operator], |start| {
                         self.module.generic_call_type_arguments.contains_key(&start)
                     })
                 {
@@ -297,6 +304,16 @@ impl<'a> ModuleChecker<'a> {
                     && tokens.last().is_some_and(|token| token.is("}")) =>
             {
                 return self.infer_record_in_context(tokens, scope, Some(fields));
+            }
+            Type::Mapped(_) | Type::IndexedRecord { .. }
+                if tokens.first().is_some_and(|token| token.is("{"))
+                    && tokens.last().is_some_and(|token| token.is("}")) =>
+            {
+                if let Some(value) =
+                    self.infer_indexed_record_in_context(tokens, scope, &contextual)
+                {
+                    return value;
+                }
             }
             Type::Array(item) => {
                 if let Some(literal) = self.infer_contextual_array_literal(tokens, scope, item) {

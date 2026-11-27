@@ -168,7 +168,7 @@ impl ModuleChecker<'_> {
             };
             (call.arguments, signatures)
         };
-        let Some(arguments) = split_call_arguments(arguments) else {
+        let Some(arguments) = self.call_arguments(arguments) else {
             return false;
         };
         let Ok(actuals) = self.expanded_call_argument_types_for(&arguments, scope, &signatures)

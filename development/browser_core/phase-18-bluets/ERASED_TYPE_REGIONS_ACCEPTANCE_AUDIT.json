@@ -1,0 +1,169 @@
+{
+  "schemaVersion": 1,
+  "conclusion": "all-frozen-runtime-and-published-byte-requirements-passed",
+  "sourceRevision": "backend-tree:f37bddc3ad3d842b3dcf261e7c6e6fedcca1290e",
+  "acceptedParent": "b45a2a211470a8cfb738d79d45900de4abff20a7",
+  "proofs": {
+    "sourceReview": {
+      "path": "target/erased-type-regions-acceptance-source2-tools2-20261120-1/source-review.json",
+      "sha256": "23555a9d784d8403e2d5bd2b2ca5eaf808fd0ab7088be54075ecdb897807552f"
+    },
+    "local": {
+      "path": "target/erased-type-regions-acceptance-source2-tools2-20261120-1/local-contract-audit.json",
+      "sha256": "934358b526a06accd2419b5b3c277f6d429d9ef308933d89bf3eafa94fce211b"
+    },
+    "windows": {
+      "path": "target/erased-type-regions-acceptance-source2-tools2-20261120-1/windows/independent-evidence-verification.json",
+      "sha256": "6006cfd66b0851c818a73b99b76ef9192cff05d500627959cac347aa97a67980"
+    },
+    "writers": {
+      "path": "target/erased-type-regions-acceptance-source2-tools2-20261120-1/final-writer-audit.json",
+      "sha256": "567a6228780da1b5c7881f309a6eff86be976fa2eb70ebfaa74b612b5ff73359"
+    },
+    "delivery": {
+      "path": "target/erased-type-regions-acceptance-source2-tools2-20261120-1/artifact-delivery/published-independent-audit.json",
+      "sha256": "51174f8ca33b3833493c00226eba45cc999acdb637b412f98ed2e981d6659a9d"
+    },
+    "artifacts": {
+      "path": "development/browser_core/phase-18-bluets/ERASED_TYPE_REGIONS_ARTIFACTS.json",
+      "sha256": "ae47d4999eaeae6be473de8dc831a66c7a5ab10abaea64da03fb7a41112aeed0"
+    },
+    "layout": {
+      "path": "development/browser_core/phase-18-bluets/ERASED_TYPE_REGIONS_OPEN_LAYOUT_OBSERVATIONS.json",
+      "sha256": "8237a167e0ac7538a4855e258b9d8c4b8dded9c5bdde73f4fba94c97ae17709e"
+    }
+  },
+  "frozenContractSha256": "28d5d5f985ba00dc2cd6e5067032628aef4a246448e11f67a7cd68a95ba194a8",
+  "profiles": [
+    {
+      "profile": "native",
+      "compilerSha256": "f1f4a15464039cd58981c31a5c51224b4936be2bffff33cfd430afcdfec245e9",
+      "surfaces": {
+        "legacy": {
+          "report": "target/erased-type-regions-acceptance-source2-tools2-20261120-1/native/erased-type-regions/legacy/result.json",
+          "sha256": "3e72891cfc184706120f449c91d62fce8280bf699b1be5e578c995fba8d32011",
+          "counts": {
+            "observations": 136,
+            "primary": 124,
+            "separateOpenDiscovery": 12,
+            "consumers": 192,
+            "executions": 8,
+            "maps": 208,
+            "syntaxChecks": 104
+          }
+        },
+        "native": {
+          "report": "target/erased-type-regions-acceptance-source2-tools2-20261120-1/native/erased-type-regions/native/result.json",
+          "sha256": "87953a723817ddbbcbeb7b13e2c67ad335160e9947377c13196f29c1e28a4dd0",
+          "counts": {
+            "observations": 136,
+            "primary": 124,
+            "separateOpenDiscovery": 12,
+            "consumers": 192,
+            "executions": 8,
+            "maps": 208,
+            "syntaxChecks": 104
+          }
+        }
+      }
+    },
+    {
+      "profile": "workspace",
+      "compilerSha256": "559e2ce7183c7b180a9c70ed501f04189c7df087353193823b38af7f7cd56f7f",
+      "surfaces": {
+        "legacy": {
+          "report": "target/erased-type-regions-acceptance-source2-tools2-20261120-1/map-profiles/workspace/erased-type-regions/legacy/result.json",
+          "sha256": "e2371fd1555423dfb1f6bfb35960422c8055bd2a3f066603dfa4559521ccb3ef",
+          "counts": {
+            "observations": 136,
+            "primary": 124,
+            "separateOpenDiscovery": 12,
+            "consumers": 192,
+            "executions": 8,
+            "maps": 208,
+            "syntaxChecks": 104
+          }
+        },
+        "native": {
+          "report": "target/erased-type-regions-acceptance-source2-tools2-20261120-1/map-profiles/workspace/erased-type-regions/native/result.json",
+          "sha256": "61efbd7cc27adf32ac034d63629dd2988f926e5eeafd5f4ad15fe7d9432b6412",
+          "counts": {
+            "observations": 136,
+            "primary": 124,
+            "separateOpenDiscovery": 12,
+            "consumers": 192,
+            "executions": 8,
+            "maps": 208,
+            "syntaxChecks": 104
+          }
+        }
+      }
+    },
+    {
+      "profile": "standalone",
+      "compilerSha256": "470922d6d9d32d9f36bfe3364f5b6451a8019e99baf357f973956a93a56a029f",
+      "surfaces": {
+        "legacy": {
+          "report": "target/erased-type-regions-acceptance-source2-tools2-20261120-1/map-profiles/standalone/erased-type-regions/legacy/result.json",
+          "sha256": "585c87875c42adc430f653860da18738fc01a9834c65af2713420e76b73bdc8a",
+          "counts": {
+            "observations": 136,
+            "primary": 124,
+            "separateOpenDiscovery": 12,
+            "consumers": 192,
+            "executions": 8,
+            "maps": 208,
+            "syntaxChecks": 104
+          }
+        },
+        "native": {
+          "report": "target/erased-type-regions-acceptance-source2-tools2-20261120-1/map-profiles/standalone/erased-type-regions/native/result.json",
+          "sha256": "6dc5de5547a83a89a3d81e4a2003a8eb978977fd52f156c9b6ccb2a8b875670a",
+          "counts": {
+            "observations": 136,
+            "primary": 124,
+            "separateOpenDiscovery": 12,
+            "consumers": 192,
+            "executions": 8,
+            "maps": 208,
+            "syntaxChecks": 104
+          }
+        }
+      }
+    }
+  ],
+  "nativeSuites": 194,
+  "nativeFunctions": 1118,
+  "workspaceTotals": {
+    "passed": 8086,
+    "failed": 0,
+    "ignored": 403,
+    "filtered": 0
+  },
+  "workspaceExecutables": 739,
+  "windows": {
+    "conclusion": "complete-windows-archive-independently-verified",
+    "observedAt": "2026-11-26T05:06:29.165887+00:00",
+    "verifierSha256": "4acabbfd2099986b27818fba8139c450477188ea12e6a4a0f3a0153895a75c9f",
+    "sourceRevision": "backend-tree:f37bddc3ad3d842b3dcf261e7c6e6fedcca1290e",
+    "archiveSha256": "d9d9352aa656caf245a6ac562292d635de093b99a0c8d8ba03139caf3763e763",
+    "archiveBytes": 69812926,
+    "verifiedSourceFiles": 14972,
+    "compilerSha256": "7aaf514b9034a812ad0681b878d85ee17aae15f091bb1fab5e7ac06a63b97170",
+    "compilerMachine": 34404,
+    "completeCohorts": 78,
+    "coreOracles": 82,
+    "pathCases": 25,
+    "completionCredit": false,
+    "scope": "Current P0-K source2/tools2 Windows proof; complete Native/local/map/accounting delivery remains required."
+  },
+  "originalCaseObjectsPreserved": 43492,
+  "addedCases": 136,
+  "totalCases": 43628,
+  "broaderFeatureRowsOpen": 22,
+  "fullTypeScriptParity": false,
+  "TODOUncheckedAtAudit": true,
+  "wholeP0KComplete": false,
+  "commitPerformed": false,
+  "recordedAt": "2026-11-26T05:13:15.756885+00:00"
+}

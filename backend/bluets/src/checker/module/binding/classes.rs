@@ -741,7 +741,7 @@ impl ModuleChecker<'_> {
             return;
         }
         if let Some(signatures) = self.function_value_signatures(&call.callee.text, scope, true) {
-            let Some(arguments) = split_call_arguments(call.arguments) else {
+            let Some(arguments) = self.call_arguments(call.arguments) else {
                 return;
             };
             let explicit = call
@@ -888,7 +888,8 @@ impl ModuleChecker<'_> {
             // Keep the unresolved base and its refusal. TypeScript diagnoses
             // arguments against the omitted constructor's zero-argument
             // recovery signature; this metadata cannot admit the class.
-            let arguments = split_call_arguments(call.arguments)
+            let arguments = self
+                .call_arguments(call.arguments)
                 .expect("constructor call has a balanced argument list");
             if !arguments.is_empty() {
                 self.typescript_type_error(
@@ -904,7 +905,8 @@ impl ModuleChecker<'_> {
             }
             return;
         }
-        let arguments = split_call_arguments(call.arguments)
+        let arguments = self
+            .call_arguments(call.arguments)
             .expect("constructor call has a balanced argument list");
         if let Some(alternatives) = self.optional_spread_scopes(&arguments, scope) {
             let before = self.diagnostics.len();

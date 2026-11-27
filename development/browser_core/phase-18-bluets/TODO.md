@@ -8,24 +8,24 @@ against pinned TypeScript 5.9.3. Design and delivered evidence belong in
 
 <!-- BEGIN CURRENT BLUETS STATUS -->
 
-**Current BlueTS / BlueTSC compatibility status (2026-11-19).**
+**Current BlueTS / BlueTSC compatibility status (2026-11-20).**
 **Full TypeScript parity: OFF; do not advertise full parity.**
 
-Pinned compiler: **TypeScript 5.9.3**. **N = 43,492 suite-qualified
+Pinned compiler: **TypeScript 5.9.3**. **N = 43,628 suite-qualified
 case assertions**, not unique programs or a percentage of the TypeScript language.
 
 | Current measurement | Count / scope |
 | --- | --- |
-| Direct agreement | 42,477/42,483 (99.9859%); 3 open, 3 refused observations |
+| Direct agreement | 42,601/42,619 (99.9578%); 11 open, 7 refused observations |
 | Separate controls | 633 native-reference + 376 BlueTS owner = 1,009; excluded from direct agreement |
-| Case labels | 43,486 scoped closed (including controls), 3 open, 3 refused |
-| Suite inventory | 193 suites / 398 ignored Rust functions; not a case denominator |
-| Suite labels | 189 scoped closed, 1 open, 3 refused |
+| Case labels | 43,610 scoped closed (including controls), 11 open, 7 refused |
+| Suite inventory | 194 suites / 399 ignored Rust functions; not a case denominator |
+| Suite labels | 189 scoped closed, 2 open, 3 refused |
 | Broader G-* feature rows | 23 total: 1 scoped closed, 22 open |
 | Direct BlueJS runtime profile | Open; separate from the TypeScript comparison claim |
 | Source refusal sites | 233 in 11 areas; condition-specific locations, not extra failing cases |
 
-All 43,492 recorded case expectations pass; expected differences/refusals are not
+All 43,628 recorded case expectations pass; expected differences/refusals are not
 agreements. The complete case measurement is **darwin-arm64**, not all-platform proof.
 Accepted baseline runtime evidence (AC-K14.3; its recorded source): Windows
 x86_64 VM **82/82** core oracles plus the complete local test gate. This is not
@@ -33,13 +33,16 @@ a new Windows run for the compiler/oracle source below. Hosted CI and coverage
 are supplementary, not prerequisites. This consistency check does not rerun
 those runtime gates.
 
-Compiler/oracle source: `backend-tree:fd642c71683fbd992d1319e5598c51f5379dc766`.
-Input graph SHA-256: `9db59b3686e4450ed197ad35ead4696fb77ae6e24fe43fe4103815566b4b3a80`.
+Compiler/oracle source: `backend-tree:f37bddc3ad3d842b3dcf261e7c6e6fedcca1290e`.
+Input graph SHA-256: `746733a70c04e76f4668cdc889735e5e772443d4dc2933c22ad566c200156335`.
 Versioned authorities: `COMPATIBILITY_CASES.json`, `COMPATIBILITY_SUITES.json`
 and `COMPATIBILITY_MEASUREMENT.json` in `development/browser_core/phase-18-bluets/`.
 Older dated measurements below retain their original scope; they are not this current summary.
 
 <!-- END CURRENT BLUETS STATUS -->
+
+**Same-source Windows follow-up (2026-11-26):** P0-K source `backend-tree:f37bddc3ad3d842b3dcf261e7c6e6fedcca1290e` passes all **78 compiler cohorts, 82 core oracles and 25 path cases** on the Windows x86_64 VM. The [acceptance](ERASED_TYPE_REGIONS_ACCEPTANCE.md), [measurements](ERASED_TYPE_REGIONS_MEASUREMENT.json) and [final review](ERASED_TYPE_REGIONS_FINAL_REVIEW.json) bind the actual compiler and full source. This is a finite Windows regression profile; the full 43,628-case measurement above retains its darwin-arm64 scope. All 22 broader rows remain open.
+
 
 <!-- BEGIN GM3 CURRENT PLATFORM EVIDENCE -->
 
@@ -60,13 +63,15 @@ broader G-C1 inventory row remains open for unmeasured CLI/recovery coverage;
 the finite checklist does not claim full parity. See the
 [acceptance record](PLAN.md#phase-l--g-c1-implementation).
 
-**Latest completed follow-up:** P0-J delivers semantic assertion results while
-preserving readonly and opaque runtime protection, including the approved
-`unknown as T` pure return. Its [acceptance](ASSERTION_RESULTS_ACCEPTANCE.md),
-[measurements](ASSERTION_RESULTS_MEASUREMENT.json) and
-[independent published-byte audit](ASSERTION_RESULTS_ACCEPTANCE_AUDIT.json)
-complete the frozen package. All 22 broader rows remain open and require
-separate closure contracts.
+**Latest completed follow-up:** P0-K delivers parser-owned erased type regions
+in shared call traversal. All 124 primary comparisons, exact declarations,
+192 consumers and eight executions pass on each measured compiler/surface.
+Complete local gates and Windows 78 cohorts / 82 core oracles / 25 paths pass.
+[Acceptance](ERASED_TYPE_REGIONS_ACCEPTANCE.md),
+[measurements](ERASED_TYPE_REGIONS_MEASUREMENT.json) and
+[final source/evidence review](ERASED_TYPE_REGIONS_FINAL_REVIEW.json) complete
+its frozen scope. P0-J's approved `unknown as T` and owner protections remain
+covered. All 22 broader feature rows remain open.
 
 ## Open gaps and implementation priority — 2026-11-11
 
@@ -148,7 +153,7 @@ Code supporting these dependencies:
 
 The [current presence witnesses](STRING_INTRINSIC_MEASUREMENT.json#/presenceInventory/corrected)
 pass all22 names in both selected profiles. These44 witnesses carry no semantic
-denominator credit; broader catalogs and compositions remain open. P0-A/B/C/D/E/F/G/H/I have
+denominator credit; broader catalogs and compositions remain open. P0-A/B/C/D/E/F/G/H/I/J/K have
 complete source-bound acceptance within their frozen contracts.
 
 - [x] **P0-A — NoInfer and shared candidate boundaries.** Delivered the frozen
@@ -319,6 +324,26 @@ complete source-bound acceptance within their frozen contracts.
   [approved expectation](ASSERTION_RESULTS_POLICY_AMENDMENT.json) and
   [two exact recorder repairs](ASSERTION_RESULTS_ORACLE_HOST_CORRECTIONS.json)
   are exceptions. Broader22 rows remain open and full TypeScript parity stays OFF.
+
+- [x] **P0-K — Parser-owned erased type regions in call arguments.**
+  Delivered the [frozen contract](ERASED_TYPE_REGIONS_CONTRACT.json): all 124
+  primary observations, exact declarations, 192 consumers and eight executions
+  per compiler/surface, plus complete same-source local regression gates and
+  Windows 78 cohorts / 82 core oracles / 25 paths. Implementation and matching
+  measurements have independently reconstructible raw evidence.
+  Twelve discovery controls and the
+  [52 exact output observations per profile](ERASED_TYPE_REGIONS_OPEN_LAYOUT_OBSERVATIONS.json)
+  remain separately open without repair credit.
+  [Completed checklist](ERASED_TYPE_REGIONS_FOLLOWUP.md#completion-checklist) ·
+  [final review](ERASED_TYPE_REGIONS_FINAL_REVIEW.json).
+- [ ] **Next P0 discovery — Tuple cardinality.** Empty/fixed/optional/variadic
+  tuple and array indexed `length`, tuple value-property length, and fixed
+  length writes disagree with Native in the retained discovery. Freeze a
+  separate complete contract before implementation; no P0-K repair credit.
+- [ ] **Next P0 discovery — Conditional contravariant candidates.**
+  Union-to-intersection conditional inference yields `never`/`unknown` where
+  Native retains both fields. Freeze a separate complete contract before
+  implementation; no P0-K repair credit.
 
 Each package needs frozen authored inputs and Native expectations before
 production changes, complete primary/related diagnostics and UTF-16 positions,

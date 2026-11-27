@@ -37,7 +37,7 @@ impl ModuleChecker<'_> {
         scope: &BTreeMap<String, Type>,
         explicit_type_arguments: Option<&[Type]>,
     ) -> Type {
-        let Some(arguments) = split_call_arguments(tokens) else {
+        let Some(arguments) = self.call_arguments(tokens) else {
             return Type::Unknown;
         };
         if let Some(alternatives) = self.optional_spread_scopes(&arguments, scope) {

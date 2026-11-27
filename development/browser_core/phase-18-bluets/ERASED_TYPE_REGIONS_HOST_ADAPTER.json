@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "kind": "host-newline-normalization",
+  "purpose": "Preserve the original Native recorder LF bytes on Windows; no program, expected output, Native diagnostic, budget or acceptance requirement changes.",
+  "beforeVerifierSha256": "fade47b434658e7e245fe3f15d8f0da49f4573f4240a50fac461086ae86ab968",
+  "afterVerifierSha256": "40c0462520879c2d075beea120ec4888ad8c91eee27d449fa69e497213b0e430",
+  "baseContractSha256": "28d5d5f985ba00dc2cd6e5067032628aef4a246448e11f67a7cd68a95ba194a8",
+  "unchangedAuthorities": {
+    "cases.json": "c46ed859fbb282ffd05c4a53934011d49c68c0fad349e8c947adc4f7980007ab",
+    "reference.json": "d13bb2455e2db07a8ba3a27ec26d458c5474201ca5f7f500df4b02ed6f0fccfd",
+    "FROZEN.json": "06175ef6c7c5f0599eb07762793c52f3eb0b26ae52eb09125c6a67907b0b074c",
+    "discovery-controls.json": "70dda280722a7a325e13a370263267a68f15b983d66eec0f3811798266be1b31"
+  },
+  "compilerOptionsChange": {
+    "newLine": "lf"
+  },
+  "scope": "Both independent Native replay and generated BlueTSC CLI configurations use the same explicit LF option. Original fixture compilerOptions remain byte-identical."
+}

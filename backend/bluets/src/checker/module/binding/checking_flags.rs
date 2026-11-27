@@ -154,7 +154,7 @@ impl ModuleChecker<'_> {
             else {
                 continue;
             };
-            if let Some(arguments) = split_call_arguments(call.arguments) {
+            if let Some(arguments) = self.call_arguments(call.arguments) {
                 let _ = self.expanded_call_argument_types_for(&arguments, scope, &signatures);
             }
         }
@@ -188,7 +188,7 @@ impl ModuleChecker<'_> {
             let Some(signatures) = signatures else {
                 continue;
             };
-            let Some(arguments) = split_call_arguments(call.arguments) else {
+            let Some(arguments) = self.call_arguments(call.arguments) else {
                 continue;
             };
             let _ = self.expanded_call_argument_types_for(&arguments, scope, &signatures);

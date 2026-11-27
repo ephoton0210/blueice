@@ -6,6 +6,7 @@
 
 use super::*;
 
+mod arguments;
 mod assertion_overlap;
 mod assertion_qualifiers;
 pub(in crate::checker) use assertion_qualifiers::projection_qualifiers;
@@ -107,7 +108,7 @@ impl<'a> ModuleChecker<'a> {
             }
             return;
         };
-        let Some(arguments) = split_call_arguments(call.arguments) else {
+        let Some(arguments) = self.call_arguments(call.arguments) else {
             return;
         };
         for argument in &arguments {
@@ -117,6 +118,10 @@ impl<'a> ModuleChecker<'a> {
                 argument
             };
             self.check_direct_property_access(argument, scope, span);
+            let operand = strip_outer_parentheses(argument);
+            if erased_assertion_operand(operand).is_some() {
+                self.check_additional_expression(operand, scope, span);
+            }
         }
         if let Some(alternatives) = self.optional_spread_scopes(&arguments, scope) {
             let before = self.diagnostics.len();
@@ -277,7 +282,7 @@ impl<'a> ModuleChecker<'a> {
                 ),
                 DiagnosticCode::TypeMismatch,
             );
-            self.point_last_typescript(std::slice::from_ref(call.callee));
+            self.point_argument_count_error(call.callee, &arguments, &signature, actuals.len());
             return;
         }
         let mut rejected_constraint = None;

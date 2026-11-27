@@ -1,0 +1,4876 @@
+{
+  "nativeVersion": "5.9.3",
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "libraries": {
+    "lib.es5.d.ts": "c430d44666289dae81f30fa7b2edebf186ecc91a2d4c71266ea6ae76388792e1",
+    "lib.decorators.d.ts": "8e7f8264d0fb4c5339605a15daadb037bf238c10b654bb3eee14208f860a32ea",
+    "lib.decorators.legacy.d.ts": "782dec38049b92d4e85c1585fbea5474a219c6984a35b004963b00beb1aab538"
+  },
+  "observations": 136,
+  "cases": [
+    {
+      "id": "as-record-argument/es5-esm",
+      "form": "as-record-argument",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,IAAM,MAAM,GAAG,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "export var result = take({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAA6C,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-record-argument/es5-cjs",
+      "form": "as-record-argument",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = take({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAA6C,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-record-argument/es2022-esm",
+      "form": "as-record-argument",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,MAAM,MAAM,GAAG,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "export const result = take({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAA6C,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-record-argument/es2022-cjs",
+      "form": "as-record-argument",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = take({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAA6C,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-nested-record-argument/es5-esm",
+      "form": "as-nested-record-argument",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,IAAM,MAAM,GAAG,IAAI,CAAC,EAAC,KAAK,EAAE,EAAC,KAAK,EAAE,CAAC,EAAC,EAA2C,CAAC,CAAC\"}",
+        "main.js": "export var result = take({ inner: { count: 1 } });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wCAAsE,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, Record<string, number>>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-nested-record-argument/es5-cjs",
+      "form": "as-nested-record-argument",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,IAAI,CAAC,EAAC,KAAK,EAAE,EAAC,KAAK,EAAE,CAAC,EAAC,EAA2C,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = take({ inner: { count: 1 } });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wCAAsE,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, Record<string, number>>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-nested-record-argument/es2022-esm",
+      "form": "as-nested-record-argument",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,MAAM,MAAM,GAAG,IAAI,CAAC,EAAC,KAAK,EAAE,EAAC,KAAK,EAAE,CAAC,EAAC,EAA2C,CAAC,CAAC\"}",
+        "main.js": "export const result = take({ inner: { count: 1 } });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wCAAsE,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, Record<string, number>>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-nested-record-argument/es2022-cjs",
+      "form": "as-nested-record-argument",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,IAAI,CAAC,EAAC,KAAK,EAAE,EAAC,KAAK,EAAE,CAAC,EAAC,EAA2C,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = take({ inner: { count: 1 } });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wCAAsE,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, Record<string, number>>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "satisfies-contextual-callback/es5-esm",
+      "form": "satisfies-contextual-callback",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,IAAM,MAAM,GAAG,IAAI,CAAC,EAAC,IAAI,EAAE,UAAA,KAAK,IAAI,OAAA,KAAK,CAAC,QAAQ,EAAE,EAAhB,CAAgB,EAAqD,CAAC,CAAC\"}",
+        "main.js": "export var result = take({ read: function (value) { return value.toString(); } });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM;;CAA8F,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    read: (value: number) => string;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "satisfies-contextual-callback/es5-cjs",
+      "form": "satisfies-contextual-callback",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,IAAI,CAAC,EAAC,IAAI,EAAE,UAAA,KAAK,IAAI,OAAA,KAAK,CAAC,QAAQ,EAAE,EAAhB,CAAgB,EAAqD,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = take({ read: function (value) { return value.toString(); } });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM;;CAA8F,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    read: (value: number) => string;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "satisfies-contextual-callback/es2022-esm",
+      "form": "satisfies-contextual-callback",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,MAAM,MAAM,GAAG,IAAI,CAAC,EAAC,IAAI,EAAE,KAAK,CAAC,EAAE,CAAC,KAAK,CAAC,QAAQ,EAAE,EAAqD,CAAC,CAAC\"}",
+        "main.js": "export const result = take({ read: value => value.toString() });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM;;CAA8F,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    read: (value: number) => string;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "satisfies-contextual-callback/es2022-cjs",
+      "form": "satisfies-contextual-callback",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,IAAI,CAAC,EAAC,IAAI,EAAE,KAAK,CAAC,EAAE,CAAC,KAAK,CAAC,QAAQ,EAAE,EAAqD,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = take({ read: value => value.toString() });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM;;CAA8F,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    read: (value: number) => string;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "satisfies-parenthesized-callback/es5-esm",
+      "form": "satisfies-parenthesized-callback",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,IAAM,MAAM,GAAG,IAAI,CAAE,EAAC,IAAI,EAAE,UAAC,KAAa,IAAK,OAAA,KAAK,CAAC,QAAQ,EAAE,EAAhB,CAAgB,EAAsD,CAAC,CAAC\"}",
+        "main.js": "export var result = take({ read: function (value) { return value.toString(); } });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM;kBAAwB,MAAM;CAA4E,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    read: (value: number) => string;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "satisfies-parenthesized-callback/es5-cjs",
+      "form": "satisfies-parenthesized-callback",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,IAAI,CAAE,EAAC,IAAI,EAAE,UAAC,KAAa,IAAK,OAAA,KAAK,CAAC,QAAQ,EAAE,EAAhB,CAAgB,EAAsD,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = take({ read: function (value) { return value.toString(); } });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM;kBAAwB,MAAM;CAA4E,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    read: (value: number) => string;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "satisfies-parenthesized-callback/es2022-esm",
+      "form": "satisfies-parenthesized-callback",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,MAAM,MAAM,GAAG,IAAI,CAAE,EAAC,IAAI,EAAE,CAAC,KAAa,EAAE,EAAE,CAAC,KAAK,CAAC,QAAQ,EAAE,EAAsD,CAAC,CAAC\"}",
+        "main.js": "export const result = take({ read: (value) => value.toString() });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM;kBAAwB,MAAM;CAA4E,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    read: (value: number) => string;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "satisfies-parenthesized-callback/es2022-cjs",
+      "form": "satisfies-parenthesized-callback",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,IAAI,CAAE,EAAC,IAAI,EAAE,CAAC,KAAa,EAAE,EAAE,CAAC,KAAK,CAAC,QAAQ,EAAE,EAAsD,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = take({ read: (value) => value.toString() });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM;kBAAwB,MAAM;CAA4E,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    read: (value: number) => string;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "generic-call-argument/es5-esm",
+      "form": "generic-call-argument",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,MAAM,CAAC,IAAM,MAAM,GAAG,IAAI,CAAC,IAAI,CAAiB,CAAC,EAAE,GAAG,CAAC,CAAC,CAAC\"}",
+        "main.js": "export var result = take(pair(1, \"a\"));\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM,kBAAqC,CAAC\"}",
+        "main.d.ts": "export declare const result: [number, string];\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "generic-call-argument/es5-cjs",
+      "form": "generic-call-argument",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAKa,QAAA,MAAM,GAAG,IAAI,CAAC,IAAI,CAAiB,CAAC,EAAE,GAAG,CAAC,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = take(pair(1, \"a\"));\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM,kBAAqC,CAAC\"}",
+        "main.d.ts": "export declare const result: [number, string];\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "generic-call-argument/es2022-esm",
+      "form": "generic-call-argument",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,MAAM,CAAC,MAAM,MAAM,GAAG,IAAI,CAAC,IAAI,CAAiB,CAAC,EAAE,GAAG,CAAC,CAAC,CAAC\"}",
+        "main.js": "export const result = take(pair(1, \"a\"));\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM,kBAAqC,CAAC\"}",
+        "main.d.ts": "export declare const result: [number, string];\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "generic-call-argument/es2022-cjs",
+      "form": "generic-call-argument",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAKa,QAAA,MAAM,GAAG,IAAI,CAAC,IAAI,CAAiB,CAAC,EAAE,GAAG,CAAC,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = take(pair(1, \"a\"));\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM,kBAAqC,CAAC\"}",
+        "main.d.ts": "export declare const result: [number, string];\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "generic-nested-call-argument/es5-esm",
+      "form": "generic-nested-call-argument",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,MAAM,CAAC,IAAM,MAAM,GAAG,IAAI,CAAC,IAAI,CAAiC,EAAC,KAAK,EAAE,CAAC,EAAC,EAAE,GAAG,CAAC,CAAC,CAAC\"}",
+        "main.js": "export var result = take(pair({ count: 1 }, \"a\"));\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM,kCAA8D,CAAC\"}",
+        "main.d.ts": "export declare const result: [Record<string, number>, string];\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "generic-nested-call-argument/es5-cjs",
+      "form": "generic-nested-call-argument",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAKa,QAAA,MAAM,GAAG,IAAI,CAAC,IAAI,CAAiC,EAAC,KAAK,EAAE,CAAC,EAAC,EAAE,GAAG,CAAC,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = take(pair({ count: 1 }, \"a\"));\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM,kCAA8D,CAAC\"}",
+        "main.d.ts": "export declare const result: [Record<string, number>, string];\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "generic-nested-call-argument/es2022-esm",
+      "form": "generic-nested-call-argument",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,MAAM,CAAC,MAAM,MAAM,GAAG,IAAI,CAAC,IAAI,CAAiC,EAAC,KAAK,EAAE,CAAC,EAAC,EAAE,GAAG,CAAC,CAAC,CAAC\"}",
+        "main.js": "export const result = take(pair({ count: 1 }, \"a\"));\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM,kCAA8D,CAAC\"}",
+        "main.d.ts": "export declare const result: [Record<string, number>, string];\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "generic-nested-call-argument/es2022-cjs",
+      "form": "generic-nested-call-argument",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAKa,QAAA,MAAM,GAAG,IAAI,CAAC,IAAI,CAAiC,EAAC,KAAK,EAAE,CAAC,EAAC,EAAE,GAAG,CAAC,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = take(pair({ count: 1 }, \"a\"));\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM,kCAA8D,CAAC\"}",
+        "main.d.ts": "export declare const result: [Record<string, number>, string];\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-second-of-two-arguments/es5-esm",
+      "form": "as-second-of-two-arguments",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,IAAM,MAAM,GAAG,MAAM,CAAC,CAAC,EAAE,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "export var result = second(0, { count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAkD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-second-of-two-arguments/es5-cjs",
+      "form": "as-second-of-two-arguments",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,MAAM,CAAC,CAAC,EAAE,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = second(0, { count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAkD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-second-of-two-arguments/es2022-esm",
+      "form": "as-second-of-two-arguments",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,MAAM,MAAM,GAAG,MAAM,CAAC,CAAC,EAAE,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "export const result = second(0, { count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAkD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-second-of-two-arguments/es2022-cjs",
+      "form": "as-second-of-two-arguments",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,MAAM,CAAC,CAAC,EAAE,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = second(0, { count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAkD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-first-of-two-arguments/es5-esm",
+      "form": "as-first-of-two-arguments",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,IAAM,MAAM,GAAG,KAAK,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,EAAE,KAAK,CAAC,CAAC\"}",
+        "main.js": "export var result = first({ count: 1 }, \"end\");\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAqD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-first-of-two-arguments/es5-cjs",
+      "form": "as-first-of-two-arguments",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,KAAK,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,EAAE,KAAK,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = first({ count: 1 }, \"end\");\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAqD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-first-of-two-arguments/es2022-esm",
+      "form": "as-first-of-two-arguments",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,MAAM,MAAM,GAAG,KAAK,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,EAAE,KAAK,CAAC,CAAC\"}",
+        "main.js": "export const result = first({ count: 1 }, \"end\");\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAqD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-first-of-two-arguments/es2022-cjs",
+      "form": "as-first-of-two-arguments",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,KAAK,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,EAAE,KAAK,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = first({ count: 1 }, \"end\");\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAqD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-trailing-comma/es5-esm",
+      "form": "as-trailing-comma",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,IAAM,MAAM,GAAG,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAE,CAAC\"}",
+        "main.js": "export var result = take({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAA8C,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-trailing-comma/es5-cjs",
+      "form": "as-trailing-comma",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAE,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = take({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAA8C,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-trailing-comma/es2022-esm",
+      "form": "as-trailing-comma",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,MAAM,MAAM,GAAG,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAE,CAAC\"}",
+        "main.js": "export const result = take({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAA8C,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-trailing-comma/es2022-cjs",
+      "form": "as-trailing-comma",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAE,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = take({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAA8C,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "satisfies-generic-binder/es5-esm",
+      "form": "satisfies-generic-binder",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,IAAM,MAAM,GAAG,IAAI,CAAC,EAAC,IAAI,EAAE,UAAI,KAAQ,IAAQ,OAAA,KAAK,EAAL,CAAK,EAA8C,CAAC,CAAC\"}",
+        "main.js": "export var result = take({ read: function (value) { return value; } });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM;WAAgB,CAAC,SAAS,CAAC,KAAG,CAAC;CAAwD,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    read: <T>(value: T) => T;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "satisfies-generic-binder/es5-cjs",
+      "form": "satisfies-generic-binder",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,IAAI,CAAC,EAAC,IAAI,EAAE,UAAI,KAAQ,IAAQ,OAAA,KAAK,EAAL,CAAK,EAA8C,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = take({ read: function (value) { return value; } });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM;WAAgB,CAAC,SAAS,CAAC,KAAG,CAAC;CAAwD,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    read: <T>(value: T) => T;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "satisfies-generic-binder/es2022-esm",
+      "form": "satisfies-generic-binder",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,MAAM,MAAM,GAAG,IAAI,CAAC,EAAC,IAAI,EAAE,CAAI,KAAQ,EAAK,EAAE,CAAC,KAAK,EAA8C,CAAC,CAAC\"}",
+        "main.js": "export const result = take({ read: (value) => value });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM;WAAgB,CAAC,SAAS,CAAC,KAAG,CAAC;CAAwD,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    read: <T>(value: T) => T;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "satisfies-generic-binder/es2022-cjs",
+      "form": "satisfies-generic-binder",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,IAAI,CAAC,EAAC,IAAI,EAAE,CAAI,KAAQ,EAAK,EAAE,CAAC,KAAK,EAA8C,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = take({ read: (value) => value });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM;WAAgB,CAAC,SAAS,CAAC,KAAG,CAAC;CAAwD,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    read: <T>(value: T) => T;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "member-as-argument/es5-esm",
+      "form": "member-as-argument",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,IAAM,MAAM,GAAG,MAAM,CAAC,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "export var result = reader.take({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAoD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "member-as-argument/es5-cjs",
+      "form": "member-as-argument",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,MAAM,CAAC,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = reader.take({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAoD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "member-as-argument/es2022-esm",
+      "form": "member-as-argument",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,MAAM,MAAM,GAAG,MAAM,CAAC,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "export const result = reader.take({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAoD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "member-as-argument/es2022-cjs",
+      "form": "member-as-argument",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,MAAM,CAAC,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = reader.take({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAoD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "indexed-as-argument/es5-esm",
+      "form": "indexed-as-argument",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,IAAM,MAAM,GAAG,OAAO,CAAC,MAAM,CAAC,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "export var result = readers[\"take\"]({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAwD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "indexed-as-argument/es5-cjs",
+      "form": "indexed-as-argument",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,OAAO,CAAC,MAAM,CAAC,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = readers[\"take\"]({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAwD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "indexed-as-argument/es2022-esm",
+      "form": "indexed-as-argument",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,MAAM,MAAM,GAAG,OAAO,CAAC,MAAM,CAAC,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "export const result = readers[\"take\"]({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAwD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "indexed-as-argument/es2022-cjs",
+      "form": "indexed-as-argument",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,OAAO,CAAC,MAAM,CAAC,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = readers[\"take\"]({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAwD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "returned-call-as-argument/es5-esm",
+      "form": "returned-call-as-argument",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,IAAM,MAAM,GAAG,MAAM,EAAE,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "export var result = create()({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAiD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "returned-call-as-argument/es5-cjs",
+      "form": "returned-call-as-argument",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,MAAM,EAAE,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = create()({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAiD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "returned-call-as-argument/es2022-esm",
+      "form": "returned-call-as-argument",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,MAAM,MAAM,GAAG,MAAM,EAAE,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "export const result = create()({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAiD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "returned-call-as-argument/es2022-cjs",
+      "form": "returned-call-as-argument",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,MAAM,EAAE,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = create()({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAiD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "constructor-as-argument/es5-esm",
+      "form": "constructor-as-argument",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,IAAM,MAAM,GAAG,IAAI,GAAG,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "export var result = new Box({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAGA,OAAO,OAAO,GAAG,CAAC,CAAC;IAAG,KAAK,EAAE,CAAC,CAAC;gBAAa,KAAK,EAAE,CAAC;CAAG;AACvD,eAAO,MAAM,MAAM,6BAAgD,CAAC\"}",
+        "main.d.ts": "declare class Box<T> {\n    value: T;\n    constructor(value: T);\n}\nexport declare const result: Box<Record<string, number>>;\nexport {};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "constructor-as-argument/es5-cjs",
+      "form": "constructor-as-argument",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,IAAI,GAAG,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = new Box({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAGA,OAAO,OAAO,GAAG,CAAC,CAAC;IAAG,KAAK,EAAE,CAAC,CAAC;gBAAa,KAAK,EAAE,CAAC;CAAG;AACvD,eAAO,MAAM,MAAM,6BAAgD,CAAC\"}",
+        "main.d.ts": "declare class Box<T> {\n    value: T;\n    constructor(value: T);\n}\nexport declare const result: Box<Record<string, number>>;\nexport {};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "constructor-as-argument/es2022-esm",
+      "form": "constructor-as-argument",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,MAAM,MAAM,GAAG,IAAI,GAAG,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "export const result = new Box({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAGA,OAAO,OAAO,GAAG,CAAC,CAAC;IAAG,KAAK,EAAE,CAAC,CAAC;gBAAa,KAAK,EAAE,CAAC;CAAG;AACvD,eAAO,MAAM,MAAM,6BAAgD,CAAC\"}",
+        "main.d.ts": "declare class Box<T> {\n    value: T;\n    constructor(value: T);\n}\nexport declare const result: Box<Record<string, number>>;\nexport {};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "constructor-as-argument/es2022-cjs",
+      "form": "constructor-as-argument",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,IAAI,GAAG,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = new Box({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAGA,OAAO,OAAO,GAAG,CAAC,CAAC;IAAG,KAAK,EAAE,CAAC,CAAC;gBAAa,KAAK,EAAE,CAAC;CAAG;AACvD,eAAO,MAAM,MAAM,6BAAgD,CAAC\"}",
+        "main.d.ts": "declare class Box<T> {\n    value: T;\n    constructor(value: T);\n}\nexport declare const result: Box<Record<string, number>>;\nexport {};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "call-method-as-argument/es5-esm",
+      "form": "call-method-as-argument",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,IAAM,MAAM,GAAG,IAAI,CAAC,IAAI,CAAC,SAAS,EAAE,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "export var result = read.call(undefined, { count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,QAA6D,CAAC\"}",
+        "main.d.ts": "export declare const result: number;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "call-method-as-argument/es5-cjs",
+      "form": "call-method-as-argument",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,IAAI,CAAC,IAAI,CAAC,SAAS,EAAE,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = read.call(undefined, { count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,QAA6D,CAAC\"}",
+        "main.d.ts": "export declare const result: number;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "call-method-as-argument/es2022-esm",
+      "form": "call-method-as-argument",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,MAAM,MAAM,GAAG,IAAI,CAAC,IAAI,CAAC,SAAS,EAAE,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "export const result = read.call(undefined, { count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,QAA6D,CAAC\"}",
+        "main.d.ts": "export declare const result: number;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "call-method-as-argument/es2022-cjs",
+      "form": "call-method-as-argument",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,IAAI,CAAC,IAAI,CAAC,SAAS,EAAE,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = read.call(undefined, { count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,QAA6D,CAAC\"}",
+        "main.d.ts": "export declare const result: number;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "return-as-argument/es5-esm",
+      "form": "return-as-argument",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,UAAU,MAAM,KAAK,OAAO,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC,CAAC,CAAC\"}",
+        "main.js": "export function result() { return take({ count: 1 }); }\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,wBAAgB,MAAM,2BAAyD\"}",
+        "main.d.ts": "export declare function result(): Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "return-as-argument/es5-cjs",
+      "form": "return-as-argument",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;AAIA,wBAA+E;AAA/E,SAAgB,MAAM,KAAK,OAAO,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = result;\nfunction result() { return take({ count: 1 }); }\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,wBAAgB,MAAM,2BAAyD\"}",
+        "main.d.ts": "export declare function result(): Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "return-as-argument/es2022-esm",
+      "form": "return-as-argument",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,UAAU,MAAM,KAAK,OAAO,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC,CAAC,CAAC\"}",
+        "main.js": "export function result() { return take({ count: 1 }); }\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,wBAAgB,MAAM,2BAAyD\"}",
+        "main.d.ts": "export declare function result(): Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "return-as-argument/es2022-cjs",
+      "form": "return-as-argument",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;AAIA,wBAA+E;AAA/E,SAAgB,MAAM,KAAK,OAAO,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = result;\nfunction result() { return take({ count: 1 }); }\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,wBAAgB,MAAM,2BAAyD\"}",
+        "main.d.ts": "export declare function result(): Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "arrow-as-argument/es5-esm",
+      "form": "arrow-as-argument",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,IAAM,MAAM,GAAG,cAAM,OAAA,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,EAA1C,CAA0C,CAAC\"}",
+        "main.js": "export var result = function () { return take({ count: 1 }); };\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,8BAAmD,CAAC\"}",
+        "main.d.ts": "export declare const result: () => Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "arrow-as-argument/es5-cjs",
+      "form": "arrow-as-argument",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIO,IAAM,MAAM,GAAG,cAAM,OAAA,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,EAA1C,CAA0C,CAAC;AAA1D,QAAA,MAAM,UAAoD\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nvar result = function () { return take({ count: 1 }); };\nexports.result = result;\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,8BAAmD,CAAC\"}",
+        "main.d.ts": "export declare const result: () => Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "arrow-as-argument/es2022-esm",
+      "form": "arrow-as-argument",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,MAAM,MAAM,GAAG,GAAG,EAAE,CAAC,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "export const result = () => take({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,8BAAmD,CAAC\"}",
+        "main.d.ts": "export declare const result: () => Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "arrow-as-argument/es2022-cjs",
+      "form": "arrow-as-argument",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIO,MAAM,MAAM,GAAG,GAAG,EAAE,CAAC,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC;AAA1D,QAAA,MAAM,UAAoD\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nconst result = () => take({ count: 1 });\nexports.result = result;\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,8BAAmD,CAAC\"}",
+        "main.d.ts": "export declare const result: () => Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "imported-as-argument/es5-esm",
+      "form": "imported-as-argument",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "dep.js.map": "{\"version\":3,\"file\":\"dep.js\",\"sourceRoot\":\"\",\"sources\":[\"../dep.ts\"],\"names\":[],\"mappings\":\"\"}",
+        "dep.js": "export {};\n//# sourceMappingURL=dep.js.map",
+        "dep.d.ts.map": "{\"version\":3,\"file\":\"dep.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../dep.ts\"],\"names\":[],\"mappings\":\"AAGA,MAAM,MAAM,GAAG,CAAC,CAAC,SAAS,MAAM,EAAE,CAAC,IAAI,MAAM,CAAC,CAAC,EAAE,CAAC,CAAC,CAAC;AACpD,MAAM,CAAC,OAAO,UAAU,IAAI,CAAC,CAAC,EAAE,KAAK,EAAE,CAAC,GAAG,CAAC,CAAC\"}",
+        "dep.d.ts": "export type Bag<K extends string, V> = Record<K, V>;\nexport declare function take<T>(value: T): T;\n//# sourceMappingURL=dep.d.ts.map",
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAAA,sEAAsE;AACtE,sEAAsE;AACtE,4DAA4D;AAC5D,OAAO,EAAC,IAAI,EAAC,MAAM,UAAU,CAAC;AAE9B,MAAM,CAAC,IAAM,MAAM,GAAG,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAAwB,CAAC,CAAC\"}",
+        "main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nimport { take } from \"./dep.js\";\nexport var result = take({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,OAAO,KAAK,EAAC,GAAG,EAAC,MAAM,UAAU,CAAC;AAClC,eAAO,MAAM,MAAM,qBAA0C,CAAC\"}",
+        "main.d.ts": "import type { Bag } from \"./dep.js\";\nexport declare const result: Bag<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "imported-as-argument/es5-cjs",
+      "form": "imported-as-argument",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "dep.js.map": "{\"version\":3,\"file\":\"dep.js\",\"sourceRoot\":\"\",\"sources\":[\"../dep.ts\"],\"names\":[],\"mappings\":\"\"}",
+        "dep.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\n//# sourceMappingURL=dep.js.map",
+        "dep.d.ts.map": "{\"version\":3,\"file\":\"dep.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../dep.ts\"],\"names\":[],\"mappings\":\"AAGA,MAAM,MAAM,GAAG,CAAC,CAAC,SAAS,MAAM,EAAE,CAAC,IAAI,MAAM,CAAC,CAAC,EAAE,CAAC,CAAC,CAAC;AACpD,MAAM,CAAC,OAAO,UAAU,IAAI,CAAC,CAAC,EAAE,KAAK,EAAE,CAAC,GAAG,CAAC,CAAC\"}",
+        "dep.d.ts": "export type Bag<K extends string, V> = Record<K, V>;\nexport declare function take<T>(value: T): T;\n//# sourceMappingURL=dep.d.ts.map",
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAAA,sEAAsE;AACtE,sEAAsE;AACtE,4DAA4D;AAC5D,mCAA8B;AAEjB,QAAA,MAAM,GAAG,IAAA,aAAI,EAAC,EAAC,KAAK,EAAE,CAAC,EAAwB,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar dep_js_1 = require(\"./dep.js\");\nexports.result = (0, dep_js_1.take)({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,OAAO,KAAK,EAAC,GAAG,EAAC,MAAM,UAAU,CAAC;AAClC,eAAO,MAAM,MAAM,qBAA0C,CAAC\"}",
+        "main.d.ts": "import type { Bag } from \"./dep.js\";\nexport declare const result: Bag<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "imported-as-argument/es2022-esm",
+      "form": "imported-as-argument",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "dep.js.map": "{\"version\":3,\"file\":\"dep.js\",\"sourceRoot\":\"\",\"sources\":[\"../dep.ts\"],\"names\":[],\"mappings\":\"\"}",
+        "dep.js": "export {};\n//# sourceMappingURL=dep.js.map",
+        "dep.d.ts.map": "{\"version\":3,\"file\":\"dep.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../dep.ts\"],\"names\":[],\"mappings\":\"AAGA,MAAM,MAAM,GAAG,CAAC,CAAC,SAAS,MAAM,EAAE,CAAC,IAAI,MAAM,CAAC,CAAC,EAAE,CAAC,CAAC,CAAC;AACpD,MAAM,CAAC,OAAO,UAAU,IAAI,CAAC,CAAC,EAAE,KAAK,EAAE,CAAC,GAAG,CAAC,CAAC\"}",
+        "dep.d.ts": "export type Bag<K extends string, V> = Record<K, V>;\nexport declare function take<T>(value: T): T;\n//# sourceMappingURL=dep.d.ts.map",
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAAA,sEAAsE;AACtE,sEAAsE;AACtE,4DAA4D;AAC5D,OAAO,EAAC,IAAI,EAAC,MAAM,UAAU,CAAC;AAE9B,MAAM,CAAC,MAAM,MAAM,GAAG,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAAwB,CAAC,CAAC\"}",
+        "main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nimport { take } from \"./dep.js\";\nexport const result = take({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,OAAO,KAAK,EAAC,GAAG,EAAC,MAAM,UAAU,CAAC;AAClC,eAAO,MAAM,MAAM,qBAA0C,CAAC\"}",
+        "main.d.ts": "import type { Bag } from \"./dep.js\";\nexport declare const result: Bag<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "imported-as-argument/es2022-cjs",
+      "form": "imported-as-argument",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "dep.js.map": "{\"version\":3,\"file\":\"dep.js\",\"sourceRoot\":\"\",\"sources\":[\"../dep.ts\"],\"names\":[],\"mappings\":\"\"}",
+        "dep.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\n//# sourceMappingURL=dep.js.map",
+        "dep.d.ts.map": "{\"version\":3,\"file\":\"dep.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../dep.ts\"],\"names\":[],\"mappings\":\"AAGA,MAAM,MAAM,GAAG,CAAC,CAAC,SAAS,MAAM,EAAE,CAAC,IAAI,MAAM,CAAC,CAAC,EAAE,CAAC,CAAC,CAAC;AACpD,MAAM,CAAC,OAAO,UAAU,IAAI,CAAC,CAAC,EAAE,KAAK,EAAE,CAAC,GAAG,CAAC,CAAC\"}",
+        "dep.d.ts": "export type Bag<K extends string, V> = Record<K, V>;\nexport declare function take<T>(value: T): T;\n//# sourceMappingURL=dep.d.ts.map",
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAAA,sEAAsE;AACtE,sEAAsE;AACtE,4DAA4D;AAC5D,qCAA8B;AAEjB,QAAA,MAAM,GAAG,IAAA,aAAI,EAAC,EAAC,KAAK,EAAE,CAAC,EAAwB,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nconst dep_js_1 = require(\"./dep.js\");\nexports.result = (0, dep_js_1.take)({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,OAAO,KAAK,EAAC,GAAG,EAAC,MAAM,UAAU,CAAC;AAClC,eAAO,MAAM,MAAM,qBAA0C,CAAC\"}",
+        "main.d.ts": "import type { Bag } from \"./dep.js\";\nexport declare const result: Bag<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "qualified-generic-call/es5-esm",
+      "form": "qualified-generic-call",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "dep.js.map": "{\"version\":3,\"file\":\"dep.js\",\"sourceRoot\":\"\",\"sources\":[\"../dep.ts\"],\"names\":[],\"mappings\":\"\"}",
+        "dep.js": "export {};\n//# sourceMappingURL=dep.js.map",
+        "dep.d.ts.map": "{\"version\":3,\"file\":\"dep.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../dep.ts\"],\"names\":[],\"mappings\":\"AAGA,MAAM,CAAC,OAAO,UAAU,IAAI,CAAC,CAAC,EAAE,CAAC,EAAE,CAAC,EAAE,CAAC,EAAE,CAAC,EAAE,CAAC,GAAG,CAAC,CAAC,EAAE,CAAC,CAAC,CAAC\"}",
+        "dep.d.ts": "export declare function pair<A, B>(a: A, b: B): [A, B];\n//# sourceMappingURL=dep.d.ts.map",
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAAA,sEAAsE;AACtE,sEAAsE;AACtE,4DAA4D;AAC5D,OAAO,KAAK,GAAG,MAAM,UAAU,CAAC;AAEhC,MAAM,CAAC,IAAM,MAAM,GAAG,IAAI,CAAC,GAAG,CAAC,IAAI,CAAiB,CAAC,EAAE,GAAG,CAAC,CAAC,CAAC\"}",
+        "main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nimport * as dep from \"./dep.js\";\nexport var result = take(dep.pair(1, \"a\"));\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM,kBAAyC,CAAC\"}",
+        "main.d.ts": "export declare const result: [number, string];\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "qualified-generic-call/es5-cjs",
+      "form": "qualified-generic-call",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "dep.js.map": "{\"version\":3,\"file\":\"dep.js\",\"sourceRoot\":\"\",\"sources\":[\"../dep.ts\"],\"names\":[],\"mappings\":\"\"}",
+        "dep.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\n//# sourceMappingURL=dep.js.map",
+        "dep.d.ts.map": "{\"version\":3,\"file\":\"dep.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../dep.ts\"],\"names\":[],\"mappings\":\"AAGA,MAAM,CAAC,OAAO,UAAU,IAAI,CAAC,CAAC,EAAE,CAAC,EAAE,CAAC,EAAE,CAAC,EAAE,CAAC,EAAE,CAAC,GAAG,CAAC,CAAC,EAAE,CAAC,CAAC,CAAC\"}",
+        "dep.d.ts": "export declare function pair<A, B>(a: A, b: B): [A, B];\n//# sourceMappingURL=dep.d.ts.map",
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAAA,sEAAsE;AACtE,sEAAsE;AACtE,4DAA4D;AAC5D,8BAAgC;AAEnB,QAAA,MAAM,GAAG,IAAI,CAAC,GAAG,CAAC,IAAI,CAAiB,CAAC,EAAE,GAAG,CAAC,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nvar dep = require(\"./dep.js\");\nexports.result = take(dep.pair(1, \"a\"));\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM,kBAAyC,CAAC\"}",
+        "main.d.ts": "export declare const result: [number, string];\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "qualified-generic-call/es2022-esm",
+      "form": "qualified-generic-call",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "dep.js.map": "{\"version\":3,\"file\":\"dep.js\",\"sourceRoot\":\"\",\"sources\":[\"../dep.ts\"],\"names\":[],\"mappings\":\"\"}",
+        "dep.js": "export {};\n//# sourceMappingURL=dep.js.map",
+        "dep.d.ts.map": "{\"version\":3,\"file\":\"dep.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../dep.ts\"],\"names\":[],\"mappings\":\"AAGA,MAAM,CAAC,OAAO,UAAU,IAAI,CAAC,CAAC,EAAE,CAAC,EAAE,CAAC,EAAE,CAAC,EAAE,CAAC,EAAE,CAAC,GAAG,CAAC,CAAC,EAAE,CAAC,CAAC,CAAC\"}",
+        "dep.d.ts": "export declare function pair<A, B>(a: A, b: B): [A, B];\n//# sourceMappingURL=dep.d.ts.map",
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAAA,sEAAsE;AACtE,sEAAsE;AACtE,4DAA4D;AAC5D,OAAO,KAAK,GAAG,MAAM,UAAU,CAAC;AAEhC,MAAM,CAAC,MAAM,MAAM,GAAG,IAAI,CAAC,GAAG,CAAC,IAAI,CAAiB,CAAC,EAAE,GAAG,CAAC,CAAC,CAAC\"}",
+        "main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nimport * as dep from \"./dep.js\";\nexport const result = take(dep.pair(1, \"a\"));\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM,kBAAyC,CAAC\"}",
+        "main.d.ts": "export declare const result: [number, string];\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "qualified-generic-call/es2022-cjs",
+      "form": "qualified-generic-call",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "dep.js.map": "{\"version\":3,\"file\":\"dep.js\",\"sourceRoot\":\"\",\"sources\":[\"../dep.ts\"],\"names\":[],\"mappings\":\"\"}",
+        "dep.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\n//# sourceMappingURL=dep.js.map",
+        "dep.d.ts.map": "{\"version\":3,\"file\":\"dep.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../dep.ts\"],\"names\":[],\"mappings\":\"AAGA,MAAM,CAAC,OAAO,UAAU,IAAI,CAAC,CAAC,EAAE,CAAC,EAAE,CAAC,EAAE,CAAC,EAAE,CAAC,EAAE,CAAC,GAAG,CAAC,CAAC,EAAE,CAAC,CAAC,CAAC\"}",
+        "dep.d.ts": "export declare function pair<A, B>(a: A, b: B): [A, B];\n//# sourceMappingURL=dep.d.ts.map",
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAAA,sEAAsE;AACtE,sEAAsE;AACtE,4DAA4D;AAC5D,gCAAgC;AAEnB,QAAA,MAAM,GAAG,IAAI,CAAC,GAAG,CAAC,IAAI,CAAiB,CAAC,EAAE,GAAG,CAAC,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nconst dep = require(\"./dep.js\");\nexports.result = take(dep.pair(1, \"a\"));\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM,kBAAyC,CAAC\"}",
+        "main.d.ts": "export declare const result: [number, string];\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "parenthesized-as/es5-esm",
+      "form": "parenthesized-as",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,IAAM,MAAM,GAAG,IAAI,CAAG,EAAC,KAAK,EAAE,CAAC,EAA6B,CAAC,CAAC\"}",
+        "main.js": "export var result = take({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAiD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "parenthesized-as/es5-cjs",
+      "form": "parenthesized-as",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,IAAI,CAAG,EAAC,KAAK,EAAE,CAAC,EAA6B,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = take({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAiD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "parenthesized-as/es2022-esm",
+      "form": "parenthesized-as",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,MAAM,MAAM,GAAG,IAAI,CAAG,EAAC,KAAK,EAAE,CAAC,EAA6B,CAAC,CAAC\"}",
+        "main.js": "export const result = take({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAiD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "parenthesized-as/es2022-cjs",
+      "form": "parenthesized-as",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,IAAI,CAAG,EAAC,KAAK,EAAE,CAAC,EAA6B,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = take({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAAiD,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-chain/es5-esm",
+      "form": "as-chain",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,IAAM,MAAM,GAAG,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA8C,CAAC,CAAC\"}",
+        "main.js": "export var result = take({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM;WAAwD,MAAM;CAAE,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    count: number;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-chain/es5-cjs",
+      "form": "as-chain",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA8C,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = take({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM;WAAwD,MAAM;CAAE,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    count: number;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-chain/es2022-esm",
+      "form": "as-chain",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,MAAM,CAAC,MAAM,MAAM,GAAG,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA8C,CAAC,CAAC\"}",
+        "main.js": "export const result = take({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM;WAAwD,MAAM;CAAE,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    count: number;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-chain/es2022-cjs",
+      "form": "as-chain",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAIa,QAAA,MAAM,GAAG,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA8C,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = take({ count: 1 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM;WAAwD,MAAM;CAAE,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    count: number;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "satisfies-alias-control/es5-esm",
+      "form": "satisfies-alias-control",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,MAAM,CAAC,IAAM,MAAM,GAAG,IAAI,CAAC,EAAC,IAAI,EAAE,UAAC,KAAa,IAAK,OAAA,KAAK,CAAC,QAAQ,EAAE,EAAhB,CAAgB,EAAmB,CAAC,CAAC\"}",
+        "main.js": "export var result = take({ read: function (value) { return value.toString(); } });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM;kBAAuB,MAAM;CAAyC,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    read: (value: number) => string;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "satisfies-alias-control/es5-cjs",
+      "form": "satisfies-alias-control",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAKa,QAAA,MAAM,GAAG,IAAI,CAAC,EAAC,IAAI,EAAE,UAAC,KAAa,IAAK,OAAA,KAAK,CAAC,QAAQ,EAAE,EAAhB,CAAgB,EAAmB,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = take({ read: function (value) { return value.toString(); } });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM;kBAAuB,MAAM;CAAyC,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    read: (value: number) => string;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "satisfies-alias-control/es2022-esm",
+      "form": "satisfies-alias-control",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,MAAM,CAAC,MAAM,MAAM,GAAG,IAAI,CAAC,EAAC,IAAI,EAAE,CAAC,KAAa,EAAE,EAAE,CAAC,KAAK,CAAC,QAAQ,EAAE,EAAmB,CAAC,CAAC\"}",
+        "main.js": "export const result = take({ read: (value) => value.toString() });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM;kBAAuB,MAAM;CAAyC,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    read: (value: number) => string;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "satisfies-alias-control/es2022-cjs",
+      "form": "satisfies-alias-control",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAKa,QAAA,MAAM,GAAG,IAAI,CAAC,EAAC,IAAI,EAAE,CAAC,KAAa,EAAE,EAAE,CAAC,KAAK,CAAC,QAAQ,EAAE,EAAmB,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = take({ read: (value) => value.toString() });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM;kBAAuB,MAAM;CAAyC,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    read: (value: number) => string;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "relational-comma-control/es5-esm",
+      "form": "relational-comma-control",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,MAAM,CAAC,IAAM,MAAM,GAAG,IAAI,CAAC,CAAC,GAAG,CAAC,EAAE,CAAC,GAAG,CAAC,CAAC,CAAC\"}",
+        "main.js": "export var result = pair(a < b, c > d);\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM,oBAAqB,CAAC\"}",
+        "main.d.ts": "export declare const result: [boolean, boolean];\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "relational-comma-control/es5-cjs",
+      "form": "relational-comma-control",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAKa,QAAA,MAAM,GAAG,IAAI,CAAC,CAAC,GAAG,CAAC,EAAE,CAAC,GAAG,CAAC,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = pair(a < b, c > d);\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM,oBAAqB,CAAC\"}",
+        "main.d.ts": "export declare const result: [boolean, boolean];\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "relational-comma-control/es2022-esm",
+      "form": "relational-comma-control",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,MAAM,CAAC,MAAM,MAAM,GAAG,IAAI,CAAC,CAAC,GAAG,CAAC,EAAE,CAAC,GAAG,CAAC,CAAC,CAAC\"}",
+        "main.js": "export const result = pair(a < b, c > d);\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM,oBAAqB,CAAC\"}",
+        "main.d.ts": "export declare const result: [boolean, boolean];\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "relational-comma-control/es2022-cjs",
+      "form": "relational-comma-control",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAKa,QAAA,MAAM,GAAG,IAAI,CAAC,CAAC,GAAG,CAAC,EAAE,CAAC,GAAG,CAAC,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = pair(a < b, c > d);\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM,oBAAqB,CAAC\"}",
+        "main.d.ts": "export declare const result: [boolean, boolean];\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "shift-comma-control/es5-esm",
+      "form": "shift-comma-control",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,MAAM,CAAC,IAAM,MAAM,GAAG,IAAI,CAAC,CAAC,IAAI,CAAC,EAAE,CAAC,IAAI,CAAC,CAAC,CAAC\"}",
+        "main.js": "export var result = pair(a << 1, b >> 1);\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM,kBAAuB,CAAC\"}",
+        "main.d.ts": "export declare const result: [number, number];\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "shift-comma-control/es5-cjs",
+      "form": "shift-comma-control",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAKa,QAAA,MAAM,GAAG,IAAI,CAAC,CAAC,IAAI,CAAC,EAAE,CAAC,IAAI,CAAC,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = pair(a << 1, b >> 1);\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM,kBAAuB,CAAC\"}",
+        "main.d.ts": "export declare const result: [number, number];\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "shift-comma-control/es2022-esm",
+      "form": "shift-comma-control",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,MAAM,CAAC,MAAM,MAAM,GAAG,IAAI,CAAC,CAAC,IAAI,CAAC,EAAE,CAAC,IAAI,CAAC,CAAC,CAAC\"}",
+        "main.js": "export const result = pair(a << 1, b >> 1);\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM,kBAAuB,CAAC\"}",
+        "main.d.ts": "export declare const result: [number, number];\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "shift-comma-control/es2022-cjs",
+      "form": "shift-comma-control",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAKa,QAAA,MAAM,GAAG,IAAI,CAAC,CAAC,IAAI,CAAC,EAAE,CAAC,IAAI,CAAC,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\nexports.result = pair(a << 1, b >> 1);\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAKA,eAAO,MAAM,MAAM,kBAAuB,CAAC\"}",
+        "main.d.ts": "export declare const result: [number, number];\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "unknown-pure-return-control/es5-esm",
+      "form": "unknown-pure-return-control",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAAA,sEAAsE;AACtE,sEAAsE;AACtE,4DAA4D;AAC5D,MAAM,UAAU,MAAM,CAAI,KAAc,IAAO,OAAO,KAAU,CAAC,CAAC,CAAC\"}",
+        "main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport function result(value) { return value; }\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAGA,wBAAgB,MAAM,CAAC,CAAC,EAAE,KAAK,EAAE,OAAO,GAAG,CAAC,CAAuB\"}",
+        "main.d.ts": "export declare function result<T>(value: unknown): T;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "unknown-pure-return-control/es5-cjs",
+      "form": "unknown-pure-return-control",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;AAGA,wBAAmE;AAHnE,sEAAsE;AACtE,sEAAsE;AACtE,4DAA4D;AAC5D,SAAgB,MAAM,CAAI,KAAc,IAAO,OAAO,KAAU,CAAC,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = result;\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction result(value) { return value; }\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAGA,wBAAgB,MAAM,CAAC,CAAC,EAAE,KAAK,EAAE,OAAO,GAAG,CAAC,CAAuB\"}",
+        "main.d.ts": "export declare function result<T>(value: unknown): T;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "unknown-pure-return-control/es2022-esm",
+      "form": "unknown-pure-return-control",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAAA,sEAAsE;AACtE,sEAAsE;AACtE,4DAA4D;AAC5D,MAAM,UAAU,MAAM,CAAI,KAAc,IAAO,OAAO,KAAU,CAAC,CAAC,CAAC\"}",
+        "main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nexport function result(value) { return value; }\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAGA,wBAAgB,MAAM,CAAC,CAAC,EAAE,KAAK,EAAE,OAAO,GAAG,CAAC,CAAuB\"}",
+        "main.d.ts": "export declare function result<T>(value: unknown): T;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "unknown-pure-return-control/es2022-cjs",
+      "form": "unknown-pure-return-control",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;AAGA,wBAAmE;AAHnE,sEAAsE;AACtE,sEAAsE;AACtE,4DAA4D;AAC5D,SAAgB,MAAM,CAAI,KAAc,IAAO,OAAO,KAAU,CAAC,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = result;\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction result(value) { return value; }\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAGA,wBAAgB,MAAM,CAAC,CAAC,EAAE,KAAK,EAAE,OAAO,GAAG,CAAC,CAAuB\"}",
+        "main.d.ts": "export declare function result<T>(value: unknown): T;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "runtime-as-record/es5-esm",
+      "form": "runtime-as-record",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAAA,sEAAsE;AACtE,sEAAsE;AACtE,4DAA4D;AAC5D,SAAS,IAAI,CAAI,KAAQ,IAAO,OAAO,KAAK,CAAC,CAAC,CAAC;AAC/C,MAAM,CAAC,IAAM,MAAM,GAAG,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction take(value) { return value; }\nexport var result = take({ count: 7 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAA6C,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "runtime-as-record/es5-cjs",
+      "form": "runtime-as-record",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAAA,sEAAsE;AACtE,sEAAsE;AACtE,4DAA4D;AAC5D,SAAS,IAAI,CAAI,KAAQ,IAAO,OAAO,KAAK,CAAC,CAAC,CAAC;AAClC,QAAA,MAAM,GAAG,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction take(value) { return value; }\nexports.result = take({ count: 7 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAA6C,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "runtime-as-record/es2022-esm",
+      "form": "runtime-as-record",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAAA,sEAAsE;AACtE,sEAAsE;AACtE,4DAA4D;AAC5D,SAAS,IAAI,CAAI,KAAQ,IAAO,OAAO,KAAK,CAAC,CAAC,CAAC;AAC/C,MAAM,CAAC,MAAM,MAAM,GAAG,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction take(value) { return value; }\nexport const result = take({ count: 7 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAA6C,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "runtime-as-record/es2022-cjs",
+      "form": "runtime-as-record",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAAA,sEAAsE;AACtE,sEAAsE;AACtE,4DAA4D;AAC5D,SAAS,IAAI,CAAI,KAAQ,IAAO,OAAO,KAAK,CAAC,CAAC,CAAC;AAClC,QAAA,MAAM,GAAG,IAAI,CAAC,EAAC,KAAK,EAAE,CAAC,EAA2B,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction take(value) { return value; }\nexports.result = take({ count: 7 });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM,wBAA6C,CAAC\"}",
+        "main.d.ts": "export declare const result: Record<string, number>;\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "runtime-satisfies-callback/es5-esm",
+      "form": "runtime-satisfies-callback",
+      "profile": "es5-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAAA,sEAAsE;AACtE,sEAAsE;AACtE,4DAA4D;AAC5D,SAAS,IAAI,CAAI,KAAQ,IAAO,OAAO,KAAK,CAAC,CAAC,CAAC;AAC/C,MAAM,CAAC,IAAM,MAAM,GAAG,IAAI,CAAC,EAAC,IAAI,EAAE,UAAC,KAAa,IAAK,OAAA,KAAK,CAAC,QAAQ,EAAE,EAAhB,CAAgB,EAAqD,CAAC,CAAC\"}",
+        "main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction take(value) { return value; }\nexport var result = take({ read: function (value) { return value.toString(); } });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM;kBAAuB,MAAM;CAA2E,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    read: (value: number) => string;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "runtime-satisfies-callback/es5-cjs",
+      "form": "runtime-satisfies-callback",
+      "profile": "es5-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAAA,sEAAsE;AACtE,sEAAsE;AACtE,4DAA4D;AAC5D,SAAS,IAAI,CAAI,KAAQ,IAAO,OAAO,KAAK,CAAC,CAAC,CAAC;AAClC,QAAA,MAAM,GAAG,IAAI,CAAC,EAAC,IAAI,EAAE,UAAC,KAAa,IAAK,OAAA,KAAK,CAAC,QAAQ,EAAE,EAAhB,CAAgB,EAAqD,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction take(value) { return value; }\nexports.result = take({ read: function (value) { return value.toString(); } });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM;kBAAuB,MAAM;CAA2E,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    read: (value: number) => string;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "runtime-satisfies-callback/es2022-esm",
+      "form": "runtime-satisfies-callback",
+      "profile": "es2022-esm",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAAA,sEAAsE;AACtE,sEAAsE;AACtE,4DAA4D;AAC5D,SAAS,IAAI,CAAI,KAAQ,IAAO,OAAO,KAAK,CAAC,CAAC,CAAC;AAC/C,MAAM,CAAC,MAAM,MAAM,GAAG,IAAI,CAAC,EAAC,IAAI,EAAE,CAAC,KAAa,EAAE,EAAE,CAAC,KAAK,CAAC,QAAQ,EAAE,EAAqD,CAAC,CAAC\"}",
+        "main.js": "// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction take(value) { return value; }\nexport const result = take({ read: (value) => value.toString() });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM;kBAAuB,MAAM;CAA2E,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    read: (value: number) => string;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "runtime-satisfies-callback/es2022-cjs",
+      "form": "runtime-satisfies-callback",
+      "profile": "es2022-cjs",
+      "accepts": true,
+      "diagnostics": [],
+      "emitSkipped": false,
+      "outputs": {
+        "main.js.map": "{\"version\":3,\"file\":\"main.js\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\";;;AAAA,sEAAsE;AACtE,sEAAsE;AACtE,4DAA4D;AAC5D,SAAS,IAAI,CAAI,KAAQ,IAAO,OAAO,KAAK,CAAC,CAAC,CAAC;AAClC,QAAA,MAAM,GAAG,IAAI,CAAC,EAAC,IAAI,EAAE,CAAC,KAAa,EAAE,EAAE,CAAC,KAAK,CAAC,QAAQ,EAAE,EAAqD,CAAC,CAAC\"}",
+        "main.js": "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.result = void 0;\n// This Source Code Form is subject to the terms of the Mozilla Public\n// License, v. 2.0. If a copy of the MPL was not distributed with this\n// file, You can obtain one at https://mozilla.org/MPL/2.0/.\nfunction take(value) { return value; }\nexports.result = take({ read: (value) => value.toString() });\n//# sourceMappingURL=main.js.map",
+        "main.d.ts.map": "{\"version\":3,\"file\":\"main.d.ts\",\"sourceRoot\":\"\",\"sources\":[\"../main.ts\"],\"names\":[],\"mappings\":\"AAIA,eAAO,MAAM,MAAM;kBAAuB,MAAM;CAA2E,CAAC\"}",
+        "main.d.ts": "export declare const result: {\n    read: (value: number) => string;\n};\n//# sourceMappingURL=main.d.ts.map"
+      }
+    },
+    {
+      "id": "as-unknown-target/es5-esm",
+      "form": "as-unknown-target",
+      "profile": "es5-esm",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2304,
+          "message": "Cannot find name 'Missing'.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 42,
+            "length": 7
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "as-unknown-target/es5-cjs",
+      "form": "as-unknown-target",
+      "profile": "es5-cjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2304,
+          "message": "Cannot find name 'Missing'.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 42,
+            "length": 7
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "as-unknown-target/es2022-esm",
+      "form": "as-unknown-target",
+      "profile": "es2022-esm",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2304,
+          "message": "Cannot find name 'Missing'.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 42,
+            "length": 7
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "as-unknown-target/es2022-cjs",
+      "form": "as-unknown-target",
+      "profile": "es2022-cjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2304,
+          "message": "Cannot find name 'Missing'.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 42,
+            "length": 7
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "as-runtime-type-name/es5-esm",
+      "form": "as-runtime-type-name",
+      "profile": "es5-esm",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2693,
+          "message": "'string' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 28,
+            "length": 6
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2554,
+          "message": "Expected 1 arguments, but got 2.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 36,
+            "length": 36
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "as-runtime-type-name/es5-cjs",
+      "form": "as-runtime-type-name",
+      "profile": "es5-cjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2693,
+          "message": "'string' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 28,
+            "length": 6
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2554,
+          "message": "Expected 1 arguments, but got 2.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 36,
+            "length": 36
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "as-runtime-type-name/es2022-esm",
+      "form": "as-runtime-type-name",
+      "profile": "es2022-esm",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2693,
+          "message": "'string' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 28,
+            "length": 6
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2554,
+          "message": "Expected 1 arguments, but got 2.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 36,
+            "length": 36
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "as-runtime-type-name/es2022-cjs",
+      "form": "as-runtime-type-name",
+      "profile": "es2022-cjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2693,
+          "message": "'string' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 28,
+            "length": 6
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2554,
+          "message": "Expected 1 arguments, but got 2.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 36,
+            "length": 36
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "as-extra-runtime-argument/es5-esm",
+      "form": "as-extra-runtime-argument",
+      "profile": "es5-esm",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2554,
+          "message": "Expected 1 arguments, but got 2.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 66,
+            "length": 1
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "as-extra-runtime-argument/es5-cjs",
+      "form": "as-extra-runtime-argument",
+      "profile": "es5-cjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2554,
+          "message": "Expected 1 arguments, but got 2.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 66,
+            "length": 1
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "as-extra-runtime-argument/es2022-esm",
+      "form": "as-extra-runtime-argument",
+      "profile": "es2022-esm",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2554,
+          "message": "Expected 1 arguments, but got 2.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 66,
+            "length": 1
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "as-extra-runtime-argument/es2022-cjs",
+      "form": "as-extra-runtime-argument",
+      "profile": "es2022-cjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2554,
+          "message": "Expected 1 arguments, but got 2.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 66,
+            "length": 1
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "satisfies-wrong-property/es5-esm",
+      "form": "satisfies-wrong-property",
+      "profile": "es5-esm",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 29,
+            "length": 5
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "satisfies-wrong-property/es5-cjs",
+      "form": "satisfies-wrong-property",
+      "profile": "es5-cjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 29,
+            "length": 5
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "satisfies-wrong-property/es2022-esm",
+      "form": "satisfies-wrong-property",
+      "profile": "es2022-esm",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 29,
+            "length": 5
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "satisfies-wrong-property/es2022-cjs",
+      "form": "satisfies-wrong-property",
+      "profile": "es2022-cjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'string' is not assignable to type 'number'.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 29,
+            "length": 5
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "generic-wrong-runtime-argument/es5-esm",
+      "form": "generic-wrong-runtime-argument",
+      "profile": "es5-esm",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "file": "main.ts",
+          "position": {
+            "line": 6,
+            "column": 49,
+            "length": 5
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "generic-wrong-runtime-argument/es5-cjs",
+      "form": "generic-wrong-runtime-argument",
+      "profile": "es5-cjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "file": "main.ts",
+          "position": {
+            "line": 6,
+            "column": 49,
+            "length": 5
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "generic-wrong-runtime-argument/es2022-esm",
+      "form": "generic-wrong-runtime-argument",
+      "profile": "es2022-esm",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "file": "main.ts",
+          "position": {
+            "line": 6,
+            "column": 49,
+            "length": 5
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "generic-wrong-runtime-argument/es2022-cjs",
+      "form": "generic-wrong-runtime-argument",
+      "profile": "es2022-cjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2345,
+          "message": "Argument of type 'string' is not assignable to parameter of type 'number'.",
+          "file": "main.ts",
+          "position": {
+            "line": 6,
+            "column": 49,
+            "length": 5
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "unbound-runtime-after-assertion/es5-esm",
+      "form": "unbound-runtime-after-assertion",
+      "profile": "es5-esm",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2304,
+          "message": "Cannot find name 'missingRuntime'.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 66,
+            "length": 14
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2554,
+          "message": "Expected 1 arguments, but got 2.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 66,
+            "length": 14
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "unbound-runtime-after-assertion/es5-cjs",
+      "form": "unbound-runtime-after-assertion",
+      "profile": "es5-cjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2304,
+          "message": "Cannot find name 'missingRuntime'.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 66,
+            "length": 14
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2554,
+          "message": "Expected 1 arguments, but got 2.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 66,
+            "length": 14
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "unbound-runtime-after-assertion/es2022-esm",
+      "form": "unbound-runtime-after-assertion",
+      "profile": "es2022-esm",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2304,
+          "message": "Cannot find name 'missingRuntime'.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 66,
+            "length": 14
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2554,
+          "message": "Expected 1 arguments, but got 2.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 66,
+            "length": 14
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "unbound-runtime-after-assertion/es2022-cjs",
+      "form": "unbound-runtime-after-assertion",
+      "profile": "es2022-cjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2304,
+          "message": "Cannot find name 'missingRuntime'.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 66,
+            "length": 14
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2554,
+          "message": "Expected 1 arguments, but got 2.",
+          "file": "main.ts",
+          "position": {
+            "line": 5,
+            "column": 66,
+            "length": 14
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "readonly-member-control/es5-esm",
+      "form": "readonly-member-control",
+      "profile": "es5-esm",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2542,
+          "message": "Index signature in type 'Readonly<Record<string, number>>' only permits reading.",
+          "file": "main.ts",
+          "position": {
+            "line": 7,
+            "column": 1,
+            "length": 11
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "readonly-member-control/es5-cjs",
+      "form": "readonly-member-control",
+      "profile": "es5-cjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2542,
+          "message": "Index signature in type 'Readonly<Record<string, number>>' only permits reading.",
+          "file": "main.ts",
+          "position": {
+            "line": 7,
+            "column": 1,
+            "length": 11
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "readonly-member-control/es2022-esm",
+      "form": "readonly-member-control",
+      "profile": "es2022-esm",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2542,
+          "message": "Index signature in type 'Readonly<Record<string, number>>' only permits reading.",
+          "file": "main.ts",
+          "position": {
+            "line": 7,
+            "column": 1,
+            "length": 11
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    },
+    {
+      "id": "readonly-member-control/es2022-cjs",
+      "form": "readonly-member-control",
+      "profile": "es2022-cjs",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2542,
+          "message": "Index signature in type 'Readonly<Record<string, number>>' only permits reading.",
+          "file": "main.ts",
+          "position": {
+            "line": 7,
+            "column": 1,
+            "length": 11
+          },
+          "relatedInformation": []
+        }
+      ],
+      "emitSkipped": true,
+      "outputs": {}
+    }
+  ],
+  "consumers": [
+    {
+      "id": "as-record-argument/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-record-argument/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "as-record-argument/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-record-argument/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "as-record-argument/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-record-argument/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "as-record-argument/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-record-argument/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "as-nested-record-argument/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-nested-record-argument/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, Record<string, number>>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "as-nested-record-argument/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-nested-record-argument/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, Record<string, number>>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "as-nested-record-argument/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-nested-record-argument/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, Record<string, number>>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "as-nested-record-argument/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-nested-record-argument/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, Record<string, number>>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "satisfies-contextual-callback/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "satisfies-contextual-callback/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ read: (value: number) => string; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "satisfies-contextual-callback/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "satisfies-contextual-callback/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ read: (value: number) => string; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "satisfies-contextual-callback/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "satisfies-contextual-callback/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ read: (value: number) => string; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "satisfies-contextual-callback/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "satisfies-contextual-callback/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ read: (value: number) => string; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "satisfies-parenthesized-callback/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "satisfies-parenthesized-callback/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ read: (value: number) => string; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "satisfies-parenthesized-callback/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "satisfies-parenthesized-callback/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ read: (value: number) => string; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "satisfies-parenthesized-callback/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "satisfies-parenthesized-callback/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ read: (value: number) => string; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "satisfies-parenthesized-callback/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "satisfies-parenthesized-callback/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ read: (value: number) => string; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "generic-call-argument/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "generic-call-argument/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '[number, string]' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "generic-call-argument/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "generic-call-argument/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '[number, string]' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "generic-call-argument/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "generic-call-argument/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '[number, string]' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "generic-call-argument/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "generic-call-argument/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '[number, string]' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "generic-nested-call-argument/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "generic-nested-call-argument/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '[Record<string, number>, string]' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "generic-nested-call-argument/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "generic-nested-call-argument/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '[Record<string, number>, string]' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "generic-nested-call-argument/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "generic-nested-call-argument/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '[Record<string, number>, string]' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "generic-nested-call-argument/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "generic-nested-call-argument/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '[Record<string, number>, string]' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "as-second-of-two-arguments/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-second-of-two-arguments/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "as-second-of-two-arguments/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-second-of-two-arguments/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "as-second-of-two-arguments/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-second-of-two-arguments/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "as-second-of-two-arguments/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-second-of-two-arguments/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "as-first-of-two-arguments/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-first-of-two-arguments/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "as-first-of-two-arguments/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-first-of-two-arguments/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "as-first-of-two-arguments/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-first-of-two-arguments/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "as-first-of-two-arguments/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-first-of-two-arguments/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "as-trailing-comma/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-trailing-comma/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "as-trailing-comma/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-trailing-comma/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "as-trailing-comma/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-trailing-comma/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "as-trailing-comma/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-trailing-comma/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "satisfies-generic-binder/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "satisfies-generic-binder/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ read: <T>(value: T) => T; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "satisfies-generic-binder/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "satisfies-generic-binder/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ read: <T>(value: T) => T; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "satisfies-generic-binder/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "satisfies-generic-binder/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ read: <T>(value: T) => T; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "satisfies-generic-binder/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "satisfies-generic-binder/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ read: <T>(value: T) => T; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "member-as-argument/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "member-as-argument/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "member-as-argument/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "member-as-argument/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "member-as-argument/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "member-as-argument/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "member-as-argument/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "member-as-argument/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "indexed-as-argument/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "indexed-as-argument/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "indexed-as-argument/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "indexed-as-argument/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "indexed-as-argument/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "indexed-as-argument/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "indexed-as-argument/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "indexed-as-argument/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "returned-call-as-argument/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "returned-call-as-argument/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "returned-call-as-argument/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "returned-call-as-argument/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "returned-call-as-argument/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "returned-call-as-argument/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "returned-call-as-argument/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "returned-call-as-argument/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "constructor-as-argument/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "constructor-as-argument/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Box<Record<string, number>>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "constructor-as-argument/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "constructor-as-argument/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Box<Record<string, number>>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "constructor-as-argument/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "constructor-as-argument/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Box<Record<string, number>>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "constructor-as-argument/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "constructor-as-argument/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Box<Record<string, number>>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "call-method-as-argument/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "call-method-as-argument/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "call-method-as-argument/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "call-method-as-argument/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "call-method-as-argument/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "call-method-as-argument/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "call-method-as-argument/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "call-method-as-argument/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'number' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "return-as-argument/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "return-as-argument/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '() => Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "return-as-argument/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "return-as-argument/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '() => Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "return-as-argument/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "return-as-argument/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '() => Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "return-as-argument/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "return-as-argument/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '() => Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "arrow-as-argument/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "arrow-as-argument/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '() => Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "arrow-as-argument/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "arrow-as-argument/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '() => Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "arrow-as-argument/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "arrow-as-argument/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '() => Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "arrow-as-argument/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "arrow-as-argument/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '() => Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "imported-as-argument/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "imported-as-argument/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Bag<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "imported-as-argument/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "imported-as-argument/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Bag<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "imported-as-argument/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "imported-as-argument/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Bag<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "imported-as-argument/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "imported-as-argument/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Bag<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "qualified-generic-call/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "qualified-generic-call/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '[number, string]' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "qualified-generic-call/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "qualified-generic-call/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '[number, string]' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "qualified-generic-call/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "qualified-generic-call/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '[number, string]' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "qualified-generic-call/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "qualified-generic-call/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '[number, string]' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "parenthesized-as/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "parenthesized-as/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "parenthesized-as/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "parenthesized-as/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "parenthesized-as/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "parenthesized-as/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "parenthesized-as/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "parenthesized-as/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "as-chain/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-chain/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ count: number; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "as-chain/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-chain/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ count: number; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "as-chain/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-chain/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ count: number; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "as-chain/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "as-chain/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ count: number; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "satisfies-alias-control/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "satisfies-alias-control/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ read: (value: number) => string; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "satisfies-alias-control/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "satisfies-alias-control/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ read: (value: number) => string; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "satisfies-alias-control/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "satisfies-alias-control/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ read: (value: number) => string; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "satisfies-alias-control/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "satisfies-alias-control/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ read: (value: number) => string; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "relational-comma-control/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "relational-comma-control/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '[boolean, boolean]' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "relational-comma-control/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "relational-comma-control/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '[boolean, boolean]' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "relational-comma-control/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "relational-comma-control/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '[boolean, boolean]' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "relational-comma-control/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "relational-comma-control/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '[boolean, boolean]' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "shift-comma-control/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "shift-comma-control/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '[number, number]' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "shift-comma-control/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "shift-comma-control/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '[number, number]' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "shift-comma-control/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "shift-comma-control/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '[number, number]' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "shift-comma-control/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "shift-comma-control/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '[number, number]' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "unknown-pure-return-control/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "unknown-pure-return-control/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '<T>(value: unknown) => T' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "unknown-pure-return-control/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "unknown-pure-return-control/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '<T>(value: unknown) => T' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "unknown-pure-return-control/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "unknown-pure-return-control/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '<T>(value: unknown) => T' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "unknown-pure-return-control/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "unknown-pure-return-control/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '<T>(value: unknown) => T' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "runtime-as-record/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "runtime-as-record/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "runtime-as-record/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "runtime-as-record/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "runtime-as-record/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "runtime-as-record/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "runtime-as-record/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "runtime-as-record/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type 'Record<string, number>' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "runtime-satisfies-callback/es5-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "runtime-satisfies-callback/es5-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ read: (value: number) => string; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "runtime-satisfies-callback/es5-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "runtime-satisfies-callback/es5-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ read: (value: number) => string; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "runtime-satisfies-callback/es2022-esm",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "runtime-satisfies-callback/es2022-esm",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ read: (value: number) => string; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    },
+    {
+      "id": "runtime-satisfies-callback/es2022-cjs",
+      "polarity": "positive",
+      "accepts": true,
+      "diagnostics": []
+    },
+    {
+      "id": "runtime-satisfies-callback/es2022-cjs",
+      "polarity": "negative",
+      "accepts": false,
+      "diagnostics": [
+        {
+          "code": 2322,
+          "message": "Type '{ read: (value: number) => string; }' is not assignable to type 'never'.",
+          "file": "consumer.ts",
+          "position": {
+            "line": 2,
+            "column": 7,
+            "length": 8
+          },
+          "relatedInformation": []
+        }
+      ]
+    }
+  ],
+  "executions": [
+    {
+      "id": "runtime-as-record/es5-esm",
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "id": "runtime-as-record/es5-cjs",
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "id": "runtime-as-record/es2022-esm",
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "id": "runtime-as-record/es2022-cjs",
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "id": "runtime-satisfies-callback/es5-esm",
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "id": "runtime-satisfies-callback/es5-cjs",
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "id": "runtime-satisfies-callback/es2022-esm",
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "id": "runtime-satisfies-callback/es2022-cjs",
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ]
+}

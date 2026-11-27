@@ -7,6 +7,7 @@
 use super::*;
 
 mod arrays;
+mod indexed_records;
 mod invocations;
 mod records;
 mod regexp;
@@ -32,13 +33,13 @@ impl<'a> ModuleChecker<'a> {
             |start: usize| self.module.generic_call_type_arguments.contains_key(&start);
         for operators in [&["+", "-"][..], &["*", "/", "%"][..]] {
             let Some((mut rest, operator, last)) =
-                top_level_binary_parts(tokens, operators, generic_call)
+                self.expression_binary_parts(tokens, operators, generic_call)
             else {
                 continue;
             };
             let mut chain = vec![(operator, last)];
             while let Some((left, operator, operand)) =
-                top_level_binary_parts(rest, operators, generic_call)
+                self.expression_binary_parts(rest, operators, generic_call)
             {
                 chain.push((operator, operand));
                 rest = left;
@@ -211,18 +212,18 @@ impl<'a> ModuleChecker<'a> {
                 return self.infer_function_call(signatures, call.arguments, scope, explicit);
             }
         }
-        if let Some((_, _, result)) = top_level_binary_parts(tokens, &[","], |start| {
+        if let Some((_, _, result)) = self.expression_binary_parts(tokens, &[","], |start| {
             self.module.generic_call_type_arguments.contains_key(&start)
         }) {
             // A sequence evaluates every operand but yields its final value.
             return self.infer_expression(result, scope);
         }
-        if let Some((_, _, assigned)) = top_level_binary_parts(tokens, &["="], |_| false) {
+        if let Some((_, _, assigned)) = self.expression_binary_parts(tokens, &["="], |_| false) {
             // Simple assignment yields the value written to its target.
             return self.infer_expression(assigned, scope);
         }
         if let Some((target, operator, assigned)) =
-            top_level_binary_parts(tokens, &["&&=", "||=", "??="], |_| false)
+            self.expression_binary_parts(tokens, &["&&=", "||=", "??="], |_| false)
         {
             let before = self.infer_expression(target, scope);
             let after = self.infer_expression(assigned, scope);
@@ -338,7 +339,7 @@ impl<'a> ModuleChecker<'a> {
             return Type::Unknown;
         }
         if let Some(call) =
-            direct_call_parts(tokens).filter(|call| split_call_arguments(call.arguments).is_some())
+            direct_call_parts(tokens).filter(|call| self.call_arguments(call.arguments).is_some())
         {
             if let Some(signatures) =
                 self.inferred_call_signatures(&call.callee.text, call.callee.start, scope)
@@ -370,7 +371,7 @@ impl<'a> ModuleChecker<'a> {
             // known result.
             return Type::Unknown;
         }
-        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["??"], |start| {
+        if let Some((left, _, right)) = self.expression_binary_parts(tokens, &["??"], |start| {
             self.module.generic_call_type_arguments.contains_key(&start)
         }) {
             return infer_nullish_coalescing_expression(
@@ -378,7 +379,7 @@ impl<'a> ModuleChecker<'a> {
                 self.infer_expression(right, scope),
             );
         }
-        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["||"], |start| {
+        if let Some((left, _, right)) = self.expression_binary_parts(tokens, &["||"], |start| {
             self.module.generic_call_type_arguments.contains_key(&start)
         }) {
             return infer_logical_expression(
@@ -387,7 +388,7 @@ impl<'a> ModuleChecker<'a> {
                 true,
             );
         }
-        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["&&"], |start| {
+        if let Some((left, _, right)) = self.expression_binary_parts(tokens, &["&&"], |start| {
             self.module.generic_call_type_arguments.contains_key(&start)
         }) {
             return infer_logical_expression(
@@ -459,36 +460,39 @@ impl<'a> ModuleChecker<'a> {
             return self.infer_expression(value, scope);
         }
         for operators in [&["|"][..], &["^"][..], &["&"][..]] {
-            if let Some((left, _, right)) = top_level_binary_parts(tokens, operators, |start| {
-                self.module.generic_call_type_arguments.contains_key(&start)
-            }) {
+            if let Some((left, _, right)) =
+                self.expression_binary_parts(tokens, operators, |start| {
+                    self.module.generic_call_type_arguments.contains_key(&start)
+                })
+            {
                 return infer_numeric_binary_expression(
                     self.infer_expression(left, scope),
                     self.infer_expression(right, scope),
                 );
             }
         }
-        if top_level_binary_parts(
-            tokens,
-            &[
-                "===",
-                "!==",
-                "==",
-                "!=",
-                "<",
-                ">",
-                "<=",
-                ">=",
-                "in",
-                "instanceof",
-            ],
-            |start| self.module.generic_call_type_arguments.contains_key(&start),
-        )
-        .is_some()
+        if self
+            .expression_binary_parts(
+                tokens,
+                &[
+                    "===",
+                    "!==",
+                    "==",
+                    "!=",
+                    "<",
+                    ">",
+                    "<=",
+                    ">=",
+                    "in",
+                    "instanceof",
+                ],
+                |start| self.module.generic_call_type_arguments.contains_key(&start),
+            )
+            .is_some()
         {
             return Type::Boolean;
         }
-        if let Some((left, _, right)) = top_level_shift_parts(tokens, |start| {
+        if let Some((left, _, right)) = self.expression_shift_parts(tokens, |start| {
             self.module.generic_call_type_arguments.contains_key(&start)
         }) {
             return infer_numeric_binary_expression(
@@ -502,7 +506,7 @@ impl<'a> ModuleChecker<'a> {
         if let Some(result) = self.infer_operator_chain(tokens, scope) {
             return result;
         }
-        if let Some((left, _, right)) = top_level_binary_parts(tokens, &["**"], |start| {
+        if let Some((left, _, right)) = self.expression_binary_parts(tokens, &["**"], |start| {
             self.module.generic_call_type_arguments.contains_key(&start)
         }) {
             return infer_numeric_binary_expression(

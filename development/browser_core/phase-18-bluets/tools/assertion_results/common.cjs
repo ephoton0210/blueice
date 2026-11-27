@@ -9,6 +9,47 @@ const fixture = path.join(repo, 'backend/bluets/tests/fixtures/assertion_results
 const phase = path.join(repo, 'development/browser_core/phase-18-bluets');
 const read = name => JSON.parse(fs.readFileSync(path.join(fixture, name)));
 
+function projectCheckoutIoTool(contract, correction, actual) {
+    const name = 'ci_inventory_checkout.test.cjs';
+    assert.equal(correction.path, 'development/browser_core/phase-18-bluets/tools/' + name);
+    assert.equal(correction.baseContractSha256, '962d5b8062eddf41fba8d5ee74c98b2ab80d9d5f8f87e59a4554161b9200e461');
+    assert.equal(correction.kind, 'canonical-blob-streaming-host-correction');
+    assert.equal(correction.beforeSha256, contract.preservation.originalToolHashes[name]);
+    assert.equal(sha(correction.beforeText), correction.beforeSha256);
+    for (const key of ['fixtureChanges','nativeExpectedOutputChanges','compilerChanges'])
+        assert.deepEqual(correction[key], []);
+    assert.equal(correction.regressionRequirementsUnchanged, true);
+    const oldImport = "const { spawnSync, execFileSync } = require('node:child_process');";
+    const newImport = "const { spawnSync } = require('node:child_process');";
+    const oldRead = [
+        "    const bytes = execFileSync('git', ['show', 'HEAD:' + file], {",
+        '      cwd: root, maxBuffer: 32 * 1024 * 1024',
+        '    });',
+    ].join('\n');
+    const newRead = [
+        '    const captured = path.join(base, path.basename(file));',
+        "    const descriptor = fs.openSync(captured, 'wx');",
+        '    let result;',
+        '    try {',
+        "      result = spawnSync('git', ['show', 'HEAD:' + file], {",
+        "        cwd: root, stdio: ['ignore', descriptor, 'pipe']",
+        '      });',
+        '    } finally { fs.closeSync(descriptor); }',
+        '    assert.ifError(result.error);',
+        '    assert.equal(result.status, 0, String(result.stderr));',
+        '    const bytes = fs.readFileSync(captured);',
+    ].join('\n');
+    assert.equal(correction.beforeText.split(oldImport).length, 2);
+    assert.equal(correction.beforeText.split(oldRead).length, 2);
+    const expected = correction.beforeText.replace(oldImport,newImport).replace(oldRead,newRead);
+    assert.equal(sha(expected), correction.afterSha256, 'only canonical blob I/O may change');
+    assert(Buffer.from(actual).equals(Buffer.from(expected)), 'every repaired checkout-test byte');
+    // Historical P0-J preservation still validates its original tool bytes;
+    // this projection is permitted only after proving the exact newer I/O
+    // implementation above. All real executions use the repaired file.
+    return Buffer.from(correction.beforeText);
+}
+
 function validateOracleHostCorrections(contract, record, readTool) {
     const prefix = 'development/browser_core/phase-18-bluets/tools/';
     const names = ['record_gt4_overload_chains.cjs', 'record_gt8_return_context.cjs'];
@@ -60,8 +101,13 @@ function oracleHostCorrections(contract) {
     const bytes = fs.readFileSync(path.join(phase, 'ASSERTION_RESULTS_ORACLE_HOST_CORRECTIONS.json'));
     const digest = sha(bytes);
     assert.equal(digest, '287056fd44b301bdd1d58f165a381bda0bcbca59b4371004115b87232616f646');
-    validateOracleHostCorrections(contract, JSON.parse(bytes),
-        name => fs.readFileSync(path.join(phase, 'tools', name)));
+    const checkoutPath = path.join(phase,'ERASED_TYPE_REGIONS_CHECKOUT_IO_CORRECTION.json');
+    const checkout = fs.existsSync(checkoutPath) ? JSON.parse(fs.readFileSync(checkoutPath)) : null;
+    validateOracleHostCorrections(contract, JSON.parse(bytes), name => {
+        const actual = fs.readFileSync(path.join(phase,'tools',name));
+        return checkout && name === 'ci_inventory_checkout.test.cjs'
+            ? projectCheckoutIoTool(contract,checkout,actual) : actual;
+    });
     return digest;
 }
 
@@ -152,4 +198,4 @@ function toolHashes() {
         'assertion_results/policy.test.cjs'].map(name => [name,sha(fs.readFileSync(path.join(phase,'tools',name)))]));
 }
 
-module.exports = {...base, fixture, phase, read, authorities, capture, completeMap, toolHashes, validateOracleHostCorrections};
+module.exports = {...base, fixture, phase, read, authorities, capture, completeMap, toolHashes, validateOracleHostCorrections, projectCheckoutIoTool};

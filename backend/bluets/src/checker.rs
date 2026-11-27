@@ -45,6 +45,7 @@ pub(crate) const MODULE_EXPORTS_VERSION: &str = "module-exports-v12";
 pub(crate) const STRUCTURAL_BOUNDARIES_VERSION: &str = "bluets-structural-boundaries/6";
 pub(crate) const OVERLOAD_CHAINS_VERSION: &str = "bluets-overload-chains/4";
 pub(crate) const RETURN_CONTEXT_VERSION: &str = "bluets-return-context/8";
+pub(crate) const ERASED_TYPE_REGIONS_VERSION: &str = "bluets-erased-type-regions/1";
 mod computed_keys;
 pub(crate) mod tuple_compositions;
 mod type_operators;
@@ -820,9 +821,19 @@ fn matching_call_angle_bracket(tokens: &[Token], start: usize) -> Option<usize> 
 }
 
 fn split_call_arguments(tokens: &[Token]) -> Option<Vec<&[Token]>> {
+    split_call_arguments_ignoring(tokens, |_| false)
+}
+
+fn split_call_arguments_ignoring(
+    tokens: &[Token],
+    erased: impl Fn(&Token) -> bool,
+) -> Option<Vec<&[Token]>> {
     let mut depth = 0usize;
     let mut close = None;
     for (index, token) in tokens.iter().enumerate() {
+        if erased(token) {
+            continue;
+        }
         match token.text.as_str() {
             "(" | "[" | "{" => depth += 1,
             ")" if depth == 0 => {
@@ -844,6 +855,9 @@ fn split_call_arguments(tokens: &[Token]) -> Option<Vec<&[Token]>> {
     let mut start = 0usize;
     let mut depth = 0usize;
     for (index, token) in tokens[..close].iter().enumerate() {
+        if erased(token) {
+            continue;
+        }
         match token.text.as_str() {
             "(" | "[" | "{" => depth += 1,
             ")" | "]" | "}" if depth > 0 => depth -= 1,
@@ -922,11 +936,24 @@ fn top_level_binary_parts<'a>(
     operators: &[&str],
     is_explicit_generic_call: impl Fn(usize) -> bool,
 ) -> Option<(&'a [Token], &'a Token, &'a [Token])> {
+    top_level_binary_parts_ignoring(tokens, operators, is_explicit_generic_call, |_| false)
+}
+
+fn top_level_binary_parts_ignoring<'a>(
+    tokens: &'a [Token],
+    operators: &[&str],
+    is_explicit_generic_call: impl Fn(usize) -> bool,
+    erased: impl Fn(&Token) -> bool,
+) -> Option<(&'a [Token], &'a Token, &'a [Token])> {
     let mut depth = 0usize;
     let mut operator_index = None;
     let mut index = 0usize;
     while index < tokens.len() {
         let token = &tokens[index];
+        if erased(token) {
+            index += 1;
+            continue;
+        }
         if token.kind == TokenKind::Identifier && is_explicit_generic_call(token.start) {
             if let Some(close) = explicit_generic_call_close(tokens, index) {
                 index = close + 1;
@@ -975,15 +1002,20 @@ impl ShiftOperator {
 /// Returns the operands and final top-level shift operator. Runtime `>>` and
 /// `>>>` arrive as adjacent `>` tokens because the parser splits generic
 /// closers for type syntax, so recognize only source-contiguous runs here.
-fn top_level_shift_parts(
+fn top_level_shift_parts_ignoring(
     tokens: &[Token],
     is_explicit_generic_call: impl Fn(usize) -> bool,
+    erased: impl Fn(&Token) -> bool,
 ) -> Option<(&[Token], ShiftOperator, &[Token])> {
     let mut depth = 0usize;
     let mut operator = None;
     let mut index = 0usize;
     while index < tokens.len() {
         let token = &tokens[index];
+        if erased(token) {
+            index += 1;
+            continue;
+        }
         if token.kind == TokenKind::Identifier && is_explicit_generic_call(token.start) {
             if let Some(close) = explicit_generic_call_close(tokens, index) {
                 index = close + 1;

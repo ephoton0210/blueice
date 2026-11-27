@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "frozenBeforeProductionChanges": true,
+  "acceptedParent": "b45a2a211470a8cfb738d79d45900de4abff20a7",
+  "nativeVersion": "5.9.3",
+  "implementationSha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+  "libraries": {
+    "lib.es5.d.ts": "c430d44666289dae81f30fa7b2edebf186ecc91a2d4c71266ea6ae76388792e1",
+    "lib.decorators.d.ts": "8e7f8264d0fb4c5339605a15daadb037bf238c10b654bb3eee14208f860a32ea",
+    "lib.decorators.legacy.d.ts": "782dec38049b92d4e85c1585fbea5474a219c6984a35b004963b00beb1aab538"
+  },
+  "sha256": {
+    "cases.json": "c46ed859fbb282ffd05c4a53934011d49c68c0fad349e8c947adc4f7980007ab",
+    "reference.json": "d13bb2455e2db07a8ba3a27ec26d458c5474201ca5f7f500df4b02ed6f0fccfd"
+  },
+  "recorderSha256": "b83d0d67921e0a45d680c9417fbc34340103dda04f4ebb22ae2dc70e65080bcf",
+  "forms": 34,
+  "profiles": 4,
+  "observations": 136,
+  "accepted": 108,
+  "rejected": 28,
+  "consumers": 216,
+  "executions": 8
+}

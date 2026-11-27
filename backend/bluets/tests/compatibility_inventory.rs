@@ -12,6 +12,8 @@ mod case_assertion_results;
 mod case_conditional_inference;
 #[path = "fixtures/compatibility_inventory/case_contextual_members.rs"]
 mod case_contextual_members;
+#[path = "fixtures/compatibility_inventory/case_erased_type_regions.rs"]
+mod case_erased_type_regions;
 #[path = "fixtures/compatibility_inventory/case_ge5.rs"]
 mod case_ge5;
 #[path = "fixtures/compatibility_inventory/case_higher_order_inference.rs"]

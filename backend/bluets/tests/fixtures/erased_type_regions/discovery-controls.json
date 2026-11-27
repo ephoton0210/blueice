@@ -1,0 +1,596 @@
+{
+  "schemaVersion": 1,
+  "frozenBeforeProductionChanges": true,
+  "acceptedParent": "b2d09d2f09292be4f7640fdfdf9c39f2909f38dd4490cbb144712c34dad6d830",
+  "scope": "Separate original discovery controls; excluded from P0-K direct semantics denominator; original sources and Native expectations remain unchanged.",
+  "cases": [
+    {
+      "id": "constructor-as-argument/es5-esm",
+      "exitCode": 1,
+      "diagnostics": [
+        {
+          "unmatchedBlueDiagnostic": {
+            "btsCode": "BTS1001",
+            "noTypeScriptCounterpart": "BlueTSC deliberately refuses a documented subset boundary.",
+            "rawMessage": "declared and async classes are not in the first class form",
+            "severity": "error",
+            "span": {
+              "end": 216,
+              "module": "main.ts",
+              "start": 211
+            },
+            "typescript": null
+          }
+        }
+      ],
+      "failed": [
+        "verdict",
+        "diagnostics",
+        "output inventory"
+      ],
+      "outputDifferences": [],
+      "consumers": 0,
+      "executions": 0,
+      "reason": "Existing ambient-class parser refusal; general ambient classes remain open under G-T9."
+    },
+    {
+      "id": "constructor-as-argument/es5-cjs",
+      "exitCode": 1,
+      "diagnostics": [
+        {
+          "unmatchedBlueDiagnostic": {
+            "btsCode": "BTS1001",
+            "noTypeScriptCounterpart": "BlueTSC deliberately refuses a documented subset boundary.",
+            "rawMessage": "declared and async classes are not in the first class form",
+            "severity": "error",
+            "span": {
+              "end": 216,
+              "module": "main.ts",
+              "start": 211
+            },
+            "typescript": null
+          }
+        }
+      ],
+      "failed": [
+        "verdict",
+        "diagnostics",
+        "output inventory"
+      ],
+      "outputDifferences": [],
+      "consumers": 0,
+      "executions": 0,
+      "reason": "Existing ambient-class parser refusal; general ambient classes remain open under G-T9."
+    },
+    {
+      "id": "constructor-as-argument/es2022-esm",
+      "exitCode": 1,
+      "diagnostics": [
+        {
+          "unmatchedBlueDiagnostic": {
+            "btsCode": "BTS1001",
+            "noTypeScriptCounterpart": "BlueTSC deliberately refuses a documented subset boundary.",
+            "rawMessage": "declared and async classes are not in the first class form",
+            "severity": "error",
+            "span": {
+              "end": 216,
+              "module": "main.ts",
+              "start": 211
+            },
+            "typescript": null
+          }
+        }
+      ],
+      "failed": [
+        "verdict",
+        "diagnostics",
+        "output inventory"
+      ],
+      "outputDifferences": [],
+      "consumers": 0,
+      "executions": 0,
+      "reason": "Existing ambient-class parser refusal; general ambient classes remain open under G-T9."
+    },
+    {
+      "id": "constructor-as-argument/es2022-cjs",
+      "exitCode": 1,
+      "diagnostics": [
+        {
+          "unmatchedBlueDiagnostic": {
+            "btsCode": "BTS1001",
+            "noTypeScriptCounterpart": "BlueTSC deliberately refuses a documented subset boundary.",
+            "rawMessage": "declared and async classes are not in the first class form",
+            "severity": "error",
+            "span": {
+              "end": 216,
+              "module": "main.ts",
+              "start": 211
+            },
+            "typescript": null
+          }
+        }
+      ],
+      "failed": [
+        "verdict",
+        "diagnostics",
+        "output inventory"
+      ],
+      "outputDifferences": [],
+      "consumers": 0,
+      "executions": 0,
+      "reason": "Existing ambient-class parser refusal; general ambient classes remain open under G-T9."
+    },
+    {
+      "id": "relational-comma-control/es5-esm",
+      "exitCode": 1,
+      "diagnostics": [
+        {
+          "code": 2693,
+          "message": "'number' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "column": 29,
+            "length": 6,
+            "line": 5
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2693,
+          "message": "'number' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "column": 40,
+            "length": 6,
+            "line": 5
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2693,
+          "message": "'number' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "column": 51,
+            "length": 6,
+            "line": 5
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2304,
+          "message": "Cannot find name 'b'.",
+          "file": "main.ts",
+          "position": {
+            "column": 32,
+            "length": 1,
+            "line": 6
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2304,
+          "message": "Cannot find name 'c'.",
+          "file": "main.ts",
+          "position": {
+            "column": 35,
+            "length": 1,
+            "line": 6
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2304,
+          "message": "Cannot find name 'd'.",
+          "file": "main.ts",
+          "position": {
+            "column": 39,
+            "length": 1,
+            "line": 6
+          },
+          "relatedInformation": []
+        }
+      ],
+      "failed": [
+        "verdict",
+        "diagnostics",
+        "output inventory"
+      ],
+      "outputDifferences": [],
+      "consumers": 0,
+      "executions": 0,
+      "reason": "Existing multi-variable declaration refusal; retain original diagnostics without call-repair credit."
+    },
+    {
+      "id": "relational-comma-control/es5-cjs",
+      "exitCode": 1,
+      "diagnostics": [
+        {
+          "code": 2693,
+          "message": "'number' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "column": 29,
+            "length": 6,
+            "line": 5
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2693,
+          "message": "'number' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "column": 40,
+            "length": 6,
+            "line": 5
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2693,
+          "message": "'number' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "column": 51,
+            "length": 6,
+            "line": 5
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2304,
+          "message": "Cannot find name 'b'.",
+          "file": "main.ts",
+          "position": {
+            "column": 32,
+            "length": 1,
+            "line": 6
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2304,
+          "message": "Cannot find name 'c'.",
+          "file": "main.ts",
+          "position": {
+            "column": 35,
+            "length": 1,
+            "line": 6
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2304,
+          "message": "Cannot find name 'd'.",
+          "file": "main.ts",
+          "position": {
+            "column": 39,
+            "length": 1,
+            "line": 6
+          },
+          "relatedInformation": []
+        }
+      ],
+      "failed": [
+        "verdict",
+        "diagnostics",
+        "output inventory"
+      ],
+      "outputDifferences": [],
+      "consumers": 0,
+      "executions": 0,
+      "reason": "Existing multi-variable declaration refusal; retain original diagnostics without call-repair credit."
+    },
+    {
+      "id": "relational-comma-control/es2022-esm",
+      "exitCode": 1,
+      "diagnostics": [
+        {
+          "code": 2693,
+          "message": "'number' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "column": 29,
+            "length": 6,
+            "line": 5
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2693,
+          "message": "'number' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "column": 40,
+            "length": 6,
+            "line": 5
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2693,
+          "message": "'number' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "column": 51,
+            "length": 6,
+            "line": 5
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2304,
+          "message": "Cannot find name 'b'.",
+          "file": "main.ts",
+          "position": {
+            "column": 32,
+            "length": 1,
+            "line": 6
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2304,
+          "message": "Cannot find name 'c'.",
+          "file": "main.ts",
+          "position": {
+            "column": 35,
+            "length": 1,
+            "line": 6
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2304,
+          "message": "Cannot find name 'd'.",
+          "file": "main.ts",
+          "position": {
+            "column": 39,
+            "length": 1,
+            "line": 6
+          },
+          "relatedInformation": []
+        }
+      ],
+      "failed": [
+        "verdict",
+        "diagnostics",
+        "output inventory"
+      ],
+      "outputDifferences": [],
+      "consumers": 0,
+      "executions": 0,
+      "reason": "Existing multi-variable declaration refusal; retain original diagnostics without call-repair credit."
+    },
+    {
+      "id": "relational-comma-control/es2022-cjs",
+      "exitCode": 1,
+      "diagnostics": [
+        {
+          "code": 2693,
+          "message": "'number' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "column": 29,
+            "length": 6,
+            "line": 5
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2693,
+          "message": "'number' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "column": 40,
+            "length": 6,
+            "line": 5
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2693,
+          "message": "'number' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "column": 51,
+            "length": 6,
+            "line": 5
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2304,
+          "message": "Cannot find name 'b'.",
+          "file": "main.ts",
+          "position": {
+            "column": 32,
+            "length": 1,
+            "line": 6
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2304,
+          "message": "Cannot find name 'c'.",
+          "file": "main.ts",
+          "position": {
+            "column": 35,
+            "length": 1,
+            "line": 6
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2304,
+          "message": "Cannot find name 'd'.",
+          "file": "main.ts",
+          "position": {
+            "column": 39,
+            "length": 1,
+            "line": 6
+          },
+          "relatedInformation": []
+        }
+      ],
+      "failed": [
+        "verdict",
+        "diagnostics",
+        "output inventory"
+      ],
+      "outputDifferences": [],
+      "consumers": 0,
+      "executions": 0,
+      "reason": "Existing multi-variable declaration refusal; retain original diagnostics without call-repair credit."
+    },
+    {
+      "id": "shift-comma-control/es5-esm",
+      "exitCode": 1,
+      "diagnostics": [
+        {
+          "code": 2693,
+          "message": "'number' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "column": 29,
+            "length": 6,
+            "line": 5
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2304,
+          "message": "Cannot find name 'b'.",
+          "file": "main.ts",
+          "position": {
+            "column": 36,
+            "length": 1,
+            "line": 6
+          },
+          "relatedInformation": []
+        }
+      ],
+      "failed": [
+        "verdict",
+        "diagnostics",
+        "output inventory"
+      ],
+      "outputDifferences": [],
+      "consumers": 0,
+      "executions": 0,
+      "reason": "Existing multi-variable declaration refusal; retain original diagnostics without call-repair credit."
+    },
+    {
+      "id": "shift-comma-control/es5-cjs",
+      "exitCode": 1,
+      "diagnostics": [
+        {
+          "code": 2693,
+          "message": "'number' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "column": 29,
+            "length": 6,
+            "line": 5
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2304,
+          "message": "Cannot find name 'b'.",
+          "file": "main.ts",
+          "position": {
+            "column": 36,
+            "length": 1,
+            "line": 6
+          },
+          "relatedInformation": []
+        }
+      ],
+      "failed": [
+        "verdict",
+        "diagnostics",
+        "output inventory"
+      ],
+      "outputDifferences": [],
+      "consumers": 0,
+      "executions": 0,
+      "reason": "Existing multi-variable declaration refusal; retain original diagnostics without call-repair credit."
+    },
+    {
+      "id": "shift-comma-control/es2022-esm",
+      "exitCode": 1,
+      "diagnostics": [
+        {
+          "code": 2693,
+          "message": "'number' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "column": 29,
+            "length": 6,
+            "line": 5
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2304,
+          "message": "Cannot find name 'b'.",
+          "file": "main.ts",
+          "position": {
+            "column": 36,
+            "length": 1,
+            "line": 6
+          },
+          "relatedInformation": []
+        }
+      ],
+      "failed": [
+        "verdict",
+        "diagnostics",
+        "output inventory"
+      ],
+      "outputDifferences": [],
+      "consumers": 0,
+      "executions": 0,
+      "reason": "Existing multi-variable declaration refusal; retain original diagnostics without call-repair credit."
+    },
+    {
+      "id": "shift-comma-control/es2022-cjs",
+      "exitCode": 1,
+      "diagnostics": [
+        {
+          "code": 2693,
+          "message": "'number' only refers to a type, but is being used as a value here.",
+          "file": "main.ts",
+          "position": {
+            "column": 29,
+            "length": 6,
+            "line": 5
+          },
+          "relatedInformation": []
+        },
+        {
+          "code": 2304,
+          "message": "Cannot find name 'b'.",
+          "file": "main.ts",
+          "position": {
+            "column": 36,
+            "length": 1,
+            "line": 6
+          },
+          "relatedInformation": []
+        }
+      ],
+      "failed": [
+        "verdict",
+        "diagnostics",
+        "output inventory"
+      ],
+      "outputDifferences": [],
+      "consumers": 0,
+      "executions": 0,
+      "reason": "Existing multi-variable declaration refusal; retain original diagnostics without call-repair credit."
+    }
+  ]
+}

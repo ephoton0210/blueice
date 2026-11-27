@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "typescript": "5.9.3",
-  "source_revision": "backend-tree:fd642c71683fbd992d1319e5598c51f5379dc766",
-  "source_graph_sha256": "9db59b3686e4450ed197ad35ead4696fb77ae6e24fe43fe4103815566b4b3a80",
+  "source_revision": "backend-tree:f37bddc3ad3d842b3dcf261e7c6e6fedcca1290e",
+  "source_graph_sha256": "746733a70c04e76f4668cdc889735e5e772443d4dc2933c22ad566c200156335",
   "fixture_directories": 3392,
   "diagnostic_programs": 3182,
   "diagnostic_templates": 221,
@@ -525,6 +525,20 @@
         "backend/bluets/tests/fixtures/typescript_oracle/enum-const-imported/valid.ts": "1036c722b4b87a0a17766ce51b6c83d67bb5b49b",
         "backend/bluets/tests/fixtures/typescript_oracle/enum-const-runtime/main.ts": "fc2ca33afeb66a7c0a4fe1ec5958a3b5df365184",
         "backend/bluets/tests/fixtures/typescript_oracle/enum-runtime-basic/main.ts": "7865169a539a48a621dc2c31e1e47d481abfb68a"
+      }
+    },
+    {
+      "harness": "backend/bluets/tests/erased_type_regions.rs",
+      "ignored_tests": [
+        "call_argument_outputs_match_the_complete_native_contract"
+      ],
+      "inputs": {
+        "backend/bluets/tests/erased_type_regions.rs": "4c114e493b5e3a78344747e58445c06a2d200a83",
+        "backend/bluets/tests/fixtures/callable_utilities/cases.json": "852aeec04bef16e6c21f47c3d3fafe87b3c2dbf2",
+        "backend/bluets/tests/fixtures/callable_utilities/reference.json": "65d31e9f81e6e89bd43d8d51f5799d1b2ab44c2f",
+        "backend/bluets/tests/fixtures/erased_type_regions/cases.json": "a860a0126ce102170c32473a48badfd15b2fedcb",
+        "backend/bluets/tests/fixtures/erased_type_regions/discovery-controls.json": "184ff1d908337136f2026f791555c40fe8271c59",
+        "backend/bluets/tests/fixtures/erased_type_regions/reference.json": "ba58722e31ff257fafa9a58d23b20ad2c6a90759"
       }
     },
     {

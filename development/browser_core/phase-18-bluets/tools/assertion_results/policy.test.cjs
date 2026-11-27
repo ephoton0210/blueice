@@ -35,7 +35,7 @@ test('astral/CRLF prefixes shift authored byte spans by UTF-8 bytes', () => {
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const {validateOracleHostCorrections: validate} = require('./common.cjs');
+const {validateOracleHostCorrections: validate,projectCheckoutIoTool} = require('./common.cjs');
 const repo = process.cwd();
 const phase = path.join(repo, 'development/browser_core/phase-18-bluets');
 const contract = JSON.parse(fs.readFileSync(path.join(phase, 'ASSERTION_RESULTS_CONTRACT.json')));
@@ -43,7 +43,9 @@ const record = JSON.parse(fs.readFileSync(path.join(phase, 'ASSERTION_RESULTS_OR
 const tools = new Map(Object.keys(contract.preservation.originalToolHashes).map(name =>
     [name, fs.readFileSync(path.join(phase, 'tools', name))]));
 const copy = value => JSON.parse(JSON.stringify(value));
-const check = (metadata = record, actual = tools) => validate(contract, metadata, name => actual.get(name));
+const checkout = JSON.parse(fs.readFileSync(path.join(phase,'ERASED_TYPE_REGIONS_CHECKOUT_IO_CORRECTION.json')));
+const check = (metadata = record, actual = tools) => validate(contract, metadata, name =>
+    name === 'ci_inventory_checkout.test.cjs' ? projectCheckoutIoTool(contract,checkout,actual.get(name)) : actual.get(name));
 const sha = value => crypto.createHash('sha256').update(value).digest('hex');
 
 test('accept exactly two derived repairs and retain constraints on all 621 originals', () => {
@@ -98,4 +100,23 @@ test('reject declarations of fixture, expectation, compiler or regression change
         assert.throws(() => check(altered));
     }
     assert.throws(() => check({...record, regressionRequirementsUnchanged:false}));
+});
+
+test('checkout I/O repair retains the exact original canonical-byte test after verified projection', () => {
+    const original = projectCheckoutIoTool(contract,checkout,tools.get('ci_inventory_checkout.test.cjs'));
+    assert.equal(sha(original),contract.preservation.originalToolHashes['ci_inventory_checkout.test.cjs']);
+    assert.equal(sha(tools.get('ci_inventory_checkout.test.cjs')),checkout.afterSha256);
+});
+
+test('checkout I/O repair rejects an extra edit even with a replaced digest', () => {
+    const extra = Buffer.concat([tools.get('ci_inventory_checkout.test.cjs'),Buffer.from('\n// extra\n')]);
+    assert.throws(()=>projectCheckoutIoTool(contract,{...checkout,afterSha256:sha(extra)},extra));
+});
+
+test('checkout I/O repair refuses foreign paths, original bytes and semantic exceptions', () => {
+    const actual = tools.get('ci_inventory_checkout.test.cjs');
+    for (const edit of [{path:'foreign.cjs'},{beforeText:checkout.beforeText+'\n'},
+        {fixtureChanges:['unexpected']},{nativeExpectedOutputChanges:['unexpected']},
+        {compilerChanges:['unexpected']},{regressionRequirementsUnchanged:false}])
+        assert.throws(()=>projectCheckoutIoTool(contract,{...checkout,...edit},actual));
 });

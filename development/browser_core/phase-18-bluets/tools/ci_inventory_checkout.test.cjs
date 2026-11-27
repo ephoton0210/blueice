@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawnSync, execFileSync } = require('node:child_process');
+const { spawnSync } = require('node:child_process');
 
 test('container jobs trust only the checked-out workspace before inventory tests', () => {
   const root = path.resolve(__dirname, '../../../..');
@@ -88,9 +88,17 @@ test('canonical inventory artifacts remain byte-identical with core.autocrlf=tru
   const canonical = new Map();
   for (const file of files) {
     // Read the immutable blob, never a possibly CRLF-converted working copy.
-    const bytes = execFileSync('git', ['show', 'HEAD:' + file], {
-      cwd: root, maxBuffer: 32 * 1024 * 1024
-    });
+    const captured = path.join(base, path.basename(file));
+    const descriptor = fs.openSync(captured, 'wx');
+    let result;
+    try {
+      result = spawnSync('git', ['show', 'HEAD:' + file], {
+        cwd: root, stdio: ['ignore', descriptor, 'pipe']
+      });
+    } finally { fs.closeSync(descriptor); }
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, String(result.stderr));
+    const bytes = fs.readFileSync(captured);
     canonical.set(file, bytes);
     fs.mkdirSync(path.dirname(path.join(repository, file)), { recursive: true });
     fs.writeFileSync(path.join(repository, file), bytes);
