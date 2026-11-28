@@ -1412,8 +1412,14 @@ Landed (commits eb9f0ff5e, 641f97541, 153d49164): CSS cascade layers, logical bo
 
 Measured on the saved github.com landing page (Safari body height 8504): restyle+relayout 23 s -> 4.4 s, script phase 90 s -> ~28 s, height 8813 -> 8371.
 
+Update (commit c602ff03c): the `textContent` TypeError was BlueIce's own `new CSSStyleSheet().insertRule` (no owner node), found with `BLUEJS_TRACE_NULLISH=1`, which prints the function that raised a nullish-property TypeError. Also fixed: `<meta>` `name`/`content`, `flex-flow` resetting the omitted longhand, and a box's own `max-width` clamping its max-content measurement (GitHub's marquee track 2512 -> 757 px, Safari 770). Test honesty: only the grid max-width test was seen red before its fix; the stylesheet, meta and flex-flow tests were written with or after their fixes (the commit message overstates this).
+
+With `BI_STARTUP_BUDGET=120` the scripts finish and the three hero/feature `Product__media` boxes match Safari exactly; body height is 8292 vs Safari 8504. With the default 6 s budget the page is not hydrated, so the practical blocker is script speed (landing-pages module ~16 s, restyle+relayout still seconds per pass).
+
 Open:
-- Hero `data-media-position` (Safari: bottom-center) is not updated because an uncaught `TypeError: Cannot read properties of null (reading 'textContent')` is thrown during React's render. A 120 s startup budget changes nothing, so it is not the budget. Locating it needs source locations in BlueJS errors (diagnostic-span parse mode for page scripts).
-- Remaining height gap (133 px short), h1 530 vs 526 wide, first full cascade ~4 s (26,981 rules).
+- Script/hydration time: needs to be far below the 6 s budget before the default run matches Safari.
+- Remaining ~212 px height gap: the Testimonials carousel (Safari group heights 497/453/410/324, ours 410/453/324; section 978 vs 946 tall) accounts for 32 px; the rest builds up below it (ColorDivider at 6171 vs 6140). Hidden nav dropdown heights also differ (hidden only).
+- First DataMarquee item is 379 px wide vs Safari 391 (font width).
+- First full cascade ~4 s (26,981 rules).
 - Not started: `mask-mode`, `backdrop-filter`, 3D transforms, Wikipedia hidden dropdown widths (71 vs 192, hidden only), inline-size containment for intrinsic widths, BBC footer 9 px offset at equal width.
 - None of these is yet recorded as a genuine browser-interpretation difference; they are unfixed gaps.
