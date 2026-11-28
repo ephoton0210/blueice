@@ -1225,7 +1225,9 @@ fn layout_block_level_uncached(
     }
 
     // ---- final box ----
-    let intrinsic_height = content_flow_height;
+    // Size containment (`container-type: size`): the box's height is its own, not its content's.
+    let size_contained = style.keyword("container-type") == Some("size");
+    let intrinsic_height = if size_contained { 0.0 } else { content_flow_height };
     let content_height = clamp_height(specified_height.unwrap_or(intrinsic_height));
     let origin_x = border.left + padding.left;
     let origin_y = border.top + padding.top;
@@ -2718,6 +2720,25 @@ mod tests {
         );
         let body = find_by_tag(&doc, doc.root(), "body").unwrap();
         layout_block(&doc, body, &styles, 800.0)
+    }
+
+    fn first_child_of_body(f: &Fragment) -> &Fragment {
+        &f.children[0]
+    }
+
+    #[test]
+    fn a_size_container_takes_nothing_from_its_content_for_its_height() {
+        // `container-type: size` is size containment: GitHub's feature grids size their content
+        // from `100cqh`, so a height that followed the content chased itself shorter, 12px a pass.
+        let html = "<div id=c><p style=\"margin:0;height:300px\">x</p></div>";
+        let plain = layout_block_in(html, "p { display: block }");
+        assert_eq!(first_child_of_body(&plain).height, 300.0, "an ordinary box grows with its content");
+        let contained = layout_block_in(html, "#c { container-type: size }");
+        assert_eq!(first_child_of_body(&contained).height, 0.0, "a size container does not");
+        let given = layout_block_in(html, "#c { container-type: size; height: 80px }");
+        assert_eq!(first_child_of_body(&given).height, 80.0, "its own height still applies");
+        let inline = layout_block_in(html, "#c { container-type: inline-size }");
+        assert_eq!(first_child_of_body(&inline).height, 300.0, "inline-size contains only the width");
     }
 
     #[test]

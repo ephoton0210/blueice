@@ -37,7 +37,9 @@ use blueice_dom::{Document, NodeData, NodeId};
 use std::collections::HashMap;
 
 mod incremental;
-pub use incremental::{cascade_incremental, cascade_incremental_report};
+pub use incremental::{
+    cascade_incremental, cascade_incremental_report, cascade_incremental_report_with_containers,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Origin {
@@ -2475,10 +2477,52 @@ mod tests {
     }
 
     #[test]
-    fn a_page_with_containers_is_never_restyled_incrementally() {
-        let mut doc = blueice_html::parse("<div id=c style=\"container-type:size\"><p>x</p></div>");
+    fn an_incremental_restyle_answers_container_queries_with_the_measured_sizes() {
+        // GitHub has both `container-type` elements and `@container` rules, so refusing the
+        // incremental path for any such page meant a 3 s full cascade per script change.
+        let mut doc = blueice_html::parse("<div id=c><p>x</p><i>y</i></div>");
         let ua = ua_stylesheet();
-        let sheets: [(Origin, &[Rule]); 1] = [(Origin::Ua, &ua)];
+        let author = parse(
+            "#c { container-type: inline-size } \
+             @container (min-width: 100px) { p { color: #ff0000 } } \
+             p.k { width: 7px }",
+        );
+        let sheets: [(Origin, &[Rule]); 2] = [(Origin::Ua, &ua), (Origin::Author, &author)];
+        let all = all_elements(&doc);
+        let find = |tag: &str| {
+            *all.iter()
+                .find(|n| matches!(doc.data(**n), NodeData::Element { tag_name, .. } if tag_name == tag))
+                .unwrap()
+        };
+        let (c, p, i) = (find("div"), find("p"), find("i"));
+        let mut sizes = ContainerSizes::new();
+        sizes.insert(c, (200.0, 0.0));
+        let mut styles = cascade_with_containers(&doc, &sheets, 1280.0, 720.0, &sizes);
+        let red = Color::Rgba(255, 0, 0, 255);
+        assert_eq!(styles[&p].color, red, "the query holds at 200px");
+        doc.take_changes();
+        if let NodeData::Element { attributes, .. } = doc.data_mut(p) {
+            attributes.push(("class".to_string(), "k".to_string()));
+        }
+        let changes = doc.take_changes();
+        assert!(cascade_incremental_report_with_containers(
+            &doc, &sheets, 1280.0, 720.0, &sizes, &mut styles, &changes, &mut Vec::new()
+        ));
+        let full = cascade_with_containers(&doc, &sheets, 1280.0, 720.0, &sizes);
+        assert_eq!(styles[&p], full[&p], "the changed element, inside its container");
+        assert_eq!(styles[&p].color, red, "still inside the container's query");
+        assert_eq!(styles[&i], full[&i]);
+        assert_eq!(styles, full);
+    }
+
+    #[test]
+    fn containers_that_no_rule_asks_about_do_not_stop_an_incremental_restyle() {
+        // A container only matters to a style through `@container` rules and cq units; a page
+        // that has the property (GitHub's hero does) but neither restyles as any other page.
+        let mut doc = blueice_html::parse("<div id=c style=\"container-type:inline-size\"><p>x</p></div>");
+        let ua = ua_stylesheet();
+        let author = parse("p.k { color: #00ff00 } p { width: 10px }");
+        let sheets: [(Origin, &[Rule]); 2] = [(Origin::Ua, &ua), (Origin::Author, &author)];
         let mut styles = cascade(&doc, &sheets);
         doc.take_changes();
         let p = all_elements(&doc).into_iter()
@@ -2487,6 +2531,83 @@ mod tests {
         if let NodeData::Element { attributes, .. } = doc.data_mut(p) {
             attributes.push(("class".to_string(), "k".to_string()));
         }
+        let changes = doc.take_changes();
+        assert!(cascade_incremental(&doc, &sheets, 1280.0, 720.0, &mut styles, &changes));
+        let full = cascade(&doc, &sheets);
+        assert_eq!(styles[&p], full[&p], "the same style a full cascade gives");
+        assert_eq!(styles[&p].color, Color::Rgba(0, 255, 0, 255));
+    }
+
+    /// A page with one shadow host: `<div id=wrap><my-card></my-card></div><p></p>`, the card's
+    /// shadow tree holding a `<span>`; its styles, and the ids of what the tests change.
+    fn shadow_page() -> (Document, NodeId, NodeId, NodeId, NodeId) {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let wrap = elem(&mut doc, root, "div", &[("id", "wrap")]);
+        let host = elem(&mut doc, wrap, "my-card", &[]);
+        let p = elem(&mut doc, root, "p", &[]);
+        let shadow = doc.create_node(NodeData::Element { tag_name: "#fragment".into(), attributes: vec![] });
+        let inner = elem(&mut doc, shadow, "span", &[]);
+        doc.attach_shadow(host, shadow);
+        let _ = inner;
+        (doc, wrap, host, p, shadow)
+    }
+
+    fn add_class(doc: &mut Document, node: NodeId) {
+        if let NodeData::Element { attributes, .. } = doc.data_mut(node) {
+            attributes.push(("class".to_string(), "k".to_string()));
+        }
+    }
+
+    #[test]
+    fn a_change_away_from_every_shadow_tree_is_still_restyled_incrementally() {
+        // GitHub attaches shadow roots while it boots; every restyle after that was a full
+        // cascade, 3 s each, because one shadow root anywhere ruled the incremental path out.
+        let (mut doc, _wrap, _host, p, _shadow) = shadow_page();
+        let ua = ua_stylesheet();
+        let author = parse("p.k { color: #00ff00 }");
+        let sheets: [(Origin, &[Rule]); 2] = [(Origin::Ua, &ua), (Origin::Author, &author)];
+        let mut styles = cascade(&doc, &sheets);
+        doc.take_changes();
+        add_class(&mut doc, p);
+        let changes = doc.take_changes();
+        assert!(cascade_incremental(&doc, &sheets, 1280.0, 720.0, &mut styles, &changes));
+        let full = cascade(&doc, &sheets);
+        assert_eq!(styles[&p], full[&p]);
+        assert_eq!(styles[&p].color, Color::Rgba(0, 255, 0, 255));
+    }
+
+    #[test]
+    fn a_change_at_or_above_a_shadow_host_needs_the_full_cascade() {
+        // The host's style is what its shadow tree inherits, and the incremental path does
+        // not walk the composed tree: the host itself, and anything that contains it.
+        for pick in 0..2 {
+            let (mut doc, wrap, host, _p, _shadow) = shadow_page();
+            let ua = ua_stylesheet();
+            let author = parse("my-card.k { color: #00ff00 } #wrap.k { color: #00ff00 }");
+            let sheets: [(Origin, &[Rule]); 2] = [(Origin::Ua, &ua), (Origin::Author, &author)];
+            let mut styles = cascade(&doc, &sheets);
+            doc.take_changes();
+            add_class(&mut doc, if pick == 0 { host } else { wrap });
+            let changes = doc.take_changes();
+            assert!(
+                !cascade_incremental(&doc, &sheets, 1280.0, 720.0, &mut styles, &changes),
+                "{}",
+                if pick == 0 { "the host" } else { "its ancestor" }
+            );
+        }
+    }
+
+    #[test]
+    fn a_change_inside_a_shadow_tree_needs_the_full_cascade() {
+        let (mut doc, _wrap, _host, _p, shadow) = shadow_page();
+        let span = doc.children(shadow).next().unwrap();
+        let ua = ua_stylesheet();
+        let author = parse("span.k { color: #00ff00 }");
+        let sheets: [(Origin, &[Rule]); 2] = [(Origin::Ua, &ua), (Origin::Author, &author)];
+        let mut styles = cascade(&doc, &sheets);
+        doc.take_changes();
+        add_class(&mut doc, span);
         let changes = doc.take_changes();
         assert!(!cascade_incremental(&doc, &sheets, 1280.0, 720.0, &mut styles, &changes));
     }

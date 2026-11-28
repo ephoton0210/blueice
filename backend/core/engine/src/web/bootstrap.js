@@ -19,9 +19,10 @@
   const kebabToCamel = (s) => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
   const isNode = (v) => v instanceof Node;
   const toStr = (v) => (v === null || v === undefined ? '' : String(v));
-  const reportError = (e) => {
+  // `where` says what was running ("event click", "upgrade <x-y>"): the error alone rarely does.
+  const reportError = (e, where) => {
     try {
-      console.error(e && e.stack ? e.stack : String(e));
+      console.error((where ? '[' + where + '] ' : '') + (e && e.stack ? e.stack : String(e)));
     } catch (_) {}
   };
   const define = (target, props) => {
@@ -272,7 +273,7 @@
             if (typeof l.callback === 'function') l.callback.call(current, event);
             else if (l.callback && typeof l.callback.handleEvent === 'function') l.callback.handleEvent(event);
           } catch (e) {
-            reportError(e);
+            reportError(e, 'event ' + event.type);
           }
           if (event._stopNow) return;
         }
@@ -418,7 +419,7 @@
       try {
         this._callback.call(this, records, this);
       } catch (e) {
-        reportError(e);
+        reportError(e, 'MutationObserver callback');
       }
     }
   }
@@ -482,7 +483,7 @@
       try {
         fn.apply(el, args);
       } catch (e) {
-        reportError(e);
+        reportError(e, name + ' of <' + el.localName + '>');
       }
     }
   };
@@ -496,7 +497,7 @@
       Object.setPrototypeOf(el, definition.ctor.prototype);
       Reflect.construct(definition.ctor, [], definition.ctor);
     } catch (e) {
-      reportError(e);
+      reportError(e, 'upgrade <' + el.localName + '>');
     } finally {
       upgradeTarget = previous;
     }
@@ -549,7 +550,7 @@
       try {
         (0, eval)(el.textContent);
       } catch (e) {
-        reportError(e);
+        reportError(e, 'inline script');
       } finally {
         document._currentScript = previous || null;
       }
@@ -4594,7 +4595,7 @@
         try {
           this._callback.call(this, entries, this);
         } catch (e) {
-          reportError(e);
+          reportError(e, 'IntersectionObserver callback');
         }
       }
     }
@@ -4621,7 +4622,7 @@
       try {
         this._callback.call(this, entries, this);
       } catch (e) {
-        reportError(e);
+        reportError(e, 'ResizeObserver callback');
       }
     }
     observe(target) {
@@ -5743,7 +5744,7 @@
           try {
             (0, eval)(source);
           } catch (e) {
-            reportError(e);
+            reportError(e, 'loaded script');
           } finally {
             document._currentScript = previous || null;
           }

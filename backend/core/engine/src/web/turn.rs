@@ -16,6 +16,15 @@ use std::time::Duration;
 /// left unrun, so one heavy page cannot hold the session for long.
 pub(crate) const STARTUP_BUDGET: Duration = Duration::from_secs(6);
 
+/// [`STARTUP_BUDGET`], or `BI_STARTUP_BUDGET` seconds when that is set (a developer aid, to see
+/// what a page does once its scripts are allowed to finish).
+fn startup_budget() -> Duration {
+    std::env::var("BI_STARTUP_BUDGET")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .map_or(STARTUP_BUDGET, Duration::from_secs)
+}
+
 /// A script element of the document, as the startup turn needs it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ScriptPlan {
@@ -162,7 +171,7 @@ fn run_startup(host: &mut WebHost, startup: Startup) {
     let (module_scripts, classic): (Vec<_>, Vec<_>) = scripts.into_iter().partition(|s| s.module);
     let (deferred, immediate): (Vec<_>, Vec<_>) = classic.into_iter().partition(|s| s.deferred);
     for script in immediate.into_iter().chain(deferred) {
-        if began.elapsed() > STARTUP_BUDGET {
+        if began.elapsed() > startup_budget() {
             host.note_line("page scripts stopped: the startup time budget is spent");
             break;
         }
@@ -215,7 +224,7 @@ fn run_startup(host: &mut WebHost, startup: Startup) {
                 script.inline.clone(),
             )),
         };
-        if began.elapsed() > STARTUP_BUDGET {
+        if began.elapsed() > startup_budget() {
             host.note_line("page scripts stopped: the startup time budget is spent");
             break;
         }

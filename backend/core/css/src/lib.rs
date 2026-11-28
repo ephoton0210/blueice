@@ -42,7 +42,8 @@ mod vars;
 
 pub use calc::Calc;
 pub use cascade::{
-    cascade, cascade_incremental, cascade_incremental_report, cascade_with_containers,
+    cascade, cascade_incremental, cascade_incremental_report, cascade_incremental_report_with_containers,
+    cascade_with_containers,
     cascade_with_viewport, ContainerSizes,
     is_pseudo_node, pseudo_kind, pseudo_node_id, pseudo_owner, pseudo_text_node_id, ua_stylesheet,
     ComputedStyle, Origin,

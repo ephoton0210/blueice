@@ -261,6 +261,11 @@ impl Document {
         self.shadow_roots.values().copied().collect()
     }
 
+    /// Every element that carries a shadow root.
+    pub fn shadow_hosts(&self) -> impl Iterator<Item = NodeId> + '_ {
+        self.shadow_roots.keys().copied()
+    }
+
     /// Whether any element carries a shadow root.
     pub fn has_shadow_roots(&self) -> bool {
         !self.shadow_roots.is_empty()

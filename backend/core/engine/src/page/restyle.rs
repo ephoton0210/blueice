@@ -7,7 +7,7 @@
 //! inputs to the rules themselves may have changed.
 
 use super::Page;
-use blueice_css::{cascade_incremental_report, MediaEnvironment, Origin};
+use blueice_css::{cascade_incremental_report_with_containers, MediaEnvironment, Origin};
 use blueice_dom::{Changes, Document, NodeData, NodeId};
 
 /// What the last full cascade was computed from, besides the document itself.
@@ -126,6 +126,46 @@ fn sheets_changed(doc: &Document, changes: &Changes, epoch: &StyleEpoch) -> bool
         || count_sheet_elements(doc) != epoch.sheet_elements
 }
 
+/// The rules that were added or taken away between two rule lists, in a pass over both: where
+/// they differ, the next place the old rule turns up in the new list tells what was inserted
+/// before it, and a rule found nowhere near is one that went. `None` when more than `most`
+/// differ. Rules left in place keep their order, so the elements a changed rule does not reach
+/// cascade exactly as before wherever the new sheets sit.
+fn changed_rules<'a>(
+    old: &'a [blueice_css::Rule],
+    new: &'a [blueice_css::Rule],
+    most: usize,
+) -> Option<Vec<&'a blueice_css::Rule>> {
+    /// How far ahead in the new list an old rule is looked for.
+    const WINDOW: usize = 4096;
+    let mut changed = Vec::new();
+    let (mut i, mut j) = (0, 0);
+    while i < old.len() && j < new.len() {
+        if old[i] == new[j] {
+            i += 1;
+            j += 1;
+            continue;
+        }
+        let ahead = &new[j + 1..new.len().min(j + 1 + WINDOW)];
+        match ahead.iter().position(|rule| *rule == old[i]) {
+            Some(skipped) => {
+                changed.extend(&new[j..j + 1 + skipped]);
+                j += 1 + skipped;
+            }
+            None => {
+                changed.push(&old[i]);
+                i += 1;
+            }
+        }
+        if changed.len() > most {
+            return None;
+        }
+    }
+    changed.extend(&old[i..]);
+    changed.extend(&new[j..]);
+    (changed.len() <= most).then_some(changed)
+}
+
 impl Page {
     /// Records what a full cascade was computed from, and starts a fresh change period.
     pub(super) fn note_full_cascade(
@@ -144,9 +184,8 @@ impl Page {
 
     /// Handles a stylesheet change that touched only a few rules (a script put a `<style>` into
     /// the page, as a picture's own `.st0 { fill: ... }` sheet, or took one away, or edited
-    /// one): the rules the old and new lists do not share, after dropping what they have in
-    /// common at the start and at the end, are the only ones that can make an element's style
-    /// differ. The elements those match are restyled, with their subtrees, against the complete
+    /// one): the rules the old and new lists do not share (see [`changed_rules`]; they may sit
+    /// anywhere in the list) are the only ones that can make an element's style differ. The elements those match are restyled, with their subtrees, against the complete
     /// new list in its proper order, as if their attributes had changed -- exact, wherever the
     /// changed rules sit. `false` when the changed rules are many or reach too much of the page
     /// to be worth it; nothing is changed then.
@@ -154,10 +193,6 @@ impl Page {
         /// More new rules than this, or matching more than half the page's elements, and a full
         /// cascade is as cheap.
         const MOST_RULES: usize = 64;
-        // The search below walks the document's own tree; a shadow tree's nodes are not in it.
-        if self.doc.has_shadow_roots() {
-            return false;
-        }
         let environment = self.media_environment();
         let author = crate::stylesheet::extract_inline_stylesheets_with_linked(
             &self.doc,
@@ -165,39 +200,26 @@ impl Page {
             &self.linked_styles,
         );
         let old = &self.author_rules;
-        let mut head = 0;
-        while head < old.len() && head < author.len() && old[head] == author[head] {
-            head += 1;
-        }
-        let mut tail = 0;
-        while tail < old.len() - head
-            && tail < author.len() - head
-            && old[old.len() - 1 - tail] == author[author.len() - 1 - tail]
-        {
-            tail += 1;
-        }
-        let appended: Vec<&blueice_css::Rule> = old[head..old.len() - tail]
-            .iter()
-            .chain(&author[head..author.len() - tail])
-            .collect();
-        // No changed rules at all (a `<style>` inside an inline SVG, which the SVG's own renderer
-        // reads, feeds the page's cascade nothing): only the document's own changes remain.
-        if appended.len() > MOST_RULES {
+        let Some(appended) = changed_rules(old, &author, MOST_RULES) else {
             if std::env::var("BI_PROFILE_LAYOUT").is_ok() {
                 eprintln!(
-                    "RESTYLE not by rules: {} changed rules (old {}, new {}, shared head {head} tail {tail})",
-                    appended.len(),
+                    "RESTYLE not by rules: more than {MOST_RULES} changed rules (old {}, new {})",
                     old.len(),
                     author.len()
                 );
             }
             return false;
-        }
+        };
         let mut matched: Vec<NodeId> = Vec::new();
         let mut elements = 0usize;
         let mut stack = vec![self.doc.root()];
         while let Some(node) = stack.pop() {
             stack.extend(self.doc.children(node));
+            // A shadow tree's nodes are searched too: a document rule can match inside one, and
+            // such a match sends the restyle to a full cascade.
+            if let Some(shadow) = self.doc.shadow_root(node) {
+                stack.push(shadow);
+            }
             if !matches!(self.doc.data(node), NodeData::Element { .. }) {
                 continue;
             }
@@ -231,11 +253,12 @@ impl Page {
                 });
         }
         let mut style_changed = Vec::new();
-        let done = cascade_incremental_report(
+        let done = cascade_incremental_report_with_containers(
             &self.doc,
             &[(Origin::Ua, &self.ua), (Origin::Author, &author)],
             self.viewport_width,
             self.viewport_height,
+            &self.container_sizes,
             &mut self.styles,
             &effective,
             &mut style_changed,
@@ -274,6 +297,9 @@ impl Page {
                 return true;
             }
             if profile {
+                eprintln!("RESTYLE appended-rules path declined (shadow roots {})", self.doc.has_shadow_roots());
+            }
+            if profile {
                 eprintln!(
                     "RESTYLE full: a stylesheet source changed ({})",
                     describe_sheet_change(&self.doc, &changes, &epoch)
@@ -282,11 +308,12 @@ impl Page {
             return false;
         }
         let mut style_changed = Vec::new();
-        let done = cascade_incremental_report(
+        let done = cascade_incremental_report_with_containers(
             &self.doc,
             &[(Origin::Ua, &self.ua), (Origin::Author, &self.author_rules)],
             self.viewport_width,
             self.viewport_height,
+            &self.container_sizes,
             &mut self.styles,
             &changes,
             &mut style_changed,
@@ -300,11 +327,12 @@ impl Page {
                 .invalidate(&self.doc, &changes, &style_changed);
         } else if profile {
             eprintln!(
-                "RESTYLE full: the incremental path declined ({} touched, {} attached, {} detached, overflow {})",
+                "RESTYLE full: the incremental path declined ({} touched, {} attached, {} detached, overflow {}, shadow roots {})",
                 changes.touched.len(),
                 changes.attached.len(),
                 changes.detached.len(),
-                changes.overflow
+                changes.overflow,
+                self.doc.has_shadow_roots()
             );
         }
         done
@@ -576,6 +604,54 @@ mod tests {
         // Turning a preload into a stylesheet changes what feeds the rules too.
         page.web_eval("document.querySelector('link[rel=preload]').rel = 'stylesheet';");
         page.settle();
+        assert_eq!(page.styles, fresh(&page));
+    }
+
+    #[test]
+    fn a_page_with_a_shadow_root_still_restyles_changes_away_from_it_incrementally() {
+        // github.com attaches shadow roots as it boots; one anywhere used to make every later
+        // restyle a full cascade (3 s each there).
+        let mut page = page("<body><div id=host></div><p id=a>x</p><p id=b>y</p></body>");
+        page.web_eval(
+            "const root = document.getElementById('host').attachShadow({mode:'open'}); root.innerHTML = '<span>in</span>';",
+        );
+        page.settle();
+        assert_eq!(page.styles, fresh(&page));
+        let (incremental, _full) = page.restyle_counts;
+        page.web_eval("document.getElementById('a').className = 'k';");
+        page.settle();
+        assert!(page.restyle_counts.0 > incremental, "a class change away from the shadow tree");
+        assert_eq!(page.styles, fresh(&page));
+        let (incremental, _full) = page.restyle_counts;
+        page.web_eval(
+            "{ const s = document.createElement('style'); s.textContent = 'p.k { color: red }'; document.head.appendChild(s); }",
+        );
+        page.settle();
+        assert!(page.restyle_counts.0 > incremental, "a new rule that matches nothing in a shadow tree");
+        assert_eq!(page.styles, fresh(&page));
+    }
+
+    #[test]
+    fn stylesheets_added_in_two_places_restyle_only_what_their_rules_reach() {
+        // turbo (github.com) puts a `<style>` first in `<head>` and another goes in later: a
+        // prefix-and-suffix comparison of the old and new rules called everything between
+        // them changed, and the restyle was a full cascade (3 s there).
+        let mut html = String::from("<head><style>b { color: blue }</style>");
+        for n in 0..100 {
+            html.push_str(&format!("<style>.r{n} {{ margin-left: {n}px }}</style>"));
+        }
+        html.push_str("</head><body><p id=a class=r5>x</p><i>y</i></body>");
+        let mut page = page(&html);
+        assert_eq!(page.styles, fresh(&page));
+        let (incremental, _full) = page.restyle_counts;
+        page.web_eval(
+            "{ const first = document.createElement('style'); first.textContent = 'p { color: red }'; \
+               document.head.insertBefore(first, document.head.firstChild); \
+               const last = document.createElement('style'); last.textContent = 'i { color: green }'; \
+               document.head.appendChild(last); }",
+        );
+        page.settle();
+        assert!(page.restyle_counts.0 > incremental, "restyled by the rules the two sheets added");
         assert_eq!(page.styles, fresh(&page));
     }
 

@@ -1321,11 +1321,19 @@ fn layer_names(prelude: &[Token]) -> Vec<String> {
     names
 }
 
-/// A new name for an anonymous layer, which no other rule can reopen.
-fn anonymous_layer() -> String {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static NEXT: AtomicU64 = AtomicU64::new(0);
-    format!("\u{0}anonymous-{}", NEXT.fetch_add(1, Ordering::Relaxed))
+/// The name of an anonymous layer, which no other rule can reopen. It is made from the block's
+/// own text and place, not from a counter: the same stylesheet parsed twice must give equal rules
+/// (the restyle after a script adds a `<style>` compares the new rules with the old by equality,
+/// and fresh names for every anonymous layer made all of a page's rules look changed).
+fn anonymous_layer(block: &[Token], at: usize) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    at.hash(&mut hasher);
+    block.len().hash(&mut hasher);
+    let edge = 32.min(block.len());
+    format!("{:?}", &block[..edge]).hash(&mut hasher);
+    format!("{:?}", &block[block.len() - edge..]).hash(&mut hasher);
+    format!("\u{0}anonymous-{:016x}", hasher.finish())
 }
 
 /// A rule with nothing in it that gives `name` its place in the layer order.
@@ -1419,7 +1427,10 @@ fn parse_rules_in(
                     Some(open) => {
                         if depth < 64 && tokens.get(end.saturating_sub(1)) == Some(&Token::RightBrace) {
                             // A block with no name is an anonymous layer of its own.
-                            let name = names.into_iter().next().unwrap_or_else(anonymous_layer);
+                            let name = names
+                                .into_iter()
+                                .next()
+                                .unwrap_or_else(|| anonymous_layer(&tokens[open + 1..end - 1], i));
                             rules.push(layer_marker(name.clone()));
                             for mut rule in parse_rules_in(&tokens[open + 1..end - 1], environment, depth + 1) {
                                 rule.layer = Some(match rule.layer.take() {
@@ -1576,6 +1587,15 @@ mod tests {
     use super::*;
     use crate::selector::SimpleSelector;
     use crate::value::{Color, Length};
+
+    #[test]
+    fn the_same_stylesheet_parsed_twice_gives_equal_rules_even_with_anonymous_layers() {
+        let css = "@layer { a { color: red } } @layer { b { color: blue } } @layer base { c { color: green } }";
+        assert_eq!(crate::parse(css).rules, crate::parse(css).rules);
+        let two = crate::parse(css);
+        let layers: Vec<_> = two.rules.iter().filter_map(|r| r.layer.clone()).collect();
+        assert!(layers[0] != layers[2], "two anonymous layers are two layers");
+    }
 
     #[test]
     fn a_data_url_with_escaped_quotes_and_markup_is_one_url() {

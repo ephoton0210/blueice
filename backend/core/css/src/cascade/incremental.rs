@@ -27,9 +27,61 @@ use crate::selector::{Combinator, ComplexSelector, PseudoClass, SimpleSelector};
 use blueice_dom::{Before, Changes};
 use std::collections::HashSet;
 
-/// Whether a style makes its element a query container.
-fn is_container(style: &ComputedStyle) -> bool {
-    matches!(style.other.get("container-type"), Some(Value::Keyword(k)) if k == "size" || k == "inline-size")
+/// Whether none of `changes` touches a shadow tree: each changed node is in the document's own
+/// tree, is not a shadow host or inside one's light children (those are slotted, and inherit
+/// through the composed tree), and has no shadow host below it (the host's tree inherits from
+/// it, and this path does not walk that tree).
+fn changes_clear_of_shadow_trees(doc: &Document, changes: &Changes) -> bool {
+    let hosts: HashSet<NodeId> = doc.shadow_hosts().collect();
+    let mut changed: HashSet<NodeId> = changes.touched.keys().copied().collect();
+    for (parent, child) in &changes.attached {
+        changed.insert(*parent);
+        changed.insert(*child);
+    }
+    for d in &changes.detached {
+        changed.insert(d.parent);
+    }
+    let document = doc.root();
+    // `BI_PROFILE_LAYOUT=1` says which change kept a page with shadow roots from restyling in part.
+    let say = |node: NodeId, why: &str| {
+        if std::env::var_os("BI_PROFILE_LAYOUT").is_some() {
+            let tag = match doc.data(node) {
+                blueice_dom::NodeData::Element { tag_name, .. } => tag_name.clone(),
+                _ => "(not an element)".to_string(),
+            };
+            eprintln!("RESTYLE shadow: <{tag}> {why}");
+        }
+    };
+    for &node in &changed {
+        // In the document's tree, at or under no host.
+        let mut at = Some(node);
+        let mut top = node;
+        while let Some(n) = at {
+            if hosts.contains(&n) {
+                say(node, if n == node { "is a shadow host" } else { "sits under a shadow host" });
+                return false;
+            }
+            top = n;
+            at = doc.parent(n);
+        }
+        // A node outside the tree (just detached) cannot be placed: the full cascade.
+        if top != document {
+            say(node, "is outside the document's tree (in a shadow tree, or detached)");
+            return false;
+        }
+    }
+    // No host below any changed node.
+    for &host in &hosts {
+        let mut at = doc.parent(host);
+        while let Some(n) = at {
+            if changed.contains(&n) {
+                say(n, "has a shadow host below it");
+                return false;
+            }
+            at = doc.parent(n);
+        }
+    }
+    true
 }
 
 /// How the rules look at a node's place among its siblings.
@@ -127,6 +179,7 @@ fn compute_with_pseudo(
     environment: &Environment<'_>,
     parent_style: Option<&ComputedStyle>,
     root_font_size: f64,
+    chain: &ContainerChain,
 ) -> (ComputedStyle, [Option<ComputedStyle>; 2]) {
     let style = compute_style_for(
         doc,
@@ -136,9 +189,10 @@ fn compute_with_pseudo(
         parent_style,
         root_font_size,
         None,
-        &None,
+        chain,
     )
     .expect("an element always has a style");
+    let own_chain = extend_chain(chain, node, &style, environment);
     let pseudo = [PseudoElement::Before, PseudoElement::After].map(|which| {
         compute_style_for(
             doc,
@@ -148,7 +202,7 @@ fn compute_with_pseudo(
             Some(&style),
             root_font_size,
             Some(which),
-            &None,
+            &own_chain,
         )
         .filter(|p| matches!(p.other.get("content"), Some(Value::Unparsed(_))))
     });
@@ -192,6 +246,27 @@ impl Restyle<'_> {
         }
     }
 
+    /// The query containers above `node`, as the full cascade builds them walking down: each
+    /// ancestor whose style makes it one, with the size layout measured for it.
+    fn container_chain(&self, node: NodeId) -> ContainerChain {
+        let mut ancestors = Vec::new();
+        let mut at = self.doc.parent(node);
+        while let Some(a) = at {
+            if a == self.doc.root() {
+                break;
+            }
+            ancestors.push(a);
+            at = self.doc.parent(a);
+        }
+        let mut chain: ContainerChain = None;
+        for a in ancestors.into_iter().rev() {
+            if let Some(style) = self.style(a) {
+                chain = extend_chain(&chain, a, style, self.environment);
+            }
+        }
+        chain
+    }
+
     fn visit(&mut self, node: NodeId, force: bool) {
         if self.bail
             || self.forced.contains(&node)
@@ -209,6 +284,7 @@ impl Restyle<'_> {
             Some(p) if p != self.doc.root() => self.style(p).cloned(),
             _ => None,
         };
+        let chain = self.container_chain(node);
         let (style, pseudo) = compute_with_pseudo(
             self.doc,
             node,
@@ -216,6 +292,7 @@ impl Restyle<'_> {
             self.environment,
             parent_style.as_ref(),
             self.root_font_size(node),
+            &chain,
         );
         let mut changed = self.style(node) != Some(&style);
         for (which, new) in [PseudoElement::Before, PseudoElement::After]
@@ -281,28 +358,49 @@ pub fn cascade_incremental_report(
     changes: &Changes,
     changed: &mut Vec<NodeId>,
 ) -> bool {
+    cascade_incremental_report_with_containers(
+        doc,
+        stylesheets,
+        viewport_width,
+        viewport_height,
+        &ContainerSizes::new(),
+        styles,
+        changes,
+        changed,
+    )
+}
+
+/// [`cascade_incremental_report`] for styles cascaded with `containers` (the sizes layout
+/// measured for the page's query containers, as for [`cascade_with_containers`]): `@container`
+/// rules and `cq` units are answered against them, as the full cascade does.
+#[allow(clippy::too_many_arguments)]
+pub fn cascade_incremental_report_with_containers(
+    doc: &Document,
+    stylesheets: &[(Origin, &[Rule])],
+    viewport_width: f64,
+    viewport_height: f64,
+    containers: &ContainerSizes,
+    styles: &mut HashMap<NodeId, ComputedStyle>,
+    changes: &Changes,
+    changed: &mut Vec<NodeId>,
+) -> bool {
     if changes.overflow {
         return false;
     }
     if changes.is_empty() {
         return true;
     }
-    // The composed tree (shadow roots, slots) is not what the journal describes.
-    if doc.has_shadow_roots() {
-        return false;
-    }
-    // Query containers make a style depend on a measured size of an ancestor, which this
-    // path does not track: restyle the page in full whenever it has any.
-    if styles.values().any(is_container) {
+    // The composed tree (shadow roots, slots) is not what the journal describes: a page with
+    // shadow roots is restyled in part only when every change is clear of all of them.
+    if doc.has_shadow_roots() && !changes_clear_of_shadow_trees(doc, changes) {
         return false;
     }
     let index = RuleIndex::build(stylesheets);
     let uses = index.structure;
-    let no_containers = ContainerSizes::new();
     let environment = Environment {
         viewport_width,
         viewport_height,
-        containers: &no_containers,
+        containers,
     };
 
     // (node, force the whole subtree)
@@ -423,9 +521,6 @@ pub fn cascade_incremental_report(
         return false;
     }
     let overlay = restyle.overlay;
-    if overlay.values().flatten().any(is_container) {
-        return false;
-    }
     let mut differing = Vec::new();
     for (id, style) in overlay {
         match style {

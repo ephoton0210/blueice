@@ -399,6 +399,25 @@ impl Page {
             if measured == self.container_sizes {
                 break;
             }
+            if std::env::var("BI_PROFILE_LAYOUT").is_ok() {
+                let mut shown = 0;
+                for (id, size) in &measured {
+                    if self.container_sizes.get(id) != Some(size) && shown < 4 {
+                        shown += 1;
+                        let tag = match self.doc.data(*id) {
+                            blueice_dom::NodeData::Element { tag_name, attributes } => format!(
+                                "{tag_name}.{}",
+                                attributes.iter().find(|(k, _)| k == "class").map_or("", |(_, v)| v.as_str())
+                            ),
+                            _ => String::new(),
+                        };
+                        eprintln!(
+                            "CONTAINER size changed <{tag}>: {:?} -> {size:?}",
+                            self.container_sizes.get(id)
+                        );
+                    }
+                }
+            }
             self.container_sizes = measured;
             self.recascade();
             self.layout_pass();
