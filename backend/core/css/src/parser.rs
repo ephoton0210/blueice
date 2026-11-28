@@ -404,16 +404,20 @@ fn expand_pair(first: &str, second: &str, tokens: &[Token]) -> Vec<(String, Valu
 }
 
 fn expand_flex_flow(tokens: &[Token]) -> Vec<(String, Value)> {
-    let mut out = Vec::new();
+    // The shorthand sets both longhands; one it leaves out takes its initial value.
+    let mut out = vec![
+        ("flex-direction".to_string(), Value::Keyword("row".to_string())),
+        ("flex-wrap".to_string(), Value::Keyword("nowrap".to_string())),
+    ];
     for part in components(tokens) {
         match parse_value(part) {
             Some(Value::Keyword(k))
                 if ["row", "row-reverse", "column", "column-reverse"].contains(&k.as_str()) =>
             {
-                out.push(("flex-direction".to_string(), Value::Keyword(k)))
+                out[0].1 = Value::Keyword(k)
             }
             Some(Value::Keyword(k)) if ["nowrap", "wrap", "wrap-reverse"].contains(&k.as_str()) => {
-                out.push(("flex-wrap".to_string(), Value::Keyword(k)))
+                out[1].1 = Value::Keyword(k)
             }
             _ => return vec![],
         }
@@ -2292,6 +2296,16 @@ mod tests {
         assert_eq!(
             value_of("flex-flow: wrap-reverse;", "flex-wrap"),
             Some(Value::Keyword("wrap-reverse".to_string()))
+        );
+        // A value left out resets its longhand to the initial one, so `flex-flow: wrap` after
+        // `flex-direction: column` is a row again (GitHub's marquee event details).
+        assert_eq!(
+            value_of("flex-flow: wrap;", "flex-direction"),
+            Some(Value::Keyword("row".to_string()))
+        );
+        assert_eq!(
+            value_of("flex-flow: column;", "flex-wrap"),
+            Some(Value::Keyword("nowrap".to_string()))
         );
         assert_eq!(value_of("gap: 4px 8px;", "row-gap"), Some(px(4.0)));
         assert_eq!(value_of("gap: 4px 8px;", "column-gap"), Some(px(8.0)));

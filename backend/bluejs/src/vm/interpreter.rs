@@ -2056,7 +2056,12 @@ impl Vm {
             };
             let completion = match outcome {
                 Ok(completion) => completion,
-                Err(error) if error.is_catchable() => Some(Completion::Throw(error)),
+                Err(error) if error.is_catchable() => {
+                    if new_throw {
+                        trace_nullish_read(&error, code);
+                    }
+                    Some(Completion::Throw(error))
+                }
                 Err(error) => return Err(error),
             };
             if new_throw {
@@ -2153,4 +2158,22 @@ impl Vm {
             executed_root_instruction = true;
         }
     }
+}
+
+/// Development aid: with `BLUEJS_TRACE_NULLISH` set, a fresh nullish-property
+/// TypeError prints the function that raised it (its source's start and the
+/// bytecode offset), since BlueJS errors carry no source locations.
+fn trace_nullish_read(error: &RuntimeError, code: &Bytecode) {
+    use std::sync::OnceLock;
+    static ON: OnceLock<bool> = OnceLock::new();
+    if !*ON.get_or_init(|| std::env::var_os("BLUEJS_TRACE_NULLISH").is_some()) {
+        return;
+    }
+    let RuntimeError::TypeError(message) = error else { return };
+    if !message.starts_with("Cannot read properties of") {
+        return;
+    }
+    let text = code.source_text.as_str().unwrap_or("").to_string();
+    let head: String = text.chars().take(300).collect::<String>().replace('\n', " ");
+    eprintln!("NULLISH-THROW {message} in: {head}");
 }

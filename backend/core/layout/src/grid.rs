@@ -1844,4 +1844,17 @@ mod tests {
             g.width
         );
     }
+
+    #[test]
+    fn a_max_width_does_not_make_a_grid_item_as_wide_as_that_max_when_measured_for_its_content() {
+        // GitHub's marquee: a `width: max-content` grid track of `display: grid` items that carry
+        // `max-inline-size: calc(100vw - 64px)`. The item's content is 40px wide; its max-width
+        // only caps it, so the track is 40px (plus the 7px gap-free spacing), not 400px.
+        let f = grid(
+            "<p class=t><i class=a style='width:40px;height:5px'></i></p>",
+            ".g{grid-auto-flow:column;width:max-content} .t{display:grid;margin:0;max-width:400px}",
+            1000.0,
+        );
+        assert!(f.width <= 40.5, "the track follows the content, got {}", f.width);
+    }
 }

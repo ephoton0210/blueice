@@ -2722,15 +2722,17 @@
   class CSSStyleSheet {
     constructor(owner) {
       Object.defineProperty(this, 'ownerNode', { value: owner || null });
+      // A constructed (ownerless) sheet keeps its own text.
+      Object.defineProperty(this, '_store', { value: owner || { textContent: '' } });
     }
     get cssRules() {
-      return splitCssRules(this.ownerNode ? this.ownerNode.textContent : '').map(makeRule);
+      return splitCssRules(this._store.textContent).map(makeRule);
     }
     get rules() {
       return this.cssRules;
     }
     insertRule(rule, index) {
-      const owner = this.ownerNode;
+      const owner = this._store;
       const all = splitCssRules(owner.textContent);
       const at = index === undefined ? 0 : Math.min(index, all.length);
       all.splice(at, 0, String(rule));
@@ -2738,10 +2740,17 @@
       return at;
     }
     deleteRule(index) {
-      const owner = this.ownerNode;
+      const owner = this._store;
       const all = splitCssRules(owner.textContent);
       all.splice(index, 1);
       owner.textContent = all.join('\n');
+    }
+    replaceSync(text) {
+      this._store.textContent = String(text);
+    }
+    replace(text) {
+      this.replaceSync(text);
+      return Promise.resolve(this);
     }
   }
   class HTMLStyleElement extends HTMLElement {
@@ -3984,6 +3993,7 @@
   const HTMLBRElement = simple('HTMLBRElement', 'br');
   const HTMLHRElement = simple('HTMLHRElement', 'hr');
   const HTMLMetaElement = simple('HTMLMetaElement', 'meta');
+  reflect(HTMLMetaElement.prototype, [['name', 'name'], ['content', 'content'], ['httpEquiv', 'http-equiv'], ['charset', 'charset'], ['media', 'media']]);
   const HTMLTitleElement = simple('HTMLTitleElement', 'title');
   const HTMLBaseElement = simple('HTMLBaseElement', 'base');
   const HTMLSourceElement = simple('HTMLSourceElement', 'source');

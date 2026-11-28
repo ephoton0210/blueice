@@ -420,6 +420,26 @@ mod tests {
     }
 
     #[test]
+    fn a_meta_element_reflects_its_name_and_content() {
+        // GitHub destructures `{ name, content }` from every `meta[name^="ha-"]`.
+        let mut h = host("<head><meta name=ha-a content=1 http-equiv=refresh></head><p>x</p>");
+        assert_eq!(
+            log(&mut h, "const { name, content, httpEquiv } = document.querySelector('meta'); console.log(name, content, httpEquiv)"),
+            "[log] ha-a 1 refresh"
+        );
+    }
+
+    #[test]
+    fn a_constructed_stylesheet_keeps_its_own_rules() {
+        // GitHub probes selector support with `new CSSStyleSheet().insertRule(sel + "{}")`.
+        let mut h = host("<p>x</p>");
+        assert_eq!(
+            log(&mut h, "const s = new CSSStyleSheet(); s.insertRule('a{}', 0); s.insertRule('b{}', 1); s.deleteRule(0); s.replaceSync('i{} u{}'); console.log(s.cssRules.length, s.cssRules[0].selectorText, s.ownerNode)"),
+            "[log] 2 i null"
+        );
+    }
+
+    #[test]
     fn google_sanitizes_a_style_string_through_a_scratch_documents_stylesheet() {
         // Closure's SafeStyle: insert the rule into a style in a new document and use the
         // sheet's own `cssText` if the rule is a CSSStyleRule.

@@ -871,7 +871,11 @@ fn layout_block_level_uncached(
         style.side("margin-right", cbw)
     };
     let min_width = style.px("min-width", cbw).map(to_content_w).unwrap_or(0.0);
-    let max_width = style.px("max-width", cbw).map(to_content_w);
+    // Measuring max-content (a forced width of "unbounded") reads what the content asks for;
+    // the box's own `max-width` caps the result afterwards, in its caller. Clamping here would
+    // lay the content out at the cap and make a stretching grid or flex child as wide as it.
+    let measuring = forced.width.is_some_and(|w| w >= 1.0e5);
+    let max_width = style.px("max-width", cbw).map(to_content_w).filter(|_| !measuring);
     let clamp_width = |w: f64| {
         let w = max_width.map_or(w, |m| w.min(m));
         w.max(min_width)
