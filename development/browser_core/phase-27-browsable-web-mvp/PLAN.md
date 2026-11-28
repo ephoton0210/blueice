@@ -1405,3 +1405,15 @@ Not done: size containment layout effects (`container-type: size` does not yet i
 - `ch` is the advance of a zero in the element's own font (`Length::Ch`, `LengthContext::zero_advance`, measured by layout); it was half an em. github.com's hero `h1` (`inline-size: 16ch`) now wraps to two lines, 123px tall, as in Safari. Its width is 530px against Safari's 526px (0.28px per `ch`: not yet explained).
 
 github.com is still not equal: the page is 8801px tall against Safari's 8473px. The eyebrow banner arrow icon is 16px against 24px, and the sign-up row is 680px wide against 737px. `ex` is still half an em.
+
+## Thirteenth round: github.com landing page
+
+Landed (commits eb9f0ff5e, 641f97541, 153d49164): CSS cascade layers, logical border-width/style/color longhands, `:has()`, import maps and `import.meta.url` for fetched modules, incremental restyle across shadow roots and container queries (measured `ContainerSizes`), appended-stylesheet restyle limited to the changed rules, size containment (`container-type: size` gives no intrinsic height, so container relayout converges), deterministic anonymous layer names, `BI_STARTUP_BUDGET`.
+
+Measured on the saved github.com landing page (Safari body height 8504): restyle+relayout 23 s -> 4.4 s, script phase 90 s -> ~28 s, height 8813 -> 8371.
+
+Open:
+- Hero `data-media-position` (Safari: bottom-center) is not updated because an uncaught `TypeError: Cannot read properties of null (reading 'textContent')` is thrown during React's render. A 120 s startup budget changes nothing, so it is not the budget. Locating it needs source locations in BlueJS errors (diagnostic-span parse mode for page scripts).
+- Remaining height gap (133 px short), h1 530 vs 526 wide, first full cascade ~4 s (26,981 rules).
+- Not started: `mask-mode`, `backdrop-filter`, 3D transforms, Wikipedia hidden dropdown widths (71 vs 192, hidden only), inline-size containment for intrinsic widths, BBC footer 9 px offset at equal width.
+- None of these is yet recorded as a genuine browser-interpretation difference; they are unfixed gaps.
